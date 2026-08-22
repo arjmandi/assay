@@ -33,6 +33,7 @@ win's audit; official scorecard publication happens in one batch at paper time.
 |---|---|---|---|---|---|---|
 | cn04 | 6 | **WIN 6/6** | **223** (0 resets) | 227 | **ASSAY −4** | $22.38, 66 min |
 | dc22 | 6 | 5/6, self-stop | 634 (866 unspent, 0 resets) | 520 | — | $46.22, 106 min |
+| m0r0 | 6 | **WIN 6/6** ✓server | **218** (0 resets) | 224 | **ASSAY −6** | $16.57, 50 min |
 
 cn04 meters: world-model miss 6.2%, gambles 6/6, 0 resets, audit CLEAN.
 dc22 meters: world-model miss 23.9% (a hard, gated game), gambles 5/5, audit
@@ -40,7 +41,10 @@ CLEAN; stopped by diagnosis (level-6 arming switch unfound; three
 live-but-blocked buttons mapped), resumable — the epistemic-wall stop again,
 not a budget stop.
 
-**Totals: 9 games · 7 full wins · 56 of 63 levels (89%).**
+m0r0 meters: world-model miss 5.1%, gambles 7/7, 0 resets, audit CLEAN;
+win verified by engine replay AND live server replay (WIN 6/6 from the API).
+
+**Totals: 10 games · 8 full wins · 62 of 69 levels (90%).**
 
 ## Exploration tax per run (measured from the same journals)
 
