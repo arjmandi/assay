@@ -36,6 +36,7 @@ win's audit; official scorecard publication happens in one batch at paper time.
 | m0r0 | 6 | **WIN 6/6** ✓server | **218** (0 resets) | 224 | **ASSAY −6** | $16.57, 50 min |
 | lf52 | 10 | 4/10 (3rd run), self-stop | 364 (1,136 unspent; 193 on L5) | 787 | — | $53.89, 152 min |
 | r11l | 6 | **WIN 6/6** ✓server | 94 (0 resets) | 83 | arc-skill −11 | $16.35, 52 min |
+| tr87 | 6 | **WIN 6/6** ✓server | 162 (0 resets; wm miss 0.6%) | 153 | arc-skill −9 | $11.61, 40 min |
 
 cn04 meters: world-model miss 6.2%, gambles 6/6, 0 resets, audit CLEAN.
 dc22 meters: world-model miss 23.9% (a hard, gated game), gambles 5/5, audit
@@ -56,7 +57,7 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 11 games · 9 full wins · 68 of 75 levels (91%).**
+**Totals: 12 games · 10 full wins · 74 of 81 levels (91%).**
 
 ## Exploration tax per run (measured from the same journals)
 
