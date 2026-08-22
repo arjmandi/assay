@@ -42,6 +42,7 @@ clear of that game across the three systems.
 | sc25 | 6 | WIN — 192 (cap 1500) | **166** | 228 |
 | g50t | 7 | **WIN — 378** (cap 1500) | 482 | 722 (78.4%, not cleared) |
 | vc33 | 7 | **WIN — 183** (cap 1500) | 193 | 272 |
+| ka59 | 7 | WIN — 344 (cap 1500) | **335** | 477 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -64,6 +65,7 @@ than PRO-LONG on 9 of 10 (tn36 the exception).
 | sc25 | 6 | **WIN 6/6** ✓server | 192 (3 resets) | 166 | arc-skill −26 | $23.40, 77 min |
 | g50t | 7 | **WIN 7/7** ✓server | **378** (4 resets; wm miss 1.3% over 1,208 claims) | 482 | **ASSAY −104** | $27.26, 75 min |
 | vc33 | 7 | **WIN 7/7** ✓server | **183** (0 resets) | 193 | **ASSAY −10** | $15.24, 48 min |
+| ka59 | 7 | **WIN 7/7** ✓server | 344 (0 resets) | 335 | arc-skill −9 | $31.12, 95 min |
 
 cn04 meters: world-model miss 6.2%, gambles 6/6, 0 resets, audit CLEAN.
 dc22 meters: world-model miss 23.9% (a hard, gated game), gambles 5/5, audit
@@ -84,7 +86,7 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 15 games · 13 full wins · 94 of 101 levels (93%).**
+**Totals: 16 games · 14 full wins · 101 of 108 levels (94%).**
 
 ## Second competitor reference: PRO-LONG (published)
 
