@@ -19,7 +19,16 @@ the same game instances).
 | ls20 | 7 | **WIN 7/7** | **438** (500, 3 resets) | 481 (3 resets) | **ASSAY −43** |
 | lf52 | 10 | 4/10, self-stop | 246 of 500 (254 unspent) | 787 (1 reset) | — (not comparable) |
 
-**Totals: 7 games · 6 full wins · 45 of 51 levels (88%).**
+## Sweep at cap 1500 (in progress; API-billed, measured $ per run)
+
+| Game | Levels | ASSAY | Actions (cap 1500) | arc-skill (published) | Delta | Run cost |
+|---|---|---|---|---|---|---|
+| cn04 | 6 | **WIN 6/6** | **223** (0 resets) | 227 | **ASSAY −4** | $22.38, 66 min |
+
+cn04 meters: world-model miss 19/308 (6.2%), gambles 6/6 held, sharpness 100%,
+0 resets, audit CLEAN (chain + 9 anchors intact, zero ungated).
+
+**Totals: 8 games · 7 full wins · 51 of 57 levels (89%).**
 
 ## Exploration tax per run (measured from the same journals)
 
