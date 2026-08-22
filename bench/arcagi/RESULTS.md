@@ -9,6 +9,14 @@ Competitor reference: **arc-skill**, the strongest published ARC-AGI-3
 harness — its author's published scorecard (Opus 5, uncapped, verified to use
 the same game instances).
 
+**Win provenance (2026-08-22): every win below is triple-verified** — (1) the
+game engine's own state in the journaled run, (2) an ASSAY-free replay of the
+recorded actions through the official engine, and (3) a LIVE ARC-server replay
+(competition session): the server itself returned WIN with identical level
+counts for all 7 wins. Wins are never read from the harness's claims — claims
+are graded against the engine state. Server replays are part of every future
+win's audit; official scorecard publication happens in one batch at paper time.
+
 | Game | Levels | ASSAY best | Actions (cap) | arc-skill (published, uncapped) | Action delta |
 |---|---|---|---|---|---|
 | cd82 | 6 | **WIN 6/6** | **88** (200) | 92 | **ASSAY −4** |
