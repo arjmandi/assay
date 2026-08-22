@@ -32,11 +32,15 @@ win's audit; official scorecard publication happens in one batch at paper time.
 | Game | Levels | ASSAY | Actions (cap 1500) | arc-skill (published) | Delta | Run cost |
 |---|---|---|---|---|---|---|
 | cn04 | 6 | **WIN 6/6** | **223** (0 resets) | 227 | **ASSAY −4** | $22.38, 66 min |
+| dc22 | 6 | 5/6, self-stop | 634 (866 unspent, 0 resets) | 520 | — | $46.22, 106 min |
 
-cn04 meters: world-model miss 19/308 (6.2%), gambles 6/6 held, sharpness 100%,
-0 resets, audit CLEAN (chain + 9 anchors intact, zero ungated).
+cn04 meters: world-model miss 6.2%, gambles 6/6, 0 resets, audit CLEAN.
+dc22 meters: world-model miss 23.9% (a hard, gated game), gambles 5/5, audit
+CLEAN; stopped by diagnosis (level-6 arming switch unfound; three
+live-but-blocked buttons mapped), resumable — the epistemic-wall stop again,
+not a budget stop.
 
-**Totals: 8 games · 7 full wins · 51 of 57 levels (89%).**
+**Totals: 9 games · 7 full wins · 56 of 63 levels (89%).**
 
 ## Exploration tax per run (measured from the same journals)
 
