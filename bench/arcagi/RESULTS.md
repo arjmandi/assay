@@ -17,15 +17,37 @@ counts for all 7 wins. Wins are never read from the harness's claims — claims
 are graded against the engine state. Server replays are part of every future
 win's audit; official scorecard publication happens in one batch at paper time.
 
-| Game | Levels | ASSAY best | Actions (cap) | arc-skill (published, uncapped) | Action delta |
-|---|---|---|---|---|---|
-| cd82 | 6 | **WIN 6/6** | **88** (200) | 92 | **ASSAY −4** |
-| tn36 | 7 | **WIN 7/7** | 188 (200) | 160 | arc-skill −28 |
-| ft09 | 6 | **WIN 6/6** | 81 (200); rc1 regression 82 | 75 | arc-skill −6 |
-| sp80 | 6 | **WIN 6/6** | **153** (200) | 211 (1 reset) | **ASSAY −58** |
-| su15 | 9 | **WIN 9/9** | 150 (500, 4 resets) | 117 (2 resets) | arc-skill −33 |
-| ls20 | 7 | **WIN 7/7** | **438** (500, 3 resets) | 481 (3 resets) | **ASSAY −43** |
-| lf52 | 10 | 4/10, self-stop | 246 of 500 (254 unspent) | 787 (1 reset) | — (not comparable) |
+## The three-system table — actions per game, all systems' published/recorded runs
+
+ASSAY: our runs, Opus 5, capped, tier-2. arc-skill: the author's published
+scorecard, Opus 5, uncapped. PRO-LONG: their published official scorecards —
+**Fable 5 backbone** (directional context, not a controlled comparison; scores
+below 100% mean they did not fully clear the game). Bold = the cheapest full
+clear of that game across the three systems.
+
+| Game | Levels | ASSAY (Opus, capped) | arc-skill (Opus) | PRO-LONG (Fable 5) |
+|---|---|---|---|---|
+| cd82 | 6 | **WIN — 88** (cap 200) | 92 | 165 (97.4%, not cleared) |
+| tn36 | 7 | WIN — 188 (cap 200) | **160** | 182 |
+| ft09 | 6 | WIN — 81 (cap 200; rc1 gate 82) | **75** | 82 |
+| sp80 | 6 | **WIN — 153** (cap 200) | 211 | 170 |
+| su15 | 9 | WIN — 150 (cap 500) | **117** | 178 |
+| ls20 | 7 | **WIN — 438** (cap 500) | 481 | 544 |
+| lf52 | 10 | 4/10 — 364 (cap 1500, n=3 stall) | **787** | 1,000 (81.8%, not cleared) |
+| cn04 | 6 | **WIN — 223** (cap 1500) | 227 | 249 |
+| dc22 | 6 | 5/6 — 634 (cap 1500, self-stop) | **520** | 1,392 (93.6%, not cleared) |
+| m0r0 | 6 | **WIN — 218** (cap 1500) | 224 | 272 |
+| r11l | 6 | WIN — 94 (cap 1500) | **83** | 162 |
+| tr87 | 6 | WIN — 162 (cap 1500) | **153** | 212 |
+| sc25 | 6 | WIN — 192 (cap 1500) | **166** | 228 |
+
+Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
+5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
+cleared, summed actions: **ASSAY 1,899 · arc-skill 1,897 · PRO-LONG 2,279** —
+the two Opus systems are separated by 2 actions in 1,900 (a dead heat; ASSAY
+ran under hard caps and with less starting information), with PRO-LONG ~20%
+above both on the stronger backbone. Per game on those 10, ASSAY was cheaper
+than PRO-LONG on 9 of 10 (tn36 the exception).
 
 ## Sweep at cap 1500 (in progress; API-billed, measured $ per run)
 
