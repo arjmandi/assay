@@ -59,6 +59,18 @@ prediction — flagged as a candidate telemetry module: halt loops on first ✗.
 
 **Totals: 12 games · 10 full wins · 74 of 81 levels (91%).**
 
+## Second competitor reference: PRO-LONG (published)
+
+PRO-LONG (paper arxiv.org/abs/2607.20064) published official arcprize.org
+scorecards for all 25 games — **backbone caveat: that cohort ran on Fable 5,
+not Opus**, so it is directional context, not a controlled comparison.
+Their published actions (score) on our played games: ft09 82 · cd82 165
+(97.4%) · tn36 182 · sp80 170 · su15 178 · ls20 544 · cn04 249 · m0r0 272 ·
+r11l 162 · tr87 212 · dc22 1,392 (93.6%) · lf52 1,000 (81.8%). ASSAY's Opus
+runs used fewer actions on 8 of the 12 shared games. Notable: PRO-LONG also
+failed to fully clear lf52 (81.8% at 1,000 actions) — the game is hard for
+every published system except arc-skill's 787.
+
 ## Exploration tax per run (measured from the same journals)
 
 The tax is what discovery cost before exploitation began — reportable as a
