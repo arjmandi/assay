@@ -34,6 +34,7 @@ win's audit; official scorecard publication happens in one batch at paper time.
 | cn04 | 6 | **WIN 6/6** | **223** (0 resets) | 227 | **ASSAY −4** | $22.38, 66 min |
 | dc22 | 6 | 5/6, self-stop | 634 (866 unspent, 0 resets) | 520 | — | $46.22, 106 min |
 | m0r0 | 6 | **WIN 6/6** ✓server | **218** (0 resets) | 224 | **ASSAY −6** | $16.57, 50 min |
+| lf52 | 10 | 4/10 (3rd run), self-stop | 364 (1,136 unspent; 193 on L5) | 787 | — | $53.89, 152 min |
 
 cn04 meters: world-model miss 6.2%, gambles 6/6, 0 resets, audit CLEAN.
 dc22 meters: world-model miss 23.9% (a hard, gated game), gambles 5/5, audit
@@ -43,6 +44,16 @@ not a budget stop.
 
 m0r0 meters: world-model miss 5.1%, gambles 7/7, 0 resets, audit CLEAN;
 win verified by engine replay AND live server replay (WIN 6/6 from the API).
+
+**lf52, closed as a budget question (n=3):** three independent runs now stall
+at exactly 4/10 under caps of 200, 500, and 1500 — the last spending 193
+actions on level 5 alone and stopping with 1,136 unspent after a
+relaxed-constraints planner proved no 1-peg finish exists in the mappable
+world. The gap is categorical, not economic: revealing world structure that
+sits outside the visible frame when the camera's only lever cannot reach it.
+This is the program's primary open research problem. (The run also
+self-reported ~70 actions lost to automated loops re-issuing a failing
+prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
 **Totals: 10 games · 8 full wins · 62 of 69 levels (90%).**
 
