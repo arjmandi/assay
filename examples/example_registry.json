@@ -1,0 +1,11 @@
+{
+  "actions": [
+    {"name": "INC", "params": {"amount": {"type": "int", "min": 1, "max": 2}}},
+    {"name": "SET_LAMP", "params": {"state": {"type": "str", "enum": ["on", "off"]}}},
+    {"name": "NOOP", "params": {}},
+    {"name": "BOMB", "params": {}, "destructive": true}
+  ],
+  "budget": {"actions": 40},
+  "goal": {"text": "drive the counter to 3 (the WIN state)"},
+  "mode_note": "example counter world — see examples/counter_world.py"
+}

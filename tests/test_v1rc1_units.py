@@ -1,0 +1,268 @@
+"""Unit tests for the v1-rc1 subsystems: registry v2, the grammar additions,
+redaction, the hash chain, and hazard demand logic."""
+
+from __future__ import annotations
+
+import json
+import os
+
+import pytest
+
+from assay.core import AssayError, RunPaths, append_jsonl
+from assay.integrity import (
+    audit,
+    compute_chain,
+    extend_chain,
+    redact,
+    redact_mapping,
+    ungated_events,
+)
+from assay.predictions import claim_bucket, parse_claims
+from assay.registry import (
+    hand_cap,
+    notes_cap,
+    spend_reports,
+    validate_registry,
+    zero_prior,
+)
+
+BASE = {"actions": [{"name": "GO", "params": {}}]}
+
+
+# ---------------------------------------------------------------- registry v2
+
+
+def test_registry_v2_fields_roundtrip():
+    spec = validate_registry(
+        {
+            **BASE,
+            "actions": [
+                {
+                    "name": "FIRE",
+                    "params": {},
+                    "destructive": True,
+                    "approval": True,
+                    "liveness": "live",
+                    "rehearsal_quota": 3,
+                    "description": "hint text",
+                }
+            ],
+            "budget": {"actions": 5, "usd": 2.5},
+            "goal": {"text": "reach the vault"},
+            "batching": {"hand_cap": None},
+            "notes_cap": 500,
+            "zero_prior": True,
+            "module_modes": {"hazard": "block"},
+            "secrets": ["MY_KEY"],
+            "observers": [{"name": "cam", "rate_hz": 10}],
+            "control": {"tiers": 2},
+        }
+    )
+    action = spec["actions"][0]
+    assert action["destructive"] and action["approval"]
+    assert action["liveness"] == "live" and action["rehearsal_quota"] == 3
+    assert spec["budget"] == {"actions": 5, "usd": 2.5}
+    assert spec["goal"]["text"] == "reach the vault"
+    assert hand_cap(spec) is None
+    assert notes_cap(spec) == 500
+    assert zero_prior(spec)
+
+
+def test_registry_v2_defaults_and_refusals():
+    spec = validate_registry(BASE)
+    assert hand_cap(spec) == 3           # the batching law's kernel default
+    assert hand_cap(None) is None        # numbered-action path: no cap
+    assert notes_cap(spec) == 16_000
+    assert not zero_prior(spec)
+    for bad in [
+        {**BASE, "batching": {"hand_cap": 0}},
+        {**BASE, "budget": {"usd": -1}},
+        {**BASE, "goal": {"text": "  "}},
+        {**BASE, "module_modes": {"hazard": "loud"}},
+        {**BASE, "actions": [{"name": "A", "params": {}, "rehearsal_quota": 2}]},
+        {**BASE, "actions": [{"name": "A", "params": {}, "liveness": "maybe"}]},
+    ]:
+        with pytest.raises(AssayError):
+            validate_registry(bad)
+
+
+def test_spend_reports_idempotent_by_id():
+    activity = [
+        {"kind": "spend_report", "id": "t1", "usd": 1.0, "tokens": 10},
+        {"kind": "spend_report", "id": "t1", "usd": 1.5, "tokens": 15},  # correction
+        {"kind": "spend_report", "id": "t2", "usd": 2.0, "tokens": 20},
+    ]
+    assert spend_reports(activity) == (3.5, 35)
+
+
+# ------------------------------------------------------------------- grammar
+
+
+def test_channel_claims_parse():
+    claims = parse_claims(
+        "ch counter = 3; ch counter delta >= 1; ch temp crosses 5 from below; "
+        "ch level delta sign +",
+        general=True,
+    )
+    kinds = [claim["kind"] for claim in claims]
+    assert kinds == ["channel_eq", "channel_delta", "channel_cross", "channel_delta"]
+    assert claims[0]["value"] == 3
+    assert claims[1]["op"] == ">=" and claims[1]["value"] == 1
+    assert claims[2]["direction"] == "below"
+    assert claims[3]["op"] == "sign" and claims[3]["sign"] == "+"
+
+
+def test_channel_claim_tolerance_and_window():
+    claims = parse_claims("ch price = 4.5 +- 0.2 @within 1.5s", general=True)
+    assert claims[0]["tol"] == 0.2 and claims[0]["window_s"] == 1.5
+    with pytest.raises(AssayError):
+        parse_claims("ch price = up down", general=True)  # malformed, not a note
+
+
+def test_channel_bucket_split():
+    assert claim_bucket("channel_eq", "goal") == "gamble"
+    assert claim_bucket("channel_delta", "level") == "gamble"
+    assert claim_bucket("channel_eq", "counter") == "world_model"
+    assert claim_bucket("aggregate", "counter") == "aggregate"
+
+
+def test_aggregate_additive_rule():
+    with pytest.raises(AssayError, match="additive"):
+        parse_claims(
+            "agg ch counter mean >= 1 over 3a horizon 5a on-fail advise",
+            general=True,
+        )
+    claims = parse_claims(
+        "noop; agg ch counter mean >= 1 over 3a horizon 5a on-fail revoke_batching",
+        general=True,
+    )
+    aggregate = next(claim for claim in claims if claim["kind"] == "aggregate")
+    assert aggregate["over"] == 3 and aggregate["horizon"] == 5
+    assert aggregate["on_fail"] == "revoke_batching"
+    with pytest.raises(AssayError):
+        parse_claims("noop; agg ch c mean >= 1 over 3a horizon 500a on-fail advise",
+                     general=True)
+
+
+# ------------------------------------------------------------------ redaction
+
+
+def test_redact_secret_values(monkeypatch):
+    monkeypatch.setenv("FAKE_SECRET_X", "hunter2secret")
+    assert redact("key is hunter2secret ok", ["FAKE_SECRET_X"]) == (
+        "key is [REDACTED:FAKE_SECRET_X] ok"
+    )
+    nested = redact_mapping(
+        {"a": "hunter2secret", "b": {"c": ["hunter2secret", 3]}}, ["FAKE_SECRET_X"]
+    )
+    assert nested == {
+        "a": "[REDACTED:FAKE_SECRET_X]",
+        "b": {"c": ["[REDACTED:FAKE_SECRET_X]", 3]},
+    }
+    monkeypatch.setenv("SHORT", "ab")  # too short: never redacted
+    assert redact("ab", ["SHORT"]) == "ab"
+
+
+# ------------------------------------------------------------------ integrity
+
+
+def _fake_paths(tmp_path) -> RunPaths:
+    paths = RunPaths(tmp_path)
+    paths.state.mkdir(parents=True, exist_ok=True)
+    return paths
+
+
+def _event(i: int, **overrides):
+    record = {
+        "id": i,
+        "action": "GO",
+        "data": None,
+        "note": "",
+        "state": "NOT_FINISHED",
+        "levels_completed": 0,
+        "level_before": 0 if i else None,
+        "win_levels": 1,
+        "available_actions": ["GO"],
+        "counts_action": i > 0,
+        "predict": "change",
+        "predict_ok": True,
+        "grade": [{"kind": "change", "ok": True, "bucket": "world_model"}],
+    }
+    record.update(overrides)
+    return record
+
+
+def test_chain_extend_and_audit(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
+    paths = _fake_paths(tmp_path / "run")
+    for i in range(3):
+        append_jsonl(paths.events, _event(i, action="START" if i == 0 else "GO",
+                                          predict=None if i == 0 else "change",
+                                          predict_ok=None if i == 0 else True,
+                                          grade=None if i == 0 else _event(i)["grade"]))
+        line = paths.events.read_text().splitlines()[-1]
+        extend_chain(paths, line, i, win=False)
+    report = audit(paths)
+    assert report["chain"] == "intact"
+    assert report["contiguous"] and not report["ungated"]
+    assert not report["invalid_for_scoring"]
+    # Tampering: rewrite an early line -> recomputed head diverges from stored.
+    lines = paths.events.read_text().splitlines()
+    lines[1] = lines[1].replace('"GO"', '"XX"')
+    paths.events.write_text("\n".join(lines) + "\n")
+    report = audit(paths)
+    assert report["chain"] == "DIVERGED"
+    assert report["invalid_for_scoring"]
+
+
+def test_ungated_definition(tmp_path):
+    events = [
+        _event(0, action="START", counts_action=False, predict=None,
+               predict_ok=None, grade=None),
+        _event(1),
+        _event(2, predict=None, predict_ok=None, grade=None),      # UNGATED
+        _event(3, action="RESET", predict=None, predict_ok=None, grade=None),
+    ]
+    assert ungated_events(events) == [2]
+
+
+def test_anchor_written_on_win(tmp_path, monkeypatch):
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
+    paths = _fake_paths(tmp_path / "run")
+    append_jsonl(paths.events, _event(0, state="WIN"))
+    line = paths.events.read_text().splitlines()[-1]
+    extend_chain(paths, line, 0, win=True)
+    from assay.integrity import anchor_file
+
+    anchors = anchor_file(paths).read_text().splitlines()
+    assert len(anchors) == 1
+    entry = json.loads(anchors[0])
+    assert entry["event_id"] == 0
+    _, head = compute_chain(paths)
+    assert entry["head"] == head
+
+
+# -------------------------------------------------------------------- hazard
+
+
+def test_hazard_tags_and_demands(tmp_path):
+    from assay.modules import JournalView, _Hazard
+
+    paths = _fake_paths(tmp_path / "run")
+    hazard = _Hazard()
+    events = [
+        _event(0, action="START", counts_action=False),
+        _event(1, action="BOMB", state="GAME_OVER"),
+    ]
+    view = JournalView(paths=paths, events=events, registry={"actions": []})
+    hazard.observe(view, events[1])
+    tags = json.loads((paths.state / "hazards.json").read_text())
+    assert tags[0]["action_class"] == "BOMB"
+    assert tags[0]["signature"] == "entered_loss_state"
+    pending = {"kind": "act", "name": "BOMB", "params": None, "claims": [], "declares": {}}
+    demands = hazard.demand(view, pending)
+    assert set(demands) == {"worst_case", "recovery"}
+    pending["declares"] = {"worst_case": "lose level", "recovery": "reset"}
+    assert hazard.demand(view, pending) is None
+    safe = {"kind": "act", "name": "GO", "params": None, "claims": [], "declares": {}}
+    assert hazard.demand(view, safe) is None

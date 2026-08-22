@@ -1,0 +1,14 @@
+{
+  "budget": {"actions": 200},
+  "batching": {"hand_cap": null},
+  "secrets": ["ARC_API_KEY"],
+  "actions": [
+    {"name": "ACTION1", "params": {}, "description": "up / interface direction 1"},
+    {"name": "ACTION2", "params": {}, "description": "down / interface direction 2"},
+    {"name": "ACTION3", "params": {}, "description": "left / interface direction 3"},
+    {"name": "ACTION4", "params": {}, "description": "right / interface direction 4"},
+    {"name": "ACTION5", "params": {}, "description": "interact"},
+    {"name": "ACTION6", "params": {"x": {"type": "int", "min": 0, "max": 63}, "y": {"type": "int", "min": 0, "max": 63}}, "description": "point/click at x,y (x=column, y=row)"},
+    {"name": "ACTION7", "params": {}, "description": "undo"}
+  ]
+}
