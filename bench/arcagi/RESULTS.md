@@ -43,6 +43,7 @@ clear of that game across the three systems.
 | g50t | 7 | **WIN — 378** (cap 1500) | 482 | 722 (78.4%, not cleared) |
 | vc33 | 7 | **WIN — 183** (cap 1500) | 193 | 272 |
 | ka59 | 7 | WIN — 344 (cap 1500) | **335** | 477 |
+| lp85 | 8 | WIN — 104 (cap 1500) | **93** | 112 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -66,6 +67,15 @@ than PRO-LONG on 9 of 10 (tn36 the exception).
 | g50t | 7 | **WIN 7/7** ✓server | **378** (4 resets; wm miss 1.3% over 1,208 claims) | 482 | **ASSAY −104** | $27.26, 75 min |
 | vc33 | 7 | **WIN 7/7** ✓server | **183** (0 resets) | 193 | **ASSAY −10** | $15.24, 48 min |
 | ka59 | 7 | **WIN 7/7** ✓server | 344 (0 resets) | 335 | arc-skill −9 | $31.12, 95 min |
+| lp85 | 8 | **WIN 8/8** ✓server | 104 (0 resets) | 93 | arc-skill −11 | $19.64, 60 min |
+
+**Sweep closed 2026-08-23: 11 games · 9 wins · 2 diagnosed self-stops ·
+$283.68 of the $320 cap · every win triple-verified (journal, ASSAY-free
+engine replay, live ARC-server replay) · every journal audit-clean (zero
+ungated events across ~3,400 paid actions).** Measured cost curve: wins
+$11.61–$31.12 (median ≈ $22); the two hard partials $46–54. Exploration tax
+across the 11 sweep runs: probe share 5–24% (batch share 76–95%), discovery
+ramp A1 = 7–28 actions.
 
 cn04 meters: world-model miss 6.2%, gambles 6/6, 0 resets, audit CLEAN.
 dc22 meters: world-model miss 23.9% (a hard, gated game), gambles 5/5, audit
@@ -86,7 +96,8 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 16 games · 14 full wins · 101 of 108 levels (94%).**
+**Totals: 17 of 25 public games attempted · 15 full wins · 109 of 116 levels
+(94%). Unattempted (8): ar25, bp35, re86, s5i5, sb26, sk48, tu93, wa30.**
 
 ## Second competitor reference: PRO-LONG (published)
 
