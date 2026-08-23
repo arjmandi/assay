@@ -48,6 +48,7 @@ clear of that game across the three systems.
 | ar25 | 8 | WIN — 264 (cap 1500) | **260** | 266 |
 | re86 | 8 | **WIN — 573** (cap 1500) | 601 | 331 (41.7%, not cleared) |
 | tu93 | 9 | WIN — 250 (cap 1500) | **205** | 227 |
+| s5i5 | 8 | WIN — 367 (three sessions: 190+83+94) | **281** | 457 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -111,9 +112,19 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 21 of 25 public games attempted · 20 full wins · 143 of 149 levels
-(96%). Remaining: s5i5 (5/8, resume in flight), sk48 + bp35 + wa30 (in
-flight), lf52 (parked for the machinery phase).**
+**Totals: 22 of 25 public games attempted · 21 full wins · 151 of 157 levels
+(96%). Remaining: sk48 + bp35 + wa30 (in flight), lf52 (parked for the
+machinery phase).**
+
+**s5i5 converted across three sessions (2026-08-23) — the exercised-claim
+finding, proven:** session 2 "proved" level 7 unwinnable; session 3 audited
+WHICH rules the proof depended on, found the load-bearing one had been
+exercised only in a different failure mode (occupied vs off-board rotation),
+bought one graded probe — and the off-board case CLIPS instead of refusing,
+un-trapping the arm and also breaking level 8's length cap. Doctrine now
+standing: a replay-validated model can be confidently wrong where no
+transition ever went; "provably unsolvable" is a signal to probe the proof's
+unexercised rules. Directly applicable to lf52's impossibility proofs.
 
 **dc22 converted by resume (2026-08-23):** the paused 5/6 run finished level 6
 in 408 further actions (1,042 total, server-verified). The handoff evidence is
