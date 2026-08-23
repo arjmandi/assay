@@ -114,9 +114,12 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 24 of 25 public games attempted · 23 full wins · 168 of 174 levels
-(97%). Remaining: bp35 (resume in flight), lf52 (parked for the machinery
-phase).**
+**Totals: 24 of 25 public games attempted · 23 full wins · 169 of 174 levels
+(97%). Remaining: bp35 at 8/9 (level-8 proof broken — a hidden switch sat 24
+rows above a drifted map; the pink block turned out to be a vehicle; second
+resume attacking the new level-9 argument in flight), lf52 (parked for the
+machinery phase). Five impossibility proofs broken by the exercised-claim
+protocol so far this campaign.**
 
 **wa30 converted (2026-08-23) — the fourth broken impossibility, the most
 complete collapse:** every hostile rule in the throughput proof was false and
