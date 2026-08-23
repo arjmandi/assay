@@ -117,7 +117,37 @@ prediction — flagged as a candidate telemetry module: halt loops on first ✗.
 
 ## THE PUBLIC SET IS COMPLETE (2026-08-23)
 
+### The score: RHAE 96.54
+
+**ASSAY's ARC-AGI-3 set score is RHAE 96.54** — computed with `rhae.py` in this
+directory from our journals plus the published per-level baselines
+(`baselines.json`), not asserted. RHAE is the benchmark's own metric and it is
+NOT games-cleared or levels-cleared: per level it is
+`min(115, 100·(baseline/actions)²)`, per game the index-weighted mean of those
+(capped at 100) if the run reached WIN, and for an unfinished game *weighted
+progress only* — inefficiency is punished quadratically and an unfinished game
+earns no efficiency credit whatever. The formula is derived from published
+scorecard JSONs and `rhae.py --validate` reproduces **25 of 25** published
+game scores exactly (worst error 0.000000), plus a second system's published
+partial-game score independently.
+
+| | RHAE | Note |
+|---|---|---|
+| 23 of our 25 games | **100.00** | at the per-game cap |
+| bp35 | 95.27 | won, but over baseline on levels 4, 7 and 9 |
+| lf52 | 18.18 | 4/10, unfinished — progress-weighted only |
+| **Set (mean of 25)** | **96.54** | above the 95.4 human-expert baseline |
+
+lf52 alone costs 3.27 RHAE points; over the 24 games we won, ASSAY's RHAE is
+**99.80**. This is the single strongest argument for the machinery phase: one
+unfinished game is worth more score than every efficiency gain on the other
+24 combined.
+
+### Coverage statistics (NOT a score — never publish these as one)
+
 **All 25 public games attempted · 24 fully won · 177 of 183 levels (96.7%).**
+The 96.7% level-coverage figure sits deceptively close to the real RHAE of
+96.54 and must always be labeled as coverage.
 The one non-win is lf52 (4/10 across three runs — the located exploration
 gap, parked by owner decision for the machinery phase). Every win
 triple-verified (journal engine state, ASSAY-free engine replay, live
