@@ -49,6 +49,7 @@ clear of that game across the three systems.
 | re86 | 8 | **WIN — 573** (cap 1500) | 601 | 331 (41.7%, not cleared) |
 | tu93 | 9 | WIN — 250 (cap 1500) | **205** | 227 |
 | s5i5 | 8 | WIN — 367 (three sessions: 190+83+94) | **281** | 457 |
+| sk48 | 8 | **WIN — 404** (two sessions: 111+293) | 491 | 650 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -112,9 +113,17 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 22 of 25 public games attempted · 21 full wins · 151 of 157 levels
-(96%). Remaining: sk48 + bp35 + wa30 (in flight), lf52 (parked for the
+**Totals: 23 of 25 public games attempted · 22 full wins · 159 of 165 levels
+(96%). Remaining: bp35 + wa30 (resumes in flight), lf52 (parked for the
 machinery phase).**
+
+**sk48 converted (2026-08-23) — the exercised-claim protocol's third broken
+"proof":** an exhaustive 8.2M-state search had shown level 3 unsolvable — under
+one UNGRADED companion rule (freed blocks re-hook positionally, not
+bottom-only) that fit all 103 recorded transitions while being wrong in
+untested territory. The same session found ACTION6 (written off as a no-op)
+was SELECT, unlocking the final three levels. Beat the competitor's count
+(404 < 491) despite the two-session handoff.
 
 **s5i5 converted across three sessions (2026-08-23) — the exercised-claim
 finding, proven:** session 2 "proved" level 7 unwinnable; session 3 audited
