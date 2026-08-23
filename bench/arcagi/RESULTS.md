@@ -46,6 +46,7 @@ clear of that game across the three systems.
 | lp85 | 8 | WIN — 104 (cap 1500) | **93** | 112 |
 | sb26 | 8 | WIN — 128 (cap 1500) | **124** | 129 |
 | ar25 | 8 | WIN — 264 (cap 1500) | **260** | 266 |
+| re86 | 8 | **WIN — 573** (cap 1500) | 601 | 331 (41.7%, not cleared) |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -72,6 +73,13 @@ than PRO-LONG on 9 of 10 (tn36 the exception).
 | lp85 | 8 | **WIN 8/8** ✓server | 104 (0 resets) | 93 | arc-skill −11 | $19.64, 60 min |
 | sb26 | 8 | **WIN 8/8** ✓server | 128 (0 resets; wm miss 4.0%) | 124 | arc-skill −4 | subscription, 32 min |
 | ar25 | 8 | **WIN 8/8** ✓server | 264 (0 resets; wm miss 1.6%, gambles 9/9) | 260 | arc-skill −4 | subscription, 65 min |
+| re86 | 8 | **WIN 8/8** ✓server | **573** (0 resets; wm miss 3.0%; 741 verifiers) | 601 | **ASSAY −28** | subscription, 90 min |
+
+re86 note: the hardest game in the set by competitor record (PRO-LONG 41.7%,
+never cleared) — ASSAY cleared it under the competitor's count. First measured
+module-efficacy datum: the player credits the wall_spend advisory with moving
+its discovery into offline simulators (levels 7–8 solved on paper, executed at
+100% step verification).
 
 **Sweep closed 2026-08-23: 11 games · 9 wins · 2 diagnosed self-stops ·
 $283.68 of the $320 cap · every win triple-verified (journal, ASSAY-free
@@ -100,9 +108,9 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 19 of 25 public games attempted · 18 full wins · 126 of 132 levels
-(95%). Unattempted (6): bp35, re86, s5i5, sk48, tu93, wa30 — all in flight or
-queued (final-set completion, subscription-billed).**
+**Totals: 20 of 25 public games attempted · 19 full wins · 134 of 140 levels
+(96%). Remaining: s5i5 (5/8, resume in flight), sk48 + tu93 (in flight),
+bp35 + wa30 (queued), lf52 (parked for the machinery phase).**
 
 **dc22 converted by resume (2026-08-23):** the paused 5/6 run finished level 6
 in 408 further actions (1,042 total, server-verified). The handoff evidence is
