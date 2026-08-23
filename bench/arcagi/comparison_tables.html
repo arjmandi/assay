@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ARC-AGI-3 Four-System Comparison</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; margin: 0; }
+  .viz-root {
+    color-scheme: light;
+    --surface-1: #fcfcfb; --page: #f9f9f7;
+    --ink-1: #0b0b0b; --ink-2: #52514e; --ink-3: #898781;
+    --grid: #e1e0d9; --axis: #c3c2b7; --ring: rgba(11,11,11,0.10);
+    --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100; --s1b: #86b6ef;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--page); color: var(--ink-1);
+    min-height: 100vh; padding: 32px 16px 64px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:where(:not([data-theme="light"])) .viz-root {
+      color-scheme: dark;
+      --surface-1: #1a1a19; --page: #0d0d0d;
+      --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #898781;
+      --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+      --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s1b: #6da7ec;
+    }
+  }
+  :root[data-theme="dark"] .viz-root {
+    color-scheme: dark;
+    --surface-1: #1a1a19; --page: #0d0d0d;
+    --ink-1: #ffffff; --ink-2: #c3c2b7; --ink-3: #898781;
+    --grid: #2c2c2a; --axis: #383835; --ring: rgba(255,255,255,0.10);
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --s1b: #6da7ec;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; }
+  h1 { font-size: 24px; font-weight: 650; letter-spacing: -0.01em; }
+  .sub { color: var(--ink-2); font-size: 14px; margin-top: 6px; max-width: 72ch; line-height: 1.5; }
+  h2 { font-size: 17px; font-weight: 650; margin: 40px 0 4px; }
+  .note { color: var(--ink-2); font-size: 13px; margin: 2px 0 14px; max-width: 76ch; line-height: 1.5; }
+  .card { background: var(--surface-1); border: 1px solid var(--ring); border-radius: 10px; padding: 18px 18px 12px; margin-top: 10px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 12.5px; color: var(--ink-2); margin-bottom: 10px; }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; }
+  .tile { background: var(--surface-1); border: 1px solid var(--ring); border-radius: 10px; padding: 14px 16px; }
+  .tile .lbl { font-size: 12.5px; color: var(--ink-2); }
+  .tile .val { font-size: 26px; font-weight: 600; margin-top: 4px; }
+  .tile .sub2 { font-size: 12px; color: var(--ink-3); margin-top: 3px; }
+  svg { display: block; width: 100%; height: auto; }
+  svg text { font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  .chart-scroll { overflow-x: auto; }
+  #tip { position: fixed; pointer-events: none; z-index: 10; background: var(--surface-1);
+    border: 1px solid var(--ring); border-radius: 8px; padding: 8px 10px; font-size: 12.5px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.18); display: none; min-width: 150px; }
+  #tip .t-title { color: var(--ink-2); font-size: 12px; margin-bottom: 5px; }
+  #tip .t-row { display: flex; align-items: center; gap: 7px; margin-top: 3px; }
+  #tip .t-key { width: 10px; height: 3px; border-radius: 2px; }
+  #tip .t-val { font-weight: 650; }
+  #tip .t-name { color: var(--ink-2); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; margin-top: 8px; }
+  th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--grid); font-variant-numeric: tabular-nums; }
+  th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
+  td.num, th.num { text-align: right; }
+  .x { color: var(--ink-3); }
+  .best { font-weight: 650; }
+  .tbl-scroll { overflow-x: auto; }
+  .hairline { border: 0; border-top: 1px solid var(--grid); margin: 36px 0; }
+</style>
+</head>
+<body>
+<div class="viz-root">
+<div class="wrap">
+  <h1>ARC-AGI-3 — four-system comparison</h1>
+  <p class="sub">ASSAY (ours, Opus 5, hard caps, best run per game — wins triple-verified) ·
+  arc-skill (published scorecard, Opus 5, uncapped) · Prime Agent (published median scorecard, Opus 5) ·
+  PRO-LONG (published scorecards, <strong>Fable 5</strong> — stronger backbone, directional context only).
+  Same 25 game instances throughout. ✗ marks a run that did not fully clear the game.</p>
+
+  <h2>Actions per game — all four systems</h2>
+  <p class="note">Sorted by ASSAY actions. Hover any bar for the full readout. lf52 is the set's outlier:
+  only arc-skill has ever cleared it.</p>
+  <div class="card"><div class="legend" id="lg1"></div><div class="chart-scroll" id="c1"></div></div>
+
+  <h2>Total actions</h2>
+  <p class="note">Left: full 25-game set (ASSAY's bar splits its measured exploration tax — probe actions
+  vs verified-batch actions). Right: the 24 games all three Opus systems fully won.</p>
+  <div class="card"><div class="legend" id="lg2"></div><div id="c2" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;"></div></div>
+
+  <h2>ASSAY exploration tax per game</h2>
+  <p class="note">Probe = paid single-action discovery; batch = paid actions inside verified batches
+  (halt-on-first-miss). Sorted by probe count. Set total: 656 probe of 8,156 paid (8.0%).</p>
+  <div class="card"><div class="legend" id="lg3"></div><div class="chart-scroll" id="c3"></div></div>
+
+  <h2>Cost — measured dollars per run</h2>
+  <p class="note">Only ASSAY has per-game measured costs (11 API-billed runs at official rates).
+  arc-skill and Prime Agent publish no cost data; PRO-LONG published one cohort total.</p>
+  <div class="tiles">
+    <div class="tile"><div class="lbl">ASSAY, 11 measured runs</div><div class="val">$283.68</div><div class="sub2">$11.61–$53.89 per run · median $22.38</div></div>
+    <div class="tile"><div class="lbl">ASSAY, full set (extrapolated)</div><div class="val">≈ $550–650</div><div class="sub2">at measured per-run rates</div></div>
+    <div class="tile"><div class="lbl">PRO-LONG, published total</div><div class="val">$1,750</div><div class="sub2">25-game Fable 5 cohort (~$70/game)</div></div>
+    <div class="tile"><div class="lbl">arc-skill · Prime Agent</div><div class="val">n/p</div><div class="sub2">no cost data published</div></div>
+  </div>
+  <div class="card" style="margin-top:12px;"><div class="legend" id="lg4"></div><div class="chart-scroll" id="c4"></div></div>
+
+  <h2>Wall-clock time — measured minutes per run</h2>
+  <p class="note">ASSAY: measured for 20 of 25 runs (multi-session totals summed; the five earliest runs
+  spanned crash/resume sessions and are not cleanly attributable). Competitors publish no timing;
+  our own PRO-LONG×Opus side-by-side measured cd82 at 38 min and tn36 at 82 min.</p>
+  <div class="tiles">
+    <div class="tile"><div class="lbl">ASSAY, 20 measured runs</div><div class="val">≈ 37 h</div><div class="sub2">~1.8 h per game</div></div>
+    <div class="tile"><div class="lbl">Fastest measured run</div><div class="val">32 min</div><div class="sub2">sb26 — WIN 8/8</div></div>
+    <div class="tile"><div class="lbl">Longest measured run</div><div class="val">330 min</div><div class="sub2">bp35 — WIN 9/9 across 3 sessions</div></div>
+  </div>
+  <div class="card" style="margin-top:12px;"><div class="chart-scroll" id="c5"></div></div>
+
+  <hr class="hairline">
+  <h2>Table view — actions per game</h2>
+  <div class="tbl-scroll"><table id="t1"></table></div>
+  <h2>Table view — ASSAY measured cost &amp; time</h2>
+  <div class="tbl-scroll"><table id="t2"></table></div>
+  <p class="note" style="margin-top:20px;">Provenance: ASSAY journals (hash-chained, audit-clean, zero ungated events);
+  arc-skill scorecard 24ddb219; Prime Agent scorecard 2af780b4; PRO-LONG published scorecards + release logs.
+  Blanks are absences of published data, not zeros. Compiled 2026-08-23.</p>
+</div>
+<div id="tip" role="status"></div>
+
+<script>
+"use strict";
+// game, levels, [assayTotal, assayProbe, assayNote], arcskill, [pa, paNote], [pl, plNote]
+const GAMES = [
+  ["ft09", 6, [82, 16, ""],   75,  [75, ""],    [82, ""]],
+  ["cd82", 6, [88, 12, ""],   92,  [363, ""],   [165, "97.4%, not cleared"]],
+  ["r11l", 6, [94, 9, ""],    83,  [86, ""],    [162, ""]],
+  ["lp85", 8, [104, 25, ""],  93,  [114, ""],   [112, ""]],
+  ["sb26", 8, [128, 12, ""],  124, [133, ""],   [129, ""]],
+  ["su15", 9, [150, 42, ""],  117, [126, ""],   [178, ""]],
+  ["sp80", 6, [153, 17, ""],  211, [148, ""],   [170, ""]],
+  ["tr87", 6, [162, 15, ""],  153, [195, ""],   [212, ""]],
+  ["vc33", 7, [183, 21, ""],  193, [213, ""],   [272, ""]],
+  ["tn36", 7, [188, 13, ""],  160, [324, ""],   [182, ""]],
+  ["sc25", 6, [192, 15, ""],  166, [149, ""],   [228, ""]],
+  ["m0r0", 6, [218, 20, ""],  224, [212, ""],   [272, ""]],
+  ["cn04", 6, [223, 20, ""],  227, [200, ""],   [249, ""]],
+  ["tu93", 9, [250, 23, ""],  205, [199, ""],   [227, ""]],
+  ["ar25", 8, [264, 22, ""],  260, [264, ""],   [266, ""]],
+  ["ka59", 7, [344, 18, ""],  335, [306, ""],   [477, ""]],
+  ["lf52", 10,[364, 29, "4/10, self-stop"], 787, [2511, "5/10"], [1000, "81.8%"]],
+  ["s5i5", 8, [367, 43, ""],  281, [298, ""],   [457, ""]],
+  ["g50t", 7, [378, 44, ""],  482, [491, ""],   [722, "78.4%, not cleared"]],
+  ["sk48", 8, [404, 34, ""],  491, [1024, ""],  [650, ""]],
+  ["ls20", 7, [438, 17, ""],  481, [504, ""],   [544, ""]],
+  ["re86", 8, [573, 15, ""],  601, [694, ""],   [331, "41.7%, not cleared"]],
+  ["bp35", 9, [597, 73, ""],  482, [602, ""],   [1038, "74.8%, not cleared"]],
+  ["dc22", 6, [1042, 57, ""], 520, [985, ""],   [1392, "93.6%, not cleared"]],
+  ["wa30", 9, [1171, 44, ""], 802, [1029, ""],  [1639, ""]],
+];
+const COST = [["tr87",11.61],["vc33",15.24],["r11l",16.35],["m0r0",16.57],["lp85",19.64],
+  ["cn04",22.38],["sc25",23.40],["g50t",27.26],["ka59",31.12],["dc22",46.22],["lf52",53.89]];
+const TIME = [["sb26",32,1],["ft09",40,1],["tr87",40,1],["vc33",48,1],["m0r0",50,1],["r11l",52,1],
+  ["lp85",60,1],["ar25",65,1],["cn04",66,1],["g50t",75,1],["sc25",77,1],["re86",90,1],["ka59",95,1],
+  ["tu93",100,1],["lf52",152,1],["wa30",153,2],["dc22",178,2],["sk48",236,2],["s5i5",268,3],["bp35",330,3]];
+const S = () => {
+  const cs = getComputedStyle(document.querySelector(".viz-root"));
+  return { s1: cs.getPropertyValue("--s1").trim(), s2: cs.getPropertyValue("--s2").trim(),
+           s3: cs.getPropertyValue("--s3").trim(), s4: cs.getPropertyValue("--s4").trim(),
+           s1b: cs.getPropertyValue("--s1b").trim(),
+           surface: cs.getPropertyValue("--surface-1").trim(), grid: cs.getPropertyValue("--grid").trim(),
+           axis: cs.getPropertyValue("--axis").trim(), ink1: cs.getPropertyValue("--ink-1").trim(),
+           ink2: cs.getPropertyValue("--ink-2").trim(), ink3: cs.getPropertyValue("--ink-3").trim() };
+};
+const SYS = [
+  { name: "ASSAY (Opus 5, capped)", short: "ASSAY", slot: "s1" },
+  { name: "arc-skill (Opus 5)", short: "arc-skill", slot: "s2" },
+  { name: "Prime Agent (Opus 5)", short: "Prime Agent", slot: "s3" },
+  { name: "PRO-LONG (Fable 5)", short: "PRO-LONG", slot: "s4" },
+];
+const NS = "http://www.w3.org/2000/svg";
+const el = (t, a) => { const n = document.createElementNS(NS, t); for (const k in a) n.setAttribute(k, a[k]); return n; };
+const fmt = (n) => n.toLocaleString("en-US");
+const tip = document.getElementById("tip");
+function showTip(evt, title, rows) {
+  tip.replaceChildren();
+  const t = document.createElement("div"); t.className = "t-title"; t.textContent = title; tip.appendChild(t);
+  for (const r of rows) {
+    const row = document.createElement("div"); row.className = "t-row";
+    const k = document.createElement("span"); k.className = "t-key"; k.style.background = r.color || "transparent";
+    const v = document.createElement("span"); v.className = "t-val"; v.textContent = r.value;
+    const nm = document.createElement("span"); nm.className = "t-name"; nm.textContent = r.name;
+    row.append(k, v, nm); tip.appendChild(row);
+  }
+  tip.style.display = "block";
+  moveTip(evt);
+}
+function moveTip(evt) {
+  const pad = 14, w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + w > innerWidth - 8) x = evt.clientX - w - pad;
+  if (y + h > innerHeight - 8) y = evt.clientY - h - pad;
+  tip.style.left = x + "px"; tip.style.top = y + "px";
+}
+function hideTip() { tip.style.display = "none"; }
+
+function legend(id, items) {
+  const box = document.getElementById(id); box.replaceChildren();
+  for (const it of items) {
+    const k = document.createElement("span"); k.className = "key";
+    const sw = document.createElement("span"); sw.className = "sw"; sw.style.background = it.color;
+    const tx = document.createElement("span"); tx.textContent = it.label;
+    k.append(sw, tx); box.appendChild(k);
+  }
+}
+
+// ---- Chart 1: grouped horizontal bars, 4 systems x 25 games ----
+function chart1() {
+  const c = S(); const colors = [c.s1, c.s2, c.s3, c.s4];
+  legend("lg1", SYS.map((s, i) => ({ label: s.name, color: colors[i] })));
+  const W = 940, ML = 56, MR = 96, MT = 18, MB = 26;
+  const barH = 10, gap = 2, groupPad = 14;
+  const groupH = 4 * barH + 3 * gap + groupPad;
+  const H = MT + GAMES.length * groupH + MB;
+  const maxV = 2511;
+  const x = (v) => ML + (v / maxV) * (W - ML - MR);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, "min-width": "700" });
+  svg.style.minWidth = "700px";
+  for (const gv of [0, 500, 1000, 1500, 2000, 2500]) {
+    svg.appendChild(el("line", { x1: x(gv), y1: MT - 4, x2: x(gv), y2: H - MB, stroke: gv === 0 ? c.axis : c.grid, "stroke-width": 1 }));
+    const t = el("text", { x: x(gv), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: c.ink3 });
+    t.textContent = fmt(gv); svg.appendChild(t);
+  }
+  GAMES.forEach((g, gi) => {
+    const y0 = MT + gi * groupH;
+    const name = el("text", { x: ML - 8, y: y0 + (4 * barH + 3 * gap) / 2 + 4, "text-anchor": "end", "font-size": 12, "font-weight": 600, fill: c.ink1 });
+    name.textContent = g[0]; svg.appendChild(name);
+    const vals = [ { v: g[2][0], note: g[2][2] }, { v: g[3], note: "" }, { v: g[4][0], note: g[4][1] }, { v: g[5][0], note: g[5][1] } ];
+    vals.forEach((d, si) => {
+      const y = y0 + si * (barH + gap);
+      const bw = Math.max(2, x(d.v) - ML);
+      const bar = el("rect", { x: ML, y, width: bw, height: barH, fill: colors[si], rx: 0 });
+      const cap = el("path", { d: `M ${ML} ${y} H ${ML + bw - 4} a4 4 0 0 1 4 4 v ${barH - 8} a4 4 0 0 1 -4 4 H ${ML} Z`, fill: colors[si] });
+      svg.appendChild(bw > 8 ? cap : bar);
+      if (d.note) {
+        const xm = el("text", { x: ML + bw + 6, y: y + barH - 1, "font-size": 10.5, fill: c.ink3 });
+        xm.textContent = "✗ " + d.note; svg.appendChild(xm);
+      }
+      const hit = el("rect", { x: 0, y: y - gap / 2, width: W, height: barH + gap, fill: "transparent" });
+      hit.addEventListener("pointermove", (e) => {
+        showTip(e, `${g[0]} · ${g[1]} levels`, vals.map((vv, k) => ({
+          color: colors[k], value: fmt(vv.v) + (vv.note ? " ✗" : ""), name: SYS[k].short + (vv.note ? ` — ${vv.note}` : "")
+        })));
+      });
+      hit.addEventListener("pointerleave", hideTip);
+      svg.appendChild(hit);
+    });
+  });
+  document.getElementById("c1").appendChild(svg);
+}
+
+// ---- Chart 2: totals ----
+function chart2() {
+  const c = S(); const colors = [c.s1, c.s2, c.s3, c.s4];
+  legend("lg2", [
+    { label: "ASSAY — batch actions", color: c.s1 },
+    { label: "ASSAY — probe actions (tax)", color: c.s1b },
+    { label: "arc-skill", color: c.s2 }, { label: "Prime Agent", color: c.s3 }, { label: "PRO-LONG", color: c.s4 },
+  ]);
+  const box = document.getElementById("c2"); box.replaceChildren();
+  const panel = (title, rows, maxV, split) => {
+    const div = document.createElement("div");
+    const h = document.createElement("div"); h.style.cssText = "font-size:13px;font-weight:600;margin-bottom:8px;"; h.textContent = title;
+    div.appendChild(h);
+    const W = 440, ML = 100, MR = 70, MT = 6, barH = 20, gap = 12;
+    const H = MT + rows.length * (barH + gap) + 24;
+    const x = (v) => ML + (v / maxV) * (W - ML - MR);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+    rows.forEach((r, i) => {
+      const y = MT + i * (barH + gap);
+      const nm = el("text", { x: ML - 8, y: y + barH / 2 + 4, "text-anchor": "end", "font-size": 12, fill: c.ink1 });
+      nm.textContent = r.name; svg.appendChild(nm);
+      if (r.split) {
+        // batch (series blue) first, then the probe tax as a lighter step of
+        // the same hue — orange stays arc-skill's color everywhere.
+        const bw1 = x(r.split[1]) - ML, bw2 = x(r.v) - x(r.split[1]) - 2;
+        svg.appendChild(el("rect", { x: ML, y, width: Math.max(2, bw1), height: barH, fill: c.s1 }));
+        svg.appendChild(el("rect", { x: ML + bw1 + 2, y, width: Math.max(2, bw2), height: barH, fill: c.s1b, rx: 4 }));
+      } else {
+        svg.appendChild(el("rect", { x: ML, y, width: Math.max(2, x(r.v) - ML), height: barH, fill: r.color, rx: 4 }));
+      }
+      const vl = el("text", { x: x(r.v) + 6, y: y + barH / 2 + 4, "font-size": 12, "font-weight": 650, fill: c.ink1 });
+      vl.textContent = fmt(r.v); svg.appendChild(vl);
+      const hit = el("rect", { x: 0, y: y - gap / 2, width: W, height: barH + gap, fill: "transparent" });
+      hit.addEventListener("pointermove", (e) => showTip(e, title, r.split
+        ? [{ color: c.s1, value: fmt(r.split[1]), name: "batch actions" }, { color: c.s1b, value: fmt(r.split[0]), name: "probe actions (tax)" }, { color: "transparent", value: fmt(r.v), name: "total" }]
+        : [{ color: r.color, value: fmt(r.v), name: r.name }]));
+      hit.addEventListener("pointerleave", hideTip);
+      svg.appendChild(hit);
+    });
+    div.appendChild(svg); return div;
+  };
+  box.appendChild(panel("All 25 games (ASSAY: 24 wins + lf52 partial)", [
+    { name: "ASSAY", v: 8156, split: [656, 7500] },
+    { name: "arc-skill", v: 7645, color: c.s2 },
+    { name: "Prime Agent", v: 11245, color: c.s3 },
+    { name: "PRO-LONG", v: 11156, color: c.s4 },
+  ], 11500));
+  box.appendChild(panel("24 games all Opus systems won", [
+    { name: "ASSAY", v: 7792, color: c.s1 },
+    { name: "arc-skill", v: 6858, color: c.s2 },
+    { name: "Prime Agent", v: 8734, color: c.s3 },
+  ], 11500));
+}
+
+// ---- Chart 3: ASSAY probe/batch stacked ----
+function chart3() {
+  const c = S();
+  legend("lg3", [{ label: "probe (single-action discovery)", color: c.s1b }, { label: "batch (verified execution)", color: c.s1 }]);
+  const rows = GAMES.map((g) => ({ name: g[0], probe: g[2][1], batch: g[2][0] - g[2][1], total: g[2][0] }))
+    .sort((a, b) => b.probe - a.probe);
+  const W = 940, ML = 56, MR = 110, MT = 8, MB = 26, barH = 14, gap = 10;
+  const H = MT + rows.length * (barH + gap) + MB;
+  const maxV = 1171;
+  const x = (v) => ML + (v / maxV) * (W - ML - MR);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  svg.style.minWidth = "700px";
+  for (const gv of [0, 250, 500, 750, 1000]) {
+    svg.appendChild(el("line", { x1: x(gv), y1: MT, x2: x(gv), y2: H - MB, stroke: gv === 0 ? c.axis : c.grid, "stroke-width": 1 }));
+    const t = el("text", { x: x(gv), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: c.ink3 });
+    t.textContent = fmt(gv); svg.appendChild(t);
+  }
+  rows.forEach((r, i) => {
+    const y = MT + i * (barH + gap);
+    const nm = el("text", { x: ML - 8, y: y + barH / 2 + 4, "text-anchor": "end", "font-size": 12, "font-weight": 600, fill: c.ink1 });
+    nm.textContent = r.name; svg.appendChild(nm);
+    const pw = Math.max(2, x(r.probe) - ML);
+    svg.appendChild(el("rect", { x: ML, y, width: pw, height: barH, fill: c.s1b }));
+    const bw = Math.max(2, x(r.total) - x(r.probe) - 2);
+    svg.appendChild(el("rect", { x: ML + pw + 2, y, width: bw, height: barH, fill: c.s1, rx: 4 }));
+    const vl = el("text", { x: x(r.total) + 6, y: y + barH / 2 + 4, "font-size": 11, fill: c.ink3 });
+    vl.textContent = `${r.probe} / ${fmt(r.total)} (${(100 * r.probe / r.total).toFixed(0)}%)`;
+    svg.appendChild(vl);
+    const hit = el("rect", { x: 0, y: y - gap / 2, width: W, height: barH + gap, fill: "transparent" });
+    hit.addEventListener("pointermove", (e) => showTip(e, r.name, [
+      { color: c.s1b, value: fmt(r.probe), name: "probe actions" },
+      { color: c.s1, value: fmt(r.batch), name: "batch actions" },
+      { color: "transparent", value: fmt(r.total), name: "total paid" },
+    ]));
+    hit.addEventListener("pointerleave", hideTip);
+    svg.appendChild(hit);
+  });
+  document.getElementById("c3").appendChild(svg);
+}
+
+// ---- Chart 4: cost bars ----
+function chart4() {
+  const c = S();
+  legend("lg4", [{ label: "measured run cost, USD (API-billed at official rates)", color: c.s1 }]);
+  const rows = [...COST].sort((a, b) => a[1] - b[1]);
+  const W = 940, ML = 56, MR = 80, MT = 8, MB = 26, barH = 16, gap = 10;
+  const H = MT + rows.length * (barH + gap) + MB;
+  const maxV = 60;
+  const x = (v) => ML + (v / maxV) * (W - ML - MR);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  for (const gv of [0, 15, 30, 45, 60]) {
+    svg.appendChild(el("line", { x1: x(gv), y1: MT, x2: x(gv), y2: H - MB, stroke: gv === 0 ? c.axis : c.grid, "stroke-width": 1 }));
+    const t = el("text", { x: x(gv), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: c.ink3 });
+    t.textContent = "$" + gv; svg.appendChild(t);
+  }
+  rows.forEach((r, i) => {
+    const y = MT + i * (barH + gap);
+    const nm = el("text", { x: ML - 8, y: y + barH / 2 + 4, "text-anchor": "end", "font-size": 12, "font-weight": 600, fill: c.ink1 });
+    nm.textContent = r[0]; svg.appendChild(nm);
+    svg.appendChild(el("rect", { x: ML, y, width: Math.max(2, x(r[1]) - ML), height: barH, fill: c.s1, rx: 4 }));
+    const vl = el("text", { x: x(r[1]) + 6, y: y + barH / 2 + 4, "font-size": 11.5, fill: c.ink2 });
+    vl.textContent = "$" + r[1].toFixed(2); svg.appendChild(vl);
+    const hit = el("rect", { x: 0, y: y - gap / 2, width: W, height: barH + gap, fill: "transparent" });
+    hit.addEventListener("pointermove", (e) => showTip(e, r[0], [{ color: c.s1, value: "$" + r[1].toFixed(2), name: "run cost" }]));
+    hit.addEventListener("pointerleave", hideTip);
+    svg.appendChild(hit);
+  });
+  document.getElementById("c4").appendChild(svg);
+}
+
+// ---- Chart 5: time bars ----
+function chart5() {
+  const c = S();
+  const rows = [...TIME].sort((a, b) => a[1] - b[1]);
+  const W = 940, ML = 56, MR = 110, MT = 8, MB = 26, barH = 13, gap = 9;
+  const H = MT + rows.length * (barH + gap) + MB;
+  const maxV = 340;
+  const x = (v) => ML + (v / maxV) * (W - ML - MR);
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}` });
+  for (const gv of [0, 60, 120, 180, 240, 300]) {
+    svg.appendChild(el("line", { x1: x(gv), y1: MT, x2: x(gv), y2: H - MB, stroke: gv === 0 ? c.axis : c.grid, "stroke-width": 1 }));
+    const t = el("text", { x: x(gv), y: H - 8, "text-anchor": "middle", "font-size": 11, fill: c.ink3 });
+    t.textContent = gv + "m"; svg.appendChild(t);
+  }
+  rows.forEach((r, i) => {
+    const y = MT + i * (barH + gap);
+    const nm = el("text", { x: ML - 8, y: y + barH / 2 + 4, "text-anchor": "end", "font-size": 12, "font-weight": 600, fill: c.ink1 });
+    nm.textContent = r[0]; svg.appendChild(nm);
+    svg.appendChild(el("rect", { x: ML, y, width: Math.max(2, x(r[1]) - ML), height: barH, fill: c.s1, rx: 4 }));
+    const vl = el("text", { x: x(r[1]) + 6, y: y + barH / 2 + 4, "font-size": 11, fill: c.ink3 });
+    vl.textContent = r[1] + " min" + (r[2] > 1 ? ` · ${r[2]} sessions` : "");
+    svg.appendChild(vl);
+    const hit = el("rect", { x: 0, y: y - gap / 2, width: W, height: barH + gap, fill: "transparent" });
+    hit.addEventListener("pointermove", (e) => showTip(e, r[0], [
+      { color: c.s1, value: r[1] + " min", name: r[2] > 1 ? `wall-clock, ${r[2]} sessions` : "wall-clock" }]));
+    hit.addEventListener("pointerleave", hideTip);
+    svg.appendChild(hit);
+  });
+  document.getElementById("c5").appendChild(svg);
+}
+
+// ---- Tables ----
+function tables() {
+  const t1 = document.getElementById("t1");
+  const head = document.createElement("tr");
+  for (const h of ["Game", "Levels", "ASSAY (probe + batch)", "arc-skill", "Prime Agent", "PRO-LONG (Fable)"]) {
+    const th = document.createElement("th"); if (h !== "Game") th.className = "num"; th.textContent = h; head.appendChild(th);
+  }
+  t1.appendChild(head);
+  const sorted = [...GAMES].sort((a, b) => a[0].localeCompare(b[0]));
+  for (const g of sorted) {
+    const tr = document.createElement("tr");
+    const cells = [
+      g[0], String(g[1]),
+      `${fmt(g[2][0])} (${g[2][1]} + ${fmt(g[2][0] - g[2][1])})${g[2][2] ? " ✗" : ""}`,
+      fmt(g[3]),
+      `${fmt(g[4][0])}${g[4][1] ? " ✗" : ""}`,
+      `${fmt(g[5][0])}${g[5][1] ? " ✗" : ""}`,
+    ];
+    const wins = [g[2][2] ? Infinity : g[2][0], g[3], g[4][1] ? Infinity : g[4][0], g[5][1] ? Infinity : g[5][0]];
+    const best = Math.min(...wins);
+    cells.forEach((txt, i) => {
+      const td = document.createElement("td"); if (i > 0) td.className = "num";
+      td.textContent = txt;
+      if (i >= 2 && wins[i - 2] === best && best !== Infinity) td.classList.add("best");
+      if (txt.includes("✗")) td.classList.add("x");
+      tr.appendChild(td);
+    });
+    t1.appendChild(tr);
+  }
+  const tot = document.createElement("tr");
+  ["Total", "183", "8,156 (656 + 7,500)", "7,645", "11,245", "11,156"].forEach((txt, i) => {
+    const td = document.createElement("td"); if (i > 0) td.className = "num"; td.style.fontWeight = "650"; td.textContent = txt; tot.appendChild(td);
+  });
+  t1.appendChild(tot);
+
+  const t2 = document.getElementById("t2");
+  const h2r = document.createElement("tr");
+  for (const h of ["Game", "Cost (USD, measured)", "Time (min, measured)", "Sessions"]) {
+    const th = document.createElement("th"); if (h !== "Game") th.className = "num"; th.textContent = h; h2r.appendChild(th);
+  }
+  t2.appendChild(h2r);
+  const costMap = new Map(COST), timeMap = new Map(TIME.map((t) => [t[0], t]));
+  const names = [...new Set([...COST.map((c) => c[0]), ...TIME.map((t) => t[0])])].sort();
+  for (const n of names) {
+    const tr = document.createElement("tr");
+    const cost = costMap.has(n) ? "$" + costMap.get(n).toFixed(2) : "— (subscription)";
+    const tm = timeMap.has(n) ? String(timeMap.get(n)[1]) : "n/r";
+    const ss = timeMap.has(n) ? String(timeMap.get(n)[2]) : "—";
+    [n, cost, tm, ss].forEach((txt, i) => {
+      const td = document.createElement("td"); if (i > 0) td.className = "num"; td.textContent = txt; tr.appendChild(td);
+    });
+    t2.appendChild(tr);
+  }
+}
+chart1(); chart2(); chart3(); chart4(); chart5(); tables();
+</script>
+</div>
+</body>
+</html>

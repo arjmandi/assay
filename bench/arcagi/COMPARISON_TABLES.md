@@ -37,15 +37,15 @@ discovery actions; batch = paid actions inside verified batches)
 | tu93 | 250 (23 + 227) | 205 | **199** | 227 |
 | vc33 | **183** (21 + 162) | 193 | 213 | 272 |
 | wa30 | 1,171 (44 + 1,127) | **802** | 1,029 | 1,639 |
-| **Total** | **8,156** (probe 636 = 7.8%) | **7,645** | **11,245** | 11,156 |
+| **Total** | **8,156** (probe 656 = 8.0%) | **7,645** | **11,245** | 11,156 |
 
 Cheapest-clear count across 25 games: arc-skill 11 · Prime Agent 7 · ASSAY 7 ·
 PRO-LONG 0. On the **24 games all three Opus systems won**: ASSAY 7,792 ·
 arc-skill 6,858 · Prime Agent 8,734 — ASSAY 11% cheaper than Prime Agent,
 arc-skill 12% cheaper than ASSAY (the gap concentrated in ASSAY's five
 multi-session conversions; single-session wins are a dead heat with
-arc-skill). ASSAY's measured exploration tax: 636 probe actions of 8,156
-(7.8%) — every other paid action ran inside a verified batch.
+arc-skill). ASSAY's measured exploration tax: 656 probe actions of 8,156
+(8.0%) — every other paid action ran inside a verified batch.
 
 Games completed: arc-skill 25/25 · ASSAY 24/25 · Prime Agent 24/25 ·
 PRO-LONG 19/25. **lf52 defeats every published system except arc-skill**
