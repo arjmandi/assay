@@ -51,6 +51,7 @@ clear of that game across the three systems.
 | s5i5 | 8 | WIN — 367 (three sessions: 190+83+94) | **281** | 457 |
 | sk48 | 8 | **WIN — 404** (two sessions: 111+293) | 491 | 650 |
 | wa30 | 9 | WIN — 1,171 (three sessions) | **802** | 1,639 |
+| bp35 | 9 | WIN — 597 (three sessions) | **482** | 1,038 (74.8%, not cleared) |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -114,12 +115,44 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 24 of 25 public games attempted · 23 full wins · 169 of 174 levels
-(97%). Remaining: bp35 at 8/9 (level-8 proof broken — a hidden switch sat 24
-rows above a drifted map; the pink block turned out to be a vehicle; second
-resume attacking the new level-9 argument in flight), lf52 (parked for the
-machinery phase). Five impossibility proofs broken by the exercised-claim
-protocol so far this campaign.**
+## THE PUBLIC SET IS COMPLETE (2026-08-23)
+
+**All 25 public games attempted · 24 fully won · 177 of 183 levels (96.7%).**
+The one non-win is lf52 (4/10 across three runs — the located exploration
+gap, parked by owner decision for the machinery phase). Every win
+triple-verified (journal engine state, ASSAY-free engine replay, live
+ARC-server replay); every journal audit-clean — zero ungated events across
+~7,800 paid actions; the entire set played under hard caps with one uniform,
+domain-neutral protocol.
+
+Aggregate actions vs the competitors:
+- On the 24 games both Opus systems won: ASSAY 7,792 · arc-skill 6,858
+  (arc-skill −12%; per-game split 15–9 in arc-skill's favor). The honest
+  decomposition: on games ASSAY won in a single session the two systems are a
+  statistical dead heat (earlier measured: 1,899 vs 1,897 over ten games);
+  the aggregate gap comes from the five multi-session conversions
+  (dc22, s5i5, sk48, wa30, bp35), whose totals carry the full discovery cost
+  of breaking six wrong impossibility proofs across handoffs.
+- PRO-LONG (published, Fable 5) fully cleared 19 of 25; ASSAY cleared 5 of
+  the 6 games PRO-LONG could not (bp35, cd82, dc22, g50t, re86 — lf52 the
+  exception for both).
+
+**The campaign's central process finding — six impossibility proofs broken by
+one protocol:** dc22 ("isolated blocks" — connected), s5i5 (off-board
+rotation clips, not refuses), sk48 (freed blocks re-hook positionally; the
+"no-op" ACTION6 was SELECT), wa30 (all three hostile rules false), bp35 L8
+(switch above the drifted map), bp35 L9 (nine switches hidden above a map
+CERTIFIED pixel-complete, visible only from inside the "dead-end" shaft).
+Each proof fit every recorded transition and was wrong precisely where no
+transition had gone. The exercised-claim coverage protocol — enumerate the
+rules a proof depends on, audit the journal for what actually exercised each,
+buy graded probes for the gaps — converted five of the six into wins within
+their existing budgets. The sixth lesson (bp35 L9) is the deepest: the
+weakest link is often the unstated frame ("rendered" standing in for
+"exists"), which is exactly lf52's problem class. Machinery-phase candidates,
+in order of evidence: (1) the exercised-claim coverage meter, (2) the
+halt-loops-on-first-✗ rule, (3) the frontier/occupancy probe regime for
+absence claims.
 
 **wa30 converted (2026-08-23) — the fourth broken impossibility, the most
 complete collapse:** every hostile rule in the throughput proof was false and
