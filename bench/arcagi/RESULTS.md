@@ -35,7 +35,7 @@ clear of that game across the three systems.
 | ls20 | 7 | **WIN — 438** (cap 500) | 481 | 544 |
 | lf52 | 10 | 4/10 — 364 (cap 1500, n=3 stall) | **787** | 1,000 (81.8%, not cleared) |
 | cn04 | 6 | **WIN — 223** (cap 1500) | 227 | 249 |
-| dc22 | 6 | 5/6 — 634 (cap 1500, self-stop) | **520** | 1,392 (93.6%, not cleared) |
+| dc22 | 6 | WIN — 1,042 (two sessions: 634 + 408 resume) | **520** | 1,392 (93.6%, not cleared) |
 | m0r0 | 6 | **WIN — 218** (cap 1500) | 224 | 272 |
 | r11l | 6 | WIN — 94 (cap 1500) | **83** | 162 |
 | tr87 | 6 | WIN — 162 (cap 1500) | **153** | 212 |
@@ -100,9 +100,19 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 19 of 25 public games attempted · 17 full wins · 125 of 132 levels
+**Totals: 19 of 25 public games attempted · 18 full wins · 126 of 132 levels
 (95%). Unattempted (6): bp35, re86, s5i5, sk48, tu93, wa30 — all in flight or
 queued (final-set completion, subscription-billed).**
+
+**dc22 converted by resume (2026-08-23):** the paused 5/6 run finished level 6
+in 408 further actions (1,042 total, server-verified). The handoff evidence is
+the stale-plan doctrine's n=6 and its sharpest case: every inherited GRADED
+mechanic was immediately actionable; the inherited prose map was wrong in four
+specific ways (mislabeled the arming switch, called reachable blocks isolated,
+called walkable cells unwalkable, asserted an escape that never existed). The
+level-6 gate was geometric arming — found by mining the prior journal offline
+(74 prior inert probes were all taken in one world-state; one coordinate had
+been inert-then-live on level 5, reframing "refuses to act" as conditional).
 
 ## Second competitor reference: PRO-LONG (published)
 
