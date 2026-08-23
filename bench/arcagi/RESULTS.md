@@ -47,6 +47,7 @@ clear of that game across the three systems.
 | sb26 | 8 | WIN — 128 (cap 1500) | **124** | 129 |
 | ar25 | 8 | WIN — 264 (cap 1500) | **260** | 266 |
 | re86 | 8 | **WIN — 573** (cap 1500) | 601 | 331 (41.7%, not cleared) |
+| tu93 | 9 | WIN — 250 (cap 1500) | **205** | 227 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -81,6 +82,8 @@ module-efficacy datum: the player credits the wall_spend advisory with moving
 its discovery into offline simulators (levels 7–8 solved on paper, executed at
 100% step verification).
 
+| tu93 | 9 | **WIN 9/9** ✓server | 250 (6 resets, 5 GAME_OVERs incl. 2 deliberate lethality experiments; gambles 10/10; 315 verifiers, zero vacuous) | 205 | arc-skill −45 | subscription, 100 min |
+
 **Sweep closed 2026-08-23: 11 games · 9 wins · 2 diagnosed self-stops ·
 $283.68 of the $320 cap · every win triple-verified (journal, ASSAY-free
 engine replay, live ARC-server replay) · every journal audit-clean (zero
@@ -108,9 +111,9 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 20 of 25 public games attempted · 19 full wins · 134 of 140 levels
-(96%). Remaining: s5i5 (5/8, resume in flight), sk48 + tu93 (in flight),
-bp35 + wa30 (queued), lf52 (parked for the machinery phase).**
+**Totals: 21 of 25 public games attempted · 20 full wins · 143 of 149 levels
+(96%). Remaining: s5i5 (5/8, resume in flight), sk48 + bp35 + wa30 (in
+flight), lf52 (parked for the machinery phase).**
 
 **dc22 converted by resume (2026-08-23):** the paused 5/6 run finished level 6
 in 408 further actions (1,042 total, server-verified). The handoff evidence is
