@@ -44,6 +44,7 @@ clear of that game across the three systems.
 | vc33 | 7 | **WIN — 183** (cap 1500) | 193 | 272 |
 | ka59 | 7 | WIN — 344 (cap 1500) | **335** | 477 |
 | lp85 | 8 | WIN — 104 (cap 1500) | **93** | 112 |
+| sb26 | 8 | WIN — 128 (cap 1500) | **124** | 129 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -68,6 +69,7 @@ than PRO-LONG on 9 of 10 (tn36 the exception).
 | vc33 | 7 | **WIN 7/7** ✓server | **183** (0 resets) | 193 | **ASSAY −10** | $15.24, 48 min |
 | ka59 | 7 | **WIN 7/7** ✓server | 344 (0 resets) | 335 | arc-skill −9 | $31.12, 95 min |
 | lp85 | 8 | **WIN 8/8** ✓server | 104 (0 resets) | 93 | arc-skill −11 | $19.64, 60 min |
+| sb26 | 8 | **WIN 8/8** ✓server | 128 (0 resets; wm miss 4.0%) | 124 | arc-skill −4 | subscription, 32 min |
 
 **Sweep closed 2026-08-23: 11 games · 9 wins · 2 diagnosed self-stops ·
 $283.68 of the $320 cap · every win triple-verified (journal, ASSAY-free
@@ -96,8 +98,9 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 17 of 25 public games attempted · 15 full wins · 109 of 116 levels
-(94%). Unattempted (8): ar25, bp35, re86, s5i5, sb26, sk48, tu93, wa30.**
+**Totals: 18 of 25 public games attempted · 16 full wins · 117 of 124 levels
+(94%). Unattempted (7): ar25, bp35, re86, s5i5, sk48, tu93, wa30 — all in
+flight or queued (final-set completion, subscription-billed).**
 
 ## Second competitor reference: PRO-LONG (published)
 
