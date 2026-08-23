@@ -50,6 +50,7 @@ clear of that game across the three systems.
 | tu93 | 9 | WIN — 250 (cap 1500) | **205** | 227 |
 | s5i5 | 8 | WIN — 367 (three sessions: 190+83+94) | **281** | 457 |
 | sk48 | 8 | **WIN — 404** (two sessions: 111+293) | 491 | 650 |
+| wa30 | 9 | WIN — 1,171 (three sessions) | **802** | 1,639 |
 
 Reading across the 13 shared games: cheapest full clear — arc-skill 8, ASSAY
 5, PRO-LONG 0 (on a stronger backbone). On the 10 games all three fully
@@ -113,9 +114,20 @@ This is the program's primary open research problem. (The run also
 self-reported ~70 actions lost to automated loops re-issuing a failing
 prediction — flagged as a candidate telemetry module: halt loops on first ✗.)
 
-**Totals: 23 of 25 public games attempted · 22 full wins · 159 of 165 levels
-(96%). Remaining: bp35 + wa30 (resumes in flight), lf52 (parked for the
-machinery phase).**
+**Totals: 24 of 25 public games attempted · 23 full wins · 168 of 174 levels
+(97%). Remaining: bp35 (resume in flight), lf52 (parked for the machinery
+phase).**
+
+**wa30 converted (2026-08-23) — the fourth broken impossibility, the most
+complete collapse:** every hostile rule in the throughput proof was false and
+unexercised. ACTION5 kills any adjacent hostile (no "idle" requirement — the
+prior session had SEVEN free kills in front of it and moved away each time);
+hostiles move 1 cell/action orthogonally (the displacement histogram over 812
+observations shows zero diagonal moves — "2/tick diagonal dodger" was a
+two-event misread); the helper "ceiling" was a treadmill equilibrium that
+vanished once the hostiles were dead. A free determinism probe (two attempts
+sharing an 89-action prefix produced pixel-identical frames) let the resume
+replay a recorded prefix straight into a kill.
 
 **sk48 converted (2026-08-23) — the exercised-claim protocol's third broken
 "proof":** an exhaustive 8.2M-state search had shown level 3 unsolvable — under
