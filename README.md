@@ -1,3 +1,4 @@
+# smoke test
 # ASSAY
 
 ASSAY is a **referee harness** that sits between an agent (a person at a
