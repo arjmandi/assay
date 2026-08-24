@@ -119,6 +119,11 @@ prediction — flagged as a candidate telemetry module: halt loops on first ✗.
 
 ### The score: RHAE 96.54
 
+*Verifiable scorecard links for this set — and for every competitor number
+quoted here — are indexed in `SCORECARDS.md`, with our cards' provenance stated
+exactly (verification replays of recorded action sequences; the card's
+wall-clock is machine replay time, not agent time).*
+
 **ASSAY's ARC-AGI-3 set score is RHAE 96.54** — computed with `rhae.py` in this
 directory from our journals plus the published per-level baselines
 (`baselines.json`), not asserted. RHAE is the benchmark's own metric and it is

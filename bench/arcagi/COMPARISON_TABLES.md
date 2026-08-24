@@ -47,6 +47,10 @@ Two consequences worth stating plainly:
 wins triple-verified). arc-skill: author's published scorecard (Opus 5,
 uncapped). Prime Agent (Prime Intellect): their published median scorecard
 `2af780b4` (Opus 5; 24/25 environments, 178/183 levels, 11,245 actions).
+**Every scorecard link — ours and each competitor's — is indexed in
+`SCORECARDS.md`, including the exact provenance of ours (verification replays
+of recorded action sequences; card wall-clock is machine replay time, not
+agent time).**
 PRO-LONG: their published scorecards (**Fable 5** — stronger backbone;
 directional only). Same game instances throughout, verified by id.
 
