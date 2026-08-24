@@ -28,6 +28,29 @@ fresh cards. Therefore:
 | Card | Scope | Link |
 |---|---|---|
 | `702ccd4f-df1f-4118-bc8b-d79d3f4a1a32` | **the full 25-game set** (consolidated replay, 2026-08-24) | https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32 |
+
+### What the consolidated card returned
+
+**SCORE 96.54% · LEVELS 177/183 · ENVIRONMENTS 24/25 · TOTAL ACTIONS 8,157.**
+
+The server's own score is **identical to the RHAE we computed offline (96.54)**,
+and it agrees per game on every row — 23 games at 100.00, bp35 95.27, lf52
+18.18. That is an independent confirmation of both the metric derivation in
+`rhae.py` and our per-game action counts, computed by the benchmark itself
+rather than by us.
+
+All 25 replays reproduced their recorded outcome exactly (25/25 matched: same
+final state, same levels, same action count per game). The card also settled a
+small arithmetic error of ours: the true set total is **8,157** paid actions,
+not the 8,156 our tables previously stated — journals, actions sent, and the
+card all agree at 8,157, and the docs were corrected.
+
+Machine replay wall-clock: 64.8 minutes for the whole set. Agent wall-clock for
+the same runs was ≈37 hours measured over 20 runs — the difference is exactly
+why the card's timing must never be quoted as agent performance.
+
+Tag breakdown on the card: click 81.93 (7 environments — lf52 sits here),
+keyboard 100.00 (4), keyboard_click 100.00 (13).
 | `acbe3da6-7219-4516-ba1e-53c97071a615` | cn04 only — an earlier single-game verification replay (its 4.00% total is the set score of a card with 24 environments unplayed, not a cn04 result; cn04 itself reads WIN 6/6 in 223) | https://arcprize.org/scorecards/acbe3da6-7219-4516-ba1e-53c97071a615 |
 
 Earlier per-game verification replays (2026-08-22/23) each minted their own

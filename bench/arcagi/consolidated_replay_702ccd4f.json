@@ -1,0 +1,409 @@
+{
+ "card_id": "702ccd4f-df1f-4118-bc8b-d79d3f4a1a32",
+ "elapsed_s": 3889.0,
+ "url": "https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32",
+ "games": 25,
+ "matched": 25,
+ "results": [
+  {
+   "game": "ar25",
+   "sent": 264,
+   "recorded_actions": 264,
+   "want": [
+    "WIN",
+    8
+   ],
+   "got": [
+    "WIN",
+    8
+   ],
+   "match": true,
+   "seconds": 107.0,
+   "error": null
+  },
+  {
+   "game": "bp35",
+   "sent": 597,
+   "recorded_actions": 597,
+   "want": [
+    "WIN",
+    9
+   ],
+   "got": [
+    "WIN",
+    9
+   ],
+   "match": true,
+   "seconds": 415.4,
+   "error": null
+  },
+  {
+   "game": "cd82",
+   "sent": 88,
+   "recorded_actions": 88,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 46.3,
+   "error": null
+  },
+  {
+   "game": "cn04",
+   "sent": 223,
+   "recorded_actions": 223,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 102.2,
+   "error": null
+  },
+  {
+   "game": "dc22",
+   "sent": 1042,
+   "recorded_actions": 1042,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 427.4,
+   "error": null
+  },
+  {
+   "game": "ft09",
+   "sent": 82,
+   "recorded_actions": 82,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 33.4,
+   "error": null
+  },
+  {
+   "game": "g50t",
+   "sent": 378,
+   "recorded_actions": 378,
+   "want": [
+    "WIN",
+    7
+   ],
+   "got": [
+    "WIN",
+    7
+   ],
+   "match": true,
+   "seconds": 251.7,
+   "error": null
+  },
+  {
+   "game": "ka59",
+   "sent": 344,
+   "recorded_actions": 344,
+   "want": [
+    "WIN",
+    7
+   ],
+   "got": [
+    "WIN",
+    7
+   ],
+   "match": true,
+   "seconds": 154.4,
+   "error": null
+  },
+  {
+   "game": "lf52",
+   "sent": 364,
+   "recorded_actions": 364,
+   "want": [
+    "NOT_FINISHED",
+    4
+   ],
+   "got": [
+    "NOT_FINISHED",
+    4
+   ],
+   "match": true,
+   "seconds": 202.7,
+   "error": null
+  },
+  {
+   "game": "lp85",
+   "sent": 104,
+   "recorded_actions": 104,
+   "want": [
+    "WIN",
+    8
+   ],
+   "got": [
+    "WIN",
+    8
+   ],
+   "match": true,
+   "seconds": 41.7,
+   "error": null
+  },
+  {
+   "game": "ls20",
+   "sent": 438,
+   "recorded_actions": 438,
+   "want": [
+    "WIN",
+    7
+   ],
+   "got": [
+    "WIN",
+    7
+   ],
+   "match": true,
+   "seconds": 182.4,
+   "error": null
+  },
+  {
+   "game": "m0r0",
+   "sent": 218,
+   "recorded_actions": 218,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 91.0,
+   "error": null
+  },
+  {
+   "game": "r11l",
+   "sent": 94,
+   "recorded_actions": 94,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 47.2,
+   "error": null
+  },
+  {
+   "game": "re86",
+   "sent": 573,
+   "recorded_actions": 573,
+   "want": [
+    "WIN",
+    8
+   ],
+   "got": [
+    "WIN",
+    8
+   ],
+   "match": true,
+   "seconds": 230.2,
+   "error": null
+  },
+  {
+   "game": "s5i5",
+   "sent": 367,
+   "recorded_actions": 367,
+   "want": [
+    "WIN",
+    8
+   ],
+   "got": [
+    "WIN",
+    8
+   ],
+   "match": true,
+   "seconds": 146.8,
+   "error": null
+  },
+  {
+   "game": "sb26",
+   "sent": 128,
+   "recorded_actions": 128,
+   "want": [
+    "WIN",
+    8
+   ],
+   "got": [
+    "WIN",
+    8
+   ],
+   "match": true,
+   "seconds": 78.1,
+   "error": null
+  },
+  {
+   "game": "sc25",
+   "sent": 192,
+   "recorded_actions": 192,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 94.4,
+   "error": null
+  },
+  {
+   "game": "sk48",
+   "sent": 404,
+   "recorded_actions": 404,
+   "want": [
+    "WIN",
+    8
+   ],
+   "got": [
+    "WIN",
+    8
+   ],
+   "match": true,
+   "seconds": 194.8,
+   "error": null
+  },
+  {
+   "game": "sp80",
+   "sent": 153,
+   "recorded_actions": 153,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 74.7,
+   "error": null
+  },
+  {
+   "game": "su15",
+   "sent": 150,
+   "recorded_actions": 150,
+   "want": [
+    "WIN",
+    9
+   ],
+   "got": [
+    "WIN",
+    9
+   ],
+   "match": true,
+   "seconds": 94.3,
+   "error": null
+  },
+  {
+   "game": "tn36",
+   "sent": 188,
+   "recorded_actions": 188,
+   "want": [
+    "WIN",
+    7
+   ],
+   "got": [
+    "WIN",
+    7
+   ],
+   "match": true,
+   "seconds": 82.3,
+   "error": null
+  },
+  {
+   "game": "tr87",
+   "sent": 162,
+   "recorded_actions": 162,
+   "want": [
+    "WIN",
+    6
+   ],
+   "got": [
+    "WIN",
+    6
+   ],
+   "match": true,
+   "seconds": 68.9,
+   "error": null
+  },
+  {
+   "game": "tu93",
+   "sent": 250,
+   "recorded_actions": 250,
+   "want": [
+    "WIN",
+    9
+   ],
+   "got": [
+    "WIN",
+    9
+   ],
+   "match": true,
+   "seconds": 173.5,
+   "error": null
+  },
+  {
+   "game": "vc33",
+   "sent": 183,
+   "recorded_actions": 183,
+   "want": [
+    "WIN",
+    7
+   ],
+   "got": [
+    "WIN",
+    7
+   ],
+   "match": true,
+   "seconds": 85.3,
+   "error": null
+  },
+  {
+   "game": "wa30",
+   "sent": 1171,
+   "recorded_actions": 1171,
+   "want": [
+    "WIN",
+    9
+   ],
+   "got": [
+    "WIN",
+    9
+   ],
+   "match": true,
+   "seconds": 461.2,
+   "error": null
+  }
+ ]
+}

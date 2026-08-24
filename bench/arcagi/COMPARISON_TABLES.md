@@ -15,12 +15,16 @@ and an unfinished game earns no efficiency credit at all. Formula derived from
 published scorecard JSONs; `rhae.py --validate` reproduces 25/25 published game
 scores exactly (worst error 0.000000) and a second system's published
 partial-game score independently. Ours is computed, not claimed:
-`rhae.py <game> <run-dir> …`.
+`rhae.py <game> <run-dir> …` — **and then confirmed by the benchmark itself**:
+our consolidated verification-replay card
+[`702ccd4f`](https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32)
+returns 96.54%, identical to the offline figure and matching per game on every
+row (`SCORECARDS.md` documents the replay's provenance and limits).
 
 | System | Backbone | Set RHAE | Games at 100.00 | Where the score is lost |
 |---|---|---|---|---|
 | arc-skill | Opus 5, uncapped | **100.00** (published) | 25 / 25 | nowhere |
-| **ASSAY** | Opus 5, hard caps | **96.54** (computed) | 23 / 25 | lf52 18.18 (unfinished) · bp35 95.27 |
+| **ASSAY** | Opus 5, hard caps | **96.54** (server-confirmed) | 23 / 25 | lf52 18.18 (unfinished) · bp35 95.27 |
 | Prime Agent | Opus 5, median card | 95.24 (published) | 20 / 25 | lf52 27.27 · sk48 77.61 · tn36 79.00 · cd82 98.88 · g50t 98.25 |
 | PRO-LONG | Fable 5 | 94.71 (published cards) | 19 / 25 | re86 41.67 · bp35 74.85 · g50t 78.44 · lf52 81.82 · dc22 93.63 · cd82 97.38 |
 
@@ -84,13 +88,13 @@ discovery actions; batch = paid actions inside verified batches)
 | tu93 | 250 (23 + 227) | 205 | **199** | 227 |
 | vc33 | **183** (21 + 162) | 193 | 213 | 272 |
 | wa30 | 1,171 (44 + 1,127) | **802** | 1,029 | 1,639 |
-| **Total** | **8,156** (probe 656 = 8.0%) | **7,645** | **11,245** | 11,156 |
+| **Total** | **8,157** (probe 656 = 8.0%) | **7,645** | **11,245** | 11,156 |
 
 ### Table 1a — set totals by system (the actions comparison, one row per system)
 
 | System | Backbone | Games cleared | Levels | Total actions | probe (tax) | batch | Actions / level |
 |---|---|---|---|---|---|---|---|
-| ASSAY | Opus 5, hard caps | 24 / 25 | 177 / 183 | 8,156 | 656 (8.0%) | 7,500 | 46.1 |
+| ASSAY | Opus 5, hard caps | 24 / 25 | 177 / 183 | 8,157 | 656 (8.0%) | 7,501 | 46.1 |
 | arc-skill | Opus 5, uncapped | 25 / 25 | 183 / 183 | 7,645 | no data | no data | 41.8 |
 | Prime Agent | Opus 5, median card | 24 / 25 | 178 / 183 | 11,245 | no data | no data | 63.2 |
 | PRO-LONG | Fable 5 | 19 / 25 | no data | 11,156 | no data | no data | no data |
@@ -99,11 +103,11 @@ Totals include actions spent on games a system did not clear (ASSAY lf52,
 Prime Agent lf52, PRO-LONG six games). Only ASSAY publishes a tax split.
 
 Cheapest-clear count across 25 games: arc-skill 11 · Prime Agent 7 · ASSAY 7 ·
-PRO-LONG 0. On the **24 games all three Opus systems won**: ASSAY 7,792 ·
+PRO-LONG 0. On the **24 games all three Opus systems won**: ASSAY 7,793 ·
 arc-skill 6,858 · Prime Agent 8,734 — ASSAY 11% cheaper than Prime Agent,
 arc-skill 12% cheaper than ASSAY (the gap concentrated in ASSAY's five
 multi-session conversions; single-session wins are a dead heat with
-arc-skill). ASSAY's measured exploration tax: 656 probe actions of 8,156
+arc-skill). ASSAY's measured exploration tax: 656 probe actions of 8,157
 (8.0%) — every other paid action ran inside a verified batch.
 
 Games completed: arc-skill 25/25 · ASSAY 24/25 · Prime Agent 24/25 ·

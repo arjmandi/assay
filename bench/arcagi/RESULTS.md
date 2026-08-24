@@ -124,6 +124,15 @@ quoted here — are indexed in `SCORECARDS.md`, with our cards' provenance state
 exactly (verification replays of recorded action sequences; the card's
 wall-clock is machine replay time, not agent time).*
 
+**Server-confirmed (2026-08-24):** a consolidated verification replay of all 25
+recorded action sequences produced the public card
+[`702ccd4f`](https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32),
+on which **ARC's own scoring returns 96.54%** — identical to our offline
+computation, and matching per game on every row (23 at 100.00, bp35 95.27,
+lf52 18.18), with 177/183 levels, 24/25 environments and 8,157 actions. All 25
+replays reproduced their recorded outcome exactly. Card wall-clock (64.8 min
+machine replay) is not agent time; see `SCORECARDS.md`.
+
 **ASSAY's ARC-AGI-3 set score is RHAE 96.54** — computed with `rhae.py` in this
 directory from our journals plus the published per-level baselines
 (`baselines.json`), not asserted. RHAE is the benchmark's own metric and it is
@@ -161,7 +170,7 @@ ARC-server replay); every journal audit-clean — zero ungated events across
 domain-neutral protocol.
 
 Aggregate actions vs the competitors:
-- On the 24 games both Opus systems won: ASSAY 7,792 · arc-skill 6,858
+- On the 24 games both Opus systems won: ASSAY 7,793 · arc-skill 6,858
   (arc-skill −12%; per-game split 15–9 in arc-skill's favor). The honest
   decomposition: on games ASSAY won in a single session the two systems are a
   statistical dead heat (earlier measured: 1,899 vs 1,897 over ten games);
