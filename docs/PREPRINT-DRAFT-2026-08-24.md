@@ -1,15 +1,29 @@
 > **Draft status.** This is a claim-stake preprint draft for Mohsen's review — not a
 > submission. Everything below the next horizontal rule is the paper itself, written to
 > convert cleanly to LaTeX (the format of the precedent, arXiv:2608.04066, 7 pages,
-> single-author, cs.AI). Two things are deliberately left open for the author:
+> single-author, cs.AI).
 >
-> 1. **The protocol name.** The paper uses **exercised-claim coverage** throughout —
->    this is not an invented placeholder; it is the working name already used verbatim
->    in `bench/arcagi/RESULTS.md` ("the exercised-claim coverage protocol," "the
->    exercised-claim coverage meter"). The other two candidates on record
->    (`proofs-are-hypotheses`, `claim-coverage audit`) are noted in §7 as open
->    alternatives if you want to rename before submission.
-> 2. **The title.** Primary candidate below, two shorter alternatives listed after it.
+> **The protocol name is decided:** per Mohsen's instruction on arjmandi/me#740, the
+> paper names the protocol **coverage audit** throughout, superseding the three
+> candidates that were on record when this draft was first written
+> (`exercised-claim coverage`, `proofs-are-hypotheses`, `claim-coverage audit`). Note for
+> the record: `bench/arcagi/RESULTS.md` itself still uses the older working name,
+> "exercised-claim coverage protocol" / "exercised-claim coverage meter" — that artifact
+> is historical record and out of scope to edit (CLAUDE.md), so a reader cross-referencing
+> RESULTS.md against this paper will see the old name there and the decided name here; the
+> mechanism is identical, only the label changed.
+>
+> **The title** is still open. Primary candidate below, two shorter alternatives listed
+> after it.
+>
+> **One naming collision worth your eyes before submission:** the paper also uses
+> "coverage" as a plain noun for the games/levels-cleared statistic that §5.2 explicitly
+> insists is *not a score* (177/183 levels, 96.7%) — matching `RESULTS.md`'s own usage.
+> That is a different sense of "coverage" from the protocol name "coverage audit," which is
+> about auditing which of a proof's rules were tested, not about how many games were
+> played. §5.2's heading ("Coverage vs. score") and §5.6 ("The coverage audit finding") sit
+> two sections apart using the word two different ways — I kept both because both are
+> already the artifacts' own terms, but a reviewer may flag the overlap.
 >
 > **A discrepancy caught while sourcing this draft:** the issue card and the strategy
 > doc both state the exploration tax as "~7.8%." The repository artifact
@@ -37,10 +51,10 @@
 
 ---
 
-# The Referee Grades the Claim: ASSAY, a Structurally-Verified Agent Harness at Frontier ARC-AGI-3 Capability, and Exercised-Claim Coverage for Recovering Broken Impossibility Proofs
+# The Referee Grades the Claim: ASSAY, a Structurally-Verified Agent Harness at Frontier ARC-AGI-3 Capability, and Coverage Audit for Recovering Broken Impossibility Proofs
 
 *Alternative titles, shorter:*
-*(a) "ASSAY: Frontier ARC-AGI-3 Capability Under Full Audit, and Exercised-Claim Coverage for Broken Impossibility Proofs"*
+*(a) "ASSAY: Frontier ARC-AGI-3 Capability Under Full Audit, and Coverage Audit for Broken Impossibility Proofs"*
 *(b) "The Referee, Not the Driver: Structural Verification at the ARC-AGI-3 Frontier"*
 
 **Mohsen Arjmandi**
@@ -65,8 +79,8 @@ one game ASSAY left unfinished costs more RHAE than every possible efficiency ga
 other 24 combined. We also report a process finding the score cannot show: over the
 campaign, the agent's own world model generated six impossibility proofs that were
 individually consistent with every transition it had recorded and individually wrong
-exactly where no transition had gone. A coverage protocol we call **exercised-claim
-coverage** — enumerate the rules a proof depends on, audit the journal for which were
+exactly where no transition had gone. A protocol we call **coverage audit** — enumerate
+the rules a proof depends on, audit the journal for which were
 actually exercised, buy a graded probe for the gap — converted five of the six into wins
 within their existing action budgets. ASSAY's referee architecture is the direct
 descendant of the Executive/Proposer split introduced in arXiv:2608.04066, which reported
@@ -114,7 +128,7 @@ Contributions:
 2. **The measured cost of that guarantee.** An 8.0% exploration tax — 656 of 8,156 paid
    actions spent discovering mechanics before exploitation began — is the entire overhead
    the referee architecture imposed (§5.3).
-3. **Exercised-claim coverage**, a general protocol for auditing and recovering
+3. **Coverage audit**, a general protocol for auditing and recovering
    code-consistent-but-wrong impossibility proofs, demonstrated recovering five of six
    such proofs within their games' existing action budgets (§5.6, §6).
 4. **A quantitative demonstration that RHAE saturates at the frontier**: capped by
@@ -233,7 +247,7 @@ knowledge file for the next one; on import, every prior "Verified" note demotes 
 live journal, and only hazard tags (warnings about a previously-entered loss state) stay
 active without re-earning. The record travels; the agent's confidence in it does not.
 
-**The exercised-claim coverage protocol.** Section 5.6 documents six cases in which the
+**The coverage audit protocol.** Section 5.6 documents six cases in which the
 agent's own model of the world produced a proof — "this level is unwinnable," typically
 after an exhaustive or near-exhaustive search of the modeled state space — that was
 internally consistent with every transition recorded up to that point and false. The
@@ -383,12 +397,12 @@ meaningfully is finishing games, not shaving actions off games already won — w
 exactly what motivates treating lf52 (§5.7), not efficiency tuning, as the highest-value
 remaining work.
 
-### 5.6 The exercised-claim coverage finding
+### 5.6 The coverage audit finding
 
 Across the campaign, six impossibility proofs generated by the agent's own model of the
 world were each individually consistent with every transition recorded up to that point
-and each wrong exactly where no transition had gone. The exercised-claim coverage
-protocol (§3) converted five into wins within their games' existing action budgets:
+and each wrong exactly where no transition had gone. The coverage audit protocol (§3)
+converted five into wins within their games' existing action budgets:
 
 - **dc22** — a proof that a set of blocks was permanently isolated. Mining the prior
   journal offline (74 inert probes, all taken in a single world-state) found one
@@ -425,7 +439,7 @@ but an assumption never posed as a claim at all — precisely lf52's open proble
 
 ### 5.7 The open problem: lf52
 
-lf52 is the one public game ASSAY did not clear, and the only place the exercised-claim
+lf52 is the one public game ASSAY did not clear, and the only place the coverage audit
 protocol has not yet succeeded. Three independent runs, at caps of 200, 500, and 1500
 actions, all stall at exactly 4 of 10 levels — the third spending 193 actions on level 5
 alone and stopping with 1,136 actions unspent after a relaxed-constraints planner
@@ -469,7 +483,7 @@ capability; none demonstrates that its own result can be checked without trustin
 self-report. ASSAY demonstrates both at once: a computed RHAE of 96.54 — second among
 four tracked frontier systems — reached under hard action caps, a domain-neutral
 doctrine, and a hash-chained journal that is audit-clean across all 8,156 paid actions,
-at a measured integrity overhead of 8.0%. The exercised-claim coverage protocol is offered
+at a measured integrity overhead of 8.0%. The coverage audit protocol is offered
 as a general technique for any verification-first agent whose own world model can produce
 proofs that are consistent with everything it has seen and wrong about what it has not:
 enumerate what a proof depends on, audit what actually tested each dependency, and probe
@@ -481,13 +495,13 @@ frontier-tier capability.
 This is a claim-stake, not the full account. A technical report targeting November 8,
 2026 will add a second domain (Factorio/FLE, chosen specifically because its documented
 cheating history and world-model-divergence failure mode make it the referee
-architecture's natural next test), an attempt at closing lf52 through exercised-claim
+architecture's natural next test), an attempt at closing lf52 through coverage-audit
 machinery rather than a re-roll, and the release of a standalone journal-format
 specification and audit/replay verifier — conditional on an as-yet-unscheduled assessment
-that doing so is safe for the kernel and the benchmarks it protects. The protocol name
-used throughout this draft, *exercised-claim coverage*, and this draft's title are both
-the author's to finalize; two named alternatives for the protocol are on record
-(*proofs-are-hypotheses*, *claim-coverage audit*).
+that doing so is safe for the kernel and the benchmarks it protects. The protocol is named
+*coverage audit* (decided 2026-08-24, superseding earlier candidates *exercised-claim
+coverage* and *proofs-are-hypotheses*); this draft's title remains the author's to
+finalize.
 
 ## References
 
@@ -536,6 +550,7 @@ fresh from this task rather than copied from `arjmandi/me#738` or `#740`:
 
 Not used, and deliberately excluded from this draft: the "emphatically not a valid
 measure" characterization of ARC-AGI-3 saturation and the Sakana reward-hacking incident,
-both of which appear in the strategy doc (`docs/STRATEGY-2026-08-23.md`) but have no
-source in this repository's own artifacts that I could locate and verify independently.
-Reintroduce them only if you have a citable primary source.
+both of which appear in the ASSAY strategy doc (`arjmandi/me#738`, which lives in
+`~/workspace/assay-archive`, not in this repo) but have no source in this repository's own
+artifacts that I could locate and verify independently. Reintroduce them only if you have
+a citable primary source.
