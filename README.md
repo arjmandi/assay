@@ -24,15 +24,6 @@ do — names, typed parameter schemas, budgets, flags, the goal) and an
 for the user guide, `CONSTITUTION.md` for the agent-facing manual, and `bench/`
 for benchmark harnesses and results.
 
-The journal format (`JOURNAL_SPEC.md`) and the prediction claim grammar
-(`CLAIM_GRAMMAR.md`) are published, versioned specs: precise enough that a
-third party can write their own reader. `verify/assay_verify.py` is a
-standalone, stdlib-only reference implementation — it imports nothing from
-this repo's kernel — that recomputes a journal's integrity verdict (hash
-chain, gate coverage, predict/grade consistency) from artifacts alone.
-`verify/fixtures/` has a clean synthetic journal plus one deliberately
-broken in each way the verifier detects.
-
 ## Quickstart (60 seconds, no API keys)
 
 ```bash

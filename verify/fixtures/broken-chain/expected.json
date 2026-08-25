@@ -1,9 +1,0 @@
-{
-  "anchors": "none",
-  "chain": "DIVERGED",
-  "contiguous": true,
-  "invalid_for_scoring": true,
-  "note": "event 2's note was edited after chain.json was last written; chain.json still holds the head computed from the ORIGINAL content, so recomputing from the current events.jsonl diverges from it",
-  "predict_grade_mismatches": [],
-  "ungated": []
-}

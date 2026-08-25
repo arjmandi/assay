@@ -1,9 +1,0 @@
-{
-  "anchors": "none",
-  "chain": "intact",
-  "contiguous": false,
-  "invalid_for_scoring": true,
-  "note": "event at line 1 carries id 2 instead of 1 \u2014 a deletion or reorder in events.jsonl; the chain still recomputes fine (it doesn't look at id), which is why contiguity is checked separately from the chain",
-  "predict_grade_mismatches": [],
-  "ungated": []
-}

@@ -1,9 +1,0 @@
-{
-  "adapter": "examples/counter_world.py:factory",
-  "created_at": "2026-01-01T00:00:00+00:00",
-  "game_id": "counterdemo",
-  "harness": "assay",
-  "mode": "local",
-  "registry": true,
-  "seed": null
-}
