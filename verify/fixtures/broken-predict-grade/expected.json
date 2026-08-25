@@ -1,0 +1,11 @@
+{
+  "anchors": "none",
+  "chain": "intact",
+  "contiguous": true,
+  "invalid_for_scoring": true,
+  "note": "event 1's predict_ok was flipped to False, but its own grade array still shows a passing claim (ok: true) \u2014 the two fields were not produced together by one consistent process",
+  "predict_grade_mismatches": [
+    1
+  ],
+  "ungated": []
+}

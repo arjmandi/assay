@@ -1,0 +1,9 @@
+{
+  "anchors": "intact",
+  "chain": "intact",
+  "contiguous": true,
+  "invalid_for_scoring": false,
+  "note": "a clean run: one correct prediction, one honest miss, one win; CLEAN does not mean the agent was always right, it means the artifacts are tamper-evident and every paid action went through the gate",
+  "predict_grade_mismatches": [],
+  "ungated": []
+}

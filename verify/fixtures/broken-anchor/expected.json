@@ -1,0 +1,9 @@
+{
+  "anchors": "DIVERGED",
+  "chain": "intact",
+  "contiguous": true,
+  "invalid_for_scoring": true,
+  "note": "event 1's data was edited after an anchor recorded its original head at event_id 1; chain.json was regenerated to match the new content (so the LOCAL chain looks intact), but the externally anchored head \u2014 outside the run directory \u2014 still reflects the original, unedited line",
+  "predict_grade_mismatches": [],
+  "ungated": []
+}
