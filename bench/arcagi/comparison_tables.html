@@ -90,7 +90,12 @@
   credit at all. Inefficiency is penalized quadratically; surplus efficiency is capped away.
   The formula was derived from published scorecard JSONs, and <code>rhae.py --validate</code>
   reproduces 25 of 25 published game scores exactly (worst error 0.000000). ASSAY's figure is
-  computed from its journals, not asserted.</p>
+  computed from its journals, not asserted — and then confirmed by the benchmark itself: our
+  consolidated verification-replay card
+  <a href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32">702ccd4f</a>
+  returns 96.54%, matching per game on every row (177/183 levels, 24/25 environments, 8,157
+  actions). That card is a replay of recorded action sequences, so its wall-clock is machine
+  replay time, not agent time.</p>
   <div class="card">
     <div class="legend" id="lg0"></div>
     <div id="c0"></div>
@@ -109,7 +114,7 @@
     </tr>
     <tr>
       <td><span class="dot" style="background:var(--s1)"></span><span class="sys">ASSAY</span></td>
-      <td>Opus 5, hard caps</td><td class="num">96.54 <span class="nd">computed</span></td>
+      <td>Opus 5, hard caps</td><td class="num">96.54 <span class="nd">server-confirmed</span></td>
       <td class="num">23 / 25</td><td class="wrap-c">lf52 18.18 (unfinished, 4/10) · bp35 95.27 (over baseline on levels 4, 7, 9)</td>
     </tr>
     <tr>
@@ -138,8 +143,8 @@
     <tr>
       <td><span class="dot" style="background:var(--s1)"></span><span class="sys">ASSAY</span></td>
       <td>Opus 5, hard caps</td><td class="num">24 / 25</td><td class="num">177 / 183</td>
-      <td class="num">8,156</td><td class="num">656 <span class="nd">(8.0%)</span></td>
-      <td class="num">7,500</td><td class="num">46.1</td>
+      <td class="num">8,157</td><td class="num">656 <span class="nd">(8.0%)</span></td>
+      <td class="num">7,501</td><td class="num">46.1</td>
     </tr>
     <tr>
       <td><span class="dot" style="background:var(--s2)"></span><span class="sys">arc-skill</span></td>
@@ -234,7 +239,7 @@
 
   <h2>ASSAY exploration tax per game</h2>
   <p class="note">Probe = paid single-action discovery; batch = paid actions inside verified batches
-  (halt-on-first-miss). Sorted by probe count. Set total: 656 probe of 8,156 paid (8.0%).</p>
+  (halt-on-first-miss). Sorted by probe count. Set total: 656 probe of 8,157 paid (8.0%).</p>
   <div class="card"><div class="legend" id="lg3"></div><div class="chart-scroll" id="c3"></div></div>
 
   <h2>Cost detail — ASSAY measured runs</h2>
@@ -270,7 +275,10 @@
   the full readout. lf52 is the set's outlier: only arc-skill has ever cleared it.</p>
   <div class="card"><div class="legend" id="lg1"></div><div class="chart-scroll" id="c1"></div></div>
   <p class="note" style="margin-top:20px;">Provenance: ASSAY journals (hash-chained, audit-clean, zero ungated events);
-  arc-skill scorecard 24ddb219; Prime Agent scorecard 2af780b4; PRO-LONG published scorecards + release logs.
+  ASSAY scorecard <a href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32">702ccd4f</a>;
+  arc-skill <a href="https://arcprize.org/scorecards/24ddb219-987e-464f-9050-6398a29cf5ac">24ddb219</a>;
+  Prime Agent <a href="https://arcprize.org/scorecards/2af780b4-f2a1-43e9-a794-b23da3cd3f9f">2af780b4</a>;
+  PRO-LONG's 25 per-game cards — all indexed with provenance in SCORECARDS.md.
   “no data” means the figure is not published anywhere — an absence, not a zero. Compiled 2026-08-23.</p>
 </div>
 <div id="tip" role="status"></div>
@@ -459,7 +467,7 @@ function chart2() {
     { label: "arc-skill", color: c.s2 }, { label: "Prime Agent", color: c.s3 }, { label: "PRO-LONG", color: c.s4 },
   ]);
   const rows = [
-    { name: "ASSAY", v: 8156, split: [656, 7500] },
+    { name: "ASSAY", v: 8157, split: [656, 7501] },
     { name: "arc-skill", v: 7645, color: c.s2 },
     { name: "Prime Agent", v: 11245, color: c.s3 },
     { name: "PRO-LONG", v: 11156, color: c.s4 },
@@ -632,7 +640,7 @@ function tables() {
     t1.appendChild(tr);
   }
   const tot = document.createElement("tr");
-  ["Total", "183", "8,156 (656 + 7,500)", "7,645", "11,245", "11,156"].forEach((txt, i) => {
+  ["Total", "183", "8,157 (656 + 7,501)", "7,645", "11,245", "11,156"].forEach((txt, i) => {
     const td = document.createElement("td"); if (i > 0) td.className = "num"; td.style.fontWeight = "650"; td.textContent = txt; tot.appendChild(td);
   });
   t1.appendChild(tot);
