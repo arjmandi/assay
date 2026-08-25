@@ -165,8 +165,8 @@ The 96.7% level-coverage figure sits deceptively close to the real RHAE of
 The one non-win is lf52 (4/10 across three runs — the located exploration
 gap, parked by owner decision for the machinery phase). Every win
 triple-verified (journal engine state, ASSAY-free engine replay, live
-ARC-server replay); every journal audit-clean — zero ungated events across
-~7,800 paid actions; the entire set played under hard caps with one uniform,
+ARC-server replay); every journal audit-clean — zero ungated events
+across 8,157 paid actions; the entire set played under hard caps with one uniform,
 domain-neutral protocol.
 
 Aggregate actions vs the competitors:
