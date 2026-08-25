@@ -3,7 +3,7 @@
 A module is doctrine text + a trigger + a demand schema + a mode + telemetry:
 
     NAME: str                # unique, lowercase
-    DOCTRINE: str            # one paragraph of way-of-thinking text
+    CONSTITUTION: str            # one paragraph of way-of-thinking text
     MODE: "advise"|"block"   # default; registry module_modes overrides per run
     trigger(view, pending) -> str | None      # advisory message when it fires
     demand(view, pending) -> dict[str,str] | None   # {field: why} — structural
@@ -95,7 +95,7 @@ def _recent_predictions(
 
 class _WallSpend:
     NAME = "wall_spend"
-    DOCTRINE = (
+    CONSTITUTION = (
         "Spending long on one level without progress means manual probing has "
         "stopped paying; model the mechanics offline before spending more."
     )
@@ -144,7 +144,7 @@ class _WallSpend:
 
 class _MissStreak:
     NAME = "miss_streak"
-    DOCTRINE = (
+    CONSTITUTION = (
         "Repeated prediction misses mean the mechanics story in NOTES.md is "
         "wrong; fix the story before spending more actions."
     )
@@ -170,7 +170,7 @@ class _MissStreak:
 
 class _NullForensics:
     NAME = "null_forensics"
-    DOCTRINE = (
+    CONSTITUTION = (
         "A predicted-change that observed nothing is a null result: inspect the "
         "raw observation before the hypothesis may be closed."
     )
@@ -201,7 +201,7 @@ class _NullForensics:
 
 class _ParkWithTest:
     NAME = "park_with_test"
-    DOCTRINE = (
+    CONSTITUTION = (
         "Abandoning a board is only safe if the notes carry a test that would "
         "re-open the abandoned line; park hypotheses with their test."
     )
@@ -224,7 +224,7 @@ class _ParkWithTest:
 
 class _Sharpness:
     NAME = "sharpness"
-    DOCTRINE = (
+    CONSTITUTION = (
         "Coerced free-text claims are excluded from every meter and promotion; "
         "vagueness earns nothing."
     )
@@ -256,7 +256,7 @@ class _Sharpness:
 
 class _Hazard:
     NAME = "hazard"
-    DOCTRINE = (
+    CONSTITUTION = (
         "Hazards are effect signatures, not action identities: an action class "
         "whose graded outcome entered a loss state or dropped banked progress "
         "gets a worst-case + recovery declaration demand on its next use. The "
@@ -371,11 +371,11 @@ def _load_external(paths: RunPaths) -> list[Any]:
     for file in sorted(target.glob("*.py")):
         with import_path(file, "assay_module") as module:
             candidate = getattr(module, "MODULE", module)
-            for attr in ("NAME", "DOCTRINE", "MODE", "trigger", "demand", "telemetry"):
+            for attr in ("NAME", "CONSTITUTION", "MODE", "trigger", "demand", "telemetry"):
                 if not hasattr(candidate, attr):
                     raise AssayError(
                         f"module {file.name} lacks {attr!r}; the module contract is "
-                        "NAME, DOCTRINE, MODE, trigger(), demand(), telemetry()"
+                        "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()"
                     )
             loaded.append(candidate)
     return loaded
