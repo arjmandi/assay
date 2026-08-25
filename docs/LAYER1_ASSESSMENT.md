@@ -128,3 +128,33 @@ Under those conditions the effect on ASSAY benchmark results and future run
 behaviour is zero by construction, and the effect on quality is zero because
 no running code changes. The genuine (small, acceptable) cost is a public
 format-compatibility commitment, mitigated by the spec version field.
+
+## Addendum (2026-08-25, owner Q&A)
+
+**Bundling the module-API rename (`DOCTRINE` field → `CONSTITUTION`).**
+Measured blast radius: one file. The attribute exists only in `modules.py`
+(the field on the built-in modules plus the required-attribute tuple at
+`modules.py:374`); no other src file reads it, no benchmark registry pins
+external modules, no spec document references it. If layer-1 work is
+prioritized, do both in one session as **two commits**: (1) the layer-1
+additive release, validated with `src/` byte-identical; (2) the `modules.py`
+rename, shipped under one ft09 regression-gate run. Order matters — the
+rename must not land inside the layer-1 change, or the "kernel untouched"
+acceptance check loses its meaning.
+
+**Redaction vs. the chain (why journal-sharing is its own decision).**
+Opening layer 1 ships two spec documents, a stdlib reader, and synthetic
+fixtures — nothing agent-authored, so no sanitization question arises at all.
+The sanitization question appears only when a **journal** is shared, and it
+protects us, not the recipient: agent-authored prose (`note` fields,
+`NOTES.md`, verifier code) reveals reasoning style and discovered strategy —
+capability-adjacent material — while the integrity verdict itself needs only
+the structural fields (`id`, `counts_action`, `action`, `predict`,
+`predict_ok`, `grade`, frames). One hard technical fact: **the hash chain
+covers raw journal lines, so a scrubbed journal cannot match a published
+chain head** — under spec v1, "redacted" and "chain-verified" are mutually
+exclusive. Paths: share raw journals privately (NDA-class) when a specific
+party needs full verification; or plan **spec v2**: chain over a canonical
+line form in which free-text fields are represented by their salted hashes,
+making prose redactable without breaking verification. Note v2 in
+`JOURNAL_SPEC.md` from day one so the format-freeze does not close this door.
