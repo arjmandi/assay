@@ -180,8 +180,8 @@ Two facts worth knowing before you write an adapter:
 
 ## 5. Running an LLM agent on it
 
-The agent-facing manual is `DOCTRINE.md` at the repo root. The whole
-integration is one prompt: tell the agent to (1) read DOCTRINE.md
+The agent-facing manual is `CONSTITUTION.md` at the repo root. The whole
+integration is one prompt: tell the agent to (1) read CONSTITUTION.md
 completely, (2) `cd` into a fresh run directory, (3) run the `start` command
 with your adapter and registry, (4) solve for the goal, and (5) never touch
 the world except through `assay`. Every winning benchmark run used exactly

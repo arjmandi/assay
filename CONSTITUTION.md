@@ -1,4 +1,4 @@
-# ASSAY doctrine — the agent-facing manual
+# ASSAY constitution — the agent-facing manual
 
 Operate an unknown, turn-based environment through the `assay` harness in
 registry mode — registered actions with typed parameters, enforced predictions

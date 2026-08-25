@@ -95,10 +95,10 @@ reproduces the outcome, via the ARC server replay path that already exists
 publicly (scorecards). That is the full "check it yourself" story the
 strategy wants, with no kernel exposure.
 
-## 5. Does DOCTRINE.md leak through layer-1 artifacts? — Not through layer 1.
+## 5. Does CONSTITUTION.md leak through layer-1 artifacts? — Not through layer 1.
 
 Checked empirically: ten distinctive verbatim snippets (six spread through
-`DOCTRINE.md`, four from the module `DOCTRINE` paragraphs in `modules.py`)
+`CONSTITUTION.md`, four from the module `DOCTRINE` paragraphs in `modules.py`)
 grepped across `events.jsonl`, `activity.jsonl`, `NOTES.md`, `dossier.json`
 of **all 19 sweep-1500 runs: zero hits.** `activity.jsonl` is command
 telemetry (pids, timings); journal `note`/`predict` fields are agent-authored

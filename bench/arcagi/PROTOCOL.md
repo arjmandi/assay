@@ -32,7 +32,7 @@ information parity with the hint line the earlier record was earned under.
 ## Pre-registered protocol (the rc1 batch, 2026-08-22)
 
 Two stages, in order. All runs: Opus (owner law), local simulator, tier-2
-starting information (the DOCTRINE manual + "64x64 color grid, level counter
+starting information (the constitution manual (`CONSTITUTION.md`; named `DOCTRINE.md` when these runs were played) + "64x64 color grid, level counter
 and win state exist" + the registry description hints at parity — zero-prior
 OFF so the 500-cap results stay comparable to the 200-cap record), fresh cold
 runs (no imports — carryover would confound the cap comparison), sealed

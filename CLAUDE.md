@@ -3,7 +3,7 @@
 A **referee harness** that sits between an agent (human or LLM) and a world you
 register: enforced predict-before-act, code-graded claims, hash-chained
 journals, and a memory/agency layer. See `README.md` for the pitch, `GUIDE.md`
-for the user guide, `DOCTRINE.md` for the agent-facing manual an *evaluated*
+for the user guide, `CONSTITUTION.md` for the agent-facing manual an *evaluated*
 agent follows when driving a registry-mode run — do not confuse that manual
 with these instructions, which are for you working ON the harness's own code.
 Status: v1-rc1, private, no license yet — currently zero contract customers,
@@ -54,7 +54,7 @@ bench/{arcagi,factorio,oolong}/   benchmark harnesses + real run results —
   `bench/{arcagi,factorio,oolong}`) — they are Mohsen's research runs, not
   something a code-change task should trigger. Denied in `.claude/settings.json`.
   Testing the harness means running the test suite, not a live session.
-- **`DOCTRINE.md` is not for you.** It is the manual an agent under evaluation
+- **`CONSTITUTION.md` is not for you.** It is the manual an agent under evaluation
   reads when *using* ASSAY to play a registered world. You are maintaining the
   harness's source, not operating inside one of its runs — don't let its
   "never inspect the environment's source" framing bleed into how you work here.
