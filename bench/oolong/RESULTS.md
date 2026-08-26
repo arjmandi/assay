@@ -67,6 +67,7 @@ mid-run signal.
 | rung | context_len | accuracy (mean) | exact | questions | paid actions | cost | audit |
 |---|---|---|---|---|---|---|---|
 | synth128k | 131,072 | **0.870** | 20/25 | 25 | 50 | $10.10 | CLEAN |
+| synth1m | 1,048,576 | **0.701** | 16/25 | 25 | ~? | $5.16 | CLEAN |
 
 Anchor (128K): 0.870 is competitive with the published ~0.90 agentic baseline
 at 128K-synth. By group: user 1.00, timeline 0.83, counting 0.54 (n=3). By
@@ -76,3 +77,31 @@ n = 1 corpus x 25 questions per rung — a demonstration, not a powered study.
 1M and 4M rungs pending. Friction: `assay status` truncates long question
 text; agent-written verifiers flagged VACUOUS (the span-check is the real
 gate, so validity is unaffected).
+
+
+### The confound (must be stated): raw accuracy is not flat, and this design cannot say why
+
+128K -> 1M accuracy fell 0.870 -> 0.701. But the rungs use DIFFERENT SOURCE
+datasets (128K = negation; 1M = app_reviews; 4M = metaphors), so the drop
+conflates context length with task difficulty. Two specific reasons it is not
+clean length-degradation:
+- 1M is app_reviews, whose counting questions require per-instance SENTIMENT
+  CLASSIFICATION — the agent trained an offline classifier (93% held-out) and
+  prevalence-corrected. That is a model-bound per-instance judgment the design
+  always said stays model-bound (dossier 6.1), lossy independent of length.
+- The metadata groups also moved (user 1.00 -> 0.786, timeline 0.83 -> 0.695)
+  despite "exact grep/awk"; because numeric answers get 0.75^|diff| partial
+  credit, a small miscount on a larger corpus erodes the mean. Whether that is
+  a genuine length effect or app_reviews being harder cannot be separated at
+  n=1 corpus per rung.
+
+**Conclusion: the single-arm sweep as scoped cannot cleanly demonstrate
+accuracy length-invariance** — different sources per rung + n=1 corpus per rung
+confound length with difficulty. What IS length-invariant and clean: the
+mechanism runs identically at any length (corpus on disk, small window), cost
+did not rise with length ($10.10 -> $5.16), citation integrity held (all spans
+verbatim), and the 4M rung is runnable at all (where the bare model cannot go).
+
+The clean fix for an accuracy-flatness claim: run the SAME source dataset at
+128K/1M/4M (control the confound), and/or several corpora per rung. Pending
+owner decision before the 4M rung.
