@@ -115,6 +115,189 @@ LAB_PLAY_STARTING_INVENTORY = {
 }
 
 # ---------------------------------------------------------------------------
+# Pre-M2 hardening data. Both blocks are grounded in the pinned FLE 0.4.3
+# (Python 3.12.12) by enumerating a live instance, not guessed — see
+# PROTOCOL.md ("Unknown-global monitor", "Throughput corroboration").
+# ---------------------------------------------------------------------------
+
+# (1) UNKNOWN-GLOBAL MONITOR. The exact set of names an agent program sees as
+# globals under FLE 0.4.3 — the union FLE's FactorioNamespace.eval_with_timeout
+# assembles (NAMESPACE_AUDIT.md): non-underscore dir(builtins) | non-underscore
+# dir(namespace) | non-underscore persistent_vars keys, read from a live
+# instance at session start. The monitor (_compute_namespace_watch) reports any
+# live global absent from this set. It never refuses, changes state, or voids a
+# run; a non-empty report means a future FLE exposed a new handle and the AST
+# screen must be revisited before that version is trusted. Regenerate with the
+# derivation probe recorded in this milestone's audit log if the pin changes.
+_EXPECTED_FLE_GLOBALS = frozenset({
+    'ABOVE', 'Accumulator', 'ActiveProviderChest', 'AdvancedAssemblingMachine', 'Ammo',
+    'ArithmeticCombinator', 'ArithmeticError', 'ArtilleryTurret', 'AssemblingMachine',
+    'AssemblingMachine1', 'AssemblingMachine2', 'AssemblingMachine3', 'AssertionError',
+    'AttributeError', 'BELOW', 'BOTTOM', 'BaseException', 'BaseExceptionGroup', 'Beacon',
+    'BeltGroup', 'BigElectricPole', 'BlockingIOError', 'Boiler', 'BoundingBox',
+    'BrokenPipeError', 'BufferChest', 'BufferError', 'BuildingBox', 'BulkInserter',
+    'BurnerInserter', 'BurnerMiningDrill', 'BurnerType', 'BytesWarning', 'Car',
+    'CargoWagon', 'Centrifuge', 'ChemicalPlant', 'Chest', 'ChildProcessError', 'Combinator',
+    'ConnectionAbortedError', 'ConnectionError', 'ConnectionRefusedError',
+    'ConnectionResetError', 'ConstantCombinator', 'DOWN', 'DeciderCombinator',
+    'DeprecationWarning', 'Dict', 'Dimensions', 'Direction', 'EAST', 'EOFError', 'Electric',
+    'ElectricFurnace', 'ElectricMiningDrill', 'ElectricalProducer', 'ElectricityGroup',
+    'ElectricityPole', 'Ellipsis', 'EncodingWarning', 'EnergySource', 'Entity',
+    'EntityCore', 'EntityGroup', 'EntityInfo', 'EntityStatus', 'EnvironmentError',
+    'Exception', 'ExceptionGroup', 'ExpressSplitter', 'ExpressTransportBelt',
+    'ExpressUndergroundBelt', 'False', 'FastInserter', 'FastSplitter', 'FastTransportBelt',
+    'FastUndergroundBelt', 'FileExistsError', 'FileNotFoundError', 'FilterInserter',
+    'Filtered', 'FirearmMagazine', 'FlamethrowerTurret', 'FloatingPointError',
+    'FluidHandler', 'FluidTurret', 'FluidWagon', 'Furnace', 'FutureWarning', 'Gate',
+    'Generator', 'GeneratorExit', 'GunTurret', 'HeatExchanger', 'HeatPipe', 'IOError',
+    'ImportError', 'ImportWarning', 'IndentationError', 'IndexError', 'IndexedPosition',
+    'Ingredient', 'Inserter', 'InspectionResults', 'InterruptedError', 'Inventory',
+    'IronChest', 'IronGearWheel', 'IsADirectoryError', 'KeyError', 'KeyboardInterrupt',
+    'LEFT', 'Lab', 'LandMine', 'LaserTurret', 'List', 'Locomotive', 'LogisticChest',
+    'LongHandedInserter', 'LookupError', 'MediumElectricPole', 'MemoryError', 'MiningDrill',
+    'ModuleNotFoundError', 'MultiFluidHandler', 'NameError', 'None', 'NotADirectoryError',
+    'NotImplemented', 'NotImplementedError', 'NuclearReactor', 'OSError', 'OffshorePump',
+    'OilRefinery', 'Optional', 'OverflowError', 'PassiveProviderChest',
+    'PendingDeprecationWarning', 'PermissionError', 'PiercingRoundsMagazine', 'Pipe',
+    'PipeGroup', 'Position', 'PowerSwitch', 'ProcessLookupError', 'Product',
+    'ProgrammableSpeaker', 'Prototype', 'Pump', 'PumpJack', 'RIGHT', 'Radar', 'Rail',
+    'RailChainSignal', 'RailSignal', 'Reactor', 'Recipe', 'RecipeName', 'RecursionError',
+    'ReferenceError', 'RequesterChest', 'Resource', 'ResourcePatch', 'ResourceWarning',
+    'Roboport', 'Rocket', 'RocketSilo', 'RollingStock', 'RuntimeError', 'RuntimeWarning',
+    'Set', 'SmallElectricPole', 'SmallLamp', 'SolarPanel', 'Spidertron', 'Splitter',
+    'StaticEntity', 'SteamEngine', 'SteamTurbine', 'SteelChest', 'SteelFurnace',
+    'StoneFurnace', 'StoneWall', 'StopAsyncIteration', 'StopIteration', 'StorageChest',
+    'StorageTank', 'Substation', 'SyntaxError', 'SyntaxWarning', 'SystemError',
+    'SystemExit', 'TOP', 'TabError', 'Tank', 'Technology', 'TileDimensions', 'TimeoutError',
+    'TrainStop', 'TransportBelt', 'True', 'Tuple', 'Turret', 'TypeError', 'UP',
+    'UnboundLocalError', 'UndergroundBelt', 'UndergroundPipe', 'UnicodeDecodeError',
+    'UnicodeEncodeError', 'UnicodeError', 'UnicodeTranslateError', 'UnicodeWarning',
+    'Union', 'UserWarning', 'ValueError', 'Vehicle', 'WEST', 'WallGroup', 'Warning',
+    'WoodenChest', 'ZeroDivisionError', 'abs', 'agent_id', 'agent_index', 'aiter', 'all',
+    'anext', 'any', 'ascii', 'assert', 'bin', 'bool', 'breakpoint', 'bytearray', 'bytes',
+    'callable', 'can_place_entity', 'capture_whole_output', 'ceil', 'chr', 'classmethod',
+    'compile', 'complex', 'connect_entities', 'copyright', 'cos', 'craft_item', 'credits',
+    'delattr', 'dict', 'dir', 'divmod', 'enumerate', 'essential_builtins', 'eval',
+    'eval_with_timeout', 'exec', 'execute_body', 'execute_node', 'execution_trace', 'exit',
+    'extract_item', 'filter', 'float', 'floor', 'format', 'frozenset',
+    'get_connection_amount', 'get_entities', 'get_entity', 'get_functions', 'get_messages',
+    'get_prototype_recipe', 'get_research_progress', 'get_resource_patch', 'getattr',
+    'globals', 'harvest_resource', 'hasattr', 'hash', 'help', 'hex', 'id', 'input',
+    'insert_item', 'inspect_inventory', 'instance', 'int', 'isinstance', 'issubclass',
+    'iter', 'launch_rocket', 'len', 'license', 'line_value', 'list', 'load',
+    'load_messages', 'locals', 'log', 'log_counter', 'logging_results', 'loop_context',
+    'map', 'max', 'max_sequential_exception_count', 'memoryview', 'min', 'move_to',
+    'nearest', 'nearest_buildable', 'next', 'object', 'oct', 'open', 'ord',
+    'persistent_vars', 'pi', 'pickup_entity', 'place_entity', 'place_entity_next_to',
+    'player_location', 'pow', 'print', 'property', 'prototype_by_name', 'quit', 'range',
+    'repr', 'reset', 'reversed', 'rotate_entity', 'round', 'score', 'send_message', 'set',
+    'set_entity_recipe', 'set_research', 'setattr', 'sin', 'sleep', 'slice', 'sorted',
+    'sqrt', 'staticmethod', 'str', 'sum', 'super', 'tan', 'tcp_port', 'tuple', 'type',
+    'vars', 'zip'
+})
+
+# (2) THROUGHPUT CORROBORATION. Producing-entity kind for every FLE 0.4.3
+# lab-play throughput target, grounded in the recipe/entity probe. The kind
+# selects which entity-model field must corroborate a throughput statistic
+# before levels 3 and 4 are credited (_entity_produces_target):
+#   "mined"     a MiningDrill/PumpJack whose .resources holds the target
+#   "smelted"   a Furnace whose .furnace_result holds the target (or whose
+#               .furnace_source holds its ore) — furnaces carry no recipe
+#   "assembled" an AssemblingMachine/ChemicalPlant/OilRefinery whose .recipe
+#               makes the target (recipe.name or a product name matches)
+# recipe categories come back null from get_prototype_recipe on 0.4.3, so the
+# kind is mapped here rather than derived from category. A target absent from
+# this map is UNMAPPED: corroboration is NOT enforced (fail-open, so an untested
+# future target can never wrongly block a legitimate win) and the observation
+# marks it. All 24 tasks this adapter serves are mapped.
+_TARGET_PRODUCER_KIND = {
+    "iron-ore": "mined",
+    "crude-oil": "mined",
+    "iron-plate": "smelted",
+    "steel-plate": "smelted",
+    "iron-gear-wheel": "assembled",
+    "electronic-circuit": "assembled",
+    "advanced-circuit": "assembled",
+    "processing-unit": "assembled",
+    "inserter": "assembled",
+    "stone-wall": "assembled",
+    "engine-unit": "assembled",
+    "battery": "assembled",
+    "plastic-bar": "assembled",
+    "sulfur": "assembled",
+    "sulfuric-acid": "assembled",
+    "petroleum-gas": "assembled",
+    "low-density-structure": "assembled",
+    "piercing-rounds-magazine": "assembled",
+    "automation-science-pack": "assembled",
+    "logistic-science-pack": "assembled",
+    "military-science-pack": "assembled",
+    "chemical-science-pack": "assembled",
+    "production-science-pack": "assembled",
+    "utility-science-pack": "assembled",
+}
+
+# Vanilla smelting graph: the input a furnace consumes to make each smelted
+# target. Used only by the "smelted" corroboration branch, because a furnace has
+# no settable recipe to read the target off of directly.
+_SMELTING_INPUT = {
+    "iron-plate": "iron-ore",
+    "copper-plate": "copper-ore",
+    "steel-plate": "iron-plate",
+    "stone-brick": "stone",
+}
+
+
+def _inventory_has(inventory: Any, item: str) -> bool:
+    """True if an FLE Inventory (or its pydantic-extra dict) holds a positive
+    count of `item`. Tolerant of both shapes seen in FLE 0.4.3 (spike.py)."""
+    if inventory is None:
+        return False
+    try:
+        items = dict(inventory.items())
+    except Exception:  # noqa: BLE001 - pydantic extras fallback
+        items = getattr(inventory, "__pydantic_extra__", None) or {}
+    try:
+        return float(items.get(item, 0) or 0) > 0
+    except (TypeError, ValueError):
+        return bool(items.get(item))
+
+
+def _entity_produces_target(entity: Any, target: str, kind: str) -> bool:
+    """True if `entity` is a coherent automated source of `target` for its kind.
+
+    This is the corroboration the win predicate demands before crediting a
+    throughput statistic: a `dynamic` rate with no producing entity is
+    incoherent — a forged or injected stat (NAMESPACE_AUDIT.md residual risk 3).
+    Reads only public entity-model fields, all confirmed populated by
+    get_entities() on the pinned version.
+    """
+    if kind == "mined":
+        for resource in (getattr(entity, "resources", None) or []):
+            if getattr(resource, "name", None) == target:
+                return True
+        return False
+    if kind == "smelted":
+        if _inventory_has(getattr(entity, "furnace_result", None), target):
+            return True
+        ore = _SMELTING_INPUT.get(target)
+        if ore is not None and _inventory_has(getattr(entity, "furnace_source", None), ore):
+            return True
+        return False
+    if kind == "assembled":
+        recipe = getattr(entity, "recipe", None)
+        if recipe is None:
+            return False
+        if getattr(recipe, "name", None) == target:
+            return True
+        for product in (getattr(recipe, "products", None) or []):
+            if getattr(product, "name", None) == target:
+                return True
+        return False
+    return False  # unmapped kind: the session does not enforce (fail-open)
+
+
+# ---------------------------------------------------------------------------
 # Program screening — the capability boundary (see NAMESPACE_AUDIT.md)
 # ---------------------------------------------------------------------------
 
@@ -409,6 +592,23 @@ class FactorioSession:
         self._resets = 0
         self._levels = 0
 
+        # Throughput corroboration: which entity kind is a legitimate automated
+        # source of this target, and whether the corroboration is enforced. All
+        # 24 shipped tasks are mapped; an unmapped target fails open (see the
+        # _TARGET_PRODUCER_KIND note and PROTOCOL.md).
+        self._producer_kind = _TARGET_PRODUCER_KIND.get(self.target_item, "unmapped")
+        self._corroboration_enforced = self._producer_kind in (
+            "mined",
+            "smelted",
+            "assembled",
+        )
+
+        # Unknown-global monitor: snapshot the program-visible globals once, at
+        # session start, before any agent RUN has added its own variables to the
+        # namespace. Logging only — never refuses, never voids (PROTOCOL.md).
+        self._namespace_watch = self._compute_namespace_watch()
+        self._log_namespace_watch(root)
+
     # -- lifecycle ---------------------------------------------------------
 
     def _start_cluster(self) -> None:
@@ -551,11 +751,11 @@ class FactorioSession:
             items = getattr(inventory, "__pydantic_extra__", None) or {}
         return {str(k): int(v) for k, v in sorted(items.items()) if v}
 
-    def _entities(self) -> tuple[list[dict[str, Any]], dict[str, int]]:
+    def _entities(self) -> tuple[list[dict[str, Any]], dict[str, int], list[Any]]:
         try:
-            found = self._namespace.get_entities()
+            found = list(self._namespace.get_entities())
         except Exception:  # noqa: BLE001 - a broken query must not kill the run
-            return [], {}
+            return [], {}, []
         rows: list[dict[str, Any]] = []
         counts: dict[str, int] = {}
         for item in found:
@@ -572,7 +772,76 @@ class FactorioSession:
                 }
             )
         rows.sort(key=lambda row: json.dumps(row, sort_keys=True))
-        return rows[:ENTITY_SAMPLE_CAP], dict(sorted(counts.items()))
+        # The raw objects are returned alongside the JSON rows so the throughput
+        # corroboration can read the rich fields (recipe, resources, furnace
+        # inventories) the rows drop.
+        return rows[:ENTITY_SAMPLE_CAP], dict(sorted(counts.items())), found
+
+    def _produces_target(self, entities_raw: list[Any]) -> bool:
+        """True if a real entity is a coherent automated source of the target.
+
+        The throughput statistic the verifier reads is forgeable through any
+        RCON escape (NAMESPACE_AUDIT.md); this ties a credited rate to physical
+        production. A rate with no producing entity is not credited.
+        """
+        for entity in entities_raw:
+            try:
+                if _entity_produces_target(entity, self.target_item, self._producer_kind):
+                    return True
+            except Exception:  # noqa: BLE001 - corroboration must never kill a run
+                continue
+        return False
+
+    def _compute_namespace_watch(self) -> dict[str, Any]:
+        """Enumerate the globals an agent program would actually see and flag any
+        not in the expected set for the pinned FLE (see _EXPECTED_FLE_GLOBALS).
+
+        Reproduces FLE's own eval_with_timeout construction: non-underscore
+        builtins | non-underscore namespace attributes | non-underscore
+        persistent_vars keys. A monitor only — it never raises, refuses, changes
+        state, or voids the run; every branch swallows its own failure.
+        """
+        import builtins as _bi
+
+        seen: set[str] = {n for n in dir(_bi) if not n.startswith("_")}
+        try:
+            seen |= {n for n in dir(self._namespace) if not n.startswith("_")}
+        except Exception:  # noqa: BLE001 - a monitor must never raise
+            pass
+        try:
+            seen |= {
+                str(k)
+                for k in self._namespace.persistent_vars.keys()
+                if not str(k).startswith("_")
+            }
+        except Exception:  # noqa: BLE001
+            pass
+        unexpected = sorted(n for n in seen if n not in _EXPECTED_FLE_GLOBALS)
+        return {
+            "expected_globals": len(_EXPECTED_FLE_GLOBALS),
+            "observed_globals": len(seen),
+            "unexpected_globals": unexpected,
+            "clean": not unexpected,
+        }
+
+    def _log_namespace_watch(self, root: Path) -> None:
+        """Best-effort: also drop the watch into the run's activity journal. The
+        observation body carries it regardless; this is a convenience for a
+        reader tailing the journal, wrapped so a missing or locked journal can
+        never affect the run."""
+        try:
+            from assay.core import append_jsonl
+
+            append_jsonl(
+                Path(root) / ".assay" / "activity.jsonl",
+                {
+                    "kind": "namespace_watch",
+                    "world": self.world_id,
+                    **self._namespace_watch,
+                },
+            )
+        except Exception:  # noqa: BLE001 - the observation body is authoritative
+            pass
 
     def _research(self) -> dict[str, Any]:
         raw = self._command(
@@ -614,13 +883,26 @@ class FactorioSession:
             for pre, post in zip(self._snapshots, self._snapshots[1:])
         ]
 
-    def _grade(self, flows: Mapping[str, Any], counts: Mapping[str, int]) -> int:
+    def _grade(
+        self,
+        flows: Mapping[str, Any],
+        counts: Mapping[str, int],
+        producer_present: bool,
+    ) -> int:
         """The milestone ladder, computed from server state only.
 
         1  the first unit of the target item has been produced
         2  an automated chain producing it exists
         3  a full 60 s window met the quota
         4  the quota also held through the next 60 s — the holdout — = WIN
+
+        Throughput corroboration (prevention): levels 3 and 4 read Factorio's
+        production statistic, which any RCON escape can forge (NAMESPACE_AUDIT.md
+        probe R). They are credited only if a real entity is actually producing
+        the target (`producer_present`). A rate with no producing entity is
+        incoherent — a forged or injected stat — so the milestone is capped
+        below 3. For an unmapped target the corroboration cannot be grounded and
+        is not enforced (fail-open), so a legitimate win is never blocked.
         """
         rates = self._window_rates()
         produced = float(dict(flows.get("output") or {}).get(self.target_item, 0.0))
@@ -630,6 +912,8 @@ class FactorioSession:
             level = 1
         if automated > 0 and counts:
             level = max(level, 2)
+        if self._corroboration_enforced and not producer_present:
+            return level
         if any(rate >= self.quota for rate in rates):
             level = max(level, 3)
         if any(
@@ -643,9 +927,10 @@ class FactorioSession:
 
     def _observe(self) -> dict[str, Any]:
         flows = self._flows()
-        entities, counts = self._entities()
+        entities, counts, entities_raw = self._entities()
+        producer_present = self._produces_target(entities_raw)
         rates = self._window_rates()
-        level = max(self._levels, self._grade(flows, counts))
+        level = max(self._levels, self._grade(flows, counts, producer_present))
         self._levels = level
         output = {
             key: value
@@ -682,6 +967,17 @@ class FactorioSession:
             "research": self._research(),
             "policy_refusals": self._refusals,
             "resets": self._resets,
+            # Prevention: throughput (levels 3/4) is credited only when a real
+            # entity is producing the target; a rate with no producer is a
+            # forged/incoherent stat and is capped below 3 (see _grade).
+            "throughput_corroboration": {
+                "enforced": self._corroboration_enforced,
+                "producer_kind": self._producer_kind,
+                "producer_present": producer_present,
+            },
+            # Monitor: the program-visible globals checked against the pinned
+            # FLE's expected set. `unexpected_globals` empty == no new handle.
+            "namespace_watch": self._namespace_watch,
         }
         return {
             "data": data,
