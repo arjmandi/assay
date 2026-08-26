@@ -99,11 +99,11 @@ def _decode_observation(value: Mapping[str, Any]) -> dict[str, Any]:
 def _client_timeout(computed: float) -> float:
     """The client's socket wait, with an env-set floor for slow worlds.
 
-    Defaults are unchanged when ASSAY_BROKER_TIMEOUT is unset (ARC and every
-    fast local sim keep their exact behavior). Slow worlds under emulation
-    (e.g. Factorio through box64) export it as a floor in seconds so a long
-    but legitimate operation does not trip the client's give-up and orphan
-    the owner's reply."""
+    Defaults are unchanged when ASSAY_BROKER_TIMEOUT is unset (a fast local
+    sim keeps its exact behavior). A slow world — emulated, containerized, or
+    otherwise heavy per step — exports it as a floor in seconds so a long but
+    legitimate operation does not trip the client's give-up and orphan the
+    owner's reply."""
     floor = os.getenv("ASSAY_BROKER_TIMEOUT")
     if not floor:
         return computed
