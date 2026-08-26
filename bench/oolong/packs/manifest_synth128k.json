@@ -1,0 +1,27 @@
+{
+  "answer_types": [
+    "ANSWER_TYPE.COMPARISON",
+    "ANSWER_TYPE.LABEL",
+    "ANSWER_TYPE.MONTH_YEAR",
+    "ANSWER_TYPE.NUMERIC",
+    "ANSWER_TYPE.USER"
+  ],
+  "benchmark": "oolong",
+  "context_len": 131072,
+  "context_window_id": 40021,
+  "corpus_chars": 384019,
+  "corpus_sha256": "5ba752bbbbbd91700cc8d9e3202f4a104292bd4ce89a0735f1cc6427d0cf6a85",
+  "dataset": "negation",
+  "dataset_repo": "oolongbench/oolong-synth",
+  "dataset_revision": "f0d59eaf0febf130664cfceb710436c8e3216b2b",
+  "gold_location": "questions jsonl only (sealed; never in corpus/observation)",
+  "n_questions": 25,
+  "packid": "synth128k",
+  "source_shard": "test-00004-of-00041.parquet",
+  "split": "synth",
+  "task_groups": [
+    "counting",
+    "timeline",
+    "user"
+  ]
+}

@@ -141,3 +141,32 @@ unaffected.
     packs/{corpus,questions,manifest}_{id}.*   the packs
     vendor/oolong_eval_helpers.py   upstream OOLONG scorer, verbatim (MIT)
     vendor/{LICENSE.oolong,PROVENANCE.md}
+
+
+## M2 length-ladder sweep — PRE-REGISTERED 2026-08-26 (before any scored run)
+
+Decision 19: single-arm length-invariance, no three-arm E-C7. Contrast is
+OOLONG's own PUBLISHED bare-model degradation (cited, not re-run). 128K is the
+anchor; the flatness 128K -> 4M is the demonstration.
+
+Rungs (oolongbench/oolong-synth, test split, pinned revision
+`f0d59eaf0febf130664cfceb710436c8e3216b2b`):
+
+| rung | context_len | cwid | questions | groups (count/user/time) |
+|---|---|---|---|---|
+| synth128k | 131072 | 40021 | 25 | 3/11/11 |
+| synth1m | 1048576 | 90032 | 25 | 5/7/13 |
+| synth4m | 4194304 | 80021 | 20 | 5/9/6 |
+
+Protocol: Opus 5; registry_200.json (budget 200 actions per rung); one run
+directory per rung; the agent reads the corpus FILE offline (free), pays only
+BANK_FACT (span verbatim-checked) and SUBMIT (span + v1 census gated); answers
+sealed, scored only at finalize by the vendored OOLONG scorer. Run sequentially,
+cheapest rung first. Budget cap: $100 hard for the sweep.
+
+Pre-registered readings (stated before results): accuracy and $/question stay
+approximately FLAT across 128K -> 1M -> 4M (length-invariance), while OOLONG's
+published bare-model accuracy falls with length and cannot run at 4M at all.
+A large accuracy drop at the long rungs would weaken the invariance claim and
+we would report it. Citation-integrity (all SUBMIT spans verbatim) and coverage
+are captured as byproducts.
