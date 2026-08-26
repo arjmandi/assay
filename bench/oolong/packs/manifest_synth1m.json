@@ -1,0 +1,27 @@
+{
+  "answer_types": [
+    "ANSWER_TYPE.COMPARISON",
+    "ANSWER_TYPE.DATE",
+    "ANSWER_TYPE.LABEL",
+    "ANSWER_TYPE.NUMERIC",
+    "ANSWER_TYPE.USER"
+  ],
+  "benchmark": "oolong",
+  "context_len": 1048576,
+  "context_window_id": 90032,
+  "corpus_chars": 2930641,
+  "corpus_sha256": "d14a6c7464953af1761770517132e11abfd5dc6e0c745ad72305fb541f943408",
+  "dataset": "app_reviews",
+  "dataset_repo": "oolongbench/oolong-synth",
+  "dataset_revision": "f0d59eaf0febf130664cfceb710436c8e3216b2b",
+  "gold_location": "questions jsonl only (sealed; never in corpus/observation)",
+  "n_questions": 25,
+  "packid": "synth1m",
+  "source_shard": "test-00018-of-00041.parquet",
+  "split": "synth",
+  "task_groups": [
+    "counting",
+    "timeline",
+    "user"
+  ]
+}
