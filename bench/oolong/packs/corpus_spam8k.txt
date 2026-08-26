@@ -1,0 +1,137 @@
+The following lines contain 129 text messages, one per line. Each text message can be classified as spam or ham (i.e., not spam).
+
+You will be asked to answer questions about the aggregate label statistics across all 129 examples in this dataset. Do not try to guess, estimate, or approximate the result. Calculate the exact answer given these datapoints.
+
+Date: Jun 10, 2025 || User: 91312 || Instance: Good morning princess! Happy New Year! 
+Date: Feb 21, 2023 || User: 21741 || Instance: 0A$NETWORKS allow companies to bill for SMS, so they are responsible for their "suppliers", just as a shop has to give a guarantee on what they sell. B. G. 
+Date: Feb 24, 2022 || User: 91312 || Instance: He is world famamus.... 
+Date: Oct 14, 2022 || User: 66119 || Instance: URGENT This is our 2nd attempt to contact U. Your £900 prize from YESTERDAY is still awaiting collection. To claim CALL NOW 09061702893. ACL03530150PM 
+Date: Jul 30, 2023 || User: 50171 || Instance: LORD OF THE RINGS:RETURN OF THE KING in store NOW!REPLY LOTR by 2 June 4 Chance 2 WIN LOTR soundtrack CDs StdTxtRate. Reply STOP to end txts 
+Date: Dec 01, 2022 || User: 70773 || Instance: You have an important customer service announcement from PREMIER. Call FREEPHONE 0800 542 0578 now! 
+Date: Apr 09, 2024 || User: 40739 || Instance: 44 7732584351, Do you want a New Nokia 3510i colour phone DeliveredTomorrow? With 300 free minutes to any mobile + 100 free texts + Free Camcorder reply or call 08000930705. 
+Date: Nov 28, 2024 || User: 66119 || Instance: 1000's flirting NOW! Txt GIRL or BLOKE & ur NAME & AGE, eg GIRL ZOE 18 to 8007 to join and get chatting! 
+Date: Feb 23, 2023 || User: 21741 || Instance: Santa Calling! Would your little ones like a call from Santa Xmas eve? Call 09058094583 to book your time. 
+Date: Jul 10, 2024 || User: 77869 || Instance: what are your new years plans? 
+Date: Dec 14, 2023 || User: 91312 || Instance: "For the most sparkling shopping breaks from 45 per person; call 0121 2025050 or visit www.shortbreaks.org.uk" 
+Date: Jul 13, 2022 || User: 21741 || Instance: PRIVATE! Your 2003 Account Statement for shows 800 un-redeemed S.I.M. points. Call 08718738001 Identifier Code: 49557 Expires 26/11/04 
+Date: May 15, 2022 || User: 21741 || Instance: S.s:)i thinl role is like sachin.just standing. Others have to hit. 
+Date: Apr 05, 2022 || User: 24885 || Instance: Dhoni have luck to win some big title.so we will win:) 
+Date: Mar 30, 2023 || User: 44755 || Instance: So now my dad is gonna call after he gets out of work and ask all these crazy questions. 
+Date: Oct 02, 2022 || User: 66119 || Instance: Omg it could snow here tonite! 
+Date: Apr 13, 2023 || User: 76201 || Instance: Oh. U must have taken your REAL Valentine out shopping first. 
+Date: Apr 17, 2024 || User: 56809 || Instance: Didn't try, g and I decided not to head out 
+Date: Feb 08, 2025 || User: 53020 || Instance: Customer Loyalty Offer:The NEW Nokia6650 Mobile from ONLY £10 at TXTAUCTION! Txt word: START to No: 81151 & get yours Now! 4T&Ctxt TC 150p/MTmsg 
+Date: May 04, 2024 || User: 70773 || Instance: Yes.he have good crickiting mind 
+Date: Mar 12, 2023 || User: 94535 || Instance: Then u drive lor. 
+Date: Jan 08, 2023 || User: 29238 || Instance: Thanks for your subscription to Ringtone UK your mobile will be charged £5/month Please confirm by replying YES or NO. If you reply NO you will not be charged 
+Date: Dec 02, 2023 || User: 53020 || Instance: URGENT! We are trying to contact U. Todays draw shows that you have won a £800 prize GUARANTEED. Call 09050001808 from land line. Claim M95. Valid12hrs only 
+Date: Mar 08, 2024 || User: 57551 || Instance: I want some cock! My hubby's away, I need a real man 2 satisfy me. Txt WIFE to 89938 for no strings action. (Txt STOP 2 end, txt rec £1.50ea. OTBox 731 LA1 7WS. ) 
+Date: Apr 28, 2025 || User: 21741 || Instance: Yup ok... 
+Date: Aug 29, 2023 || User: 47973 || Instance: Some of them told accenture is not confirm. Is it true. 
+Date: Dec 19, 2023 || User: 66119 || Instance: How come u got nothing to do? 
+Date: Jul 19, 2024 || User: 70773 || Instance: Carlos is taking his sweet time as usual so let me know when you and patty are done/want to smoke and I'll tell him to haul ass 
+Date: Feb 19, 2023 || User: 77869 || Instance: Which is weird because I know I had it at one point 
+Date: Dec 23, 2022 || User: 95427 || Instance: Don no da:)whats you plan? 
+Date: May 13, 2023 || User: 70773 || Instance: URGENT! Your mobile No 077xxx WON a £2,000 Bonus Caller Prize on 02/06/03! This is the 2nd attempt to reach YOU! Call 09066362206 ASAP! BOX97N7QP, 150ppm 
+Date: Nov 04, 2022 || User: 12283 || Instance: Haha just kidding, papa needs drugs 
+Date: Jan 01, 2024 || User: 46551 || Instance: New Theory: Argument wins d SITUATION, but loses the PERSON. So dont argue with ur friends just.. . . . kick them &amp; say, I'm always correct.! 
+Date: Apr 01, 2023 || User: 47973 || Instance: Ah, well that confuses things, doesn‘t it? 
+Date: May 24, 2024 || User: 89066 || Instance: Ok u can take me shopping when u get paid =D 
+Date: Nov 28, 2023 || User: 47973 || Instance: Do you want 750 anytime any network mins 150 text and a NEW VIDEO phone for only five pounds per week call 08002888812 or reply for delivery tomorrow 
+Date: Mar 13, 2025 || User: 21741 || Instance: Sorry for the delay. Yes masters 
+Date: Mar 28, 2023 || User: 45191 || Instance: hanks lotsly! 
+Date: Jan 14, 2024 || User: 91312 || Instance: Da is good good player.why he is unsold. 
+Date: Jul 01, 2024 || User: 53020 || Instance: YOU VE WON! Your 4* Costa Del Sol Holiday or £5000 await collection. Call 09050090044 Now toClaim. SAE, TC s, POBox334, Stockport, SK38xh, Cost£1.50/pm, Max10mins 
+Date: May 09, 2022 || User: 76201 || Instance: Joy's father is John. Then John is the ____ of Joy's father. If u ans ths you hav  &lt;#&gt;  IQ. Tis s IAS question try to answer. 
+Date: Dec 30, 2024 || User: 45191 || Instance: Someone has conacted our dating service and entered your phone because they fancy you!To find out who it is call from landline 09111030116. PoBox12n146tf15 
+Date: Mar 10, 2024 || User: 52409 || Instance: I am sorry it hurt you. 
+Date: Jun 24, 2023 || User: 77869 || Instance: Knock Knock Txt whose there to 80082 to enter r weekly draw 4 a £250 gift voucher 4 a store of yr choice. T&Cs www.tkls.com age16 to stoptxtstop£1.50/week 
+Date: Jun 06, 2023 || User: 12980 || Instance: U've been selected to stay in 1 of 250 top British hotels - FOR NOTHING! Holiday valued at £350! Dial 08712300220 to claim - National Rate Call. Bx526, SW73SS 
+Date: Jul 18, 2022 || User: 91312 || Instance: Actually nvm, got hella cash, we still on for  &lt;#&gt; ish? 
+Date: Nov 26, 2024 || User: 76201 || Instance: Please call our customer service representative on 0800 169 6031 between 10am-9pm as you have WON a guaranteed £1000 cash or £5000 prize! 
+Date: Sep 28, 2024 || User: 53020 || Instance: 5 Free Top Polyphonic Tones call 087018728737, National Rate. Get a toppoly tune sent every week, just text SUBPOLY to 81618, £3 per pole. UnSub 08718727870. 
+Date: Feb 25, 2023 || User: 91312 || Instance: Do you like Italian food? 
+Date: Jun 17, 2023 || User: 66269 || Instance: I see a cup of coffee animation 
+Date: Apr 24, 2022 || User: 60973 || Instance: URGENT! We are trying to contact U. Todays draw shows that you have won a £800 prize GUARANTEED. Call 09050003091 from land line. Claim C52. Valid12hrs only 
+Date: Sep 25, 2023 || User: 53020 || Instance: Our brand new mobile music service is now live. The free music player will arrive shortly. Just install on your phone to browse content from the top artists. 
+Date: Jun 09, 2022 || User: 66119 || Instance: Well there's not a lot of things happening in Lindsay on New years *sighs* Some bars in Ptbo and the blue heron has something going 
+Date: Feb 21, 2024 || User: 53020 || Instance: U have a Secret Admirer who is looking 2 make contact with U-find out who they R*reveal who thinks UR so special-call on 09065171142-stopsms-08 
+Date: Apr 25, 2024 || User: 77869 || Instance: Jamster! To get your free wallpaper text HEART to 88888 now! T&C apply. 16 only. Need Help? Call 08701213186. 
+Date: Jul 08, 2023 || User: 21741 || Instance: No rushing. I'm not working. I'm in school so if we rush we go hungry. 
+Date: May 12, 2025 || User: 46551 || Instance: Allo! We have braved the buses and taken on the trains and triumphed. I mean we‘re in b‘ham. Have a jolly good rest of week 
+Date: Sep 12, 2023 || User: 70773 || Instance: Sorry to be a pain. Is it ok if we meet another night? I spent late afternoon in casualty and that means i haven't done any of y stuff42moro and that includes all my time sheets and that. Sorry.  
+Date: Feb 27, 2023 || User: 46551 || Instance: My battery is low babe 
+Date: Jan 06, 2025 || User: 50171 || Instance: En chikku nange bakra msg kalstiya..then had tea/coffee? 
+Date: Aug 04, 2023 || User: 53020 || Instance: Nokia phone is lovly.. 
+Date: Jan 27, 2024 || User: 50171 || Instance: Its ok., i just askd did u knw tht no? 
+Date: May 24, 2024 || User: 45191 || Instance: I will cme i want to go to hos 2morow. After that i wil cme. This what i got from her dear what to do. She didnt say any time 
+Date: Apr 20, 2025 || User: 45191 || Instance: Not course. Only maths one day one chapter with in one month we can finish. 
+Date: May 13, 2024 || User: 53020 || Instance: Hi, the SEXYCHAT girls are waiting for you to text them. Text now for a great night chatting. send STOP to stop this service 
+Date: Apr 19, 2022 || User: 47973 || Instance: Can't take any major roles in community outreach. You rock mel 
+Date: Nov 15, 2024 || User: 79326 || Instance: Hello from Orange. For 1 month's free access to games, news and sport, plus 10 free texts and 20 photo messages, reply YES. Terms apply: www.orange.co.uk/ow 
+Date: Jul 28, 2023 || User: 21741 || Instance: WIN: We have a winner! Mr. T. Foley won an iPod! More exciting prizes soon, so keep an eye on ur mobile or visit www.win-82050.co.uk 
+Date: Jul 03, 2024 || User: 40739 || Instance: You have 1 new message. Call 0207-083-6089 
+Date: Nov 23, 2022 || User: 41189 || Instance: Please CALL 08712402578 immediately as there is an urgent message waiting for you 
+Date: Nov 23, 2024 || User: 50171 || Instance: Hey do you want anything to buy:) 
+Date: May 25, 2025 || User: 53020 || Instance: Nah, I'm a perpetual DD 
+Date: Jul 19, 2024 || User: 70773 || Instance: Summers finally here! Fancy a chat or flirt with sexy singles in yr area? To get MATCHED up just reply SUMMER now. Free 2 Join. OptOut txt STOP Help08714742804 
+Date: Mar 27, 2025 || User: 47973 || Instance: 'An Amazing Quote'' - "Sometimes in life its difficult to decide whats wrong!! a lie that brings a smile or the truth that brings a tear...." 
+Date: Jan 14, 2024 || User: 76201 || Instance: Oh k.k..where did you take test? 
+Date: Jan 06, 2025 || User: 46551 || Instance: Only if you promise your getting out as SOON as you can. And you'll text me in the morning to let me know you made it in ok. 
+Date: Jul 31, 2024 || User: 40739 || Instance: T-Mobile customer you may now claim your FREE CAMERA PHONE upgrade & a pay & go sim card for your loyalty. Call on 0845 021 3680.Offer ends 28thFeb.T&C's apply 
+Date: Mar 04, 2023 || User: 54914 || Instance: Yeah confirmed for you staying at  that weekend 
+Date: Feb 18, 2024 || User: 16345 || Instance: You should get more chicken broth if you want ramen unless there's some I don't know about 
+Date: Jan 25, 2024 || User: 50171 || Instance: Hmmm...k...but i want to change the field quickly da:-)i wanna get system administrator or network administrator.. 
+Date: Sep 13, 2022 || User: 47973 || Instance: The world is running and i am still.maybe all are feeling the same,so be it.or i have to admit,i am mad.then where is the correction?or let me call this is life.and keep running with the world,may be u r also running.lets run. 
+Date: Oct 22, 2023 || User: 21741 || Instance: Get a brand new mobile phone by being an agent of The Mob! Plus loads more goodies! For more info just text MAT to 87021. 
+Date: Nov 23, 2022 || User: 70773 || Instance: K. I will sent it again 
+Date: Sep 20, 2023 || User: 46551 || Instance: Jay wants to work out first, how's 4 sound? 
+Date: Jan 21, 2024 || User: 46551 || Instance: Poyyarikatur,kolathupalayam,unjalur post,erode dis, &lt;#&gt; . 
+Date: Jul 28, 2022 || User: 45191 || Instance: Dear Voucher Holder, To claim this weeks offer, at your PC please go to http://www.wtlp.co.uk/text. Ts&Cs apply. 
+Date: Mar 08, 2024 || User: 45191 || Instance: todays vodafone numbers ending with 0089(my last four digits) are selected to received a £350 award. If your number matches please call 09063442151 to claim your £350 award 
+Date: Jan 03, 2025 || User: 77953 || Instance: Tell me they're female :V how're you throwing in? We're deciding what all to get now 
+Date: Jun 24, 2023 || User: 45191 || Instance: Beautiful Truth against Gravity.. Read carefully: "Our heart feels light when someone is in it.. But it feels very heavy when someone leaves it.." GOOD NIGHT 
+Date: Jul 09, 2022 || User: 51873 || Instance: I hope you arnt pissed off but id would really like to see you tomorrow. Love me xxxxxxxxxxxxxX 
+Date: Aug 18, 2023 || User: 66119 || Instance: Just sent you an email – to an address with incomm in it, is that right? 
+Date: Apr 19, 2025 || User: 66119 || Instance: Aiyah e rain like quite big leh. If drizzling i can at least run home. 
+Date: Jul 25, 2023 || User: 70773 || Instance: K.k.this month kotees birthday know? 
+Date: Aug 15, 2023 || User: 40739 || Instance: FreeMsg Today's the day if you are ready! I'm horny & live in your town. I love sex fun & games! Netcollex Ltd 08700621170150p per msg reply Stop to end 
+Date: May 29, 2022 || User: 40739 || Instance: The fact that you're cleaning shows you know why i'm upset. Your priority is constantly "what i want to do," not "what i need to do." 
+Date: Mar 05, 2023 || User: 40739 || Instance: CLAIRE here am havin borin time & am now alone U wanna cum over 2nite? Chat now 09099725823 hope 2 C U Luv CLAIRE xx Calls£1/minmoremobsEMSPOBox45PO139WA 
+Date: Apr 08, 2025 || User: 45191 || Instance: Hope you enjoyed your new content. text stop to 61610 to unsubscribe. help:08712400602450p Provided by tones2you.co.uk 
+Date: Apr 04, 2024 || User: 59137 || Instance: Yep. I do like the pink furniture tho. 
+Date: May 16, 2022 || User: 70773 || Instance: Mila, age23, blonde, new in UK. I look sex with UK guys. if u like fun with me. Text MTALK to 69866.18 . 30pp/txt 1st 5free. £1.50 increments. Help08718728876 
+Date: Mar 30, 2023 || User: 51089 || Instance: Had your mobile 10 mths? Update to latest Orange camera/video phones for FREE. Save £s with Free texts/weekend calls. Text YES for a callback orno to opt out 
+Date: Feb 27, 2022 || User: 80739 || Instance: Free entry in 2 a weekly comp for a chance to win an ipod. Txt POD to 80182 to get entry (std txt rate) T&C's apply 08452810073 for details 18+ 
+Date: Mar 11, 2022 || User: 57199 || Instance: Join the UK's horniest Dogging service and u can have sex 2nite!. Just sign up and follow the instructions. Txt ENTRY to 69888 now! Nyt.EC2A.3LP.msg@150p 
+Date: May 29, 2025 || User: 76201 || Instance: Not heard from U4 a while. Call me now am here all night with just my knickers on. Make me beg for it like U did last time 01223585236 XX Luv Nikiyu4.net 
+Date: Oct 18, 2022 || User: 46551 || Instance: Wylie update: my weed dealer carlos went to freedom and had a class with lunsford 
+Date: Feb 21, 2025 || User: 91312 || Instance: Ok lar i double check wif da hair dresser already he said wun cut v short. He said will cut until i look nice. 
+Date: Jun 28, 2022 || User: 27055 || Instance: In sch but neva mind u eat 1st lor.. 
+Date: Jan 18, 2024 || User: 40739 || Instance: I hope your alright babe? I worry that you might have felt a bit desparate when you learned the job was a fake ? I am here waiting when you come back, my love 
+Date: Apr 29, 2025 || User: 40322 || Instance: 83039 62735=£450 UK Break AccommodationVouchers terms & conditions apply. 2 claim you mustprovide your claim number which is 15541  
+Date: Nov 23, 2023 || User: 66119 || Instance: U have a secret admirer who is looking 2 make contact with U-find out who they R*reveal who thinks UR so special-call on 09058094599 
+Date: Nov 16, 2024 || User: 77869 || Instance: Ya ok, vikky vl c witin  &lt;#&gt; mins and il reply u.. 
+Date: Aug 01, 2022 || User: 46551 || Instance: And popping &lt;#&gt; ibuprofens was no help. 
+Date: Nov 28, 2022 || User: 77869 || Instance: We took hooch for a walk toaday and i fell over! Splat! Grazed my knees and everything! Should have stayed at home! See you tomorrow!  
+Date: Jan 17, 2025 || User: 11973 || Instance: Hey there! Glad u r better now. I hear u treated urself to a digi cam, is it good? We r off at 9pm. Have a fab new year, c u in coupla wks! 
+Date: May 05, 2024 || User: 66189 || Instance: Urgent! call 09066350750 from your landline. Your complimentary 4* Ibiza Holiday or 10,000 cash await collection SAE T&Cs PO BOX 434 SK3 8WP 150 ppm 18+  
+Date: May 20, 2022 || User: 46551 || Instance: Dear 0776xxxxxxx U've been invited to XCHAT. This is our final attempt to contact u! Txt CHAT to 86688 150p/MsgrcvdHG/Suite342/2Lands/Row/W1J6HL LDN 18yrs  
+Date: Oct 02, 2022 || User: 53020 || Instance: Congratulations U can claim 2 VIP row A Tickets 2 C Blu in concert in November or Blu gift guaranteed Call 09061104276 to claim TS&Cs www.smsco.net cost£3.75max  
+Date: Aug 03, 2024 || User: 91766 || Instance: Had your mobile 11 months or more? U R entitled to Update to the latest colour mobiles with camera for Free! Call The Mobile Update Co FREE on 08002986030 
+Date: Feb 22, 2023 || User: 47973 || Instance: LOL ... No just was busy 
+Date: Dec 11, 2023 || User: 70773 || Instance: I dunno lei... Like dun haf... 
+Date: May 28, 2023 || User: 21741 || Instance: We tried to contact you re your reply to our offer of 750 mins 150 textand a new video phone call 08002988890 now or reply for free delivery tomorrow 
+Date: Jun 08, 2024 || User: 76201 || Instance: Urgent! Please call 09066612661 from your landline, your complimentary 4* Lux Costa Del Sol holiday or £1000 CASH await collection. ppm 150 SAE T&Cs James 28, EH74RR 
+Date: Aug 08, 2024 || User: 45191 || Instance: As one of our registered subscribers u can enter the draw 4 a 100 G.B. gift voucher by replying with ENTER. To unsubscribe text STOP 
+Date: Jul 31, 2023 || User: 76201 || Instance: Ill call u 2mrw at ninish, with my address that icky American freek wont stop callin me 2 bad Jen k eh? 
+Date: Jan 15, 2023 || User: 70773 || Instance: URGENT! Your Mobile number has been awarded with a £2000 prize GUARANTEED. Call 09058094455 from land line. Claim 3030. Valid 12hrs only 
+Date: Jun 14, 2025 || User: 40739 || Instance: Babe, have you got enough money to pick up bread and milk ? And I'll give you it back when you get home ? 
+Date: Jun 16, 2024 || User: 46551 || Instance: Babe ? I lost you ... Will you try rebooting ? 
+Date: Dec 28, 2024 || User: 75646 || Instance: Latest News! Police station toilet stolen, cops have nothing to go on! 
+Date: Dec 16, 2024 || User: 70773 || Instance: Haf u eaten? Wat time u wan me 2 come? 
+Date: Aug 20, 2022 || User: 53020 || Instance: That's y u haf 2 keep me busy... 
+Recall: the preceding lines contain 129 text messages, one per line. Each text message can be classified as spam or ham (i.e., not spam).
+
+You will be asked to answer questions about the aggregate label statistics across all 129 examples in this dataset. Do not try to guess, estimate, or approximate the result. Calculate the exact answer given these datapoints.
+
