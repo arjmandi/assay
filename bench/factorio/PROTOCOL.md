@@ -164,31 +164,65 @@ The design rule from M0: never let "time passes" be an implicit side effect.
   polls `game.tick` to detect completion; that poll is wall-clock but the tick
   count is not — the server delivers exactly N.
 - `RUN` executes against a frozen world, with one exception. Factorio's path
-  finder answers on an in-game event, so `move_to` and `connect_entities`
-  cannot complete while the game is paused (M0's one hard tick dependency).
-  A program naming `move_to`, `connect_entities`, or `harvest_resource` (which
-  walks to an out-of-reach resource) earns a fixed allowance of
-  `RUN_PATH_TICKS = 180` ticks, pumped concurrently over the adapter's own
-  second RCON socket. The allowance is decided by static analysis of the
-  program text, so **the tick cost of a `RUN` is a function of the program
-  alone** — the same program always costs 180 ticks or always costs 0.
+  finder answers only on an in-game event, so `move_to` and `connect_entities`
+  cannot complete while the game is paused (M0's one hard tick dependency), and
+  a real route issues many path queries in sequence — ticks must keep flowing
+  for as long as the program runs. A program naming `move_to`,
+  `connect_entities`, or `harvest_resource` (which walks to an out-of-reach
+  resource) earns an **adaptive** pathfinding allowance: the adapter pumps ticks
+  in `RUN_PATH_TICK_STEP = 60`-tick increments over its own second RCON socket,
+  alongside the program's worker thread, until the worker returns (every path
+  answered) or the hard cap `RUN_PATH_TICK_CAP = 6000` ticks is reached. The
+  exact tick delta the pump spends is recorded — implicitly, as the `tick`
+  cursor the action carries into its observation, which the broker journals.
+  (A single fixed 180-tick allowance was used before; it drained before a long
+  route's later queries, which then hit a frozen world — `connect_entities`
+  returned "No path found" and built nothing, forcing agents to hand-place
+  belts. `RUN_PATH_TICKS = 180` is retained only as the backward-compatible
+  value a pre-adaptive journal recorded, reused verbatim on replay.)
 - The observation reports `tick` as the delta from the session anchor, never
   Factorio's absolute `game.tick`. The absolute value counts from server boot
   and is not reproducible (M0); the delta is.
 
 The journal is therefore a sequence of (program, tick-delta) pairs and replays
-exactly. **Verified in M1:** restarting the broker on the finished smoke run
-replayed all six paid actions from a fresh world — including two 3600-tick
-production windows that reproduced 57 and 63 iron ore exactly — and the CLI
-printed `RESUMED | ironore | completed run` rather than `LOCAL_REPLAY_DIVERGED`.
+exactly. For a `WAIT` the delta is the requested `ticks`; for a pathfinding
+`RUN` it is the delta the adaptive pump recorded (above). **Verified in M1:**
+restarting the broker on the finished smoke run replayed all six paid actions
+from a fresh world — including two 3600-tick production windows that reproduced
+57 and 63 iron ore exactly — and the CLI printed `RESUMED | ironore | completed
+run` rather than `LOCAL_REPLAY_DIVERGED`.
 
-Known limit, stated rather than papered over: during a `RUN` that earns the
-pathfinding allowance, the 180 ticks are pumped concurrently with the program's
-own RCON calls, so the *interleaving* is wall-clock dependent even though the
-tick total is exact. This is inert while nothing time-driven is running (the
-build phase) and could in principle shift a production count by a fraction of a
-second's worth of output if an agent moves around inside a running factory. If
-a run ever reports `LOCAL_REPLAY_DIVERGED` this is the first suspect.
+Determinism of the adaptive allowance — the design rule that keeps it exact.
+A pathfinding `RUN`'s live tick cost is *variable*: the pump runs until the
+worker returns, so wall-clock timing (RCON latency, the path finder's own
+polling) decides how many increments elapse. Live variability is fine because
+**replay never re-derives the cost — it reuses the recorded one.** At session
+start the adapter reads `.assay/mutations.jsonl` and recovers, in journal order,
+the tick delta every already-recorded pathfinding `RUN` spent (a `RUN`'s delta
+is the rise in its cursor over the previous action's). On the local resume the
+broker replays each recorded action through a fresh session; a replayed
+pathfinding `RUN` pumps *exactly* its recorded delta (still in increments
+alongside the worker, so the re-issued path queries still see ticks flowing,
+then topped up to the recorded total if the worker returns early) instead of
+pumping adaptively. The cursor — and thus the whole observation — therefore
+reconstructs identically, and the broker's own `LOCAL_REPLAY_DIVERGED` check
+enforces it action by action. Empirically: the same sequence (a `move_to`, a
+`connect_entities` belt, a `WAIT`, a `connect_entities` pipe) run live recorded
+deltas `[120, 480, 300, 600]`; replaying its journal reused the three path
+deltas `[120, 480, 600]` and reproduced the identical state fingerprint and
+final tick, as did an independent fresh live run. A pre-adaptive journal's flat
+`+180` path deltas are recovered and reused the same way (backward compatible).
+
+Residual, stated rather than papered over: the pump's *interleaving* with the
+program's own RCON calls is wall-clock dependent even though the recorded tick
+total is reused exactly, so a `RUN` that both routes a path and drives a running
+factory could in principle read a production count a fraction of a second early.
+This is inert while nothing time-driven is running (the build phase). Two other
+edge cases: if a route genuinely needs more than `RUN_PATH_TICK_CAP` ticks the
+pump stops early and the program's remaining queries fail (raise the cap), and a
+mutation journal hand-edited to a tick the world cannot reproduce will, rightly,
+`LOCAL_REPLAY_DIVERGED`. If a run ever reports that, the pathfinding allowance is
+the first suspect.
 
 **Not the REMOTE fallback.** RESEARCH.md §7.4 held open the option of treating
 Factorio runs like ARC's competition mode — non-reconstructible, artifacts

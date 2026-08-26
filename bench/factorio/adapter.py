@@ -50,7 +50,21 @@ from assay.core import AssayError
 TICKS_PER_SECOND = 60
 WINDOW_TICKS = 60 * TICKS_PER_SECOND  # 3600 — one 60-second measurement window
 MAX_WAIT_TICKS = WINDOW_TICKS  # one WAIT may not exceed a single window
-RUN_PATH_TICKS = 180  # pathfinding allowance granted to a RUN that needs one
+# Pathfinding tick allowance for a RUN that needs one (see _do_run and
+# PROTOCOL.md). Factorio's path finder answers only on an in-game event, and a
+# real route issues many sequential path queries, so ticks must keep flowing for
+# the WHOLE time the program runs — a fixed pre-counted allowance either starves
+# a long route or, having finished early, leaves later queries hitting a frozen
+# world (the connect_entities bug). Live execution therefore pumps ticks in
+# RUN_PATH_TICK_STEP increments alongside the worker thread until it returns
+# (every path answered) or RUN_PATH_TICK_CAP is hit, and RECORDS the exact tick
+# delta consumed. Replay REUSES that recorded delta rather than re-deriving it
+# (which timed out variably), so the journal reconstructs to the identical tick.
+RUN_PATH_TICK_STEP = 60  # ticks per pump increment (one in-game second)
+RUN_PATH_TICK_CAP = 6000  # hard ceiling (~100 in-game s) for one pathfinding RUN
+# Legacy fixed allowance. Retained as the backward-compatible fallback for a
+# pre-adaptive journal entry whose recorded tick delta cannot be read back.
+RUN_PATH_TICKS = 180
 WIN_LEVELS = 4
 DEFAULT_ADDRESS = "localhost"
 DEFAULT_TCP_PORT = 27000
@@ -352,8 +366,9 @@ _DENIED_ATTRS = frozenset(
 
 # Calls whose FLE implementation blocks on Factorio's asynchronous path finder.
 # `move_to` and `connect_entities` use it directly; `harvest_resource` walks to
-# an out-of-reach resource through `move_to`. A program naming one of these
-# earns a fixed tick allowance; every other program runs against a frozen world.
+# an out-of-reach resource through `move_to`. A program naming one of these earns
+# the adaptive pathfinding tick allowance (see _do_run / _pump_pathfinding_ticks);
+# every other program runs against a frozen world.
 _PATHFINDING_CALLS = frozenset({"move_to", "connect_entities", "harvest_resource"})
 
 
@@ -591,6 +606,21 @@ class FactorioSession:
         self._refusals = 0
         self._resets = 0
         self._levels = 0
+
+        # Pathfinding tick ledger for deterministic replay. A RUN that needs the
+        # path finder pumps ticks adaptively while it runs (live) and spends a
+        # variable delta; that delta is recorded implicitly as the cursor carried
+        # in the action's observation, which the broker journals. On a resume the
+        # broker replays the journal through a fresh copy of this session and
+        # requires each observation to reproduce exactly, so a replayed
+        # pathfinding RUN must REUSE the delta it spent live rather than re-derive
+        # it. `_recorded_path_deltas` holds those deltas — one per journaled
+        # pathfinding RUN, in order — read from the mutation journal at start;
+        # each is popped as its RUN is replayed (see _pump_pathfinding_ticks). It
+        # is empty on a fresh run, so live RUNs pump adaptively. Backward
+        # compatible: a pre-adaptive journal recorded +180, so 180 is reused.
+        self._root = Path(root)
+        self._recorded_path_deltas = self._load_recorded_path_deltas()
 
         # Throughput corroboration: which entity kind is a legitimate automated
         # source of this target, and whether the corroboration is enforced. All
@@ -1049,6 +1079,100 @@ class FactorioSession:
         self._stdout = ""
         self._stderr = ""
 
+    def _load_recorded_path_deltas(self) -> list[int]:
+        """Recover the tick delta each already-journaled pathfinding RUN spent.
+
+        The broker records every paid action to `.assay/mutations.jsonl` with the
+        observation it produced, and on a local resume it replays that journal
+        through a fresh session, requiring each observation — the cursor `tick`
+        included — to reproduce exactly. A pathfinding RUN's live tick cost is
+        variable (the pump runs until the path finder answers), so replay cannot
+        re-derive it; it must reuse what was spent. This reads that ledger.
+
+        A pathfinding RUN's delta is the rise in the cursor across it. The journal
+        stores the cursor AFTER each action, so the delta is this RUN's recorded
+        tick minus the previous action's recorded tick (0 before the first, and 0
+        after a RESET, which the journal's ticks already reflect). Only RUNs the
+        screen marks as needing the path finder are collected, in journal order —
+        exactly the RUNs that will call the pump on replay, so ledger and pump
+        stay in lockstep (a skipped opener RESET is not a pathfinding RUN and
+        cannot desynchronise them). A pre-adaptive journal recorded a flat +180
+        per pathfinding RUN, read back verbatim (backward compatible).
+
+        Best-effort and self-contained: an unreadable entry falls back to the
+        legacy fixed allowance, and a missing or corrupt journal yields an empty
+        ledger, so every RUN then pumps adaptively — the fresh-run path.
+        """
+        try:
+            from assay.core import load_jsonl
+
+            records = load_jsonl(self._root / ".assay" / "mutations.jsonl")
+        except Exception:  # noqa: BLE001 - no journal / unreadable => fresh run
+            return []
+        deltas: list[int] = []
+        prev_tick = 0
+        for record in records:
+            action = str(record.get("action", "")).upper()
+            try:
+                this_tick: int | None = int(
+                    ((record.get("observation") or {}).get("data") or {}).get("tick")
+                )
+            except (TypeError, ValueError):
+                this_tick = None
+            if action == "RUN":
+                needs_ticks = False
+                try:
+                    program = (record.get("data") or {}).get("program")
+                    refusal, needs_ticks = screen_program(_decode_program(program))
+                    needs_ticks = needs_ticks and refusal is None
+                except Exception:  # noqa: BLE001 - undecodable => treat as no path
+                    needs_ticks = False
+                if needs_ticks:
+                    deltas.append(
+                        RUN_PATH_TICKS
+                        if this_tick is None
+                        else max(this_tick - prev_tick, 0)
+                    )
+            if this_tick is not None:
+                prev_tick = this_tick
+        return deltas
+
+    def _pump_pathfinding_ticks(self, worker: threading.Thread) -> None:
+        """Advance ticks while a pathfinding RUN's worker thread runs.
+
+        Factorio's path finder answers only on an in-game event, so its result
+        arrives only as ticks advance, and a real route issues many path queries
+        in sequence — ticks must keep flowing for as long as the program runs.
+        This pumps them in RUN_PATH_TICK_STEP increments alongside the worker,
+        never in one pre-counted block that could drain before the program's
+        later queries (the connect_entities bug), until the worker returns (every
+        path answered) or RUN_PATH_TICK_CAP is reached. The number pumped is the
+        action's tick delta; the caller journals it implicitly via the cursor.
+
+        On replay `_recorded_path_deltas` holds the delta this RUN spent live, in
+        order, and it is reused verbatim: the pump still runs alongside the worker
+        (which re-issues the same path queries and still needs ticks flowing) but
+        stops at exactly the recorded total, topping up any shortfall if the
+        worker returned early. So the cursor — and thus the whole observation —
+        reconstructs identically, which is what lets a variably-timed live run
+        replay deterministically.
+        """
+        if self._recorded_path_deltas:
+            target = self._recorded_path_deltas.pop(0)
+            pumped = 0
+            while pumped < target and worker.is_alive():
+                chunk = min(RUN_PATH_TICK_STEP, target - pumped)
+                self._advance(chunk)
+                pumped += chunk
+            if pumped < target:  # worker returned early — honor the recorded total
+                self._advance(target - pumped)
+            return
+        pumped = 0
+        while worker.is_alive() and pumped < RUN_PATH_TICK_CAP:
+            chunk = min(RUN_PATH_TICK_STEP, RUN_PATH_TICK_CAP - pumped)
+            self._advance(chunk)
+            pumped += chunk
+
     def _do_run(self, source: str) -> None:
         refusal, needs_ticks = screen_program(source)
         if refusal is not None:
@@ -1072,12 +1196,14 @@ class FactorioSession:
         worker = threading.Thread(target=execute, daemon=True)
         worker.start()
         if needs_ticks:
-            # Factorio's path finder answers on an in-game event, so a program
-            # that asks for a path needs ticks while it waits. The allowance is
-            # fixed and pre-declared, so the tick cost of a RUN is a function of
-            # the program text alone and replays identically.
+            # Factorio's path finder answers only as ticks advance, so a program
+            # that asks for a path needs ticks flowing WHILE it runs. Pump them
+            # adaptively (see _pump_pathfinding_ticks): live, in increments until
+            # the worker returns or the cap; on replay, exactly the delta the live
+            # run recorded. The tick cost is journaled implicitly via the cursor,
+            # so a resume reuses it and the RUN reconstructs deterministically.
             try:
-                self._advance(RUN_PATH_TICKS)
+                self._pump_pathfinding_ticks(worker)
             except AssayError:
                 worker.join(timeout=300)
                 raise
