@@ -96,6 +96,23 @@ def _decode_observation(value: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
+def _client_timeout(computed: float) -> float:
+    """The client's socket wait, with an env-set floor for slow worlds.
+
+    Defaults are unchanged when ASSAY_BROKER_TIMEOUT is unset (ARC and every
+    fast local sim keep their exact behavior). Slow worlds under emulation
+    (e.g. Factorio through box64) export it as a floor in seconds so a long
+    but legitimate operation does not trip the client's give-up and orphan
+    the owner's reply."""
+    floor = os.getenv("ASSAY_BROKER_TIMEOUT")
+    if not floor:
+        return computed
+    try:
+        return max(computed, float(floor))
+    except ValueError:
+        return computed
+
+
 def _request(
     paths: RunPaths, payload: Mapping[str, Any], timeout: float = 10.0
 ) -> dict[str, Any]:
@@ -164,7 +181,7 @@ def broker_step(
     response = _request(
         paths,
         {"op": "step", "action": action, "data": data, "reasoning": reasoning},
-        timeout=30.0,
+        timeout=_client_timeout(30.0),
     )
     return (
         _decode_observation(response["observation"]),
@@ -179,7 +196,7 @@ def broker_gated(
     """Send one gated operation to the daemon; returns the receipt. The CLI is
     a stateless display client on registry runs — enforcement happens where
     the session and credentials live."""
-    timeout = 60.0 + 30.0 * max(1, steps)
+    timeout = _client_timeout(60.0 + 30.0 * max(1, steps))
     response = _request(paths, payload, timeout=timeout)
     receipt = response.get("receipt")
     if not isinstance(receipt, dict):
@@ -564,9 +581,16 @@ def serve(paths: RunPaths) -> None:
                     raise AssayError(f"unknown broker operation {operation!r}")
             except Exception as error:  # noqa: BLE001 - isolate arbitrary adapter failures
                 response = {"ok": False, "error": f"{type(error).__name__}: {error}"}
-            connection.sendall(
-                json.dumps(response, separators=(",", ":")).encode() + b"\n"
-            )
+            try:
+                connection.sendall(
+                    json.dumps(response, separators=(",", ":")).encode() + b"\n"
+                )
+            except OSError as error:
+                # The client hung up (e.g. its socket timeout fired on a slow
+                # operation) before we could reply. The action is already
+                # journaled; a lost response must never take down the owner.
+                # Keep serving so the client can re-read state on its next call.
+                print(f"broker: client gone before reply ({error}); continuing", flush=True)
         if terminal:
             atomic_json(
                 paths.broker,

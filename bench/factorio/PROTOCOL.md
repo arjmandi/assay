@@ -41,6 +41,7 @@ uv pip install 'factorio-learning-environment==0.4.3' 'a2a-sdk<1' 'factorio-rcon
 python -m fle cluster start -n 1
 
 # a run
+export ASSAY_BROKER_TIMEOUT=600   # slow box64 ops: client waits longer; the broker also survives a client hangup (kernel fix 2026-08-26)
 export PATH="$PWD/.venv/bin:$PATH"
 ASSAY=<repo>/bin/assay
 mkdir <run-dir> && cd <run-dir>            # one directory = one run

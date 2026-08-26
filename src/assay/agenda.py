@@ -59,7 +59,12 @@ def waivers_path(paths: RunPaths) -> Path:
 def mint_owner_token(paths: RunPaths) -> str:
     """Mint the run's owner token at start; store only its hash. Returns the
     token exactly once — the caller prints it for the owner/launcher."""
+    # token_urlsafe uses the URL-safe base64 alphabet, which includes "-", so
+    # ~1 in 32 tokens starts with "-" — which argparse then reads as a missing
+    # value for `--token`. Re-mint until it does not lead with a dash.
     token = secrets.token_urlsafe(24)
+    while token.startswith("-"):
+        token = secrets.token_urlsafe(24)
     atomic_json(
         owner_path(paths),
         {"sha256": hashlib.sha256(token.encode()).hexdigest(), "minted_at": time.time()},
