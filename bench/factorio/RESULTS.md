@@ -10,7 +10,7 @@ publication — calibration to price and de-risk the 24-task sweep (M3).
 |---|---|---|---|---|---|---|
 | ironplate (iron_plate) | **WIN 4/4** | 5 | $1.99 | ~9 min | CLEAN | 0 |
 | irongear (iron_gear_wheel) | **WIN 4/4** | 9 | $4.87 | ~20 min | CLEAN | 0 |
-| circuit (electronic_circuit) | **WIN 4/4** | 38 | $19.21 | ~83 min | CLEAN | 0 |
+| circuit (electronic_circuit) | **WIN 4/4** | 9 | $4.44 | ~17 min | CLEAN | 0 |
 
 Every win triple-verified (kernel `assay audit` CLEAN, standalone
 `assay-verify` CLEAN on the fresh journal, throughput corroboration enforced
@@ -26,14 +26,14 @@ production statistic cannot be scored as a win (corroboration).
 
 ## Calibration findings for M3
 
-1. **`connect_entities` is non-functional through the adapter.** The circuit
-   player hand-placed 63 belts, 23 poles, ~15 pipes because the FLE
-   connection helper did not work. This is why circuit cost $19.21 (over the
-   $15/run kill line) and took 38 actions vs 5–9 for the shallower tasks.
-   The 7 never-solved deep tasks have far more connections; a 24-task sweep
-   with `connect_entities` broken would be expensive and would fail deep
-   tasks for an adapter reason, not a capability one. **BLOCKING for M3 —
-   fix first (bench-layer, no kernel change, no gate).**
+1. **`connect_entities` — FIXED 2026-08-26.** It was non-functional (fixed
+   180-tick pathfinding allowance too small + a race); the first circuit run
+   hand-placed 63 belts/23 poles/15 pipes, costing $19.21/38 actions. The
+   adapter now pumps ticks adaptively until the pathfinder answers and records
+   the delta for deterministic replay. **Circuit re-run: WIN at $4.44/9
+   actions** (4.3x cheaper, under the $15 line), connect_entities routing the
+   lines. One residual: a MediumElectricPole route can stop short and needs a
+   couple of hand-placed bridge poles — minor, not blocking.
 2. **move_to pathfinding-tick allowance** killed two board states until the
    player discovered that priming with a resource query restores it. Needs an
    adapter fix or explicit documentation so the agent is not taxed to
