@@ -61,3 +61,18 @@ is intentionally minimal — the unread-region ledger (RESEARCH.md §6.1) is the
 refinement; (c) `0.75^|Δ|` partial credit masks near-miss counting errors, which
 is why correctness is sealed and the citation/coverage gate carries the
 mid-run signal.
+
+## M2 length-ladder sweep — results (single-arm, sealed scoring)
+
+| rung | context_len | accuracy (mean) | exact | questions | paid actions | cost | audit |
+|---|---|---|---|---|---|---|---|
+| synth128k | 131,072 | **0.870** | 20/25 | 25 | 50 | $10.10 | CLEAN |
+
+Anchor (128K): 0.870 is competitive with the published ~0.90 agentic baseline
+at 128K-synth. By group: user 1.00, timeline 0.83, counting 0.54 (n=3). By
+answer type: LABEL/USER/MONTH_YEAR 1.0, NUMERIC 0.78, COMPARISON 0.67. Every
+SUBMIT span verbatim; sealed (gold absent from the journal until finalize).
+n = 1 corpus x 25 questions per rung — a demonstration, not a powered study.
+1M and 4M rungs pending. Friction: `assay status` truncates long question
+text; agent-written verifiers flagged VACUOUS (the span-check is the real
+gate, so validity is unaffected).
