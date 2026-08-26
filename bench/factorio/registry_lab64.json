@@ -1,0 +1,12 @@
+{
+  "budget": {"actions": 64},
+  "batching": {"hand_cap": null},
+  "zero_prior": false,
+  "secrets": ["ASSAY_FLE_RCON_PASSWORD", "FLE_RCON_PASSWORD", "RCON_PASSWORD", "FACTORIO_RCON_PASSWORD"],
+  "goal": {"text": "Build a factory that automatically produces the observation's target_item at quota_per_window units or more within one 3600-tick window, and holds that rate through the next full window. Hand-mining and hand-crafting are not automated production and do not count toward the rate."},
+  "mode_note": "FLE lab-play parity (Option A). Programs are screened before execution; refused attempts are journaled. API reference: bench/factorio/FLE_API.md",
+  "actions": [
+    {"name": "RUN", "params": {"program": {"type": "str"}}, "description": "runs one program against the FLE API; source is base64-encoded UTF-8. API reference in bench/factorio/FLE_API.md — the same reference published FLE agents receive."},
+    {"name": "WAIT", "params": {"ticks": {"type": "int", "min": 1, "max": 3600}}, "description": "advances the world by an exact number of ticks; 60 ticks is one in-game second and 3600 is one measurement window."}
+  ]
+}
