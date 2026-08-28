@@ -31,7 +31,8 @@ standalone, stdlib-only reference implementation — it imports nothing from
 this repo's kernel — that recomputes a journal's integrity verdict (hash
 chain, gate coverage, predict/grade consistency) from artifacts alone.
 `verify/fixtures/` has a clean synthetic journal plus one deliberately
-broken in each way the verifier detects.
+broken in each way the verifier detects. See `VERIFY.md` to run it yourself
+in about five minutes.
 
 ## Quickstart (60 seconds, no API keys)
 
