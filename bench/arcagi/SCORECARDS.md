@@ -23,7 +23,7 @@ fresh cards. Therefore:
   demonstrate live reasoning.
 - The action sequences are verbatim: an offline dry run confirmed all 25 games
   reproduce their recorded outcome by re-sending every recorded paid action,
-  with no skips or edits (8,156 actions total).
+  with no skips or edits (8,157 actions total).
 
 | Card | Scope | Link |
 |---|---|---|
@@ -44,6 +44,22 @@ final state, same levels, same action count per game). The card also settled a
 small arithmetic error of ours: the true set total is **8,157** paid actions,
 not the 8,156 our tables previously stated — journals, actions sent, and the
 card all agree at 8,157, and the docs were corrected.
+
+**Validate-path status (arjmandi/me#754):** the 96.54/96.54 agreement above is
+currently a read of the card's own rendered SCORE and per-game rows, cross-checked
+by eye against `rhae.py`'s offline output — not yet a machine diff of the raw
+`GET /api/scorecard/702ccd4f-...` JSON run through `rhae.py --validate`. The two
+facts that make the eyeballed match strong evidence rather than a coincidence:
+`rhae.py --validate` already reproduces 25/25 *other* published cards' per-game
+scores exactly (worst error 0.000000, see `RESULTS.md`), and this card is a replay
+of our own recorded action sequences with 25/25 games matching their recorded
+outcome and action count exactly — so the same per-level inputs that produced our
+offline 96.54 are what the server scored. Closing the last gap needs one fetch this
+agent run couldn't make (no `ARC_API_KEY` in this worktree, by design — see
+`CLAUDE.md`'s agentd constraints): `GET https://three.arcprize.org/api/scorecard/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32`
+with an `X-API-Key` header, save the response as `scorecard.json` in a directory,
+then `python3 rhae.py --validate <dir>`. Needs an attended session with API
+credentials.
 
 Machine replay wall-clock: 64.8 minutes for the whole set. Agent wall-clock for
 the same runs was ≈37 hours measured over 20 runs — the difference is exactly

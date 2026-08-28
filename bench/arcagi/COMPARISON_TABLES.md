@@ -28,8 +28,9 @@ row (`SCORECARDS.md` documents the replay's provenance and limits).
 | Prime Agent | Opus 5, median card | 95.24 (published) | 20 / 25 | lf52 27.27 · sk48 77.61 · tn36 79.00 · cd82 98.88 · g50t 98.25 |
 | PRO-LONG | Fable 5 | 94.71 (published cards) | 19 / 25 | re86 41.67 · bp35 74.85 · g50t 78.44 · lf52 81.82 · dc22 93.63 · cd82 97.38 |
 
-Reference point: the ARC-reported **human-expert baseline is 95.4** — ASSAY,
-Prime Agent (marginally) and arc-skill clear it; PRO-LONG's Fable cohort does not.
+Reference point: the ARC-reported **human-expert baseline is 95.4** — ASSAY and
+arc-skill clear it; Prime Agent (95.24, marginally below) and PRO-LONG's Fable
+cohort (94.71) do not.
 
 Two consequences worth stating plainly:
 
