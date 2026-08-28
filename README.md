@@ -21,8 +21,11 @@ terminal, or an LLM agent) and a world you register:
 You supply two things: a **registry** (a JSON contract of what the agent may
 do — names, typed parameter schemas, budgets, flags, the goal) and an
 **adapter** (one Python file plugging ASSAY into your world). See `GUIDE.md`
-for the user guide, `CONSTITUTION.md` for the agent-facing manual, and `bench/`
-for benchmark harnesses and results.
+for the user guide, `CONSTITUTION.md` for the agent-facing manual, `bench/`
+for benchmark harnesses and results, and `POSITIONING.md` for what this
+project is actually for — test-time learning and self-improving agents,
+with verification as the adjacent mechanism that keeps the learning signal
+honest, not the other way around.
 
 ## Quickstart (60 seconds, no API keys)
 
