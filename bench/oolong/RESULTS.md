@@ -62,46 +62,100 @@ refinement; (c) `0.75^|Δ|` partial credit masks near-miss counting errors, whic
 is why correctness is sealed and the citation/coverage gate carries the
 mid-run signal.
 
-## M2 length-ladder sweep — results (single-arm, sealed scoring)
+## M2 — four-arm competitor comparison (raw vs naive Claude Code vs Prime Agent vs ASSAY)
 
-| rung | context_len | accuracy (mean) | exact | questions | paid actions | cost | audit |
-|---|---|---|---|---|---|---|---|
-| synth128k | 131,072 | **0.870** | 20/25 | 25 | 50 | $10.10 | CLEAN |
-| synth1m | 1,048,576 | **0.701** | 16/25 | 25 | ~? | $5.16 | CLEAN |
+Every arm uses the SAME backend (claude-opus-5), the SAME corpora (the 128K/1M/4M
+packs), the SAME gold-free question sets, and the SAME grader (the vendored OOLONG
+scorer, sha256 247583a3…, real python-dateutil), scored over the full question set.
+Crucially, every arm gets the SAME neutral task with **no strategy hint** — the
+only thing that differs is the harness. No external or published number is used;
+OOLONG supplies only the corpora, questions, and scorer.
 
-Anchor (128K): 0.870 is competitive with the published ~0.90 agentic baseline
-at 128K-synth. By group: user 1.00, timeline 0.83, counting 0.54 (n=3). By
-answer type: LABEL/USER/MONTH_YEAR 1.0, NUMERIC 0.78, COMPARISON 0.67. Every
-SUBMIT span verbatim; sealed (gold absent from the journal until finalize).
-n = 1 corpus x 25 questions per rung — a demonstration, not a powered study.
-1M and 4M rungs pending. Friction: `assay status` truncates long question
-text; agent-written verifiers flagged VACUOUS (the span-check is the real
-gate, so validity is unaffected).
+The arms:
+- **raw** — the whole corpus in the model's context window, no tools, one call.
+- **naive Claude Code** — `claude -p`, the full default Claude Code harness, same
+  tools ASSAY has, handed "here is a corpus file and these questions" with no
+  hint about how to solve it.
+- **Prime Agent** — Prime Intellect's open-source RLM harness (MIT), run headless
+  on Opus 5 via our API key; it holds the corpus as a variable in a persistent
+  IPython REPL and fans out to recursive subagents.
+- **ASSAY (de-hinted)** — the referee harness with its strategy hint STRIPPED, so
+  its framing matches the competitors: span-cited BANK_FACT/SUBMIT, predict-before-
+  act, hash-chained journal, sealed scoring, but no "read-as-file/grep" guidance.
 
+An earlier "plain-agentic" arm (a minimal agent spoon-fed ASSAY's read-as-file/grep
+strategy) was **retired as a strawman** — it was handed the winning approach and so
+matched ASSAY trivially, proving nothing.
 
-### The confound (must be stated): raw accuracy is not flat, and this design cannot say why
+| rung | raw | ASSAY (de-hinted) | naive Claude Code | Prime Agent |
+|---|---|---|---|---|
+| synth128k | **0.447** (9/25) | 0.764 (16/25) | 0.818 (18/25) | 0.859 (18/25) |
+| synth1m | **WALL** (1.2M tok) | 0.740 (17/25) | 0.740 (17/25) | 0.740 (17/25) |
+| synth4m | **WALL** (~2.8M+ tok) | 1.000 (20/20) | 1.000 (20/20) | 0.850 (17/20) |
 
-128K -> 1M accuracy fell 0.870 -> 0.701. But the rungs use DIFFERENT SOURCE
-datasets (128K = negation; 1M = app_reviews; 4M = metaphors), so the drop
-conflates context length with task difficulty. Two specific reasons it is not
-clean length-degradation:
-- 1M is app_reviews, whose counting questions require per-instance SENTIMENT
-  CLASSIFICATION — the agent trained an offline classifier (93% held-out) and
-  prevalence-corrected. That is a model-bound per-instance judgment the design
-  always said stays model-bound (dossier 6.1), lossy independent of length.
-- The metadata groups also moved (user 1.00 -> 0.786, timeline 0.83 -> 0.695)
-  despite "exact grep/awk"; because numeric answers get 0.75^|diff| partial
-  credit, a small miscount on a larger corpus erodes the mean. Whether that is
-  a genuine length effect or app_reviews being harder cannot be separated at
-  n=1 corpus per rung.
+Cost + wall-clock of the completing run (usd / minutes; Prime Agent's CLI does not
+itemize cost):
 
-**Conclusion: the single-arm sweep as scoped cannot cleanly demonstrate
-accuracy length-invariance** — different sources per rung + n=1 corpus per rung
-confound length with difficulty. What IS length-invariant and clean: the
-mechanism runs identically at any length (corpus on disk, small window), cost
-did not rise with length ($10.10 -> $5.16), citation integrity held (all spans
-verbatim), and the 4M rung is runnable at all (where the bare model cannot go).
+| rung | raw | ASSAY (de-hinted) | naive Claude Code | Prime Agent |
+|---|---|---|---|---|
+| synth128k | 1.11 / 2 | 12.64 / 33 | 4.11 / 16 | — / 10 |
+| synth1m | — | **48.76 / 114** | 8.20 / 30 | — / 5 |
+| synth4m | — | 2.40 / 8 | 0.89 / 4 | — / 2 |
 
-The clean fix for an accuracy-flatness claim: run the SAME source dataset at
-128K/1M/4M (control the confound), and/or several corpora per rung. Pending
-owner decision before the 4M rung.
+(hinted ASSAY, reference only — NOT the fair comparison: 0.870 / 0.701 / 1.000,
+cost 10.10 / 5.16 / 2.37.)
+
+### What the table shows
+
+1. **The raw model walls past 128K.** At 128K the corpus is 149,722 tokens and
+   fits Opus 5's 1M window; the raw model runs and scores 0.447, reproducing the
+   published bare-model floor (~0.46). At 1M (1.2M tokens) and 4M (~2.8M+) the
+   corpus exceeds the window; the raw model loads nothing. This is the one robust,
+   unambiguous result.
+
+2. **All three harnesses run at every length and cluster tightly on accuracy.**
+   Prime Agent, naive Claude Code, and de-hinted ASSAY all run 128K/1M/4M (none
+   put the corpus in context) and land in the same band — identical (0.740) at 1M,
+   identical (1.000) for two of three at 4M. All beat raw by a wide margin.
+
+3. **On a fair, un-hinted footing, ASSAY does not lead on accuracy — and is far
+   less efficient.** At 128K it is the *weakest* harness (0.764 vs naive 0.818 vs
+   Prime 0.859); its counting questions collapsed to ~0 without the hint, while
+   the competitors found the right approach on their own. On cost it is dramatic:
+   de-hinted ASSAY 1M took **$48.76 and 114 minutes** for the same 0.740 that naive
+   Claude Code reached in $8.20 / 30 min. The strategy hint had been load-bearing:
+   hinted ASSAY 1M cost $5.16, de-hinted $48.76 (~10x). ASSAY's referee structure
+   (one-at-a-time, base64 BANK_FACT/SUBMIT, predictions) traps an un-hinted agent
+   in an inefficient loop that a plain modern harness avoids.
+
+4. **The "a general harness's machinery trips on long context" thesis did not
+   hold.** Naive Claude Code — the full default harness with no hint — handled the
+   task fine and aced 4M (1.000, $0.89). Modern harnesses find the corpus-as-file
+   approach themselves; they do not trip.
+
+### Conclusion (honest)
+
+Accuracy and efficiency are NOT where ASSAY separates from a good general harness;
+on both it is at best tied and at worst behind (weakest at 128K, ~10x the cost at
+1M). ASSAY's distinctive value must be the **verification layer** — span-checked
+claims, coverage gating, hash-chained journal, sealed scoring — which none of the
+competitors provide, not a better or cheaper answer. Two things to separate before
+drawing conclusions: (a) the counting collapse and the 114-minute churn may be
+**adapter friction** (the heavy BANK_FACT/SUBMIT/base64/predict mechanics), not a
+flaw in the referee idea — a candidate for redesign; (b) every cell is n=1, so the
+within-band ordering is directional, not precise.
+
+### Provenance and confounds
+
+Backend claude-opus-5 for all arms. Grader bench/oolong/scorer.py ->
+vendor/oolong_eval_helpers.py (sha256 247583a3…), offline, answers as "Answer: {x}".
+ASSAY arms re-scored from sealed SUBMIT records through the same standalone path,
+matching the daemon exactly. Prime Agent ran under `-p` (128K/4M needed its
+completion-gated `--autonomous` mode so its async subagents could return; 1M
+completed under one-shot `-p`). Cross-rung source confound unchanged (128K negation,
+1M app_reviews, 4M metaphors) — read across a rung, not down a column. Per-arm
+answers/scores under ~/workspace/oolong-arms/<rung>/. All arms API-billed on one key.
+
+Friction (all arms): `assay status` truncates long question text (worked around
+with `assay python`); agent-written verifiers were flagged VACUOUS in the ASSAY
+runs, but the in-code span check is the real gate, so validity is unaffected.
