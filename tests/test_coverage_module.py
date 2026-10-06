@@ -98,3 +98,25 @@ def test_coverage_module_trigger_and_telemetry_on_archived_journal(tmp_path):
         assert telemetry["regions_total"] == 64
         assert 0 < telemetry["regions_probed"] <= 64
         assert candidate.demand(view, None) is None
+
+
+def test_changed_compares_settled_frames_only():
+    """Review finding 4: two events whose settled frames are equal but whose
+    animation lists differ in length are NOT a change (ft09's inert-click pulse,
+    bp35's per-action HUD animation). Only frames[-1] is compared."""
+    from assay.modules import import_path
+
+    settled = [[0] * 4 for _ in range(4)]
+    pulse = [[1] * 4 for _ in range(4)]
+    base = {"counts_action": True, "levels_completed": 0, "level_before": 0,
+            "state": "NOT_FINISHED", "grade": []}
+    events = [
+        {**base, "id": 0, "action": "START", "counts_action": False, "frames": [settled]},
+        {**base, "id": 1, "action": "ACTION6", "data": {"x": 1, "y": 1},
+         "frames": [pulse, pulse, pulse, pulse, settled]},
+        {**base, "id": 2, "action": "ACTION6", "data": {"x": 1, "y": 1},
+         "frames": [pulse, settled, pulse]},
+    ]
+    with import_path(MODULE, "assay_module") as module:
+        assert module._changed(events, 1) is False  # five-frame pulse, same settled frame
+        assert module._changed(events, 2) is True   # settled frame differs

@@ -127,15 +127,18 @@ def _level_indices(events):
 
 
 def _changed(events, idx):
-    """Did paid event `idx` change the world? Frame comparison is the canonical,
-    claim-independent signal; progress and grade text are fallbacks."""
+    """Did paid event `idx` change the world? Settled-frame comparison is the
+    canonical, claim-independent signal: `frames` is a list of animation frames
+    ending in the settled frame, so only frames[-1] is compared and a different
+    number of intermediate frames (an inert-click pulse, a HUD tick animation)
+    is not a change (review finding 4). Progress and grade text are fallbacks."""
     event = events[idx]
     if _i(event.get("levels_completed")) > _i(event.get("level_before")):
         return True
     if idx > 0:
         frame, prev = event.get("frames"), events[idx - 1].get("frames")
         if frame is not None and prev is not None:
-            return frame != prev
+            return (frame[-1] if frame else None) != (prev[-1] if prev else None)
     for grade in event.get("grade") or ():
         kind = grade.get("kind")
         if kind in ("level_up", "win", "change") and grade.get("ok"):
