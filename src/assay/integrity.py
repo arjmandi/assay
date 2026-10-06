@@ -208,6 +208,11 @@ def audit(paths: RunPaths) -> dict[str, Any]:
             anchor_state = "DIVERGED"
             problems.append("anchor: anchored event id beyond the journal")
     ungated = ungated_events(events)
+    by_id = {int(event["id"]): event for event in events if event.get("id") is not None}
+    # gate: optional (control arm) — permitted bare acts; counted apart, still ungated.
+    ungated_permitted = [
+        event_id for event_id in ungated if by_id.get(event_id, {}).get("gate_optional")
+    ]
     mutations = load_jsonl(paths.mutations)
     recovered = [
         int(event["id"])
@@ -224,6 +229,7 @@ def audit(paths: RunPaths) -> dict[str, Any]:
         "anchors": anchor_state,
         "anchor_count": len(anchors),
         "ungated": ungated,
+        "ungated_permitted": ungated_permitted,
         "recovered_orphans": recovered,
         "invalid_for_scoring": bool(ungated) or not contiguous
         or chain_state == "DIVERGED" or anchor_state == "DIVERGED",
@@ -244,6 +250,11 @@ def audit_lines(report: Mapping[str, Any]) -> list[str]:
         lines.append(
             f"AUDIT | UNGATED events {report['ungated'][:8]} — the run is invalid "
             "for scoring and trust earned after the first one is demoted"
+        )
+    if report.get("ungated_permitted"):
+        lines.append(
+            f"AUDIT | {len(report['ungated_permitted'])} of them permitted by "
+            "`gate: optional` (control arm) — still invalid for scoring"
         )
     if report["recovered_orphans"]:
         lines.append(

@@ -32,6 +32,7 @@ from .perception import (
 )
 from .registry import (
     budget_line,
+    gate_optional,
     load_registry,
     notes_cap,
     registry_lines,
@@ -442,7 +443,7 @@ def result_text(paths: RunPaths, receipt: Mapping[str, Any]) -> str:
     lines.extend(str(line) for line in receipt.get("modules", ()))
     lines.extend(str(line) for line in receipt.get("aggregates", ()))
     for step in receipt.get("steps", ()):
-        mark = "✓" if step.get("ok") else "✗"
+        mark = "·" if step.get("ungated") else ("✓" if step.get("ok") else "✗")
         lines.append(f"  e{int(step['event']):04d} {step['action']} {mark}")
         lines.extend(f"      {failure}" for failure in step.get("failed", ()))
         lines.extend(f"      {item}" for item in step.get("invalid", ()))
@@ -673,6 +674,11 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
     if registry:
         lines.extend(registry_lines(registry))
         lines.append(budget_line(registry, events))
+        if gate_optional(registry):
+            lines.append(
+                "GATE | optional | --predict may be omitted; an unpredicted act is "
+                "journaled UNGATED and the audit marks this run invalid for scoring"
+            )
         lines.extend(_registry_status_lines(paths, registry, events))
     lines.extend(
         [

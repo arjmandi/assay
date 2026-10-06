@@ -66,7 +66,7 @@ from .inspect import export_history, result_text, status_text, view_text
 from .live import execute_action, execute_solve_plan, execute_steps, reset_level
 from .perception import build_scene_dossier
 from .predictions import CLAIMS_HELP
-from .registry import load_registry_file
+from .registry import gate_optional, load_registry_file
 from .rules import RULES_HELP, init_rules, replay_rules, solve_rules
 
 
@@ -141,8 +141,9 @@ def _parser() -> Parser:
     act.add_argument("coordinates", nargs="*", help=argparse.SUPPRESS)
     act.add_argument(
         "--predict",
-        required=True,
-        help='what this action does, e.g. "move 12,5 1,0" (see below)',
+        required=False,
+        help='what this action does, e.g. "move 12,5 1,0" (see below); required '
+        "unless the registry sets gate: optional",
     )
     act.add_argument("--because", help="short reason for choosing this action")
     act.add_argument("--at", type=int, dest="at_event")
@@ -511,7 +512,14 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             f"STARTED | {requested} | local simulator | competition accounting | replay recovery enabled"
         )
     print(status_text(paths))
-    if registry_spec is not None:
+    if registry_spec is not None and gate_optional(registry_spec):
+        print(
+            "USE | gate: optional — `assay act` runs with or without --predict "
+            "(an unpredicted act is journaled UNGATED; the audit marks the run "
+            "invalid for scoring); parameters go as `assay act NAME pname=value ...`; "
+            "schemas are in REGISTRY above, semantics are never given — learn them by acting"
+        )
+    elif registry_spec is not None:
         print(
             'USE | every `assay act` needs --predict "<claims>"; parameters go as '
             "`assay act NAME pname=value ...`; schemas are in REGISTRY above, "

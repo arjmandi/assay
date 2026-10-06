@@ -47,6 +47,7 @@ from .registry import (
     check_budget,
     check_registry_action,
     check_usd_budget,
+    gate_optional,
     hand_cap,
     load_registry,
     notes_cap,
@@ -275,7 +276,9 @@ def execute_action(
     stepper: Any = None,
 ) -> dict[str, Any]:
     registry = load_registry(paths)
-    claims = parse_claims(predict, general=registry is not None)
+    # gate: optional (control arm) admits a bare act; it is journaled UNGATED.
+    ungated = gate_optional(registry) and not (predict or "").strip()
+    claims = [] if ungated else parse_claims(predict, general=registry is not None)
     check_channel_references(paths, claims)
     _admit_claims(paths, claims)
     events = _head_events(paths, at_event)
@@ -302,12 +305,19 @@ def execute_action(
     pending, prior, warning, elapsed = _paid_step(
         paths, token, reasoning, note=because or "", registry=registry, stepper=stepper
     )
-    graded = grade_action_claims(paths, claims, prior, pending, elapsed_s=elapsed)
+    graded = (
+        [] if ungated
+        else grade_action_claims(paths, claims, prior, pending, elapsed_s=elapsed)
+    )
     missed, invalid_any, predict_ok = _grade_summary(graded)
+    if ungated:
+        predict_ok = None
     ok = not missed and not invalid_any
-    pending["predict"] = predict_journal
+    pending["predict"] = None if ungated else predict_journal
     pending["predict_ok"] = predict_ok
     pending["grade"] = graded
+    if ungated:
+        pending["gate_optional"] = True
     if declares:
         pending["declares"] = {
             key: redact(str(value), secrets) for key, value in declares.items()
@@ -333,6 +343,12 @@ def execute_action(
     elif event["state"] == "GAME_OVER":
         outcome = "GAME_OVER"
         detail = "environment reported GAME_OVER; `assay reset` restarts the level"
+    elif ungated:
+        outcome = "UNGATED"
+        detail = (
+            "no prediction supplied (gate: optional); nothing graded — the audit "
+            "counts this event as UNGATED"
+        )
     elif missed:
         outcome = "SURPRISE"
         first_failed = next(line for line in lines if line.startswith("✗"))
@@ -355,7 +371,7 @@ def execute_action(
             int(event["win_levels"]), int(event["levels_completed"]) + 1
         ),
         "action": canonical_action(event),
-        "predict": predict_journal,
+        "predict": None if ungated else predict_journal,
         "grade": lines,
         "because": because_journal,
     }
@@ -366,8 +382,10 @@ def execute_action(
     return _receipt(paths, receipt)
 
 
-def parse_step(raw: str) -> tuple[str, str]:
+def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
     action, separator, predict = raw.partition("::")
+    if allow_bare and action.strip() and not predict.strip():
+        return action.strip(), ""  # gate: optional — an unpredicted step
     if not separator or not action.strip() or not predict.strip():
         raise AssayError(
             'each step needs its own prediction: --step "ACTION1 :: <claims>"'
@@ -408,10 +426,15 @@ def execute_steps(
             f"(got {len(raw_steps)}); longer batches belong to a replay-fit model "
             f"plan (`assay model replay` then `assay model solve`) — currently: {reason}"
         )
+    bare_ok = gate_optional(registry)
     parsed: list[tuple[str, str, list[dict[str, Any]]]] = []
     for raw in raw_steps:
-        token, predict = parse_step(raw)
-        parsed.append((token, predict, parse_claims(predict, general=registry is not None)))
+        token, predict = parse_step(raw, allow_bare=bare_ok)
+        claims = (
+            [] if bare_ok and not predict
+            else parse_claims(predict, general=registry is not None)
+        )
+        parsed.append((token, predict, claims))
     _validate_batch_tokens([token for token, _, _ in parsed], registry)
     for _, _, claims in parsed:
         check_channel_references(paths, claims)
@@ -440,13 +463,21 @@ def execute_steps(
             paths, token, {"predict": predict}, registry=registry, stepper=stepper
         )
         last_warning = warning or last_warning
-        graded = grade_action_claims(paths, claims, prior, pending, elapsed_s=elapsed)
+        ungated = bare_ok and not predict
+        graded = (
+            [] if ungated
+            else grade_action_claims(paths, claims, prior, pending, elapsed_s=elapsed)
+        )
         missed, invalid_any, predict_ok = _grade_summary(graded)
+        if ungated:
+            predict_ok = None
         ok = not missed and not invalid_any
         all_claims.extend(claims)
-        pending["predict"] = redact(predict, secrets) or ""
+        pending["predict"] = None if ungated else (redact(predict, secrets) or "")
         pending["predict_ok"] = predict_ok
         pending["grade"] = graded
+        if ungated:
+            pending["gate_optional"] = True
         event = _record(paths, pending)
         observe_outcome(paths, registry, load_events(paths), event)
         failed = [line for line in grade_lines(graded) if line.startswith("✗")]
@@ -457,6 +488,8 @@ def execute_steps(
             "ok": ok,
             "failed": failed,
         }
+        if ungated:
+            record["ungated"] = True
         if invalid_lines:
             record["invalid"] = invalid_lines
         records.append(record)

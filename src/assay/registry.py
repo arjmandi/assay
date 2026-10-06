@@ -35,7 +35,11 @@ stay valid unchanged):
       "secrets": ["ENV_NAME", ...],   # env values redacted at the journal boundary
       "observers": [...],             # DECLARED ONLY in v1-rc1 (journaled, inert)
       "control": {...},               # DECLARED ONLY in v1-rc1 (journaled, inert)
-      "mode_note": "free text"        # optional, shown in status (data only)
+      "mode_note": "free text",       # optional, shown in status (data only)
+      "gate": "required"|"optional"   # CONTROL-ARM SWITCH (default required):
+                                      # optional admits act/commit steps with no
+                                      # prediction; they are journaled UNGATED and
+                                      # the audit keeps the run invalid for scoring
     }
 
 Action tokens on the command line: `NAME pname=value pname2=value2`.
@@ -69,6 +73,7 @@ _TOP_KEYS = {
     "secrets",
     "observers",
     "control",
+    "gate",
 }
 _ACTION_KEYS = {
     "name",
@@ -81,6 +86,7 @@ _ACTION_KEYS = {
 }
 _PARAM_KEYS = {"type", "min", "max", "enum"}
 _MODULE_MODES = ("off", "advise", "block")
+_GATES = ("required", "optional")
 
 DEFAULT_HAND_CAP = 3       # the batching law's kernel default; registry-overridable
 DEFAULT_NOTES_CAP = 16_000  # chars; generous enough that compliant runs never see it
@@ -241,6 +247,10 @@ def validate_registry(raw: Any) -> dict[str, Any]:
                 raise AssayError(f"{declared_only} must be a JSON array or object")
             # v1-rc1: accepted and journaled, no runtime behavior (honest gap).
             output[declared_only] = json.loads(json.dumps(value))
+    if "gate" in raw:
+        if raw["gate"] not in _GATES:
+            raise AssayError(f"gate must be one of {list(_GATES)}")
+        output["gate"] = raw["gate"]
     note = raw.get("mode_note")
     if note is not None:
         if not isinstance(note, str):
@@ -280,6 +290,14 @@ def notes_cap(registry: Mapping[str, Any] | None) -> int | None:
 
 def zero_prior(registry: Mapping[str, Any] | None) -> bool:
     return bool(registry and registry.get("zero_prior"))
+
+
+def gate_optional(registry: Mapping[str, Any] | None) -> bool:
+    """True when the registry relaxes the prediction gate (`gate: optional`):
+    act/commit steps may omit their prediction. Such events are journaled
+    UNGATED (predict null, marker gate_optional) and the audit keeps the run
+    invalid for scoring. This is the control-arm switch, not a scorable mode."""
+    return bool(registry and registry.get("gate") == "optional")
 
 
 def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
