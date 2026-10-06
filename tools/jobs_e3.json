@@ -1,0 +1,36 @@
+[
+  {
+    "id": "e3-ft09-import-s1",
+    "kind": "e3",
+    "game": "ft09",
+    "arm": "import",
+    "seed": 1,
+    "run_dir": "/Users/mohsenarjmandi/workspace/assay-runs/e3/ft09-import-s1",
+    "registry": "bench/arcagi/registry_e1_gated_200.json",
+    "constitution": "CONSTITUTION.md",
+    "prompt_template": "tools/prompts/e1_player.md",
+    "cap": 200,
+    "levels": 6,
+    "anchor_dir": "/Users/mohsenarjmandi/workspace/assay-runs/e3/anchors",
+    "max_hours": 4,
+    "source_run": "/Users/mohsenarjmandi/workspace/assay-runs/e1/ft09-gated-s1",
+    "prepare": "PRO-LONG/.venv/bin/python3 tools/e3_prepare.py ft09 (run BEFORE the orchestrator; the orchestrator has no pre-step and ignores this field)"
+  },
+  {
+    "id": "e3-tr87-import-s1",
+    "kind": "e3",
+    "game": "tr87",
+    "arm": "import",
+    "seed": 1,
+    "run_dir": "/Users/mohsenarjmandi/workspace/assay-runs/e3/tr87-import-s1",
+    "registry": "bench/arcagi/registry_e1_gated_1500.json",
+    "constitution": "CONSTITUTION.md",
+    "prompt_template": "tools/prompts/e1_player.md",
+    "cap": 1500,
+    "levels": 6,
+    "anchor_dir": "/Users/mohsenarjmandi/workspace/assay-runs/e3/anchors",
+    "max_hours": 4,
+    "source_run": "/Users/mohsenarjmandi/workspace/assay-runs/e1/tr87-gated-s1",
+    "prepare": "PRO-LONG/.venv/bin/python3 tools/e3_prepare.py tr87 (run BEFORE the orchestrator; the orchestrator has no pre-step and ignores this field)"
+  }
+]
