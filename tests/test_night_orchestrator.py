@@ -49,19 +49,38 @@ def test_dry_run_prints_commands_and_launches_nothing(tmp_path):
 
 def test_real_dispatch_order_matches_the_jobs_file():
     jobs = json.loads((REPO / "tools" / "jobs_e1_e2.json").read_text())
+    # 22 jobs: the 17 pre-registered ones in order, plus one E2 control job next to
+    # each module job, alternating which of the pair comes first (amendment 2).
     assert [j["id"] for j in jobs] == [
-        "e1-ft09-gated-s1", "e1-ft09-ungated-s1", "e2-s5i5-resume", "e2-wa30-resume",
+        "e1-ft09-gated-s1", "e1-ft09-ungated-s1",
+        "e2c-s5i5", "e2-s5i5-resume", "e2-wa30-resume", "e2c-wa30",
         "e1-tr87-gated-s1", "e1-tr87-ungated-s1", "e1-cn04-gated-s1", "e1-cn04-ungated-s1",
-        "e2-sk48-resume", "e2-dc22-resume", "e2-bp35-resume",
+        "e2c-sk48", "e2-sk48-resume", "e2-dc22-resume", "e2c-dc22", "e2c-bp35", "e2-bp35-resume",
         "e1-ft09-gated-s2", "e1-ft09-ungated-s2", "e1-tr87-gated-s2", "e1-tr87-ungated-s2",
         "e1-cn04-gated-s2", "e1-cn04-ungated-s2"]
     for job in jobs:
         assert (REPO / job["registry"]).exists() and (REPO / job["constitution"]).exists()
         assert (REPO / job["prompt_template"]).exists()
-        if job["kind"] == "e2":
+        if job["kind"] == "e2" and job["id"].startswith("e2c-"):
+            assert job["run_dir"].endswith(f"/e2/{job['game']}-resume-ctrl") and job["cap"] == 1500
+            assert job["registry"] == "bench/arcagi/registry_1500.json"
+            assert job["anchor_dir"].endswith(f"/e2/anchors/{job['game']}-ctrl")
+            assert job["prompt_template"] == "tools/prompts/e2_resume.md"
+        elif job["kind"] == "e2":
             assert job["run_dir"].endswith(f"/e2/{job['game']}-resume") and job["cap"] == 1500
+            assert job["registry"] == "bench/arcagi/registry_e2_1500_coverage.json"
+            assert job["anchor_dir"].endswith(f"/e2/anchors/{job['game']}")
         else:
             assert job["run_dir"].endswith(f"/e1/{job['game']}-{job['arm']}-s{job['seed']}")
+            expected = ("tools/prompts/e1_player_ungated.md" if job["arm"] == "ungated"
+                        else "tools/prompts/e1_player.md")
+            assert job["prompt_template"] == expected
+            assert job["constitution"] == ("bench/arcagi/CONSTITUTION-ungated.md" if job["arm"] == "ungated"
+                                           else "CONSTITUTION.md")
+    # every control job is adjacent to its module job
+    ids = [j["id"] for j in jobs]
+    for game in ("s5i5", "wa30", "sk48", "dc22", "bp35"):
+        assert abs(ids.index(f"e2c-{game}") - ids.index(f"e2-{game}-resume")) == 1
 
 
 def test_live_loop_done_relaunch_and_ledgers(tmp_path):
