@@ -135,7 +135,8 @@ like any action.
 
 `assay view` inspects the rendered board offline: `--event N` picks an event,
 `--grid` prints the exact cell values, `--crop R0:R1,C0:C1` a region,
-`--frames` the animation, `--history N` the last N boards.
+`--frames` the animation, `--history N` one summary line per event for the
+last N events.
 
 Thinking is free; probing is paid. Before spending an action to answer a
 question, check whether the journal already answers it.

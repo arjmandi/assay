@@ -8,7 +8,7 @@ design. The first variant is kept as `bench/arcagi/CONSTITUTION-ungated-soft.md`
 not used tonight.
 
 - sha256 CONSTITUTION.md: 9fb50cc08793222b86b5caa3b75d358feadf83fd9db260b759cc6b045f3a43db
-- sha256 CONSTITUTION-ungated.md (strong, used tonight): c6c158d1361729fc1e4621daa10428b7de74352da1ef8242a653644ef43e5ba8
+- sha256 CONSTITUTION-ungated.md (strong, used tonight): 61a5f21a6a619b40e32f63cbcec3b89262acd93a8e9ed9d049e5069c1e767e01
 - sha256 CONSTITUTION-ungated-soft.md (first variant, kept, not used): daeda435edb5c67e99d5a0ae4e20ae10610a4bc3ca8c6cd98f6a0355d7a0a0c8
 - produced on 2026-10-06 from CONSTITUTION.md at commit 0373b5f (unchanged on exp/2026-10, base 5435617)
 
@@ -44,10 +44,10 @@ and status meters described without the claim meters.
 
 The kernel's start banner under `gate: optional` already says that `assay act` runs with or
 without `--predict`. So that an agent which discovers the flag finds it documented rather
-than hidden, the loop step carries exactly one neutral sentence: "`act` and `commit` steps
-also accept an optional `--predict` claim that the harness grades; it is not required on
-this run." The status section adds that the CLAIMS line belongs to that optional feature
-and reads 0/0 while unused. Nothing recommends using it.
+than hidden, the loop step carries exactly one neutral sentence, quoted from the manual:
+"`act` and `commit` steps also accept an optional `--predict` claim that the harness
+grades; it is not required on this run." The status section adds that the CLAIMS line
+belongs to that optional feature and reads 0/0 while unused. Nothing recommends using it.
 
 ## The prompt template
 
@@ -282,13 +282,14 @@ those two places. The gated template is unchanged from the pre-registration.
  
  ## Reset
  
-@@ -209,13 +133,18 @@
+@@ -209,13 +133,19 @@
  "$ASSAY" python '[t["action"] for t in transitions if t["before"] != t["after"]]'
  ```
  
 +`assay view` inspects the rendered board offline: `--event N` picks an event,
 +`--grid` prints the exact cell values, `--crop R0:R1,C0:C1` a region,
-+`--frames` the animation, `--history N` the last N boards.
++`--frames` the animation, `--history N` one summary line per event for the
++last N events.
 +
  Thinking is free; probing is paid. Before spending an action to answer a
  question, check whether the journal already answers it.
