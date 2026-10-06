@@ -29,11 +29,13 @@ REGISTRY = REPO / "bench" / "arcagi" / "registry_e2_1500_coverage.json"
 
 # game: (cut event, sessions before the operator's intervention, sessions after it)
 # dc22 session 1 was API-billed and has no transcript; its state comes from the
-# first whole-file Read in session 2. sk48's cut (e110) is mid-session 1.
+# first whole-file Read in session 2. sk48 is cut at e111, the last paid action of
+# session 1 (e110 is the ACTION6 probe carrying the proof, e112 opens session 2), so
+# like the other four states it is cut at the end of the proving session.
 CUTS = {
     "dc22": (634, [], ["s2"]),
     "s5i5": (273, ["s2"], ["s3"]),
-    "sk48": (110, ["s1"], ["s2"]),
+    "sk48": (111, ["s1"], ["s2"]),
     "wa30": (990, ["s1"], ["s2"]),
     "bp35": (368, ["s1"], ["s2", "s3"]),
 }
