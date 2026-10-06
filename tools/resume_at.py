@@ -494,13 +494,14 @@ def main(argv: list[str] | None = None) -> int:
         f"- installed NOTES.md sha256: {notes_sha}",
         *(["", "notes_at.py report:", "```json", notes_report.rstrip(), "```"] if notes_report else []),
         "",
-        "## Registry (normally immutable in place; edited here for the control experiment)",
+        "## Registry (normally immutable in place; edited only when modules are added)",
         f"- registry_hash before: {hash_before}",
         f"- registry_hash after:  {hash_after}",
         f"- modules added: {[str(m.resolve()) for m in args.module] or 'none'}",
         *(f"    - sha256 {digest}  {path}" for path, digest in module_digests.items()),
         f"- module_modes set: {args.module_mode or 'none'}",
-        "- the module files were pinned into .assay/modules/ exactly as `assay start` would have done",
+        *(["- the module files were pinned into .assay/modules/ exactly as `assay start` would have done"]
+          if args.module else ["- no module added, nothing pinned into .assay/modules/"]),
         f"- config.json registry_hash updated to match: {hash_before != hash_after}",
         f"- {registry_check}",
         "",
@@ -524,7 +525,8 @@ def main(argv: list[str] | None = None) -> int:
         "  if the cached game or engine no longer reproduces a recorded observation.",
         "- The agent's own files in the run root are restored only where the kernel kept a pre-cut copy;",
         "  anything listed as UNRESOLVED above must be judged by the operator before launch.",
-        "- The pinned module file is readable inside .assay/modules/ like any module the kernel pins.",
+        *(["- The pinned module file is readable inside .assay/modules/ like any module the kernel pins."]
+          if args.module else []),
     ]
     provenance.write_text("\n".join(lines) + "\n")
     print(f"prepared {dest}")
