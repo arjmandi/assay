@@ -58,8 +58,8 @@ PROMPT="$(cat "$PROMPT_FILE")"
 PROMPT_SHA="$(shasum -a 256 "$PROMPT_FILE" | cut -d' ' -f1)"
 STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 START_S=$(date +%s)
-OUT="$(mktemp "${TMPDIR:-/tmp}/assay-player-XXXXXX.json")"
-ERR="${OUT%.json}.err"
+OUT="$(mktemp "${TMPDIR:-/tmp}/assay-player-XXXXXX")"   # no suffix: macOS mktemp replaces only trailing Xs
+ERR="${OUT}.err"
 TIMEOUT_S=$(( MAX_HOURS * 3600 ))
 
 # Tools: Bash, Read, Glob and Grep anywhere (the prompt confines reads to the
