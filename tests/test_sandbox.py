@@ -97,24 +97,26 @@ def verify(before, after):
     return True, "forked"
 """
 
-EXECS_SHELL = """\
+EXECS = """\
 import os
 
 def verify(before, after):
-    os.execv("/bin/sh", ["sh", "-c", "echo shell"])
+    os.execv({binary!r}, [{binary!r}, "-c", "echo shell"] if {binary!r}.endswith("sh") else [{binary!r}])
     return True, "never reached"
 """
 
 READS_PROCARGS_BY_NAME = """\
 import ctypes
 import ctypes.util
+import json
 
 def verify(before, after):
     libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
     size = ctypes.c_size_t(1 << 16)
     buffer = ctypes.create_string_buffer(size.value)
     code = libc.sysctlbyname(b"kern.procargs2", buffer, ctypes.byref(size), None, 0)
-    return True, "ok" if code == 0 else f"errno {ctypes.get_errno()}"
+    got = buffer.raw[: size.value] if code == 0 else b""
+    return True, json.dumps({"code": code, "errno": ctypes.get_errno() if code else 0, "bytes": len(got)})
 """
 
 PRINTS_PAST_THE_CAP = """\
@@ -212,10 +214,11 @@ def test_forking_is_refused(paths):
 
 
 @jailed
-def test_exec_of_anything_but_the_interpreter_is_refused(paths):
-    # sandbox-exec allows process-exec on the interpreter alone; under bwrap
-    # no /bin is bound, so the shell is not there to exec.
-    _refused(_graded(paths, EXECS_SHELL))
+@pytest.mark.parametrize("binary", ["/bin/sh", "/bin/ls"])
+def test_exec_outside_the_interpreter_is_refused(paths, binary):
+    # sandbox-exec allows process-exec on the interpreter and its prefixes
+    # alone; under bwrap no /bin is bound, so neither binary is there.
+    _refused(_graded(paths, EXECS.format(binary=binary)))
 
 
 @darwin_only
@@ -226,7 +229,12 @@ def test_the_process_argument_keys_are_denied_by_name(paths):
     # same-uid policy and stays open (sandbox.py says so where the rule is).
     graded = _graded(paths, READS_PROCARGS_BY_NAME)
     assert "invalid" not in graded, graded["actual"]
-    assert graded["actual"] == "errno 1"
+    result = json.loads(graded["actual"])
+    # Darwin 25 answers the denied read with EPERM; another macOS answers
+    # EINVAL (the runners did): either way the call fails and not one byte
+    # of the parent's arguments or environment comes back.
+    assert result["code"] != 0 and result["errno"] in (1, 22), result
+    assert result["bytes"] == 0, result
 
 
 def test_output_past_the_cap_is_refused_at_once(paths):
