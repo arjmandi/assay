@@ -91,6 +91,46 @@ Left on the experiment branch, deliberately:
   fresh. Receipts print `CHANNELS | name: before -> after` for declared path
   channels that changed across the act or the batch.
 
+### Changed
+
+- The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds
+  perception, the rules tier, the grid claim forms and grader, rendering (the
+  one pillow import), the frame halves of status, result, inspect, view and
+  export, the grid namespace of `assay python`, the solve-plan executor, and
+  the legacy numbered-action vocabulary (`ACTION1..7`, `ACTION6:x,y`, moved
+  undocumented, TODO(owner: O2) on deleting it in 1.2). The kernel keeps the
+  frame encoding the journal format has, and one hook, `assay.extras`,
+  selects the extra by observation shape (`frames` present), never by
+  configuration, so the published run directories need no change. A dict run
+  never imports `assay_grid` or pillow. The parser declares the frame-only
+  `rules` subcommand and the `view` flags itself, inert on a dict run. The
+  `ACTION` prefix matching in the affordance check is gone: a frame world's
+  advertised ids are rendered as names by the extra before the check. The
+  refusal of a grid claim form on a registry run now names the form
+  ("a frames-world form ... refused on registry runs") instead of claiming
+  the run has no grid observation. Every historical field name, state value
+  and claim form is untouched. Proven by the replay diff over the 25
+  published run directories: zero differences in `status`, `audit`, `view`
+  and `channel list` against the main kernel.
+- `parse_claims(text, kind=None)` replaces `parse_claims(text, general=...)`.
+  The core forms parse on every run; an observation kind's forms parse only
+  when the kind is given (the legacy path), and are refused by name
+  otherwise. Test-only API change.
+- `live.py` exposes its seam under public names (`paid_step`,
+  `record_event`, `write_receipt`, `head_events`, `level_advanced`,
+  `validate_batch_tokens`) so an observation kind's executor builds on it
+  without importing private functions.
+
+### Known
+
+- The TRANSITION story in `assay view` and after a paid action on a frame
+  world lists its moved, resized, vanished and appeared components in an
+  order that depends on Python's per-process string hashing (a set of
+  component keys is iterated). Display only, never journaled, pre-existing.
+  The replay diff pins `PYTHONHASHSEED` for that reason. A deterministic
+  order is a one-word change in `assay_grid.perception.transition_story`,
+  kept out of the move so the replay diff stays a pure proof.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by

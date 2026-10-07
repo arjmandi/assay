@@ -421,19 +421,15 @@ def parse_registry_action(
 
 
 def check_registry_action(name: str, available: Sequence[Any]) -> None:
-    """Affordance check: honored only when the observation advertises names."""
+    """Affordance check: honored only when the observation advertises names.
+    A world that advertises ids rather than names (a frame world) has its
+    observation kind render them as names before this check."""
     if name == "RESET":
         return
     advertised = [str(value) for value in available or ()]
     if not advertised:
         return
-    # Observations may advertise bare tokens ('6') while registered names carry a
-    # prefix ('ACTION6') — the numbered-action path normalizes exactly this way, so a
-    # registered name also matches when its trailing token is advertised.
-    upper = {value.upper() for value in advertised}
-    candidate = name.upper()
-    suffix = candidate[len("ACTION"):] if candidate.startswith("ACTION") else candidate
-    if candidate not in upper and (not suffix or suffix not in upper):
+    if name.upper() not in {value.upper() for value in advertised}:
         raise AssayError(
             f"{name} is unavailable; advertised actions are {sorted(advertised)}"
         )

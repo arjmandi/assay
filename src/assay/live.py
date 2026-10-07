@@ -1,8 +1,11 @@
 """Paid-action execution: act with a graded prediction, batch with per-step
-claims, execute a rules.py solve-plan, and reset with a reason.
+claims, and reset with a reason. Every paid action is journaled by the broker
+before the response is recorded, so a crash between spend and record is
+recovered on the next start.
 
-Every paid action is journaled by the broker before the response is recorded,
-so a crash between spend and record is recovered on the next start.
+The public seam (paid_step, record_event, write_receipt, head_events,
+level_advanced, validate_batch_tokens) is what an observation kind's own
+executor builds on (the frame world's solve-plan executor in assay_grid).
 """
 
 from __future__ import annotations
@@ -11,8 +14,6 @@ import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
-
-import numpy as np
 
 from .agenda import check_rehearsal, consume_approval
 from .aggregates import open_aggregates, resolve_due
@@ -25,22 +26,16 @@ from .core import (
     append_jsonl,
     atomic_json,
     canonical_action,
-    check_public_action,
-    context_for,
-    frame_at,
-    import_path,
     load_events,
     load_jsonl,
     make_event,
     now_iso,
     parse_action,
     read_json,
-    rows_to_grid,
 )
-from .evidence import observation_hash, render_event
+from .extras import kind_for
 from .integrity import extend_chain, redact, redact_mapping
 from .modules import consult_modules, observe_outcome
-from .perception import build_scene_dossier
 from .predictions import grade_action_claims, grade_lines, parse_claims
 from .registry import (
     action_spec,
@@ -53,17 +48,9 @@ from .registry import (
     notes_cap,
 )
 from .verifiers import admit_verifier
-from .rules import (
-    _call,
-    _freeze,
-    _is_unknown,
-    _unknown_reason,
-    check_contract,
-    rules_hash,
-)
 
 
-def _receipt(paths: RunPaths, value: Mapping[str, Any]) -> dict[str, Any]:
+def write_receipt(paths: RunPaths, value: Mapping[str, Any]) -> dict[str, Any]:
     record = {"timestamp": now_iso(), **dict(value)}
     paths.receipts.mkdir(parents=True, exist_ok=True)
     event = record.get("end_event", record.get("start_event", "none"))
@@ -82,7 +69,7 @@ def _archive_notes(paths: RunPaths, completed_level: int) -> None:
         archive.write_text(paths.notes.read_text())
 
 
-def _head_events(paths: RunPaths, at_event: int | None) -> list[dict[str, Any]]:
+def head_events(paths: RunPaths, at_event: int | None) -> list[dict[str, Any]]:
     events = load_events(paths)
     if not events:
         raise AssayError("timeline is empty")
@@ -95,7 +82,7 @@ def _head_events(paths: RunPaths, at_event: int | None) -> list[dict[str, Any]]:
     return events
 
 
-def _paid_step(
+def paid_step(
     paths: RunPaths,
     token: str,
     reasoning: Mapping[str, Any] | None = None,
@@ -107,10 +94,15 @@ def _paid_step(
     name, data = parse_action(token, registry)
     if name == "RESET":
         raise AssayError("use `assay reset`; reset cannot hide inside a batch")
+    kind = kind_for(prior)
     if registry is not None:
-        check_registry_action(name, prior["available_actions"])
-    else:
-        check_public_action(token, prior["available_actions"])
+        # A frame world advertises bare ids; the kind renders them as names.
+        advertised = (
+            kind.advertised_names(prior) if kind is not None else prior["available_actions"]
+        )
+        check_registry_action(name, advertised)
+    elif kind is not None:
+        kind.legacy_check_action(token, prior["available_actions"])
     secrets = tuple((registry or {}).get("secrets") or ())
     reasoning = redact_mapping(reasoning, secrets)
     step = stepper or broker_step
@@ -122,7 +114,7 @@ def _paid_step(
     return pending, prior, warning, elapsed
 
 
-def _record(paths: RunPaths, pending: Mapping[str, Any]) -> dict[str, Any]:
+def record_event(paths: RunPaths, pending: Mapping[str, Any]) -> dict[str, Any]:
     event = append_event(paths, pending)
     if load_registry(paths) is not None:
         # Registry runs are chained: the exact appended line advances the
@@ -135,9 +127,9 @@ def _record(paths: RunPaths, pending: Mapping[str, Any]) -> dict[str, Any]:
             extend_chain(
                 paths, last_line, int(event["id"]), win=str(event["state"]) == "WIN"
             )
-    if "frames" in event:
-        render_event(paths, event)
-        build_scene_dossier(paths, load_events(paths))
+    kind = kind_for(event)
+    if kind is not None:
+        kind.after_record(paths, event, load_events(paths))
     level_before = event.get("level_before")
     if level_before is not None and int(event["levels_completed"]) > int(level_before):
         _archive_notes(paths, int(event["levels_completed"]))
@@ -258,11 +250,20 @@ def _grade_summary(
     return missed, invalid_any, predict_ok
 
 
-def _level_advanced(event: Mapping[str, Any]) -> bool:
+def level_advanced(event: Mapping[str, Any]) -> bool:
     level_before = event.get("level_before")
     return level_before is not None and int(event["levels_completed"]) > int(
         level_before
     )
+
+
+def _claim_kind(registry: Mapping[str, Any] | None, events: Sequence[Mapping[str, Any]]):
+    """Which extra claim forms this run admits: none on a registry run (the
+    rule every published registry journal was recorded under, owner decision
+    O1), the observation kind's own forms on the legacy path."""
+    if registry is not None or not events:
+        return None
+    return kind_for(events[-1])
 
 
 def execute_action(
@@ -276,12 +277,12 @@ def execute_action(
     stepper: Any = None,
 ) -> dict[str, Any]:
     registry = load_registry(paths)
+    events = head_events(paths, at_event)
     # gate: optional (control arm) admits a bare act; it is journaled UNGATED.
     ungated = gate_optional(registry) and not (predict or "").strip()
-    claims = [] if ungated else parse_claims(predict, general=registry is not None)
+    claims = [] if ungated else parse_claims(predict, kind=_claim_kind(registry, events))
     check_channel_references(paths, claims)
     _admit_claims(paths, claims)
-    events = _head_events(paths, at_event)
     advisories = _enforce_registry_gates(
         paths,
         registry,
@@ -302,7 +303,7 @@ def execute_action(
         reasoning["because"] = because
     if declares:
         reasoning["declares"] = dict(declares)
-    pending, prior, warning, elapsed = _paid_step(
+    pending, prior, warning, elapsed = paid_step(
         paths, token, reasoning, note=because or "", registry=registry, stepper=stepper
     )
     graded = (
@@ -322,7 +323,7 @@ def execute_action(
         pending["declares"] = {
             key: redact(str(value), secrets) for key, value in declares.items()
         }
-    event = _record(paths, pending)
+    event = record_event(paths, pending)
     all_events = load_events(paths)
     observe_outcome(paths, registry, all_events, event)
     aggregate_lines: list[str] = []
@@ -332,7 +333,7 @@ def execute_action(
     lines = grade_lines(graded)
     if event["state"] == "WIN":
         outcome, detail = "GAME_COMPLETE", "the game is complete"
-    elif _level_advanced(event):
+    elif level_advanced(event):
         outcome = "LEVEL_COMPLETE"
         detail = (
             f"level {int(event['level_before']) + 1} complete; notes archived — "
@@ -383,7 +384,7 @@ def execute_action(
         changed = channel_change_lines(paths, prior, event)
         if changed:
             receipt["channels"] = changed
-    return _receipt(paths, receipt)
+    return write_receipt(paths, receipt)
 
 
 def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
@@ -399,7 +400,7 @@ def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
     return action.strip(), predict.strip()
 
 
-def _validate_batch_tokens(
+def validate_batch_tokens(
     tokens: Sequence[str], registry: Mapping[str, Any] | None = None
 ) -> None:
     """Reject a bad token before any step spends an action."""
@@ -431,19 +432,20 @@ def execute_steps(
             f"plan (`assay model replay` then `assay model solve`) — currently: {reason}"
         )
     bare_ok = gate_optional(registry)
+    events = head_events(paths, at_event)
+    claim_kind = _claim_kind(registry, events)
     parsed: list[tuple[str, str, list[dict[str, Any]]]] = []
     for raw in raw_steps:
         token, predict = parse_step(raw, allow_bare=bare_ok)
         claims = (
             [] if bare_ok and not predict
-            else parse_claims(predict, general=registry is not None)
+            else parse_claims(predict, kind=claim_kind)
         )
         parsed.append((token, predict, claims))
-    _validate_batch_tokens([token for token, _, _ in parsed], registry)
+    validate_batch_tokens([token for token, _, _ in parsed], registry)
     for _, _, claims in parsed:
         check_channel_references(paths, claims)
         _admit_claims(paths, claims)
-    events = _head_events(paths, at_event)
     advisories = _enforce_registry_gates(
         paths,
         registry,
@@ -463,7 +465,7 @@ def execute_steps(
     last_warning: str | None = None
     all_claims: list[dict[str, Any]] = []
     for index, (token, predict, claims) in enumerate(parsed):
-        pending, prior, warning, elapsed = _paid_step(
+        pending, prior, warning, elapsed = paid_step(
             paths, token, {"predict": predict}, registry=registry, stepper=stepper
         )
         last_warning = warning or last_warning
@@ -488,7 +490,7 @@ def execute_steps(
             pending["declares"] = {
                 key: redact(str(value), secrets) for key, value in declares.items()
             }
-        event = _record(paths, pending)
+        event = record_event(paths, pending)
         observe_outcome(paths, registry, load_events(paths), event)
         failed = [line for line in grade_lines(graded) if line.startswith("✗")]
         invalid_lines = [line for line in grade_lines(graded) if line.startswith("!")]
@@ -508,7 +510,7 @@ def execute_steps(
         if event["state"] == "WIN":
             outcome, detail = "GAME_COMPLETE", f"the game is complete{discarded}"
             break
-        if _level_advanced(event):
+        if level_advanced(event):
             outcome = "LEVEL_COMPLETE"
             detail = f"level advanced after {canonical_action(event)}{discarded}"
             if not ok:
@@ -555,7 +557,7 @@ def execute_steps(
         changed = channel_change_lines(paths, events[-1], final_events[-1])
         if changed:
             receipt["channels"] = changed
-    return _receipt(paths, receipt)
+    return write_receipt(paths, receipt)
 
 
 def execute_model_plan(
@@ -577,7 +579,7 @@ def execute_model_plan(
             "model plans belong to registry runs; this numbered-action run has the "
             "rules.py tier instead"
         )
-    events = _head_events(paths, at_event)
+    events = head_events(paths, at_event)
     candidate = Path(reference[1:] if reference.startswith("@") else reference)
     path = candidate if candidate.is_absolute() else paths.root / candidate
     try:
@@ -604,7 +606,7 @@ def execute_model_plan(
     predictions = plan.get("predictions") or ()
     if not actions or len(actions) != len(predictions):
         raise AssayError("plan needs one prediction per action; rerun `assay model solve`")
-    _validate_batch_tokens(actions, registry)
+    validate_batch_tokens(actions, registry)
     _enforce_registry_gates(
         paths,
         registry,
@@ -622,7 +624,7 @@ def execute_model_plan(
     detail = f"all {len(actions)} model-plan steps landed as predicted"
     last_warning: str | None = None
     for index, (token, expected) in enumerate(zip(actions, predictions)):
-        pending, _, warning, _ = _paid_step(
+        pending, _, warning, _ = paid_step(
             paths,
             token,
             {"plan": "model", "plan_step": index},
@@ -652,7 +654,7 @@ def execute_model_plan(
                 problem = f"ch {name}: predicted {predicted!r}, actual {actual!r}"
         pending["predict_ok"] = ok
         pending["grade"] = graded
-        event = _record(paths, pending)
+        event = record_event(paths, pending)
         observe_outcome(paths, registry, load_events(paths), event)
         records.append(
             {
@@ -669,7 +671,7 @@ def execute_model_plan(
         if event["state"] == "WIN":
             outcome, detail = "GAME_COMPLETE", f"the game is complete{discarded}"
             break
-        if _level_advanced(event):
+        if level_advanced(event):
             outcome = "LEVEL_COMPLETE"
             detail = f"level advanced after {canonical_action(event)}{discarded}"
             break
@@ -686,7 +688,7 @@ def execute_model_plan(
             break
     if last_warning:
         detail += f"; scorecard finalization warning: {last_warning}"
-    return _receipt(
+    return write_receipt(
         paths,
         {
             "kind": "commit",
@@ -700,175 +702,6 @@ def execute_model_plan(
     )
 
 
-def _load_solve_plan(paths: RunPaths, reference: str) -> dict[str, Any]:
-    candidate = Path(reference[1:] if reference.startswith("@") else reference)
-    path = candidate if candidate.is_absolute() else paths.root / candidate
-    try:
-        path.resolve().relative_to(paths.root.resolve())
-    except ValueError as error:
-        raise AssayError(
-            "plan reference must stay inside the run directory"
-        ) from error
-    value = read_json(path)
-    if not isinstance(value, dict) or value.get("kind") != "solve-plan":
-        raise AssayError(
-            "commit accepts only a solve-plan written by `assay rules solve`"
-        )
-    actions = value.get("actions")
-    predictions = value.get("predictions")
-    if (
-        not isinstance(actions, list)
-        or not actions
-        or not isinstance(predictions, list)
-        or len(predictions) != len(actions)
-    ):
-        raise AssayError(
-            "plan needs one prediction per action; rerun `assay rules solve`"
-        )
-    return value
-
-
-def execute_solve_plan(
-    paths: RunPaths,
-    reference: str,
-    *,
-    at_event: int | None = None,
-) -> dict[str, Any]:
-    events = _head_events(paths, at_event)
-    registry = load_registry(paths)
-    if registry is not None:
-        raise AssayError(
-            "solve-plans belong to the grid rules tier; a registry run has none"
-        )
-    plan = _load_solve_plan(paths, reference)
-    latest = events[-1]
-    current = {
-        "event": int(latest["id"]),
-        "observation_hash": observation_hash(frame_at(latest)),
-        "rules_hash": rules_hash(paths),
-    }
-    source = plan.get("source")
-    if not isinstance(source, dict):
-        raise AssayError("plan has no source provenance; rerun `assay rules solve`")
-    stale = [name for name, expected in current.items() if source.get(name) != expected]
-    if stale:
-        raise AssayError(
-            f"plan is stale ({', '.join(stale)} changed); rerun `assay rules solve`"
-        )
-    start_event = int(latest["id"])
-    actions = [str(item).upper() for item in plan["actions"]]
-    _validate_batch_tokens(actions)
-    predictions = plan["predictions"]
-    records: list[dict[str, Any]] = []
-    outcome = "PREDICTED"
-    detail = f"all {len(actions)} steps landed as predicted"
-    last_warning: str | None = None
-    with import_path(paths.rules, "rules") as module:
-        check_contract(module)
-        for index, (token, expected) in enumerate(zip(actions, predictions)):
-            pending, _, warning, _ = _paid_step(
-                paths, token, {"plan": reference, "plan_step": index}
-            )
-            last_warning = warning or last_warning
-            event = _record(paths, pending)
-            advanced = _level_advanced(event)
-            ok = False
-            problem = ""
-            if expected.get("level_up"):
-                ok = advanced
-                if not ok:
-                    problem = (
-                        "plan predicted level completion here, but the level "
-                        "did not advance"
-                    )
-            elif advanced:
-                problem = (
-                    "level advanced earlier than the plan predicted; "
-                    "rules.py is wrong somewhere"
-                )
-            elif "rows" in expected:
-                predicted_grid = rows_to_grid(expected["rows"])
-                actual = frame_at(event)
-                ok = predicted_grid.shape == actual.shape and bool(
-                    np.array_equal(predicted_grid, actual)
-                )
-                if not ok:
-                    problem = "board differs from the render(state) prediction"
-            else:
-                all_events = load_events(paths)
-                context = context_for(all_events, len(all_events) - 1)
-                grounded = _call(module, "initial", frame_at(event), context)
-                if grounded is None or _is_unknown(grounded):
-                    reason = (
-                        _unknown_reason(grounded)
-                        if grounded is not None
-                        else "initial() returned None"
-                    )
-                    problem = f"board after this step is not groundable ({reason})"
-                else:
-                    actual_view = _freeze(_call(module, "observe", grounded))
-                    ok = actual_view == expected.get("observe")
-                    if not ok:
-                        problem = (
-                            "observe(state) differs from the plan's prediction"
-                        )
-            records.append(
-                {
-                    "event": int(event["id"]),
-                    "action": canonical_action(event),
-                    "ok": ok,
-                    # Machine-generated plan-step predictions never
-                    # enter the agent's claim meters.
-                    "machine": True,
-                    "kind": "plan_step",
-                    **({"problem": problem} if problem else {}),
-                }
-            )
-            remaining = len(actions) - index - 1
-            discarded = (
-                f"; {remaining} remaining steps were discarded" if remaining else ""
-            )
-            if event["state"] == "WIN":
-                outcome, detail = "GAME_COMPLETE", f"the game is complete{discarded}"
-                break
-            if advanced:
-                outcome = "LEVEL_COMPLETE"
-                detail = (
-                    f"plan completed the level as predicted{discarded}"
-                    if ok
-                    else f"{problem}{discarded}"
-                )
-                break
-            if event["state"] == "GAME_OVER":
-                outcome = "GAME_OVER"
-                detail = (
-                    "environment reported GAME_OVER during the plan; "
-                    f"run `assay rules replay` to find the broken rule{discarded}"
-                )
-                break
-            if not ok:
-                outcome = "SURPRISE"
-                detail = (
-                    f"step {index + 1} ({token}) diverged: {problem}; "
-                    f"run `assay rules replay` to find the broken rule{discarded}"
-                )
-                break
-    if last_warning:
-        detail += f"; scorecard finalization warning: {last_warning}"
-    return _receipt(
-        paths,
-        {
-            "kind": "commit",
-            "outcome": outcome,
-            "detail": detail,
-            "start_event": start_event,
-            "end_event": int(load_events(paths)[-1]["id"]),
-            "plan": reference,
-            "steps": records,
-        },
-    )
-
-
 def reset_level(
     paths: RunPaths,
     *,
@@ -877,7 +710,7 @@ def reset_level(
     declares: Mapping[str, str] | None = None,
     stepper: Any = None,
 ) -> dict[str, Any]:
-    events = _head_events(paths, at_event)
+    events = head_events(paths, at_event)
     registry = load_registry(paths)
     declared = dict(declares or {})
     advisories = _enforce_registry_gates(
@@ -928,7 +761,7 @@ def reset_level(
         pending["declares"] = {
             key: redact(str(value), secrets) for key, value in declared.items()
         }
-    event = _record(paths, pending)
+    event = record_event(paths, pending)
     observe_outcome(paths, registry, load_events(paths), event)
     detail = "current board rewound; completed levels and action history preserved"
     if warning:
@@ -943,4 +776,4 @@ def reset_level(
     }
     if advisories:
         receipt["modules"] = list(dict.fromkeys(advisories))
-    return _receipt(paths, receipt)
+    return write_receipt(paths, receipt)

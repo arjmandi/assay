@@ -388,9 +388,18 @@ def frame_at(event: Mapping[str, Any], frame: int = -1) -> np.ndarray:
 
 
 def canonical_action(event: Mapping[str, Any]) -> str:
+    """One line for an event's action: the name, then `k=v` parameters in key
+    order. An observation kind may render its own form (a frame world prints
+    its point action as NAME:x,y, the form the published journals' receipts
+    carry)."""
+    from .extras import kind_for
+
+    kind = kind_for(event)
+    if kind is not None:
+        rendered = kind.canonical_action(event)
+        if rendered is not None:
+            return rendered
     data = event.get("data")
-    if data and "x" in data and "y" in data:
-        return f"{event['action']}:{data['x']},{data['y']}"
     if data:
         rendered = " ".join(f"{key}={data[key]}" for key in sorted(data))
         return f"{event['action']} {rendered}"
@@ -400,44 +409,20 @@ def canonical_action(event: Mapping[str, Any]) -> str:
 def parse_action(
     token: str, registry: Mapping[str, Any] | None = None
 ) -> tuple[str, dict[str, Any] | None]:
+    """Parse an action token: against the registry on registry runs, else the
+    legacy numbered vocabulary of the frame-world extra."""
     if registry is not None:
         from .registry import parse_registry_action
 
         return parse_registry_action(token, registry)
-    name, separator, suffix = token.strip().upper().partition(":")
-    if name == "RESET":
-        if separator:
-            raise AssayError("RESET takes no coordinates")
-        return name, None
-    if (
-        not name.startswith("ACTION")
-        or not name[6:].isdigit()
-        or not 1 <= int(name[6:]) <= 7
-    ):
-        raise AssayError(
-            f"invalid action {token!r}; use ACTION1..ACTION7 or ACTION6:x,y"
-        )
-    if name == "ACTION6":
-        if not separator:
-            raise AssayError("ACTION6 requires coordinates: ACTION6:x,y")
-        try:
-            x_text, y_text = suffix.split(",", 1)
-            x, y = int(x_text), int(y_text)
-        except (ValueError, TypeError):
-            raise AssayError(f"invalid coordinate action {token!r}") from None
-        if not (0 <= x <= 63 and 0 <= y <= 63):
-            raise AssayError("ACTION6 coordinates must be in 0..63")
-        return name, {"x": x, "y": y}
-    if separator:
-        raise AssayError(f"only ACTION6 accepts coordinates: {token!r}")
-    return name, None
+    from .extras import all_kinds
 
-
-def action_number(token: str) -> int:
-    name, _ = parse_action(token)
-    if name == "RESET":
-        return 0
-    return int(name[6:])
+    for kind in all_kinds():
+        return kind.legacy_parse_action(token)
+    raise AssayError(
+        "a run without a registry speaks the frame-world extra's action "
+        "vocabulary, and the extra (assay_grid) is not importable"
+    )
 
 
 def segment_start(events: Sequence[Mapping[str, Any]], index: int | None = None) -> int:
@@ -503,11 +488,3 @@ def import_path(path: Path, prefix: str) -> Iterator[ModuleType]:
                 or any(item.startswith(str(path.parent)) for item in package_paths)
             ):
                 sys.modules.pop(name, None)
-
-
-def check_public_action(token: str, available: Sequence[int]) -> None:
-    number = action_number(token)
-    if number not in {int(value) for value in available}:
-        raise AssayError(
-            f"{token} is unavailable; public actions are {list(available)}"
-        )

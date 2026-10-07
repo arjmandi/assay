@@ -1,3 +1,9 @@
+"""Perception helpers for frame worlds: connected components, repeated
+shapes, lattice inference, line graphs, frame deltas, motion traces, the
+transition story and the scene dossier. Part of the frame-world extra; the
+kernel never imports this module.
+"""
+
 from __future__ import annotations
 
 from collections import Counter, defaultdict
@@ -8,7 +14,7 @@ from typing import Any
 
 import numpy as np
 
-from .core import RunPaths, atomic_json, canonical_action, frame_at
+from assay.core import RunPaths, atomic_json, canonical_action, frame_at
 
 
 def connected_components(

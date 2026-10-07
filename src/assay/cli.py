@@ -70,18 +70,27 @@ from .core import (
     require_run,
     run_lock,
 )
-from .evidence import render_event
-from .inspect import export_history, result_text, status_text, view_text
-from .live import execute_action, execute_solve_plan, execute_steps, reset_level
-from .perception import build_scene_dossier
-from .predictions import CLAIMS_HELP
+from .extras import kind_for, require_kind
+from .inspect import result_text, status_text, view_text
+from .live import execute_action, execute_steps, reset_level
+from .predictions import claims_help
 from .registry import gate_optional, load_registry_file
-from .rules import RULES_HELP, init_rules, replay_rules, solve_rules
 
 
 class Parser(argparse.ArgumentParser):
+    """argparse with the kernel's error voice, and an epilog that is built only
+    when help is rendered, so listing the claim forms of an installed
+    observation kind never imports that kind on an ordinary command."""
+
+    lazy_epilog: Any = None
+
     def error(self, message: str) -> None:
         raise AssayError(message)
+
+    def format_help(self) -> str:
+        if self.lazy_epilog is not None:
+            self.epilog = self.lazy_epilog()
+        return super().format_help()
 
 
 def _parser() -> Parser:
@@ -144,27 +153,30 @@ def _parser() -> Parser:
     status.add_argument("--history", type=int, default=8)
 
     view = commands.add_parser(
-        "view", help="inspect the rendered board, exact pixels, diffs, and animation"
+        "view", help="inspect one event: the observation, the delta since the previous one, history"
     )
     view.add_argument("--event", type=int)
-    view.add_argument(
-        "--grid", action="store_true", help="print the complete exact 0-f grid"
-    )
-    view.add_argument(
-        "--frames", action="store_true", help="show causal animation frames"
-    )
-    view.add_argument(
-        "--crop", metavar="R0:R1,C0:C1", help="print an exact half-open crop"
-    )
     view.add_argument("--history", type=int, default=0)
-    view.add_argument("--export", type=Path, metavar="FILE.npz")
+    # Frame worlds only; inert on a dict run, which says so.
+    view.add_argument(
+        "--grid", action="store_true", help="frame worlds: print the complete exact 0-f grid"
+    )
+    view.add_argument(
+        "--frames", action="store_true", help="frame worlds: show causal animation frames"
+    )
+    view.add_argument(
+        "--crop", metavar="R0:R1,C0:C1", help="frame worlds: print an exact half-open crop"
+    )
+    view.add_argument(
+        "--export", type=Path, metavar="FILE.npz", help="frame worlds: export the grid history"
+    )
 
     act = commands.add_parser(
         "act",
         help="take one action with a prediction; the result is graded against it",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=CLAIMS_HELP,
     )
+    act.lazy_epilog = claims_help
     act.add_argument("action")
     act.add_argument("coordinates", nargs="*", help=argparse.SUPPRESS)
     act.add_argument(
@@ -186,14 +198,14 @@ def _parser() -> Parser:
 
     commit = commands.add_parser(
         "commit",
-        help="run a prediction-checked batch or a solve-plan; halts on the first miss",
+        help="run a prediction-checked batch or a model plan; halts on the first miss",
         formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=CLAIMS_HELP,
     )
+    commit.lazy_epilog = claims_help
     commit.add_argument(
         "plan",
         nargs="?",
-        help="solve-plan from `assay rules solve`, e.g. @.assay/plan.json",
+        help="a plan file, e.g. @.assay/model_plan.json from `assay model solve`",
     )
     commit.add_argument(
         "--step",
@@ -229,14 +241,16 @@ def _parser() -> Parser:
 
     python = commands.add_parser(
         "python",
-        help="run offline Python with grids, history, perception, BFS, and A* preloaded",
+        help="run offline Python with the history, deltas, BFS and A* preloaded",
     )
     python.add_argument("source", nargs="?")
     python.add_argument("--file", type=Path)
 
+    # Frame worlds without a registry: the executable-rules tier. Declared
+    # here, handled by the frame-world extra at run time.
     rules = commands.add_parser(
         "rules",
-        help="optional executable-rules tier: write rules.py, replay-verify, search",
+        help="frame worlds, no registry: the executable-rules tier (rules.py, replay-verify, search)",
     )
     subcommands = rules.add_subparsers(dest="rules_command", required=True)
     subcommands.add_parser("help", help="print the compact rules.py contract")
@@ -367,38 +381,14 @@ def _parse_declares(raw: list[str]) -> dict[str, str]:
     return declares
 
 
-def _crop(value: str | None) -> tuple[int, int, int, int] | None:
-    if value is None:
-        return None
-    try:
-        rows, columns = value.split(",", 1)
-        top, bottom = (int(item) for item in rows.split(":", 1))
-        left, right = (int(item) for item in columns.split(":", 1))
-        return top, bottom, left, right
-    except (ValueError, TypeError):
-        raise AssayError(
-            "crop format is R0:R1,C0:C1, using half-open bounds"
-        ) from None
-
-
-def _action_token(action: str, coordinates: list[str], general: bool = False) -> str:
+def _action_token(paths: RunPaths, action: str, coordinates: list[str], general: bool) -> str:
     if general:
         # Registry runs: `assay act NAME pname=value ...` — the extra tokens are
         # typed parameters; case is preserved (values may be case-sensitive).
         return " ".join([action, *coordinates])
-    token = action.upper()
-    if coordinates:
-        if token != "ACTION6" or len(coordinates) != 2:
-            raise AssayError(
-                "coordinates are only accepted as `assay act ACTION6 X Y`"
-            )
-        try:
-            token = f"ACTION6:{int(coordinates[0])},{int(coordinates[1])}"
-        except ValueError:
-            raise AssayError(
-                "ACTION6 coordinates must be integers: `assay act ACTION6 X Y`"
-            ) from None
-    return token
+    events = load_events(paths)
+    kind = require_kind(events[-1] if events else None, "a run without a registry")
+    return kind.legacy_action_token(action, coordinates)
 
 
 def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
@@ -641,9 +631,9 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             make_event(observation, "START", None, None, note="initial observation"),
         )
         _write_notes(paths, requested)
-        if "frames" in event:
-            render_event(paths, event)
-            build_scene_dossier(paths, [event])
+        kind = kind_for(event)
+        if kind is not None:
+            kind.after_record(paths, event, [event])
         if getattr(args, "import_knowledge", None) is not None:
             summary = import_knowledge(paths, args.import_knowledge)
             print(
@@ -826,61 +816,6 @@ def _stop(paths: RunPaths) -> None:
     )
 
 
-def _print_replay(result: dict[str, Any]) -> None:
-    pixels = (
-        "render() not defined"
-        if result["pixel_checks"] == 0
-        else f"exact pixels {result['pixel_matches']}/{result['pixel_checks']}"
-    )
-    print(
-        f"REPLAY | {result['status']} | {result['explained']}/{result['transitions']} "
-        f"transitions explained | {pixels}"
-    )
-    mismatch = result.get("first_mismatch")
-    if mismatch:
-        print(
-            f"FIRST MISMATCH | e{mismatch['event']} {mismatch['action']} | {mismatch['detail']}"
-        )
-        if "expected" in mismatch:
-            print(f"  expected observe: {mismatch['expected']}")
-            print(f"  actual observe:   {mismatch['actual']}")
-    for gap in result.get("gaps", ()):
-        print(f"GAP | {gap}")
-    if result["status"] == "HISTORY_FIT":
-        print("NOTE | fits recorded history; unseen mechanics can still differ")
-
-
-def _print_solve(result: dict[str, Any]) -> None:
-    print(
-        f"SOLVE | {result['status']} | nodes {result['nodes']} | frontier {result['frontier']} "
-        f"| {result['elapsed_seconds']:.3f}s | unknown edges {result['unknown_edges']} "
-        f"| dead pruned {result['dead_pruned']}"
-    )
-    if result.get("replay_status") != "HISTORY_FIT":
-        print(
-            f"REPLAY | {result['replay_status']} | {len(result.get('replay_gaps', ()))} gaps "
-            "— the plan trusts rules that history has not verified"
-        )
-    if result.get("actions"):
-        print("ACTIONS | " + " ".join(result["actions"]))
-        print(f"PLAN | {result['plan']} — execute with `assay commit @.assay/plan.json`")
-    elif result["status"] == "NO_PLAN_IN_MODEL":
-        print(
-            "NOTE | no goal state reachable inside rules.py; actions() or step() are "
-            "too narrow, or the level needs something unmodeled"
-        )
-    if result["status"] in {"TIME_LIMIT", "NODE_LIMIT"}:
-        print(
-            "NOTE | a bound was reached; not evidence that no solution exists "
-            "(--seconds / --max-nodes raise it)"
-        )
-    if result.get("unknown_edges") and not result.get("actions"):
-        print(
-            f"NOTE | {result['unknown_edges']} Unknown edge(s) were skipped during "
-            "search; extending step() may open routes"
-        )
-
-
 def main() -> None:
     try:
         args = _parser().parse_args()
@@ -912,33 +847,25 @@ def main() -> None:
             command_status(
                 paths,
                 f"rules {args.rules_command}"
-                if args.command == "rules"
+                if getattr(args, "rules_command", None)
                 else args.command,
             ),
         ):
             if args.command == "status":
                 print(status_text(paths, history=args.history))
             elif args.command == "view":
-                print(
-                    view_text(
-                        paths,
-                        event_id=args.event,
-                        grid=args.grid,
-                        frames=args.frames,
-                        crop=_crop(args.crop),
-                        history=args.history,
+                events = load_events(paths)
+                flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
+                print(view_text(paths, event_id=args.event, history=args.history, flags=flags))
+                export = args.export
+                if export:
+                    destination = export if export.is_absolute() else paths.root / export
+                    print(
+                        f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(paths, destination)}"
                     )
-                )
-                if args.export:
-                    destination = (
-                        args.export
-                        if args.export.is_absolute()
-                        else paths.root / args.export
-                    )
-                    print(f"EXPORTED | {export_history(paths, destination)}")
             elif args.command == "act":
                 general = read_json(paths.registry, None) is not None
-                token = _action_token(args.action, args.coordinates, general)
+                token = _action_token(paths, args.action, args.coordinates, general)
                 if general:
                     # Daemon-side gate: enforcement where the session lives.
                     receipt = broker_gated(
@@ -964,9 +891,9 @@ def main() -> None:
             elif args.command == "commit":
                 if bool(args.plan) == bool(args.step):
                     raise AssayError(
-                        "commit takes either @plan.json (from `assay rules solve` on "
-                        "grid runs, `assay model solve` on registry runs) or one or "
-                        'more --step "ACTION :: claims"'
+                        "commit takes either @plan.json (from `assay model solve` on "
+                        "registry runs, `assay rules solve` on frame runs without one) "
+                        'or one or more --step "ACTION :: claims"'
                     )
                 if read_json(paths.registry, None) is not None:
                     receipt = broker_gated(
@@ -980,12 +907,12 @@ def main() -> None:
                         },
                         steps=max(1, len(args.step)),
                     )
+                elif args.plan:
+                    events = load_events(paths)
+                    kind = require_kind(events[-1] if events else None, "a plan commit without a registry")
+                    receipt = kind.execute_plan(paths, args.plan, args.at_event)
                 else:
-                    receipt = (
-                        execute_solve_plan(paths, args.plan, at_event=args.at_event)
-                        if args.plan
-                        else execute_steps(paths, args.step, at_event=args.at_event)
-                    )
+                    receipt = execute_steps(paths, args.step, at_event=args.at_event)
                 print(result_text(paths, receipt))
             elif args.command == "reset":
                 if read_json(paths.registry, None) is not None:
@@ -1137,31 +1064,8 @@ def main() -> None:
                 )
                 run_python(paths, source)
             elif args.command == "rules":
-                if read_json(paths.registry, None) is not None:
-                    raise AssayError(
-                        "the rules tier applies to grid runs; this registry run "
-                        "has none — model mechanics with `assay python` instead"
-                    )
-                if args.rules_command == "help":
-                    print(RULES_HELP)
-                elif args.rules_command == "init":
-                    print(f"CREATED | {init_rules(paths)}")
-                    print(RULES_HELP)
-                elif args.rules_command == "replay":
-                    result = replay_rules(paths)
-                    atomic_json(paths.verification, result)
-                    append_jsonl(paths.activity, {"kind": "rules_replay", **result})
-                    _print_replay(result)
-                elif args.rules_command == "solve":
-                    result = solve_rules(
-                        paths, seconds=args.seconds, max_nodes=args.max_nodes
-                    )
-                    append_jsonl(paths.activity, {"kind": "rules_solve", **result})
-                    _print_solve(result)
-                else:
-                    raise AssayError(
-                        f"unsupported rules command {args.rules_command}"
-                    )
+                events = load_events(paths)
+                require_kind(events[-1] if events else None, "the rules tier").cli_handle(paths, args)
             else:
                 raise AssayError(f"unsupported command {args.command}")
         raise SystemExit(0)

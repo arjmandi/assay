@@ -533,51 +533,58 @@ aliases `progress`, `progress_total`, `status`.
 Frame worlds (observation is a grid) have a tier the dict worlds do not need:
 image rendering, a scene dossier, perception helpers, grid claim forms, the
 executable-rules tier and a legacy numbered-action vocabulary. In 1.1.0 these
-move out of the kernel into the extra package `assay_grid`, selected
-automatically by observation shape (`"frames" in event`, the test
-`core.general_event` already makes), never by configuration: registries are
-pinned per run and the 25 published run directories carry no such key, yet the
-kernel must keep rendering, inspecting and auditing them.
+live outside the kernel in the extra package `assay_grid` (`src/assay_grid/`,
+same repository, same distribution), selected automatically by observation
+shape (`"frames" in event`, the test `core.general_event` makes), never by
+configuration: registries are pinned per run and the 25 published run
+directories carry no such key, yet the kernel keeps rendering, inspecting and
+auditing them.
 
-What moves: `perception.py` (connected components, repeated shapes, lattice
-inference, line graph, frame delta, motion trace, transition story, the scene
-dossier), `rules.py` (the rules contract, replay, solve), the grid claim kinds
-`cell`, `move`, `vanish`, `region` and their grader (`predictions.grade_claims`),
-rendering (`evidence.render_grid`, `evidence.render_event`,
-`evidence.current_image`, the palette and the pillow import), the frame branches
-of `inspect` (board text, diffs, scene summary, animation, click candidates),
-the grid namespace of `assay python`, the `rules` subcommand and
-`view --grid|--frames|--crop|--export`, the solve-plan executor, and the legacy
-numbered-action path (`core.parse_action` without a registry, `ACTION1..7`,
-`ACTION6:x,y`, the 0 to 63 bound, `core.check_public_action`, the coordinate
-branch of `cli._action_token`, the `ACTION` prefix matching in
-`registry.check_registry_action`, `inspect._available_line`, `inspect._nudges`).
+What lives in the extra, by module: `perception.py` (connected components,
+repeated shapes, lattice inference, line graph, frame delta, motion trace,
+transition story, the scene dossier), `rules.py` (the rules contract, replay,
+solve), `claims.py` (the claim kinds `cell`, `move`, `vanish`, `region` and
+the frame grader, which also grades the general forms on frames by cell
+comparison), `render.py` (the palette, one PNG per event, the observation hash,
+the frame history line, the one pillow import), `views.py` (the frame halves of
+status, result, inspect, view and export: board text, diffs, scene summary,
+animation, click candidates, the RULES and PLAN lines), `solve.py` (`assay
+rules` and the solve-plan executor behind `assay commit @.assay/plan.json`),
+`analysis.py` (the grid namespace of `assay python`), and `legacy.py` (the
+numbered-action path: `ACTION1..7`, `ACTION6:x,y`, the 0 to 63 bound, the
+coordinate form of `assay act`, the advertised-id to name rendering the
+affordance check needs, the status nudges of runs without a registry).
 
 What stays in the kernel because the journal format has it: the frame encoding
 (`core.grid_to_rows`, `core.rows_to_grid`, the frame branch of
 `core.normalize_observation` and `core.make_event`, `core.frame_at`,
 `core.general_event`). numpy stays a kernel dependency for that encoding in
 1.1.0. `textobs.py` stays. The dict branch of `evidence.history_lines` stays.
+The parser declares the frame-only subcommand (`rules`) and the `view` flags
+(`--grid`, `--frames`, `--crop`, `--export`) itself, inert on a dict run, so
+the command line surface is kernel-owned while the behavior is the extra's.
 
-The hook is one kernel module, `extras.py`, with a protocol an observation kind
-implements (`applies`, `claim_patterns`, `grade_claims`, `after_record`,
-`status_lines`, `view_text`, `history_line`, `python_namespace`,
-`legacy_parse_action`, `cli_subcommands`, `claims_help`) and two functions,
+The hook is one kernel module, `extras.py`: the `ObservationKind` protocol
+(`applies`, `claim_patterns`, `claim_fields`, `claims_help`, `grade_claims`,
+`after_record`, `status_head_lines`, `status_lines`, `result_lines`,
+`view_text`, `history_line`, `canonical_action`, `advertised_names`,
+`python_namespace`, the `legacy_*` methods, `wall_spend_advice`,
+`execute_plan`, `cli_handle`, `export_history`) and the functions
 `kind_for(event)` (imports `assay_grid` lazily and only when an event has
-frames) and `all_kinds()` (for help text and the parser). A dict run never
-imports `assay_grid` or pillow.
+frames), `all_kinds()` (every importable kind, used when help is rendered) and
+`require_kind`. `assay_grid.KIND` is the one implementation. A dict run never
+imports `assay_grid` or pillow, and `import assay.live, assay.inspect,
+assay.cli` imports neither (the conformance tests pin both).
 
-Behavior preserved: no journal field changes, no change to grade records, the
-grid claim forms stay refused on registry runs exactly as today
-(`predictions.parse_claims` with `general=True`), which is why no published
-registry journal contains one. Whether frame-world registry runs should gain
-those forms is owner decision O1. Whether the legacy numbered-action path moves
-undocumented or is deleted is O2.
-
-Status at this commit: the move has not happened yet. The files above are still
-under `src/assay/`. The next kernel change on this branch performs it, and the
-replay diff over the 25 published run directories is the proof that it is
-behavior-preserving.
+Behavior preserved, proven by the replay diff over the 25 published run
+directories (zero differences in `status`, `audit`, `view` and `channel list`
+against the main kernel): no journal field changes, no change to grade
+records, the grid claim forms stay refused on registry runs exactly as before
+(`predictions.parse_claims` with `kind=None`, the refusal now names the form),
+which is why no published registry journal contains one. Whether frame-world
+registry runs should gain those forms is owner decision O1. Whether the legacy
+numbered-action path is deleted in 1.2 is O2 (it moved, undocumented, as
+recommended).
 
 ## 4. Per-world conformance
 

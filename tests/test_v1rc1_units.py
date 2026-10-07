@@ -102,7 +102,6 @@ def test_channel_claims_parse():
     claims = parse_claims(
         "ch counter = 3; ch counter delta >= 1; ch temp crosses 5 from below; "
         "ch level delta sign +",
-        general=True,
     )
     kinds = [claim["kind"] for claim in claims]
     assert kinds == ["channel_eq", "channel_delta", "channel_cross", "channel_delta"]
@@ -113,10 +112,10 @@ def test_channel_claims_parse():
 
 
 def test_channel_claim_tolerance_and_window():
-    claims = parse_claims("ch price = 4.5 +- 0.2 @within 1.5s", general=True)
+    claims = parse_claims("ch price = 4.5 +- 0.2 @within 1.5s")
     assert claims[0]["tol"] == 0.2 and claims[0]["window_s"] == 1.5
     with pytest.raises(AssayError):
-        parse_claims("ch price = up down", general=True)  # malformed, not a note
+        parse_claims("ch price = up down")  # malformed, not a note
 
 
 def test_channel_bucket_split():
@@ -130,18 +129,15 @@ def test_aggregate_additive_rule():
     with pytest.raises(AssayError, match="additive"):
         parse_claims(
             "agg ch counter mean >= 1 over 3a horizon 5a on-fail advise",
-            general=True,
-        )
+            )
     claims = parse_claims(
         "noop; agg ch counter mean >= 1 over 3a horizon 5a on-fail revoke_batching",
-        general=True,
     )
     aggregate = next(claim for claim in claims if claim["kind"] == "aggregate")
     assert aggregate["over"] == 3 and aggregate["horizon"] == 5
     assert aggregate["on_fail"] == "revoke_batching"
     with pytest.raises(AssayError):
-        parse_claims("noop; agg ch c mean >= 1 over 3a horizon 500a on-fail advise",
-                     general=True)
+        parse_claims("noop; agg ch c mean >= 1 over 3a horizon 500a on-fail advise")
 
 
 # ------------------------------------------------------------------ redaction

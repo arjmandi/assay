@@ -114,10 +114,8 @@ class _WallSpend:
 
     def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
         level_actions = _level_action_count(view.events)
-        general = bool(view.events) and "frames" not in view.events[-1]
         if view.registry is not None:
-            # Registry runs own the general model tier; point at it, not at the
-            # grid rules tier (which registry runs refuse).
+            # Registry runs own the general model tier.
             if level_actions >= 25:
                 return (
                     f"{level_actions} paid actions on this level — stop manual "
@@ -125,24 +123,17 @@ class _WallSpend:
                     "`assay model` tier: replay-verified models earn batching rights)"
                 )
             return None
-        if general:
-            if level_actions >= 25:
-                return (
-                    f"{level_actions} paid actions on this level — stop manual "
-                    "probing; re-read your notes, kill dead assumptions, and model the "
-                    "mechanics offline with `assay python` before spending more"
-                )
-            return None
-        if level_actions >= 40:
-            return (
-                f"{level_actions} paid actions on this level — stop manual probing; "
-                "write rules.py for it (`assay rules help`), verify with `assay rules replay`, "
-                "then `assay rules solve`"
-            )
+        # No registry: the observation kind's own tier, if it has one.
+        from .extras import kind_for
+
+        kind = kind_for(view.events[-1]) if view.events else None
+        if kind is not None:
+            return kind.wall_spend_advice(level_actions)
         if level_actions >= 25:
             return (
-                f"{level_actions} paid actions on this level — re-read your notes, "
-                "kill dead assumptions, and consider the rules.py tier (`assay rules help`)"
+                f"{level_actions} paid actions on this level — stop manual "
+                "probing; re-read your notes, kill dead assumptions, and model the "
+                "mechanics offline with `assay python` before spending more"
             )
         return None
 

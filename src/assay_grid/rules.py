@@ -19,8 +19,8 @@ from typing import Any
 
 import numpy as np
 
-from . import Unknown
-from .core import (
+from assay import Unknown
+from assay.core import (
     AssayError,
     RunPaths,
     atomic_json,
@@ -32,7 +32,7 @@ from .core import (
     load_events,
     now_iso,
 )
-from .evidence import observation_hash
+from .render import observation_hash
 
 RULES_HELP = """\
 RULES CONTRACT | plain python in ./rules.py | action tokens like "ACTION1", "ACTION6:12,5"
