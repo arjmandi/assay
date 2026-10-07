@@ -1,0 +1,7 @@
+# The interpreter the ARC-AGI-3 runs are served by (bench/arcagi/PROTOCOL.md).
+# Python 3.14.5. Make it once, outside the repository, and point ASSAY_PYTHON at it:
+#   uv venv --python 3.14.5 <envs>/arc_agi && uv pip install --python <envs>/arc_agi/bin/python -r bench/arcagi/requirements.txt
+arc-agi==0.9.9
+arcengine==0.9.3
+numpy==2.5.1
+pillow==12.3.0

@@ -17,8 +17,19 @@ journal spec (`verify/JOURNAL_SPEC.md`, section 7).
 ## Running a game
 
 Requirements beyond the core harness: the `arc-agi` client library must be
-importable in the interpreter that serves the broker (install it into the
-runtime `bin/assay` selects: `python3 -m pip install arc-agi`). The first run
+importable in the interpreter that serves the broker. The protocol's
+interpreter is a dedicated one, made once outside the repository from
+`requirements.txt` beside this file (Python 3.14.5, `arc-agi==0.9.9`,
+`arcengine==0.9.3`, `numpy==2.5.1`, `pillow==12.3.0`, the pins every ARC run
+of the 1.1.0 campaigns was served by) and selected with `ASSAY_PYTHON`:
+
+    uv venv --python 3.14.5 <envs>/arc_agi
+    uv pip install --python <envs>/arc_agi/bin/python -r bench/arcagi/requirements.txt
+    export ASSAY_PYTHON=<envs>/arc_agi/bin/python
+    assay doctor
+
+`assay doctor` names the interpreter, and a resume from a different one
+warns. The first run
 of a public game needs `ARC_API_KEY` set once to download it into the durable
 local cache (`~/.cache/assay/arcade`, override with `ASSAY_CACHE_DIR`);
 after that, runs are offline. Older local game caches are adopted

@@ -343,7 +343,10 @@ it, recorded in `config.json` as `python`. A resume from a different
 interpreter prints a line beginning `WARNING | interpreter changed:` that
 names both interpreters and `ASSAY_PYTHON`. For a benchmark world, install
 the package into the venv that holds the adapter's dependencies and point
-`ASSAY_PYTHON` at it.
+`ASSAY_PYTHON` at it. The ARC-AGI-3 adapter has such an interpreter on
+record, `bench/arcagi/requirements.txt` (Python 3.14.5 and four pins), made
+once outside the repository; the Factorio and OOLONG adapters need nothing
+beyond the harness.
 
 `assay doctor` works with or without a run in the directory and checks all of
 the above in one voice. `assay module list` shows every active module with
