@@ -18,8 +18,12 @@ main at 4dc53e1.
 
 ### Which kernel the paper's campaigns ran on
 
-The ARC-AGI-3 campaign of 2026-08-22 to 08-25 ran on v1.0-rc1 (c4207c1,
-2026-08-22) with the agent manual then named `DOCTRINE.md`. Three later
+The ARC-AGI-3 campaign of 2026-08-21 to 08-23 (first journal event
+2026-08-21 19:15 UTC, last 2026-08-23 16:21 UTC) ran on the kernel published as
+v1.0-rc1 (c4207c1, 2026-08-22 16:37 UTC, the repository's first commit) with the
+agent manual then named `DOCTRINE.md`. Six of the 25 journals (cd82, tn36, sp80,
+ft09, su15, ls20) began before that commit existed, so for them the kernel is
+pinned by the G2 replay below and not by a commit hash. Three later
 commits touched `src/assay` before the OOLONG final at 4dc53e1: 566bcab
 (2026-08-25, the module field renamed from DOCTRINE to CONSTITUTION, after the
 ARC campaign), e4c669d (2026-08-26, the broker survives a client hangup, the
@@ -125,11 +129,14 @@ Left on the experiment branch, deliberately:
   checker's verdict: the ARC-AGI-3, Factorio and OOLONG packs as published,
   the E1, E2 and E3 packs (journals and stored chains only, since the pinned
   registries and creation records carry local paths and stay with the
-  archived run directories), and the new G4 pack, the live ft09 regression
-  gate of this release (WIN 6 of 6 in 80 paid actions, CLEAN, head
-  `cc65462f...`). `evidence/verify_all.py` checks all 56 journals against
-  their heads with the standard library alone, and the suite runs it. The
-  former assay-verify repository is archived with a pointer here.
+  archived run directories), the G4 pack, the live ft09 regression gate of
+  this release (WIN 6 of 6 in 80 paid actions, CLEAN, head `cc65462f...`),
+  the E1b pack (the prediction instrument removed, six journals that read
+  INVALID FOR SCORING by design) and the Factorio 1.1.0 pack (ironplate and
+  circuit replayed on this release, and the hand-played smoke).
+  `evidence/verify_all.py` checks all 65 journals against their heads with
+  the standard library alone, and the suite runs it. The former assay-verify
+  repository is archived with a pointer here.
 - OOLONG batch banking, the E5 variant (B3). `control.bank_mode: batch` in
   the registry (`bench/oolong/registry_200_batch.json`) makes `BANK_FACT`
   take several spans in one paid action (`spans`, base64 of a JSON list, all

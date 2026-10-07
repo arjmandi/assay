@@ -13,6 +13,8 @@ standard (`../verify/JOURNAL_SPEC.md`). The packs:
 | `e2/` | experiment E2, resumed proof states with and without the coverage audit | 10 |
 | `e3/` | experiment E3, carryover of the agent's own export | 2 |
 | `g4/` | the live ft09 regression gate of release 1.1.0 | 1 |
+| `e1b/` | experiment E1b, the prediction instrument removed (three games, two seeds, gate off) | 6 |
+| `factorio-110/` | the two Factorio lab tasks replayed on the release build, and the hand-played smoke | 3 |
 
 Each pack has a `README.md`, a `HEADS.md` with the published heads and
 verdicts, and the machine-readable `heads.json`. Journals are gzipped

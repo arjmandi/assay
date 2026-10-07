@@ -1,0 +1,103 @@
+{
+ "spec": "assay-journal-v1",
+ "world": "factorio-fle-lab",
+ "experiment": "Factorio 1.1.0",
+ "generated": "2026-10-07",
+ "note": "The Factorio (FLE) reproduction on the release build: the ironplate and circuit lab tasks replayed by claude-opus-5 on release/1.1.0 at d99c0a6 under the M2 registry (registry_lab64.json, the same registry_hash as the August runs), cap 64, FLE 0.4.3, one session each, with a hand-played six-action smoke on the same build before any model spend. Bands fixed before launch in FACTORIO_1_1_0_PROTOCOL.md.",
+ "protocol_files": [
+  "FACTORIO_1_1_0_PROTOCOL.md",
+  "FACTORIO_1_1_0_RESULTS.md"
+ ],
+ "checker": "verify/assay_verify.py at the commit that publishes this pack, run on the decompressed journal.jsonl beside its chain.json, with --expect-head",
+ "total_paid_actions": 26,
+ "runs": [
+  {
+   "run": "ironplate",
+   "task": "ironplate",
+   "arm": "claude-opus-5",
+   "cap": 64,
+   "kernel": "release/1.1.0 at d99c0a6",
+   "model": "claude-opus-5",
+   "state_dir": ".assay",
+   "events": 6,
+   "paid": 5,
+   "progress": "4/4",
+   "final_state": "WIN",
+   "per_progress_paid": [
+    4,
+    0,
+    0,
+    1
+   ],
+   "chain_head": "fcfbebc17442ac966a80b6aaaf8d31ed57f2be535000499c9429d24e2b395363",
+   "stored_chain": "intact",
+   "expect_head": "match",
+   "ungated": 0,
+   "verdict": "CLEAN",
+   "journal_sha256": "9d3b55ca884bf688c3f892dcc6866ae58d60a48935b287481e1fe4349c6e559f",
+   "published_bytes": 26317,
+   "wall_min": 8.6,
+   "cost_usd_list_price": 2.64,
+   "channel_claims_on_paid_actions": "5 of 5",
+   "refusals": 0
+  },
+  {
+   "run": "circuit",
+   "task": "circuit",
+   "arm": "claude-opus-5",
+   "cap": 64,
+   "kernel": "release/1.1.0 at d99c0a6",
+   "model": "claude-opus-5",
+   "state_dir": ".assay",
+   "events": 16,
+   "paid": 15,
+   "progress": "4/4",
+   "final_state": "WIN",
+   "per_progress_paid": [
+    14,
+    0,
+    0,
+    1
+   ],
+   "chain_head": "cb67fea573f4cb667b807f0ccfffe3f704ff5e7df9eedab909d2d5d0b3e19188",
+   "stored_chain": "intact",
+   "expect_head": "match",
+   "ungated": 0,
+   "verdict": "CLEAN",
+   "journal_sha256": "a9a2852484181041f080a7374b158963821778314415df3ca9f0e482d68c9952",
+   "published_bytes": 118743,
+   "wall_min": 22.9,
+   "cost_usd_list_price": 6.69,
+   "channel_claims_on_paid_actions": "15 of 15",
+   "refusals": 0
+  },
+  {
+   "run": "smoke",
+   "task": "ironore",
+   "arm": "hand-played, no model",
+   "cap": 64,
+   "kernel": "release/1.1.0 at d99c0a6",
+   "model": null,
+   "state_dir": ".assay",
+   "events": 7,
+   "paid": 6,
+   "progress": "4/4",
+   "final_state": "WIN",
+   "per_progress_paid": [
+    5,
+    0,
+    0,
+    1
+   ],
+   "chain_head": "57828a5a89e5e80dbd7765bc2c599b1c8b644797ce3674197e20dfa41a1cca3d",
+   "stored_chain": "intact",
+   "expect_head": "match",
+   "ungated": 0,
+   "verdict": "CLEAN",
+   "journal_sha256": "8f77f4971e5b39d2e2c5030218f9ff5acfea7a1b2be78f581dd24ac78bdaf779",
+   "published_bytes": 16600,
+   "cost_usd_list_price": 0.0,
+   "refusals": 0
+  }
+ ]
+}

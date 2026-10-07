@@ -71,8 +71,8 @@ mkdir demo && cd demo
 ## Status
 
 1.1.0, the first open-source release. The ARC-AGI-3 campaign of
-2026-08-22 to 08-25 ran on v1.0-rc1, and the Factorio and OOLONG runs on that
-kernel plus two small fixes. 1.1.0 is a refactor of it, verified by replaying
+2026-08-21 to 08-23 ran on the kernel published as v1.0-rc1, and the Factorio
+and OOLONG runs on that kernel plus two small fixes. 1.1.0 is a refactor of it, verified by replaying
 the 25 published run directories unchanged (`CHANGELOG.md`).
 
 ## License

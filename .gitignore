@@ -9,3 +9,5 @@ dist/
 build/
 # Run state must never be committed into the repository.
 .assay/
+# uv run writes a lock file beside pyproject; the release pins nothing beyond pyproject.
+uv.lock
