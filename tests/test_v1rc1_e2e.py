@@ -159,12 +159,35 @@ def test_model_tier_promotion_and_plan(tmp_path):
     try:
         assert _start(run, registry).returncode == 0
         assert run_cli(run, "channel", "declare", "counter", "--path", "counter").returncode == 0
-        # Thin evidence: replay before 20 graded transitions -> no promotion.
+        # Twenty transitions recorded before the model's first replay earn
+        # nothing: the fit over them is perfect, none of them is counted.
+        for _ in range(20):
+            spent = run_cli(run, "act", "NOOP", "--predict", "noop")
+            assert spent.returncode == 0, spent.stderr
         (run / "model.py").write_text(MODEL_SOURCE)
         replayed = run_cli(run, "model", "replay")
         assert replayed.returncode == 0, replayed.stderr
-        assert "promotion not earned" in replayed.stdout
-        # A >cap hand batch is refused by the batching law (default cap 3).
+        assert (
+            "MODEL | replay-fit 100.00% | held 20 missed 0 unknown 0 over 20 "
+            "transitions | recent-quarter graded 5 | promotion not earned"
+        ) in replayed.stdout
+        assert (
+            "MODEL | counted 0 transition(s) recorded after this model's first replay "
+            "at e20, 0 in the most recent quarter of the journal | promotion still "
+            "needs 20 more counted, 5 more in the most recent quarter"
+        ) in replayed.stdout
+        fit = json.loads((run / ".assay" / "model_fit.json").read_text())
+        assert fit["admitted_at_event"] == 20 and fit["computed_at_event"] == 20
+        assert fit["graded"] == 20 and fit["counted"] == 0 and fit["counted_recent"] == 0
+        assert fit["promotion"] is False
+        status = run_cli(run, "status")
+        assert "MODEL | fit 100% over 20 graded | batching rights: no" in status.stdout
+        assert (
+            "replay-fit not promoted: counted 0 since the admission at e20, missed 0, "
+            "recent 0 (needs missed=0, counted>=20, recent>=5)"
+        ) in status.stdout
+        # A >cap hand batch is refused by the batching law (default cap 3),
+        # and the refusal names the counted transitions.
         long_batch = run_cli(
             run,
             "commit",
@@ -172,13 +195,35 @@ def test_model_tier_promotion_and_plan(tmp_path):
         )
         assert long_batch.returncode == 2
         assert "batching law" in long_batch.stderr
-        # Earn the promotion: 20 graded transitions, model holds on all.
+        assert "counted 0 since the admission at e20" in long_batch.stderr
+        # Earn the promotion: twenty transitions recorded after the admission,
+        # the model holds on all of them, and the admission event stays put.
         for _ in range(20):
             spent = run_cli(run, "act", "NOOP", "--predict", "noop")
             assert spent.returncode == 0, spent.stderr
         replayed = run_cli(run, "model", "replay")
         assert replayed.returncode == 0, replayed.stderr
-        assert "promotion EARNED" in replayed.stdout
+        assert (
+            "MODEL | replay-fit 100.00% | held 40 missed 0 unknown 0 over 40 "
+            "transitions | recent-quarter graded 10 | promotion EARNED: model plans "
+            "lift the batch cap"
+        ) in replayed.stdout
+        assert (
+            "MODEL | counted 20 transition(s) recorded after this model's first replay "
+            "at e20, 10 in the most recent quarter of the journal | promotion earned "
+            "on the counted transitions"
+        ) in replayed.stdout
+        fit = json.loads((run / ".assay" / "model_fit.json").read_text())
+        assert fit["admitted_at_event"] == 20 and fit["computed_at_event"] == 40
+        assert fit["counted"] == 20 and fit["counted_recent"] == 10
+        assert fit["promotion"] is True
+        activity = (run / ".assay" / "activity.jsonl").read_text().splitlines()
+        replays = [
+            json.loads(line) for line in activity if '"kind":"model_replay"' in line
+        ]
+        assert [item["event"] for item in replays] == [20, 40]
+        assert [item["admitted_at_event"] for item in replays] == [20, 20]
+        assert [item["counted"] for item in replays] == [0, 20]
         status = run_cli(run, "status")
         assert "batching rights: YES" in status.stdout
         # Solve to the goal reading and execute the machine plan to the WIN.

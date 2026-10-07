@@ -450,11 +450,17 @@ capability meter (`verifiers.vacuous_hashes`, `inspect._claim_meter_lines`).
 predicted observation or `None` for Unknown, optional `actions(obs)` and
 `key(obs)`. `assay model replay` re-predicts every recorded paid transition in
 the sandbox and grades only the declared channels (`model.replay_model`, fit
-record in `.assay/model_fit.json`). The promotion law is pinned: batching rights
-need `missed == 0` over at least 20 graded transitions and at least 5 graded
-inside the most recent quarter of the journal, the current `model.py` hash and
-the current journal head, no ungated event, and no aggregate that revoked
-batching (`model.batching_rights`). `assay model solve --to "ch NAME = V"`
+record in `.assay/model_fit.json`). The promotion law is pinned: a model hash
+is admitted at the journal event of its first replay (`admitted_at_event` in
+the fit record, read from the earliest `model_replay` activity record that
+carries the hash and its event, or the current replay when there is none), and
+only the paid transitions recorded after that event are counted, so the model
+earns rights by predicting the future, not by fitting the past. Batching rights
+need `missed == 0` over the whole fit, at least 20 counted transitions and at
+least 5 counted inside the most recent quarter of the journal, the current
+`model.py` hash and the current journal head, no ungated event, and no
+aggregate that revoked batching (`model.batching_rights`).
+`assay model solve --to "ch NAME = V"`
 searches the model in the sandbox and writes `.assay/model_plan.json` with one
 machine prediction per step. `assay commit @.assay/model_plan.json` is the only
 way past the hand-batch cap (`live.execute_model_plan`), every step is graded

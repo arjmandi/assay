@@ -202,8 +202,10 @@ the refusal names the cap). Longer batches are EARNED through the model tier:
 ```
 
 Trust is exactly replay-fit: a model whose declared channels held on every
-recorded transition (at least 20 graded, including recent ones) earns the
-right to run plans past the hand cap. A contradicted or stale model refuses.
+recorded transition earns the right to run plans past the hand cap once at
+least 20 graded transitions (5 of them recent) were recorded after its first
+replay, so it is trusted for predicting what it had not seen, never for
+fitting what it had. A contradicted or stale model refuses.
 Model plans halt on the first divergence, like any batch.
 
 ## Gates you may hit (all structural, none ban)
