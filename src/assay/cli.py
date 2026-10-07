@@ -44,7 +44,13 @@ from .model import (
     replay_model,
     solve_model,
 )
-from .modules import pin_external_modules
+from .modules import (
+    active_modules,
+    install_module,
+    load_manifest,
+    pin_external_modules,
+    unlisted_lines,
+)
 from .core import (
     AssayError,
     RunPaths,
@@ -254,6 +260,19 @@ def _parser() -> Parser:
     model_solve.add_argument("--seconds", type=float, default=15.0)
     model_solve.add_argument("--max-nodes", type=int, default=100_000)
     model_solve.add_argument("--max-depth", type=int, default=40)
+
+    module = commands.add_parser(
+        "module", help="behavior modules: list the active set, install one (owner)"
+    )
+    module_commands = module.add_subparsers(dest="module_command", required=True)
+    module_commands.add_parser(
+        "list", help="active modules with mode and origin, plus ignored files"
+    )
+    module_install = module_commands.add_parser(
+        "install", help="owner: install a module file mid-run (journaled, manifest-pinned)"
+    )
+    module_install.add_argument("path", type=Path)
+    module_install.add_argument("--token")
 
     goal = commands.add_parser(
         "goal", help="the standing goal: propose revisions (agent), ratify (owner)"
@@ -526,12 +545,15 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     atomic_json(paths.config, config)
     if registry_spec is not None:
         atomic_json(paths.registry, registry_spec)
-        pin_external_modules(paths, registry_spec)
     (paths.state / "python").write_text(sys.executable + "\n")
     # Owner authority exists for registry runs; the numbered-action path stays
     # unchanged (no token line in its start output).
     owner_token = mint_owner_token(paths) if registry_spec is not None else None
     try:
+        if registry_spec is not None:
+            # Module files are loaded once here to check their contract; a
+            # refusal must leave no half-initialized run behind.
+            pin_external_modules(paths, registry_spec)
         start_broker(paths)
         observation, public_info = broker_observe(paths)
         config["public_info"] = public_info
@@ -834,6 +856,25 @@ def main() -> None:
                             "— actions() or next() are too narrow, or the goal needs "
                             "something unmodeled"
                         )
+            elif args.command == "module":
+                if args.module_command == "install":
+                    record = install_module(paths, args.path, args.token)
+                    print(
+                        f"MODULE | installed {record['name']} from {record['source']} "
+                        f"(sha256 {record['sha256'][:12]}) | journaled | active from the "
+                        "next action"
+                    )
+                else:
+                    registry = read_json(paths.registry, None)
+                    origins = {
+                        str(entry.get("name")): str(entry.get("origin"))
+                        for entry in load_manifest(paths)
+                    }
+                    print("MODULES | active (name, mode, origin)")
+                    for item, mode in active_modules(paths, registry):
+                        print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
+                    for line in unlisted_lines(paths):
+                        print(line)
             elif args.command == "goal":
                 if args.goal_command == "propose":
                     record = propose_goal(paths, args.text, args.because)

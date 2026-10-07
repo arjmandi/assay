@@ -52,6 +52,10 @@ Left on the experiment branch, deliberately:
   without run state, so an orphaned daemon left behind by a hand-deleted
   `.assay` can be stopped. Never sends SIGKILL.
 
+- `assay module list` (active modules with mode and origin, plus any ignored
+  file in `.assay/modules`) and `assay module install PATH --token TOK`, the
+  owner-authorized, journaled way to add a module mid-run.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
@@ -85,6 +89,19 @@ Left on the experiment branch, deliberately:
   shown in status instead of swallowed. Start warns when the anchor directory
   is not writable. The audit reports `anchor_env_mismatch` when the
   environment disagrees with the recorded file (information, not a verdict).
+- Module manifest (ranked fix 4). External modules used to be every `.py`
+  file under `.assay/modules/`, loaded on every consult, which let an agent
+  install a module by writing a file. Now `assay start` writes
+  `.assay/modules/manifest.json` (name, file, source, sha256, origin) for the
+  registry's `modules`, and only listed files whose hash still matches are
+  loaded. A stranger file or an edited pinned file is ignored and named in
+  status and in `assay module list`. Module files are loaded once at pin or
+  install time to check the contract and refuse a NAME that clashes with a
+  built-in or another entry, before any spend. Runs that predate the manifest
+  rebuild it from the registry's `modules` list by file name, so they keep
+  their modules. TODO(owner: O6): the alternative (keep the glob, call the
+  channel unguarded in the paper) is a one-line revert in
+  `modules._load_external`.
 
 ### Regression gates
 

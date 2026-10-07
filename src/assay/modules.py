@@ -14,9 +14,18 @@ The shipping ladder is telemetry-first, teeth later: everything ships at
 advise until an A/B shows blocking pays (owner law). Demands are always for
 checkable structure (named, non-empty fields supplied via --declare or the
 destructive-gate flags), never for confidence. Module code is pack-tier trust:
-installed by the human at registration (`modules: [path.py]`), loaded
-daemon-side, never writable by the agent mid-run (module files are pinned into
-`.assay/modules/` at start).
+installed by the human at registration (`modules: [path.py]`) or by the owner
+mid-run (`assay module install PATH --token TOK`), loaded daemon-side, never
+writable by the agent. Installed files are pinned into `.assay/modules/` and
+listed in `.assay/modules/manifest.json` with their sha256; a file in that
+directory that is not listed, or whose hash no longer matches, is never loaded
+and status says so. This is the sanctioned hot-add channel: the owner installs,
+the install is journaled, nothing else in the directory counts.
+
+TODO(owner: O6): the review offered the alternative of keeping the directory
+glob and having the paper call the channel unguarded. The manifest is the
+conservative default implemented here (the run loads only what the registry
+or the owner installed); switching back is a one-line change in _load_external.
 
 Built-ins (the standing nudge table plus the first structural module):
 
@@ -36,7 +45,9 @@ Built-ins (the standing nudge table plus the first structural module):
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import shutil
+import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -347,38 +358,216 @@ BUILTINS = (
 )
 
 
+_CONTRACT = ("NAME", "CONSTITUTION", "MODE", "trigger", "demand", "telemetry")
+MANIFEST_NAME = "manifest.json"
+
+
+def modules_dir(paths: RunPaths) -> Path:
+    return paths.state / "modules"
+
+
+def manifest_path(paths: RunPaths) -> Path:
+    return modules_dir(paths) / MANIFEST_NAME
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def _module_object(module: Any, file: Path) -> Any:
+    candidate = getattr(module, "MODULE", module)
+    for attr in _CONTRACT:
+        if not hasattr(candidate, attr):
+            raise AssayError(
+                f"module {file.name} lacks {attr!r}; the module contract is "
+                "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()"
+            )
+    return candidate
+
+
+def module_name_of(file: Path) -> str:
+    """Load a module file once to read its NAME and check its contract."""
+    with import_path(file, "assay_module") as module:
+        return str(_module_object(module, file).NAME)
+
+
+def _check_name(name: str, file: Path, taken: Mapping[str, str]) -> None:
+    builtin = {module.NAME for module in BUILTINS}
+    if name in builtin:
+        raise AssayError(
+            f"module file {file.name} declares NAME {name!r}, which is a built-in; "
+            "external modules need their own name"
+        )
+    if name in taken and taken[name] != file.name:
+        raise AssayError(
+            f"module file {file.name} declares NAME {name!r}, already provided by "
+            f"{taken[name]}"
+        )
+
+
+def load_manifest(paths: RunPaths) -> list[dict[str, Any]]:
+    value = read_json(manifest_path(paths), None)
+    if isinstance(value, dict) and isinstance(value.get("modules"), list):
+        return [entry for entry in value["modules"] if isinstance(entry, dict)]
+    return []
+
+
+def _write_manifest(paths: RunPaths, entries: Sequence[Mapping[str, Any]]) -> None:
+    atomic_json(manifest_path(paths), {"version": 1, "modules": list(entries)})
+
+
 def pin_external_modules(paths: RunPaths, registry: Mapping[str, Any] | None) -> None:
-    """Copy registered module files into .assay/modules/ at start (pack-tier
-    trust: human-installed, never agent-writable mid-run)."""
+    """Copy registered module files into .assay/modules/ at start and write the
+    manifest (pack-tier trust: human-installed, never agent-writable). Each
+    file is loaded once here to check its contract and its NAME against the
+    built-ins and the other entries, before any spend."""
     if not registry or not registry.get("modules"):
         return
-    target = paths.state / "modules"
+    target = modules_dir(paths)
     target.mkdir(parents=True, exist_ok=True)
+    entries: list[dict[str, Any]] = []
+    taken: dict[str, str] = {}
     for entry in registry["modules"]:
         source = Path(entry)
         if not source.is_absolute():
             source = paths.root / source
         if not source.exists():
             raise AssayError(f"registered module file not found: {entry}")
-        shutil.copy2(source, target / source.name)
+        pinned = target / source.name
+        shutil.copy2(source, pinned)
+        name = module_name_of(pinned)
+        _check_name(name, pinned, taken)
+        taken[name] = pinned.name
+        entries.append(
+            {
+                "name": name,
+                "file": pinned.name,
+                "source": str(source),
+                "sha256": _sha256(pinned),
+                "installed_at": time.time(),
+                "origin": "registry",
+            }
+        )
+    _write_manifest(paths, entries)
+
+
+def install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str, Any]:
+    """Owner-authorized mid-run install: copy, check the contract, append to
+    the manifest, journal `module_installed`. The sanctioned hot-add channel."""
+    from .agenda import require_owner
+
+    require_owner(paths, token)
+    if not source.is_file():
+        raise AssayError(f"module file not found: {source}")
+    if source.suffix != ".py":
+        raise AssayError("a module is one Python file (.py)")
+    target = modules_dir(paths)
+    target.mkdir(parents=True, exist_ok=True)
+    entries = [entry for entry in load_manifest(paths) if entry.get("file") != source.name]
+    taken = {str(entry["name"]): str(entry["file"]) for entry in entries}
+    pinned = target / source.name
+    shutil.copy2(source, pinned)
+    try:
+        name = module_name_of(pinned)
+        _check_name(name, pinned, taken)
+    except AssayError:
+        pinned.unlink(missing_ok=True)
+        raise
+    record = {
+        "name": name,
+        "file": pinned.name,
+        "source": str(source.resolve()),
+        "sha256": _sha256(pinned),
+        "installed_at": time.time(),
+        "origin": "install",
+    }
+    entries.append(record)
+    _write_manifest(paths, entries)
+    append_jsonl(paths.activity, {"kind": "module_installed", **record})
+    return record
+
+
+def _reconstruct_manifest(paths: RunPaths) -> list[dict[str, Any]]:
+    """A run started before the manifest existed: its pinned files are exactly
+    the registry's `modules` list by basename. Rebuild the manifest from those
+    files once, so such a run keeps its modules and anything else in the
+    directory is unlisted."""
+    registry = read_json(paths.registry, None)
+    wanted = {
+        Path(entry).name
+        for entry in ((registry or {}).get("modules") or ())
+        if isinstance(entry, str)
+    }
+    entries: list[dict[str, Any]] = []
+    taken: dict[str, str] = {}
+    for file in sorted(modules_dir(paths).glob("*.py")):
+        if file.name not in wanted:
+            continue
+        try:
+            name = module_name_of(file)
+            _check_name(name, file, taken)
+        except AssayError:
+            continue
+        taken[name] = file.name
+        entries.append(
+            {
+                "name": name,
+                "file": file.name,
+                "source": None,
+                "sha256": _sha256(file),
+                "installed_at": None,
+                "origin": "registry",
+                "reconstructed": True,
+            }
+        )
+    if entries:
+        _write_manifest(paths, entries)
+    return entries
+
+
+def module_inventory(paths: RunPaths) -> dict[str, Any]:
+    """Listed and loadable files, and everything in the directory that is not:
+    unlisted files and listed files whose hash changed."""
+    target = modules_dir(paths)
+    if not target.is_dir():
+        return {"listed": [], "ignored": []}
+    entries = load_manifest(paths)
+    if not entries and not manifest_path(paths).exists():
+        entries = _reconstruct_manifest(paths)
+    listed: list[dict[str, Any]] = []
+    ignored: list[str] = []
+    by_file = {str(entry.get("file")): entry for entry in entries}
+    for file in sorted(target.glob("*.py")):
+        entry = by_file.get(file.name)
+        if entry is None:
+            ignored.append(f"{file.name} (not in the manifest)")
+        elif _sha256(file) != entry.get("sha256"):
+            ignored.append(f"{file.name} (modified since install)")
+        else:
+            listed.append({**entry, "path": file})
+    for entry in entries:
+        if not (target / str(entry.get("file"))).exists():
+            ignored.append(f"{entry.get('file')} (listed but missing)")
+    return {"listed": listed, "ignored": ignored}
 
 
 def _load_external(paths: RunPaths) -> list[Any]:
-    target = paths.state / "modules"
     loaded: list[Any] = []
-    if not target.is_dir():
-        return loaded
-    for file in sorted(target.glob("*.py")):
+    for entry in module_inventory(paths)["listed"]:
+        file = entry["path"]
         with import_path(file, "assay_module") as module:
-            candidate = getattr(module, "MODULE", module)
-            for attr in ("NAME", "CONSTITUTION", "MODE", "trigger", "demand", "telemetry"):
-                if not hasattr(candidate, attr):
-                    raise AssayError(
-                        f"module {file.name} lacks {attr!r}; the module contract is "
-                        "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()"
-                    )
-            loaded.append(candidate)
+            loaded.append(_module_object(module, file))
     return loaded
+
+
+def unlisted_lines(paths: RunPaths) -> list[str]:
+    ignored = module_inventory(paths)["ignored"]
+    if not ignored:
+        return []
+    return [
+        f"MODULES | {len(ignored)} file(s) in .assay/modules ignored (not installed "
+        f"through the registry or `assay module install`): {', '.join(ignored)}"
+    ]
 
 
 def active_modules(

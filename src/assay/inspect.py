@@ -719,10 +719,11 @@ def _registry_status_lines(
     from .channels import known_channels, load_declared
     from .integrity import anchor_line, first_ungated, ungated_events
     from .model import batching_rights, fit_path, model_source
-    from .modules import load_hazards
+    from .modules import load_hazards, unlisted_lines
 
     lines: list[str] = []
     lines.extend(agenda_lines(paths, registry, events))
+    lines.extend(unlisted_lines(paths))
     lines.extend(foreign_lines(paths))
     if load_declared(paths):
         lines.append("CHANNELS | registered: " + " · ".join(known_channels(paths)))
