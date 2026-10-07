@@ -56,6 +56,14 @@ Left on the experiment branch, deliberately:
   file in `.assay/modules`) and `assay module install PATH --token TOK`, the
   owner-authorized, journaled way to add a module mid-run.
 
+- `assay start --owner-token-file PATH` (or `ASSAY_OWNER_TOKEN_FILE`): the
+  owner token is written to that file with mode 0600, outside the run
+  directory, and the path is printed instead of the token. The default is
+  unchanged (printed once). In every benchmark protocol so far the agent ran
+  `start` itself and therefore held the token; the documents say so.
+  TODO(owner: O5): whether the benchmark protocols are rewritten so the
+  operator runs `start`, or this option plus an honest paragraph is enough.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by

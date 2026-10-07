@@ -114,6 +114,13 @@ def _parser() -> Parser:
         metavar="KNOWLEDGE.json",
         help="import a prior run's exported knowledge (lands FOREIGN, demoted)",
     )
+    start.add_argument(
+        "--owner-token-file",
+        type=Path,
+        metavar="PATH",
+        help="write the owner token to this file (mode 0600, outside the run "
+        "directory) instead of printing it; ASSAY_OWNER_TOKEN_FILE does the same",
+    )
 
     commands.add_parser(
         "stop",
@@ -369,6 +376,34 @@ def _action_token(action: str, coordinates: list[str], general: bool = False) ->
     return token
 
 
+def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
+    """Where the owner token goes instead of stdout, if anywhere: the flag,
+    else ASSAY_OWNER_TOKEN_FILE, else nowhere (printed once, as before). The
+    file must lie outside the run directory, which the agent reads freely."""
+    raw = getattr(args, "owner_token_file", None) or os.getenv("ASSAY_OWNER_TOKEN_FILE")
+    if not raw:
+        return None
+    target = Path(raw).expanduser()
+    if not target.is_absolute():
+        target = Path.cwd() / target
+    target = target.resolve()
+    try:
+        target.relative_to(paths.root.resolve())
+    except ValueError:
+        return target
+    raise AssayError(
+        f"--owner-token-file must point outside the run directory, got {target}"
+    )
+
+
+def _write_owner_token(target: Path, token: str) -> None:
+    target.parent.mkdir(parents=True, exist_ok=True)
+    descriptor = os.open(str(target), os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(descriptor, "w") as handle:
+        handle.write(token + "\n")
+    os.chmod(target, 0o600)
+
+
 def _write_notes(paths: RunPaths, game_id: str) -> None:
     if paths.notes.exists():
         return
@@ -520,6 +555,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             "directory but its run state is missing (was `.assay` removed by "
             "hand?); run `assay stop` here first, then start again"
         )
+    token_file = _owner_token_file(paths, args)
     paths.root.mkdir(parents=True, exist_ok=True)
     mode = str(args.mode or os.getenv("ASSAY_MODE", LOCAL_MODE)).lower()
     if mode not in {LOCAL_MODE, REMOTE_MODE}:
@@ -550,6 +586,8 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     # unchanged (no token line in its start output).
     owner_token = mint_owner_token(paths) if registry_spec is not None else None
     try:
+        if owner_token is not None and token_file is not None:
+            _write_owner_token(token_file, owner_token)
         if registry_spec is not None:
             # Module files are loaded once here to check their contract; a
             # refusal must leave no half-initialized run behind.
@@ -579,7 +617,14 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         stop_broker(paths)
         shutil.rmtree(paths.state, ignore_errors=True)
         raise
-    if owner_token is not None:
+    if owner_token is not None and token_file is not None:
+        print(
+            f"OWNER TOKEN | written to {token_file} (mode 0600) — only its hash is "
+            "stored in the run; pass the file's content as --token for "
+            "ratifications, approvals and waivers (the agent proposes, never "
+            "self-ratifies)"
+        )
+    elif owner_token is not None:
         print(
             f"OWNER TOKEN | {owner_token} — printed once, only its hash is stored; "
             "the launcher/owner keeps it OUTSIDE the run directory (ratifications, "
@@ -617,6 +662,17 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             'USE | open IMAGE first; every `assay act` needs --predict "<claims>" '
             "(`assay act --help` lists the claim forms)"
         )
+
+
+def _discard_empty_state(paths: RunPaths) -> None:
+    """A refused fresh start leaves `.assay/` holding nothing but the lock
+    file run_lock created; remove it so the directory is as it was."""
+    try:
+        leftovers = [item.name for item in paths.state.iterdir()]
+    except FileNotFoundError:
+        return
+    if leftovers == [paths.lock.name]:
+        shutil.rmtree(paths.state, ignore_errors=True)
 
 
 def _stop(paths: RunPaths) -> None:
@@ -699,8 +755,12 @@ def main() -> None:
         args = _parser().parse_args()
         paths = RunPaths(Path(args.run_dir).resolve())
         if args.command == "start":
-            with run_lock(paths):
-                _start(paths, args)
+            try:
+                with run_lock(paths):
+                    _start(paths, args)
+            except AssayError:
+                _discard_empty_state(paths)
+                raise
             raise SystemExit(0)
         if args.command == "stop":
             if paths.state.is_dir():
