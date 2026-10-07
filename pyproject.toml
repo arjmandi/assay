@@ -21,7 +21,7 @@ grid = ["pillow>=10,<13"]
 arcagi = ["arc-agi", "pillow>=10,<13"]
 # Building or fetching an OOLONG corpus pack reads a parquet shard; the adapter itself needs nothing.
 oolong = ["pyarrow", "pandas"]
-dev = ["pytest"]
+dev = ["pytest", "hypothesis"]
 
 [project.scripts]
 assay = "assay.cli:main"

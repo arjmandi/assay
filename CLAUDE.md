@@ -12,8 +12,8 @@ code. `AGENTS.md` is the short version of this file for any coding agent.
 ## Commands
 
 ```sh
-uv run --with pytest --with numpy --with pillow pytest tests/      # full suite
-uv run --with pytest --with numpy --with pillow pytest tests/test_registry.py  # one file
+uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/      # full suite
+uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/test_registry.py  # one file
 ```
 
 Or, in a venv with the editable install: `pip install -e '.[grid,dev]'` then

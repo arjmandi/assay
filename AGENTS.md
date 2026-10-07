@@ -9,7 +9,7 @@ not for you. The user-facing story is `ONBOARDING.md`.
 From the repository root, in an environment with numpy, pillow and pytest:
 
 ```bash
-uv run --with pytest --with numpy --with pillow pytest tests/
+uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/
 ```
 
 or `python3 -m venv .venv && .venv/bin/pip install -e '.[grid,dev]'` and then
