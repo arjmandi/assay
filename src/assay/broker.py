@@ -191,8 +191,8 @@ def _client_timeout(computed: float) -> float:
     """The client's socket wait, with an env-set floor for slow worlds.
 
     Defaults are unchanged when ASSAY_BROKER_TIMEOUT is unset (a fast local
-    sim keeps its exact behavior). A slow world — emulated, containerized, or
-    otherwise heavy per step — exports it as a floor in seconds so a long but
+    sim keeps its exact behavior). A slow world (emulated, containerized, or
+    otherwise heavy per step) exports it as a floor in seconds so a long but
     legitimate operation does not trip the client's give-up and orphan the
     owner's reply."""
     floor = os.getenv("ASSAY_BROKER_TIMEOUT")
@@ -296,7 +296,7 @@ def broker_gated(
     paths: RunPaths, payload: Mapping[str, Any], *, steps: int = 1
 ) -> dict[str, Any]:
     """Send one gated operation to the daemon; returns the receipt. The CLI is
-    a stateless display client on registry runs — enforcement happens where
+    a stateless display client on registry runs; enforcement happens where
     the session and credentials live."""
     timeout = _client_timeout(60.0 + 30.0 * max(1, steps))
     response = _request(paths, payload, timeout=timeout)
@@ -385,9 +385,14 @@ def start_broker(paths: RunPaths) -> None:
         close_fds=True,
         env=environment,
     )
-    current = read_json(paths.broker, {})
-    if current.get("status") == "STARTING":
-        atomic_json(paths.broker, {**current, "pid": process.pid})
+    # From here on the daemon is the only writer of broker.json: it replaces
+    # the STARTING descriptor with READY, ERROR or STOPPED and names its own
+    # pid there. This side used to rewrite the descriptor with the child's pid
+    # right after the spawn, and that write raced the daemon's: on a slow disk
+    # its fsync outlasted a warm daemon's whole startup, the rewrite buried
+    # READY under STARTING, and the wait below ran to its deadline against a
+    # live daemon. Identity is the process table (find_daemon), never a stored
+    # pid, so nothing needs the pid before the daemon publishes it.
     deadline = time.monotonic() + 45.0
     while time.monotonic() < deadline:
         current = read_json(paths.broker, {})
@@ -429,11 +434,14 @@ def find_daemon(paths: RunPaths) -> DaemonInfo | None:
     hand-deleted `.assay` there is no broker.json at all while the daemon still
     serves the socket. So the identity is the process table: a live process
     whose command line runs the `broker_server` module with `--run-dir` naming
-    this directory. Portable across macOS and Linux through `ps`."""
+    this directory. Portable across macOS and Linux through `ps`; `-ww` lifts
+    the column limit procps applies when no terminal is attached (under pytest
+    on Linux the listing was cut at 80 columns and `--run-dir` fell off the
+    line), and BSD ps reads it as the same unlimited width."""
     roots = {str(paths.root), str(paths.root.resolve())}
     try:
         listing = subprocess.run(
-            ["ps", "-eo", "pid=,command="],
+            ["ps", "-ww", "-eo", "pid=,command="],
             capture_output=True,
             text=True,
             timeout=10.0,
@@ -623,8 +631,8 @@ def serve(paths: RunPaths) -> None:
 
     sequence = max((int(item.get("mutation_id", 0)) for item in mutations), default=0)
     # Daemon-side gate: on a registry run, enforcement lives HERE,
-    # where the session and the credentials live. The bare `step` op is refused
-    # — a client speaking this socket directly cannot bypass the gate invisibly.
+    # where the session and the credentials live. The bare `step` op is refused:
+    # a client speaking this socket directly cannot bypass the gate invisibly.
     gated = read_json(paths.registry, None) is not None
     shared = {"sequence": sequence, "fresh_level": fresh_level}
 

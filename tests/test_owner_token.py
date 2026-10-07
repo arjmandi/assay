@@ -37,7 +37,7 @@ def test_token_file_replaces_the_printed_token(tmp_path):
         started = _start(run, "--owner-token-file", str(token_file))
         assert started.returncode == 0, started.stderr
         assert f"OWNER TOKEN | written to {token_file} (mode 0600)" in started.stdout
-        assert not re.search(r"OWNER TOKEN \| \S{20,} —", started.stdout)
+        assert not re.search(r"OWNER TOKEN \| \S{20,} \|", started.stdout)
         assert stat.S_IMODE(token_file.stat().st_mode) == 0o600
         token = token_file.read_text().strip()
         assert len(token) >= 20 and token not in started.stdout
@@ -67,7 +67,7 @@ def test_environment_variable_form_and_default_unchanged(tmp_path, monkeypatch):
     try:
         started = _start(run2)
         assert started.returncode == 0, started.stderr
-        assert re.search(r"OWNER TOKEN \| \S{20,} — printed once", started.stdout)
+        assert re.search(r"OWNER TOKEN \| \S{20,} \| printed once", started.stdout)
     finally:
         stop_run(run2)
 

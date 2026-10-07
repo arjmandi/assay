@@ -15,7 +15,7 @@ general form. The agent writes `model.py` in the run root:
     def key(obs):                         # optional: dedup key for search
         return json.dumps(obs["data"], sort_keys=True)
 
-Trust is exactly replay-fit — no other trust states exist:
+Trust is exactly replay-fit; no other trust states exist:
 
 - `assay model replay` re-predicts every recorded paid transition in the verifier
   sandbox and grades ONLY the declared channels: MISMATCH = declared channel
@@ -34,7 +34,7 @@ Trust is exactly replay-fit — no other trust states exist:
   aggregate consequence revoked them.
 - `assay model solve --to "ch NAME = V"` searches the model (sandboxed BFS) for
   a plan; every plan step carries machine-generated channel predictions,
-  marked `machine` — they never enter the agent's claim meters. Plans carry
+  marked `machine`; they never enter the agent's claim meters. Plans carry
   provenance hashes and refuse to run against a changed world or model.
 - Imported models NEVER carry rights: the fit record is never exported and
   must be re-earned on the current run's journal.
@@ -53,7 +53,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -78,10 +78,10 @@ MODEL_TEMPLATE = '''"""Your world model. Declare channels; predict the next obse
 
 The kernel grades ONLY the channels you declare (registered channel names).
 Return the predicted observation dict from next(), or None when this
-transition is outside your model (Unknown — honest, excluded from fit).
+transition is outside your model (Unknown: honest, excluded from fit).
 """
 
-CHANNELS = []  # e.g. ["counter", "level"] — registered channel names you model
+CHANNELS = []  # e.g. ["counter", "level"]: registered channel names you model
 
 
 def next(obs, action, params):

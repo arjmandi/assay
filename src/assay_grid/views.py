@@ -188,7 +188,7 @@ def result_lines(
             if bool(mask.any()) and int(mask.sum()) <= 200 and box[1] - box[0] <= 18:
                 lines.extend(
                     [
-                        "DIFF | before — changed cells only ('·' unchanged)",
+                        "DIFF | before: changed cells only ('·' unchanged)",
                         _masked_grid_text(previous, mask, box),
                         "DIFF | after",
                         _masked_grid_text(current, mask, box),
@@ -247,7 +247,7 @@ def inspect_text(
         diff_bounds = _bbox(changed, margin=1)
         lines.extend(
             [
-                "DIFF | before — changed cells only ('·' unchanged)",
+                "DIFF | before: changed cells only ('·' unchanged)",
                 _masked_grid_text(previous, changed, diff_bounds),
                 "DIFF | after",
                 _masked_grid_text(grid, changed, diff_bounds),
@@ -276,7 +276,7 @@ def inspect_text(
                 else f"rows {box[0]}..{box[1]}, cols {box[2]}..{box[3]}"
             )
             changes = ", ".join(
-                f"{item['from']:x}→{item['to']:x}×{item['count']}"
+                f"{item['from']:x}->{item['to']:x}×{item['count']}"
                 for item in delta.get("color_changes", ())[:3]
             )
             lines.append(
@@ -287,7 +287,7 @@ def inspect_text(
                 before_center, after_center = moved["from"], moved["to"]
                 lines.append(
                     f"    MOVED | color={moved['color']:x} size={moved['size']} "
-                    f"({before_center[1]:g},{before_center[0]:g})→({after_center[1]:g},{after_center[0]:g}) x,y"
+                    f"({before_center[1]:g},{before_center[0]:g})->({after_center[1]:g},{after_center[0]:g}) x,y"
                 )
             if frames:
                 current = animation_frames[frame_index + 1]

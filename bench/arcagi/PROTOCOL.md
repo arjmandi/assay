@@ -1,4 +1,4 @@
-# ARC-AGI-3 benchmark — protocol
+# ARC-AGI-3 benchmark: protocol
 
 This folder is the ARC-AGI-3 benchmark harness for ASSAY: the world adapter,
 the pre-registered action registries, and the results record (`RESULTS.md`).
@@ -56,16 +56,16 @@ information parity with the hint line the earlier record was earned under.
 
 Two stages, in order. All runs: Opus (owner law), local simulator, tier-2
 starting information (the constitution manual (`CONSTITUTION.md`; named `DOCTRINE.md` when these runs were played) + "64x64 color grid, level counter
-and win state exist" + the registry description hints at parity — zero-prior
+and win state exist" + the registry description hints at parity; zero-prior
 OFF so the 500-cap results stay comparable to the 200-cap record), fresh cold
-runs (no imports — carryover would confound the cap comparison), sealed
+runs (no imports: carryover would confound the cap comparison), sealed
 paths, player does its own work.
 
-### Stage 1 — ft09 regression gate (every kernel milestone re-runs ARC)
+### Stage 1: ft09 regression gate (every kernel milestone re-runs ARC)
 
 - Build under test: v1-rc1 (74 tests green; grid/numbered-mode/bypass/export
   smokes).
-- Registry: `registry_200.json` — cap 200, `hand_cap: null` (parity: the
+- Registry: `registry_200.json`, cap 200, `hand_cap: null` (parity: the
   200-cap winners used 10-step hand batches; the standing law demands zero
   added mandatory friction on ARC).
 - **Bar (v1 placeholder, already registered): WIN 6/6 within ~1.5x of 75
@@ -76,9 +76,9 @@ paths, player does its own work.
 - Fail -> stop, diagnose, fix before any rerun (a milestone that regresses
   ARC does not ship).
 
-### Stage 2 — the 500-cap reruns (su15, ls20, lf52)
+### Stage 2: the 500-cap reruns (su15, ls20, lf52)
 
-- Registry: `registry_500.json` — cap 500, `hand_cap: null`.
+- Registry: `registry_500.json`, cap 500, `hand_cap: null`.
 - Fresh directories, one per game.
 - Reference points (arc-skill's published scorecard, uncapped, same
   instances): su15 117 (2 resets) · ls20 481 (3 resets) · lf52 787 (1 reset).

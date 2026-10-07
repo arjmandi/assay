@@ -30,7 +30,7 @@ PREDICTION CLAIMS | separate several with ";"
   ch NAME delta OP V   the channel moves by an amount where OP is =, >=, <=
   ch NAME delta sign +|-    the channel moves up / down
   ch NAME crosses V [from below|from above]   the channel crosses a threshold
-Any claim may end with `@within Ns` — it only grades if the result settles in time.
+Any claim may end with `@within Ns`; it only grades if the result settles in time.
 Channels: `goal` and `level` are built in; declare your own with `assay channel declare`.
 Free text that is not a claim is kept as commentary. Example:
   --predict "ch counter delta = 1; verify:checks/counter.py"
@@ -336,10 +336,10 @@ def grade_action_claims(
     """Grade every claim of one paid action: the observation kind's grader or
     the general one, then channels, then verifiers.
 
-    Aggregate claims are NOT graded here — they open at the gate and resolve at
+    Aggregate claims are NOT graded here; they open at the gate and resolve at
     their horizon. A claim with a validity window grades only if the result
     settled inside it (`elapsed_s` is the daemon-measured step duration); a
-    late settle is UNGRADABLE — its own outcome, never a silent pass or miss.
+    late settle is UNGRADABLE: its own outcome, never a silent pass or miss.
     """
     from .channels import grade_channel_claim
     from .verifiers import grade_verifier_claim, observation_view
@@ -396,10 +396,10 @@ def grade_lines(graded: Sequence[Mapping[str, Any]]) -> list[str]:
     lines: list[str] = []
     for item in graded:
         if item.get("invalid") or item.get("ungradable"):
-            lines.append(f"! {item['text']} — {item['actual']}")
+            lines.append(f"! {item['text']} | {item['actual']}")
             continue
         lines.append(
             f"{'✓' if item['ok'] else '✗'} {item['text']}"
-            + ("" if item["ok"] else f" — {item['actual']}")
+            + ("" if item["ok"] else f" | {item['actual']}")
         )
     return lines

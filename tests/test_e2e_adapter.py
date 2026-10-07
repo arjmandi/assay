@@ -1,7 +1,7 @@
 """End-to-end: the fake dict-observation adapter driven through the real CLI.
 
 Each scenario runs the actual `assay_cli.py` as a subprocess, which spawns the
-actual broker subprocess, which loads the fake adapter — the full seam a crux
+actual broker subprocess, which loads the fake adapter, the full seam a crux
 environment will use.
 """
 
@@ -13,8 +13,6 @@ import os
 import signal
 import time
 from pathlib import Path
-
-import pytest
 
 from conftest import FAKE_ADAPTER, run_cli, stop_run
 
@@ -110,7 +108,7 @@ def test_full_general_run(tmp_path):
         assert "OUTCOME | PREDICTED" in acted.stdout
         assert "✓ verify:checks/inc_by_one.py" in acted.stdout
         assert "KEY DELTA" in acted.stdout
-        assert "~ counter: 0 → 1" in acted.stdout
+        assert "~ counter: 0 -> 1" in acted.stdout
         event = _events(run)[-1]
         assert event["predict_ok"] is True
         kinds = {item["kind"] for item in event["grade"]}

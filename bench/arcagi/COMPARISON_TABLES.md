@@ -1,13 +1,13 @@
-# ARC-AGI-3 four-system comparison — RHAE, actions, cost, time
+# ARC-AGI-3 four-system comparison: RHAE, actions, cost, time
 
-## Table 0 — RHAE, the benchmark's own score (read this first)
+## Table 0: RHAE, the benchmark's own score (read this first)
 
 Games-cleared, levels-cleared and total-actions (Tables 1–3) are **coverage and
 cost statistics, not scores**. The benchmark scores with RHAE:
 
     level  = min(115, 100 · (baseline_actions / actions_spent)²)   [0 if not cleared]
     game   = min(100, Σᵢ i·levelᵢ / Σᵢ i)          if the run reached WIN
-           = 100 · Σ(1..levels_done) / Σ(1..levels)  otherwise — progress only
+           = 100 · Σ(1..levels_done) / Σ(1..levels)  otherwise (progress only)
     set    = plain mean of per-game scores
 
 Inefficiency is penalized **quadratically**, surplus efficiency is capped away,
@@ -15,7 +15,7 @@ and an unfinished game earns no efficiency credit at all. Formula derived from
 published scorecard JSONs; `rhae.py --validate` reproduces 25/25 published game
 scores exactly (worst error 0.000000) and a second system's published
 partial-game score independently. Ours is computed, not claimed:
-`rhae.py <game> <run-dir> …` — **and then confirmed by the benchmark itself**:
+`rhae.py <game> <run-dir> …`, **and then confirmed by the benchmark itself**:
 our consolidated verification-replay card
 [`702ccd4f`](https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32)
 returns 96.54%, identical to the offline figure and matching per game on every
@@ -28,7 +28,7 @@ row (`SCORECARDS.md` documents the replay's provenance and limits).
 | Prime Agent | Opus 5, median card | 95.24 (published) | 20 / 25 | lf52 27.27 · sk48 77.61 · tn36 79.00 · cd82 98.88 · g50t 98.25 |
 | PRO-LONG | Fable 5 | 94.71 (published cards) | 19 / 25 | re86 41.67 · bp35 74.85 · g50t 78.44 · lf52 81.82 · dc22 93.63 · cd82 97.38 |
 
-Reference point: the ARC-reported **human-expert baseline is 95.4** — ASSAY,
+Reference point: the ARC-reported **human-expert baseline is 95.4**. ASSAY,
 Prime Agent (marginally) and arc-skill clear it; PRO-LONG's Fable cohort does not.
 
 Two consequences worth stating plainly:
@@ -45,20 +45,20 @@ Two consequences worth stating plainly:
 
 ---
 
-# Tables 1–3 — actions, cost, time (coverage and cost, not scores)
+# Tables 1–3: actions, cost, time (coverage and cost, not scores)
 
 **Systems and provenance (2026-08-23).** ASSAY: our journals (best run per game;
 wins triple-verified). arc-skill: author's published scorecard (Opus 5,
 uncapped). Prime Agent (Prime Intellect): their published median scorecard
 `2af780b4` (Opus 5; 24/25 environments, 178/183 levels, 11,245 actions).
-**Every scorecard link — ours and each competitor's — is indexed in
+**Every scorecard link, ours and each competitor's, is indexed in
 `SCORECARDS.md`, including the exact provenance of ours (verification replays
 of recorded action sequences; card wall-clock is machine replay time, not
 agent time).**
-PRO-LONG: their published scorecards (**Fable 5** — stronger backbone;
+PRO-LONG: their published scorecards (**Fable 5**, stronger backbone;
 directional only). Same game instances throughout, verified by id.
 
-## Table 1 — actions per game (ASSAY tax split: probe = paid single-action
+## Table 1: actions per game (ASSAY tax split: probe = paid single-action
 discovery actions; batch = paid actions inside verified batches)
 
 | Game | ASSAY total (probe + batch) | arc-skill | Prime Agent | PRO-LONG (Fable) |
@@ -90,7 +90,7 @@ discovery actions; batch = paid actions inside verified batches)
 | wa30 | 1,171 (44 + 1,127) | **802** | 1,029 | 1,639 |
 | **Total** | **8,157** (probe 656 = 8.0%) | **7,645** | **11,245** | 11,156 |
 
-### Table 1a — set totals by system (the actions comparison, one row per system)
+### Table 1a: set totals by system (the actions comparison, one row per system)
 
 | System | Backbone | Games cleared | Levels | Total actions | probe (tax) | batch | Actions / level |
 |---|---|---|---|---|---|---|---|
@@ -104,41 +104,41 @@ Prime Agent lf52, PRO-LONG six games). Only ASSAY publishes a tax split.
 
 Cheapest-clear count across 25 games: arc-skill 11 · Prime Agent 7 · ASSAY 7 ·
 PRO-LONG 0. On the **24 games all three Opus systems won**: ASSAY 7,793 ·
-arc-skill 6,858 · Prime Agent 8,734 — ASSAY 11% cheaper than Prime Agent,
+arc-skill 6,858 · Prime Agent 8,734; ASSAY 11% cheaper than Prime Agent,
 arc-skill 12% cheaper than ASSAY (the gap concentrated in ASSAY's five
 multi-session conversions; single-session wins are a dead heat with
 arc-skill). ASSAY's measured exploration tax: 656 probe actions of 8,157
-(8.0%) — every other paid action ran inside a verified batch.
+(8.0%); every other paid action ran inside a verified batch.
 
 Games completed: arc-skill 25/25 · ASSAY 24/25 · Prime Agent 24/25 ·
 PRO-LONG 19/25. **lf52 defeats every published system except arc-skill**
 (ASSAY 4/10 @364 with a located diagnosis; Prime Agent 5/10 @2,511 ending in
 GAME_OVER; PRO-LONG 81.8% @1,000).
 
-## Table 2 — cost
+## Table 2: cost
 
 | System | Cost data | Figures |
 |---|---|---|
 | ASSAY | **measured** (API-billed) for 11 games; the other 14 ran on subscription (no per-run $) | 11 games = **$283.68** ($11.61–$53.89/run, median ≈ $22); extrapolated full set ≈ **$550–650** |
 | PRO-LONG | **published total** for the 25-game Fable cohort | **$1,750** (~$70/game avg); our own PL×Opus side-by-side runs measured cd82 $11.55, tn36 $30.70 |
-| arc-skill | not published | — |
-| Prime Agent | graphs only in their blog, no numbers | — |
+| arc-skill | not published | n/a |
+| Prime Agent | graphs only in their blog, no numbers | n/a |
 
-## Table 3 — wall-clock time
+## Table 3: wall-clock time
 
 | System | Time data | Figures |
 |---|---|---|
 | ASSAY | measured per-run for 20 of 25 runs (agent session durations); the 5 pre-sweep runs spanned crash/resume sessions and are not cleanly attributable | measured runs: 32–330 min/game; **≈ 37 h total over those 20** (~1.8 h/game; longest: bp35 330 min across 3 sessions, s5i5 268 min across 3) |
 | PRO-LONG | not published; our PL×Opus side-by-side measured two games | cd82 38 min, tn36 82 min |
-| arc-skill | not published | — |
-| Prime Agent | not published | — |
+| arc-skill | not published | n/a |
+| Prime Agent | not published | n/a |
 
 ## Honesty notes
 
-1. PRO-LONG's cohort is Fable 5 — a stronger backbone; their table column is
+1. PRO-LONG's cohort is Fable 5, a stronger backbone; their table column is
    context, not controlled comparison. The other three are all Opus 5.
 2. arc-skill and Prime Agent ran uncapped and (as far as published) single- or
-   best-of-N sessions; ASSAY ran under hard caps with journaled resumes — its
+   best-of-N sessions; ASSAY ran under hard caps with journaled resumes: its
    multi-session conversions carry the full discovery cost of breaking six
    wrong impossibility proofs, visible in the dc22/wa30/bp35 rows.
 3. Prime Agent's Best@3 reaches 183/183; the table uses their published

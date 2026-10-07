@@ -11,8 +11,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
-
 from conftest import FAKE_ADAPTER, run_cli, stop_run
 
 ACTIONS = [

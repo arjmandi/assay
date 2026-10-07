@@ -78,7 +78,7 @@ def _events(run_dir: Path) -> list[dict]:
 
 
 def _owner_token(start_stdout: str) -> str:
-    found = re.search(r"OWNER TOKEN \| (\S+) —", start_stdout)
+    found = re.search(r"OWNER TOKEN \| (\S+) \|", start_stdout)
     assert found, start_stdout
     return found.group(1)
 
@@ -191,7 +191,7 @@ def test_model_tier_promotion_and_plan(tmp_path):
         long_batch = run_cli(
             run,
             "commit",
-            *sum((["--step", f"NOOP :: noop"] for _ in range(4)), []),
+            *sum((["--step", "NOOP :: noop"] for _ in range(4)), []),
         )
         assert long_batch.returncode == 2
         assert "batching law" in long_batch.stderr
@@ -276,8 +276,8 @@ def test_agenda_owner_authority_and_approval(tmp_path):
         assert granted.returncode == 0, granted.stderr
         # FIRE is unknown to the adapter -> the daemon refuses AT the adapter,
         # but the approval gate itself passed (error names the adapter, not
-        # the approval). The affordance check refuses first, in fact — FIRE is
-        # not advertised — which is also fine: the approval was consumed after
+        # the approval). The affordance check refuses first, in fact (FIRE is
+        # not advertised), which is also fine: the approval was consumed after
         # the gate order. Use the error text to assert we got PAST approval.
         acted = run_cli(run, "act", "FIRE", "--predict", "change")
         assert acted.returncode == 2
@@ -344,7 +344,7 @@ def test_destructive_gate_and_hazard_carryover(tmp_path):
         assert "FOREIGN | imported knowledge from world fake1" in status2.stdout
         assert "PRIOR-NOTES" in status2.stdout
         assert (run2 / ".assay" / "PRIOR-NOTES.md").exists()
-        # The imported demand fires BEFORE the hazard does (block mode) — and
+        # The imported demand fires BEFORE the hazard does (block mode), and
         # the destructive flag demands the same fields; either message proves
         # the declaration demand is live pre-incident.
         refused2 = run_cli(run2, "act", "BOMB", "--predict", "change")

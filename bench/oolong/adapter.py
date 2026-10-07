@@ -3,7 +3,7 @@
 Serves ONE OOLONG corpus + its question set as an ASSAY session (RESEARCH.md
 §6.1, §7). ASSAY refuses to play the long-context game: the corpus registers as
 a DOCUMENT OBSERVER written to a file in the run directory, and the agent reads
-it with its own offline tools FOR FREE — the model's window never holds the
+it with its own offline tools FOR FREE; the model's window never holds the
 corpus. The observation carries only the corpus path, its size/shape, and the
 CURRENT question, never the corpus body.
 
@@ -19,7 +19,7 @@ first use by `packs/build_pack.py fetch <id>`.
 
 Two PAID actuators, both grounded in code (the referee grades EVIDENCE
 INTEGRITY, since a static corpus has no world-response to grade a prediction
-against — RESEARCH.md §6.1). Their string arguments are base64 because ASSAY
+against, RESEARCH.md §6.1). Their string arguments are base64 because ASSAY
 action tokens are whitespace-split (same convention as bench/factorio RUN):
 
     BANK_FACT text=<b64> span=<b64>
@@ -30,13 +30,13 @@ action tokens are whitespace-split (same convention as bench/factorio RUN):
     SUBMIT   answer=<b64> spans=<b64 json list>
         answer the current question, citing verbatim spans (each checked). Also
         COVERAGE-gated by the v1 census (see CENSUS_RULE). On acceptance the
-        answer is recorded SEALED — stored, never scored or revealed mid-run —
+        answer is recorded SEALED (stored, never scored or revealed mid-run)
         and the question pointer advances.
 
 Host progress: `win_levels` = number of questions in the pack, `levels_completed`
 = questions accepted through the gate, state WIN when all are submitted with the
 census clean. Correctness is computed ONLY at `finalize()`, by the reused OOLONG
-scorer, and written to the run dir — the answer key never enters the run before
+scorer, and written to the run dir; the answer key never enters the run before
 then.
 
 Determinism: corpus load and span checks are pure (no network / time / random at
@@ -188,7 +188,7 @@ class OolongSession:
         self.corpus = corpus_file.read_text()
         self.corpus_sha256 = hashlib.sha256(self.corpus.encode("utf-8")).hexdigest()
 
-        # Gold answers live here, PRIVATE — indexed by question id, never placed in
+        # Gold answers live here, PRIVATE, indexed by question id, never placed in
         # the corpus, the observation, or the journal. They are read only at
         # finalize() by the sealed scorer.
         self._questions: list[dict[str, Any]] = []
@@ -213,7 +213,7 @@ class OolongSession:
         except (FileNotFoundError, json.JSONDecodeError):
             self._manifest = {}
 
-        # Mutable run state — rebuilt exactly on journal replay.
+        # Mutable run state, rebuilt exactly on journal replay.
         self._banked: list[dict[str, Any]] = []
         self._submissions: list[dict[str, Any]] = []
         self._banks_for_current = 0
@@ -313,7 +313,7 @@ class OolongSession:
                 "planned": "unread-region ledger (per-question required-scope coverage)",
             },
             "last_result": self._last_result,
-            "scoring": "SEALED — correctness computed only at finalize()",
+            "scoring": "SEALED: correctness computed only at finalize()",
         }
         if self.bank_mode == "batch":
             data["bank_mode"] = "batch"
@@ -517,7 +517,7 @@ class OolongSession:
     def finalize(self) -> None:
         """Score the sealed submissions with the reused OOLONG scorer and write a
         per-question + aggregate report to the run dir. Called by the broker on
-        the WIN transition — the FIRST time the answer key is consulted."""
+        the WIN transition, the FIRST time the answer key is consulted."""
         if self._closed:
             return
         self._closed = True
@@ -557,7 +557,7 @@ def _render_report_md(report: dict[str, Any]) -> str:
     aggregate = report["aggregate"]
     pack = report.get("pack", {})
     lines = [
-        f"# OOLONG sealed score — pack {pack.get('pack_id', '?')}",
+        f"# OOLONG sealed score: pack {pack.get('pack_id', '?')}",
         "",
         f"- scorer: {report['scorer']['source']} "
         f"(`{report['scorer']['function']}`, sha256 "

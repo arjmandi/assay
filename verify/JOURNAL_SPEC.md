@@ -1,4 +1,4 @@
-# The ASSAY journal — format specification
+# The ASSAY journal: format specification
 
 **Spec version: `assay-journal-v1`.** The version string is load-bearing: it
 is the seed of the hash chain (§4), so a journal's chain commits to the spec
@@ -17,8 +17,8 @@ semantics.
 One directory = one run. The journal state lives in a state directory inside
 it:
 
-- `.assay/` — the state directory (current name).
-- `.arc/` — accepted as a historical alias (runs recorded before the current
+- `.assay/`: the state directory (current name).
+- `.arc/`: accepted as a historical alias (runs recorded before the current
   name). Verifiers MUST accept both; a run has exactly one.
 
 Files in scope for this specification:
@@ -77,7 +77,7 @@ from the record, never stored over it.
 
 ## 4. The hash chain
 
-The chain makes the journal **tamper-evident under stated conditions** — not
+The chain makes the journal **tamper-evident under stated conditions**, not
 unforgeable, and the distinction is deliberate: an operator who controls the
 machine can rewrite a whole journal and its chain together. What the chain
 guarantees is *commitment*: once a head is published (or anchored outside the
@@ -110,7 +110,7 @@ scoring.
 ## 6. The gate, and the ungated-event rule
 
 The harness's constitutional rule is **predict-before-act**: a paid action is
-admitted only as part of a prediction — a machine-parseable claim about what
+admitted only as part of a prediction, a machine-parseable claim about what
 the world will report, registered before the action executes and graded by
 code against the world's own response afterwards.
 
@@ -128,16 +128,16 @@ budget without requiring a claim.
 additionally demotes all trust earned after the first one. The rule is
 evaluated purely over journal fields, so any third party can check it.
 
-## 7. Host progress and lifecycle — general semantics, historical names
+## 7. Host progress and lifecycle: general semantics, historical names
 
 Two conventions date from the harness's first benchmark (ARC-AGI-3, a suite
 of grid games) and are kept for compatibility; their semantics are general:
 
-- **`levels_completed` / `win_levels` / `level_before`** — the *host progress
+- **`levels_completed` / `win_levels` / `level_before`**: the *host progress
   pair*: how many host-defined progress units the run has completed, out of
   how many. Games instantiate these as levels. A world with no intermediate
   milestones uses `win_levels: 1`, making progress a plain goal-reached bit.
-- **`state`** — the host lifecycle: `NOT_FINISHED` (running), `WIN` (the
+- **`state`**: the host lifecycle, `NOT_FINISHED` (running), `WIN` (the
   pinned goal is reached), with worlds free to report additional terminal
   states (e.g. `GAME_OVER`). "Win" throughout the grammar means *the host's
   goal state is reached*, whatever the world.

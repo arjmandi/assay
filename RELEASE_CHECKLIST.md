@@ -53,6 +53,7 @@ git ls-files | grep -E '^tools/|test_night_orchestrator|test_e3_prepare|registry
 git grep -I -n -E '/Users/|/home/' -- .            # machine paths: none
 git grep -n -i 'doctrine' -- src tests examples    # the old manual name: none in code
 git grep -n -i -E 'factorio|oolong|\barc\b|arc_agi|arcengine' -- src/assay   # world names in the kernel: none
+git grep -n -E $'\u2014|\u2192' -- src tests examples docs verify '*.md' ':!bench/*/RESULTS.md' ':!evidence'   # em dashes and arrows: none (tests/test_hygiene.py covers the whole tree)
 git ls-files | grep -E 'packs/(corpus|questions)_synth'                       # the length-ladder text: none
 git log --all -- 'bench/oolong/packs/corpus_synth*' 'bench/oolong/packs/questions_synth*'   # and none in history
 ```
@@ -84,7 +85,7 @@ are this file's grep patterns, not paths.
 
 | Gate | Command | Required result |
 |---|---|---|
-| G1 the suite | `uv run --with pytest --with numpy --with pillow pytest tests/` | all green |
+| G1 the suite | `uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/` | all green |
 | G2 replay diff | `python3 paper/v4/release-gates/g2_replay_diff.py --main <main checkout> --release <release checkout> --python <venv python> --vocab` (in the archive; `--main` is a checkout of 4dc53e1, the kernel the campaigns ran on, `--release` the checkout under test) | zero differences over the 25 published run directories, four commands each |
 | G3 independent checker | `python3 paper/v4/release-gates/g3_verify.py` (in the archive), and `python3 evidence/verify_all.py` here | 25 published ARC runs CLEAN with heads matched, the Factorio, OOLONG, G4, `factorio-110` and E5 packs CLEAN, the 24 E1, E2 and E3 runs CLEAN, the six E1b runs INVALID FOR SCORING as their pack states, all 66 published journals matching their heads |
 | G4 ft09 live regression | scheduled by the owner on the subscription, after code freeze, per DECISIONS item 18 | WIN 6 of 6 within the published bar |

@@ -60,7 +60,7 @@ def _start(run: Path):
 
 
 def _token(stdout: str) -> str:
-    found = re.search(r"OWNER TOKEN \| (\S+) —", stdout)
+    found = re.search(r"OWNER TOKEN \| (\S+) \|", stdout)
     assert found, stdout
     return found.group(1)
 

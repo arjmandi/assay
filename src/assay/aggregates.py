@@ -1,21 +1,21 @@
-"""Statistical (aggregate) claims — the minimal deployment-hardening form.
+"""Statistical (aggregate) claims: the minimal deployment-hardening form.
 
 Three rules govern aggregate claims and this module implements exactly them:
 
-1. ADDITIVE, never substitutive — the parser refuses an action whose only
+1. ADDITIVE, never substitutive: the parser refuses an action whose only
    gradable claims are aggregates (every action still carries a mechanical
    claim of its own).
-2. DECLARED CONSEQUENCE, executed by the kernel — `on-fail advise` surfaces an
+2. DECLARED CONSEQUENCE, executed by the kernel: `on-fail advise` surfaces an
    advisory; `on-fail revoke_batching` revokes batching rights for the rest of
    the run (hand batches drop to single steps; model plans refuse until a
    fresh replay-fit passes).
-3. AUTO-RESOLVE AT HORIZON — an open aggregate that reaches its horizon is
+3. AUTO-RESOLVE AT HORIZON: an open aggregate that reaches its horizon is
    resolved then, pass or FAIL, never left dangling; superseding an open
    aggregate (same channel + stat) closes the old one as an ABANDONMENT with
    miss-equivalent weight in the aggregate meter.
 
 Aggregates live in their own meter bucket; they never enter the world-model or
-gamble miss rates. Honest scope note: this machinery has no tenant on frame worlds —
+gamble miss rates. Honest scope note: this machinery has no tenant on frame worlds;
 it ships because the deployment-hardening order includes it, and it is inert
 unless an agent opens one.
 """
@@ -80,7 +80,7 @@ def open_aggregates(
                     {"kind": "aggregate_abandoned", **{k: entry[k] for k in ("channel", "stat")}},
                 )
                 lines.append(
-                    f"AGGREGATE | superseded open {entry['channel']}/{entry['stat']} — "
+                    f"AGGREGATE | superseded open {entry['channel']}/{entry['stat']}; "
                     "journaled as an abandonment (miss-equivalent)"
                 )
             else:
@@ -176,7 +176,7 @@ def resolve_due(
         )
         lines.append(
             f"AGGREGATE | {'HELD' if ok else 'FAILED'}: "
-            f"{entry['stat']}(ch {entry['channel']}) {entry['op']} {entry['value']} — {actual}"
+            f"{entry['stat']}(ch {entry['channel']}) {entry['op']} {entry['value']} | {actual}"
         )
         if not ok and entry["on_fail"] == "revoke_batching":
             state["batching_revoked"] = True

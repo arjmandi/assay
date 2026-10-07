@@ -4,7 +4,7 @@ The query-framed OOLONG adapter for ASSAY (RESEARCH.md §6.1, §7). ASSAY refuse
 to play the long-context game: the corpus is a **document observer** written to a
 file in the run directory; the agent reads it with its own offline tools **for
 free**, and the model's window never holds the corpus. The referee grades
-**evidence integrity** — a static corpus has no world-response against which to
+**evidence integrity**: a static corpus has no world-response against which to
 grade a prediction, so a fact may only be *banked*, and an answer only
 *submitted*, carrying a span-verifiable citation checked verbatim **in code**.
 Correctness is scored **sealed**, only at `finalize()`.
@@ -18,8 +18,8 @@ and pack files. The kernel is untouched (`git diff --stat main -- src/` is empty
         --adapter <repo>/bench/oolong/adapter.py:factory \
         --registry <repo>/bench/oolong/registry_40.json
 
-- `registry_40.json` — budget 40 actions, for small packs (≈≤5 questions).
-- `registry_200.json` — budget 200 actions, for ≈25-question packs (the 8K
+- `registry_40.json`: budget 40 actions, for small packs (≈≤5 questions).
+- `registry_200.json`: budget 200 actions, for ≈25-question packs (the 8K
   corpora). Size the cap ≈4–8× the question count (RESEARCH.md §7).
 
 Which pack loads: the ASSAY game id (`config["game_id"]`), overridable with
@@ -41,7 +41,7 @@ world id.
 `questions_{id}.jsonl` carries every field the scorer reads (`id`,
 `context_window_id`, `dataset`, `answer`, `answer_type`) plus `question`,
 `task_group`, `task`, `context_len`, `num_labels`. The gold `answer` lives here
-only — **never** in the corpus, the observation, or the journal. The manifest
+only, **never** in the corpus, the observation, or the journal. The manifest
 pins the dataset revision, the source shard, the `context_window_id` and the
 sha256 of both files, which is what `fetch` and `verify` check.
 
@@ -64,7 +64,7 @@ the adapter itself never imports either:
 ## Observation
 
 A general (non-grid) observation. `data` carries the corpus **path**, size,
-sha256, and a structure hint; the CURRENT question (text, group, answer_type —
+sha256, and a structure hint; the CURRENT question (text, group, answer_type;
 **no gold**); banked-fact and census summaries; and `last_result`. It never
 carries the corpus body. `win_levels` = number of questions; `levels_completed` =
 questions accepted through the gate; state `WIN` when all are submitted with the
@@ -75,11 +75,11 @@ census clean. `available_actions` = `BANK_FACT`, `SUBMIT`.
 Arguments are base64 because ASSAY action tokens are whitespace-split (same
 convention as `bench/factorio` RUN).
 
-- **`BANK_FACT text=<b64> span=<b64>`** — commit a fact citing a corpus span.
+- **`BANK_FACT text=<b64> span=<b64>`**: commit a fact citing a corpus span.
   The span is verified as a verbatim substring (`str.find`) in code. A span not
   present is **refused** and the attempt is **journaled** (evidence, like an FLE
   policy refusal); no state advances.
-- **`SUBMIT answer=<b64> spans=<b64 json-list>`** — answer the current question,
+- **`SUBMIT answer=<b64> spans=<b64 json-list>`**: answer the current question,
   citing verbatim spans (each `str.find`-checked). Also coverage-gated (census
   below). On acceptance the answer is recorded **sealed** and the question
   pointer advances. `spans` is base64 of a JSON array of non-empty strings.
@@ -97,17 +97,17 @@ after each accepted SUBMIT), and every SUBMIT span is verbatim in the corpus.
 This is honest-but-minimal: it enforces "consult and cite the corpus for each
 answer" without a sophisticated census blocking M1. The observation also exposes
 `coverage_fraction` (union of verified span ranges ÷ corpus length) and
-`covered_char_ranges` as scaffolding — **reported, not gated.**
+`covered_char_ranges` as scaffolding, **reported, not gated.**
 
 **Planned (M2+):** the full **unread-region ledger** (RESEARCH.md §6.1): gate on
-per-question *required-scope* coverage — no open sub-question with an unconsulted
-matching region — rather than a flat fact count.
+per-question *required-scope* coverage (no open sub-question with an unconsulted
+matching region) rather than a flat fact count.
 
 ## Sealed scoring at finalize
 
-The broker calls `session.finalize()` on the WIN transition — the first and only
+The broker calls `session.finalize()` on the WIN transition, the first and only
 time the answer key is consulted. `finalize()` scores every sealed SUBMIT with
-the **reused OOLONG scorer** (`scorer.py` → `vendor/oolong_eval_helpers.py`,
+the **reused OOLONG scorer** (`scorer.py` -> `vendor/oolong_eval_helpers.py`,
 byte-identical to upstream; see `vendor/PROVENANCE.md`): exact match for
 labels/comparisons/users, `0.75**|gold−pred|` partial credit for numbers,
 `strptime` gold + parsed output for dates (RESEARCH.md §1.3). Answers are fed in
@@ -117,7 +117,7 @@ report lands at `.assay/oolong_score.json` and `.assay/oolong_score.md`
 
 The scorer's heavy/paid deps (`litellm`, `datasets`, `tiktoken`, `transformers`,
 `jsonlines`) are stubbed and `dateutil` is shimmed when absent, so scoring runs
-with **zero network, zero API keys, no model** — the isolation M0 §3 proved. If
+with **zero network, zero API keys, no model**, the isolation M0 §3 proved. If
 python-dateutil is not importable in the daemon runtime, DATE *model-output*
 parsing uses a small format shim (gold parsing is stdlib and unaffected); install
 python-dateutil for full DATE parity. NUMERIC/LABEL/COMPARISON/USER are
@@ -153,10 +153,10 @@ same code in both modes. The test suite drives the spam4k pack to WIN in both
 - Scorer: `vendor/oolong_eval_helpers.py`, upstream commit
   `0bb7eabe839218fee7fe8d007f41cfc2fd3ae24c`, sha256
   `247583a3b653b91c39fb88a102460802f1493175b23d05a7217aead0d685c64c` (MIT).
-- Corpus load and every span check are pure `str.find` — **no network, time, or
+- Corpus load and every span check are pure `str.find`: **no network, time, or
   randomness at run time**. A static corpus trivially satisfies journal-replay
   resume (RESEARCH.md §7): killing the broker mid-run and resuming replays the
-  journal to identical observations (verified — see RESULTS.md, acceptance F).
+  journal to identical observations (verified; see RESULTS.md, acceptance F).
 
 ## Files
 
@@ -171,7 +171,7 @@ same code in both modes. The test suite drives the spam4k pack to WIN in both
     vendor/{LICENSE.oolong,PROVENANCE.md}
 
 
-## M2 length-ladder sweep — PRE-REGISTERED 2026-08-26 (before any scored run)
+## M2 length-ladder sweep: PRE-REGISTERED 2026-08-26 (before any scored run)
 
 Decision 19: single-arm length-invariance, no three-arm E-C7. Contrast is
 OOLONG's own PUBLISHED bare-model degradation (cited, not re-run). 128K is the

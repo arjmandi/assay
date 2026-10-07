@@ -2,7 +2,7 @@
 
 A channel is a pair (observer, extractor). Three sources:
 
-- HOST channels, always present: `goal` (boolean — the environment's win
+- HOST channels, always present: `goal` (boolean, the environment's win
   state; the one channel an agent-invented proxy can never replace), `level`
   (the host progress count, `levels_completed`, the milestone channel), and
   `budget_remaining` (paid actions left under the registered cap after the
@@ -22,7 +22,7 @@ the event it was graded on, cached by the daemon in `.assay/channel_readings.jso
 at grade time. `assay channel list --read` computes extractor values fresh.
 
 Claims naming an unregistered channel are refused before any spend and
-counted on the mis-reference meter — the surviving referent-grounding
+counted on the mis-reference meter, the surviving referent-grounding
 instrument.
 """
 
@@ -170,7 +170,7 @@ def check_channel_references(
             )
             raise AssayError(
                 f"claim names unregistered channel {name!r}; registered channels: "
-                f"{known_channels(paths)} — declare one with `assay channel declare`"
+                f"{known_channels(paths)}; declare one with `assay channel declare`"
             )
 
 
@@ -399,7 +399,7 @@ def grade_channel_claim(
             "ungradable": True,
             "actual": (
                 f"UNGRADABLE: {kind.replace('channel_', '')} needs numeric readings, "
-                f"got {json.dumps(before)} → {json.dumps(after)}"
+                f"got {json.dumps(before)} -> {json.dumps(after)}"
             ),
         }
     if kind == "channel_delta":
@@ -420,7 +420,7 @@ def grade_channel_claim(
         return {
             **record,
             "ok": bool(ok),
-            "actual": f"ch {name} moved {delta:+g} ({before_number:g} → {after_number:g})",
+            "actual": f"ch {name} moved {delta:+g} ({before_number:g} -> {after_number:g})",
         }
     if kind == "channel_cross":
         threshold = float(claim["value"])
@@ -436,6 +436,6 @@ def grade_channel_claim(
         return {
             **record,
             "ok": bool(ok),
-            "actual": f"ch {name} went {before_number:g} → {after_number:g} (threshold {threshold:g})",
+            "actual": f"ch {name} went {before_number:g} -> {after_number:g} (threshold {threshold:g})",
         }
     raise AssayError(f"unknown channel claim kind {kind!r}")  # pragma: no cover

@@ -238,6 +238,13 @@ Left on the experiment branch, deliberately:
   keeps only repository-relevant rules).
 - Property tests for the claim parser, the chain rule, the ungated rule and
   the registry parameters, with hypothesis under the dev extra (#26).
+- CI on every push and pull request (`.github/workflows/ci.yml`: ubuntu and
+  macOS, Python 3.12 to 3.14, the suite, `ruff check`, the published journals
+  against their heads), ruff configured in `pyproject.toml` with its default
+  rule set and under the dev extra, `tests/test_hygiene.py` (no em dash or
+  arrow in the source or the docs, no machine path, the old manual name gone
+  from the code, over `git ls-files`), and the platform statement in
+  `README.md`: macOS and Linux, Windows not supported (#30).
 
 ### Changed
 
@@ -306,6 +313,14 @@ Left on the experiment branch, deliberately:
   `assay start` names its positional `world_id`. The ARC mapping (world id is
   the game id, a progress unit is a level, `GAME_OVER` is the engine's state)
   is stated once in `bench/arcagi/PROTOCOL.md`.
+- Em dashes and arrows out of every string and document. An arrow between
+  two values is `->`, the form the CHANNELS receipt lines already used; a
+  grade line reads `✗ claim | actual` and `! claim | actual` (the pipe is the
+  kernel's field separator), and the SURPRISE receipt detail follows it,
+  `prediction missed: claim | actual`; an em dash inside a `LABEL | text`
+  line became a colon or a semicolon. Nothing graded, journaled or chained
+  changes, except that the `actual` text of a channel delta or crossing
+  claim in a new journal reads `0 -> 1` where it read the arrow (#30).
 
 ### Removed
 
@@ -425,6 +440,23 @@ Left on the experiment branch, deliberately:
   actions up to and including the event (so `ch budget_remaining delta = -1`
   holds for any paid action), and is UNGRADABLE only when no cap is
   registered, with the reason saying so.
+- Daemon identification on Linux without a terminal. `find_daemon` reads
+  `ps -ww -eo pid=,command=`: procps cuts the listing at 80 columns when no
+  terminal is attached (under pytest, in CI), so the daemon's `--run-dir`
+  fell off the line and `assay stop`, `assay doctor` and the resume rule
+  did not recognize a live daemon; `-ww` lifts the limit on procps and BSD
+  ps alike. Found by the first CI run on ubuntu (#30).
+- The start of a run on a slow disk. `start_broker` rewrote `broker.json`
+  with the child's pid right after spawning the daemon, and that write raced
+  the daemon's own: when its fsync outlasted a warm daemon's startup, the
+  rewrite buried the daemon's READY descriptor under STARTING, the daemon
+  never wrote READY again, and `assay start` waited out its 45-second
+  deadline against a live daemon before failing with "environment owner did
+  not start". The rewrite is gone: once spawned, the daemon is the only
+  writer of `broker.json` and publishes its own pid there; identity was
+  already the process table, never a stored pid. Reproduced by stalling that
+  one write for a second; found by the second CI run on ubuntu, in two of
+  three cells on different tests (#30).
 
 ### Regression gates
 

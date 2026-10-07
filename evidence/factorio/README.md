@@ -1,4 +1,4 @@
-# Evidence pack №2 — Factorio (FLE)
+# Evidence pack №2: Factorio (FLE)
 
 The second evidence pack under the `assay-journal-v1` standard: the three
 canonical Factorio Learning Environment calibration wins (lab tasks
@@ -7,10 +7,10 @@ the same journaled, prediction-gated protocol as the ARC-AGI-3 pack.
 
 ## Contents
 
-- **`heads.json`** — the commitment artifact: published chain heads,
+- **`heads.json`**: the commitment artifact: published chain heads,
   paid-action counts, progress, and cost for the three canonical runs
   (generated 2026-08-26, before journal publication).
-- **`journal-<task>.jsonl.gz`** — the complete journal of each run: every
+- **`journal-<task>.jsonl.gz`**: the complete journal of each run: every
   prediction registered before its action, every machine grade, and the
   agent's notes in full.
 

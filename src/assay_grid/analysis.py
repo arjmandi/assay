@@ -54,11 +54,14 @@ def shortest_path(
         allowed = passable
     else:
         mask = np.asarray(passable, dtype=bool)
-        allowed = lambda cell: (
-            0 <= cell[0] < mask.shape[0]
-            and 0 <= cell[1] < mask.shape[1]
-            and bool(mask[cell])
-        )
+
+        def allowed(cell: tuple[int, int]) -> bool:
+            return (
+                0 <= cell[0] < mask.shape[0]
+                and 0 <= cell[1] < mask.shape[1]
+                and bool(mask[cell])
+            )
+
     queue = deque([start])
     parent: dict[tuple[int, int], tuple[int, int] | None] = {start: None}
     while queue:

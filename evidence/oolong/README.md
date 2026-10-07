@@ -1,4 +1,4 @@
-# Evidence pack №3 — OOLONG
+# Evidence pack №3: OOLONG
 
 The third evidence pack under the `assay-journal-v1` standard: the three
 un-hinted ASSAY runs on the OOLONG long-context benchmark (synth rungs 128K,
@@ -8,9 +8,9 @@ comparator harnesses.
 
 ## Contents
 
-- **`heads.json`** — the commitment artifact: published chain heads and
+- **`heads.json`**: the commitment artifact: published chain heads and
   counts for the three runs.
-- **`journal-synth<rung>.jsonl.gz`** — the complete journal of each run.
+- **`journal-synth<rung>.jsonl.gz`**: the complete journal of each run.
 
 ## What the journals contain, and one reading note
 

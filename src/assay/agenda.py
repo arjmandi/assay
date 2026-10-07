@@ -3,23 +3,23 @@ and the emergence meter.
 
 The standing goal and its predicate are HOST state: the goal channel (the
 environment's win state) is pinned at registration and re-presented in every
-status until code says achieved — an agent-invented proxy can never silently
+status until code says achieved; an agent-invented proxy can never silently
 replace it (the eight-of-eight proxy-chasing record). Subgoals live in notes
 text, where they lived in every winning run on record.
 
 The goal-proposal lane is vision-1's counterpart: the agent may AT ANY TIME
-propose a standing-goal revision (`assay goal propose`) — journaled, surfaced in
-status — and the OWNER ratifies (`assay goal ratify --token`). Ratification
+propose a standing-goal revision (`assay goal propose`), journaled, surfaced in
+status, and the OWNER ratifies (`assay goal ratify --token`). Ratification
 changes the displayed standing-goal text; the win predicate itself only
 changes at registration. The owner token is minted at `assay start`, printed
 once for the launcher to store outside the run, and only its sha256 is kept in
-the run state — the agent cannot recover it from artifacts. The same token
+the run state; the agent cannot recover it from artifacts. The same token
 authorizes one-shot action approvals (`assay approve`) and liveness waivers
 (`assay waive`).
 
 The emergence meter is free journal counters over agent-initiated acts no
 module demanded: self-declared channels, self-authored verifiers, self-built
-models, self-proposed goals — measuring emergence instead of assuming it.
+models, self-proposed goals: measuring emergence instead of assuming it.
 """
 
 from __future__ import annotations
@@ -58,9 +58,9 @@ def waivers_path(paths: RunPaths) -> Path:
 
 def mint_owner_token(paths: RunPaths) -> str:
     """Mint the run's owner token at start; store only its hash. Returns the
-    token exactly once — the caller prints it for the owner/launcher."""
+    token exactly once; the caller prints it for the owner/launcher."""
     # token_urlsafe uses the URL-safe base64 alphabet, which includes "-", so
-    # ~1 in 32 tokens starts with "-" — which argparse then reads as a missing
+    # ~1 in 32 tokens starts with "-", which argparse then reads as a missing
     # value for `--token`. Re-mint until it does not lead with a dash.
     token = secrets.token_urlsafe(24)
     while token.startswith("-"):
@@ -190,7 +190,7 @@ def consume_approval(paths: RunPaths, action: str) -> None:
 
 
 def grant_waiver(paths: RunPaths, action: str, token: str | None, because: str) -> None:
-    """Owner waiver for a liveness rehearsal quota — explicit and journaled."""
+    """Owner waiver for a liveness rehearsal quota: explicit and journaled."""
     require_owner(paths, token)
     if not because or not because.strip():
         raise AssayError("a liveness waiver needs --because <why it is safe now>")
@@ -295,7 +295,7 @@ def agenda_lines(
     if pending:
         newest = pending[-1]
         lines.append(
-            f"AGENDA | {len(pending)} goal proposal(s) awaiting the owner — newest "
+            f"AGENDA | {len(pending)} goal proposal(s) awaiting the owner; newest "
             f"#{newest['id']}: {str(newest['text'])[:120]}"
         )
     return lines

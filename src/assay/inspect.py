@@ -125,7 +125,7 @@ def _claim_meter_lines(paths: RunPaths, events: Sequence[Mapping[str, Any]]) -> 
         # under it: the replay gate compares the published runs against it.
         lines.append(
             f"VACUOUS | verifier {digest[:12]} graded {entry.get('graded', 0)} "
-            "failed 0 — a verifier that never fails proves nothing; its passes "
+            "failed 0: a verifier that never fails proves nothing; its passes "
             "are excluded from the meter"
         )
     for digest in sorted(never_failed_hashes(stats)):
@@ -177,7 +177,7 @@ def _demotion_banner(paths: RunPaths, event: Mapping[str, Any]) -> list[str]:
         return []
     if paths.notes.stat().st_mtime <= archive.stat().st_mtime:
         return [
-            f"NOTES | unchanged since {unit_noun(event['win_levels'])} {completed} ended — "
+            f"NOTES | unchanged since {unit_noun(event['win_levels'])} {completed} ended: "
             f"earlier Verified claims are only Assumed on this {unit_noun(event['win_levels'])} "
             "until re-tested"
         ]
@@ -188,7 +188,7 @@ def _notes_lines(paths: RunPaths) -> list[str]:
     try:
         text = paths.notes.read_text()
     except FileNotFoundError:
-        return ["NOTES | missing — create .assay/NOTES.md and keep it current"]
+        return ["NOTES | missing; create .assay/NOTES.md and keep it current"]
     content = [f"  {line[:240]}" for line in text.splitlines()]
     return [f"NOTES | {paths.notes} (edit the file directly; shown in full)"] + _bounded(
         content, 120, preserve_ends=True
@@ -257,7 +257,7 @@ def result_text(paths: RunPaths, receipt: Mapping[str, Any]) -> str:
     registry = load_registry(paths)
     if end is not None and int(event["id"]) == int(end) and int(end) > 0:
         previous = events[int(end) - 1]
-        lines.append("KEY DELTA | last step (before → after)")
+        lines.append("KEY DELTA | last step (before -> after)")
         lines.extend(
             f"  {item}"
             for item in delta_lines(
@@ -415,11 +415,11 @@ def _registry_status_lines(
             rights, reason = batching_rights(paths)
             lines.append(
                 f"MODEL | fit {fit.get('fit', 0):.0%} over {fit.get('graded', 0)} graded "
-                f"| batching rights: {'YES' if rights else 'no — ' + reason}"
+                f"| batching rights: {'YES' if rights else 'no; ' + reason}"
             )
         else:
             lines.append(
-                "MODEL | model.py present, never replayed — `assay model replay` "
+                "MODEL | model.py present, never replayed; `assay model replay` "
                 "grades it and can earn batching rights"
             )
     hazards = load_hazards(paths)
@@ -429,7 +429,7 @@ def _registry_status_lines(
             f"{tag['action_class']}({tag['signature']})" for tag in active[:4]
         )
         lines.append(
-            f"HAZARDS | {len(active)} tagged action class(es): {rendered} — each "
+            f"HAZARDS | {len(active)} tagged action class(es): {rendered}; each "
             "demands worst_case + recovery declarations on use"
         )
     usd, tokens = spend_reports(load_jsonl(paths.activity))
@@ -463,8 +463,8 @@ def _registry_status_lines(
     flagged = [event_id for event_id in ungated_events(events) if event_id not in permitted]
     if flagged:
         lines.append(
-            f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{flagged[0]}) "
-            "— this run is INVALID FOR SCORING and trust earned after it is demoted"
+            f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{flagged[0]}); "
+            "this run is INVALID FOR SCORING and trust earned after it is demoted"
         )
     lines.append(anchor_line(paths))
     lines.append(emergence_line(paths))
@@ -481,12 +481,12 @@ def _notes_cap_lines(paths: RunPaths, registry: Mapping[str, Any]) -> list[str]:
         return []
     if size > 2 * cap:
         return [
-            f"NOTES | {size} chars — OVER TWICE the {cap}-char cap; paid actions "
+            f"NOTES | {size} chars, OVER TWICE the {cap}-char cap; paid actions "
             "refuse until trimmed (one page is the contract)"
         ]
     if size > cap:
         return [
-            f"NOTES | {size} chars exceeds the {cap}-char cap — trim toward one "
+            f"NOTES | {size} chars exceeds the {cap}-char cap; trim toward one "
             "page; the block engages at 2× the cap"
         ]
     return []
@@ -519,6 +519,6 @@ def view_text(
                 "NOTE | this run has dict observations; --frames/--crop do not apply"
             )
     if history:
-        lines.append("HISTORY | cause → observed result")
+        lines.append("HISTORY | cause -> observed result")
         lines.extend(history_lines(events[: index + 1], history))
     return "\n".join(lines)

@@ -4,7 +4,6 @@ spawn, and the inline script metadata of the launcher stays in step."""
 
 from __future__ import annotations
 
-import re
 import subprocess
 import sys
 import tomllib

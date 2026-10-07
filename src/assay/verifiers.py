@@ -10,7 +10,7 @@ sha256-hashed, and copied to `.assay/verifiers/<hash>.py`; the hash is journaled
 on the prediction. At grading time the stored copy runs in a subprocess
 (`python3 -I`, fresh tmpdir cwd, empty environment, observations on stdin, one
 JSON line `{"ok": bool, "actual": str}` on stdout, 5s CPU and wall limits).
-Crash, timeout, or malformed output grades as INVALID_CLAIM — not a miss, its
+Crash, timeout, or malformed output grades as INVALID_CLAIM: not a miss, its
 own counter, and it halts a containing batch.
 
 Discrimination telemetry: after grading on (before, after) the verifier also

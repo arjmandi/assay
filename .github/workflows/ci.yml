@@ -1,0 +1,35 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  suite:
+    name: ${{ matrix.os }}, Python ${{ matrix.python }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.12", "3.13", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      # The suite spawns the real daemon and runs the launcher, which looks for
+      # a python3 on PATH; setup-python puts the matrix interpreter there.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v6
+      # The pre-tag greps of RELEASE_CHECKLIST.md section 3 (world names in
+      # the kernel, machine paths, the old manual name, em dashes and arrows)
+      # run inside the suite as tests/test_conformance.py and
+      # tests/test_hygiene.py, over git ls-files, so a new file is covered
+      # the day it is added.
+      - name: The suite
+        run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis pytest tests/ -q
+      - name: ruff
+        run: uv run --with ruff ruff check src tests
+      - name: The published journals against their heads
+        run: python3 evidence/verify_all.py

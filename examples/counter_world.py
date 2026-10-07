@@ -1,4 +1,4 @@
-"""A complete, minimal ASSAY world in ~40 lines — the integrator's example.
+"""A complete, minimal ASSAY world in ~40 lines, the integrator's example.
 
 The world: a counter and a lamp. INC adds 1 or 2 to the counter, SET_LAMP
 switches the lamp, NOOP does nothing, BOMB loses the level. The goal state is
@@ -22,7 +22,7 @@ class CounterWorld:
     def __init__(self, root: Any, config: dict[str, Any]):
         # root: the run directory (Path). config: the run's config.json dict
         # (game_id, seed, ...). Use config["seed"] for determinism if you
-        # randomize — local replay-resume needs identical reconstruction.
+        # randomize; local replay-resume needs identical reconstruction.
         self.counter = 0
         self.lamp = "off"
         self.state = "NOT_FINISHED"   # NOT_FINISHED | WIN | GAME_OVER
@@ -40,7 +40,7 @@ class CounterWorld:
 
     def step(self, action, data, reasoning):
         # data is the typed parameter dict the registry validated (or None).
-        # reasoning is the agent's journaled prediction context — yours to log
+        # reasoning is the agent's journaled prediction context, yours to log
         # or ignore, never to obey.
         if action == "RESET":
             self.counter, self.lamp, self.state = 0, "off", "NOT_FINISHED"
