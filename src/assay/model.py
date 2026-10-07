@@ -48,10 +48,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import resource
-import subprocess
-import sys
-import tempfile
 import time
 from collections.abc import Mapping
 from pathlib import Path
@@ -67,6 +63,7 @@ from .core import (
     read_json,
 )
 from .channels import channel_value, load_declared
+from .sandbox import run_program
 
 PROMOTION_MIN_GRADED = 20
 PROMOTION_MIN_RECENT = 5
@@ -260,37 +257,20 @@ def _channel_specs_for_sandbox(paths: RunPaths, declared: list[str]) -> dict[str
 
 
 def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
-    cpu_seconds = max(2, int(timeout))
-
-    def _limits() -> None:
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-
-    with tempfile.TemporaryDirectory(prefix="assay-model-") as scratch:
-        try:
-            completed = subprocess.run(  # noqa: S603 - deliberate sandboxed run
-                [sys.executable, "-I", "-c", _RUNNER],
-                input=json.dumps(payload).encode(),
-                capture_output=True,
-                cwd=scratch,
-                env={},
-                timeout=timeout + 5.0,
-                preexec_fn=_limits,
-            )
-        except subprocess.TimeoutExpired:
-            raise AssayError(f"model run timed out after {timeout:g}s") from None
-    if completed.returncode != 0:
-        stderr = completed.stderr.decode(errors="replace").strip().splitlines()
-        tail = stderr[-1][:300] if stderr else "no stderr"
-        raise AssayError(f"model crashed in the sandbox: {tail}")
-    lines = [
-        line for line in completed.stdout.decode(errors="replace").splitlines() if line.strip()
+    """Run the model runner in the sandbox: `model.py` and the extractor files
+    of the declared channels travel as companions, and the payload's
+    `model_path` and `channels[name]["file"]` point at the scratch copies."""
+    companions = [payload["model_path"]] + [
+        entry["file"]
+        for entry in payload["channels"].values()
+        if entry.get("form") == "extractor"
     ]
-    if not lines:
-        raise AssayError("model produced no output")
-    try:
-        result = json.loads(lines[-1])
-    except json.JSONDecodeError:
-        raise AssayError(f"malformed model output: {lines[-1][:160]!r}") from None
+    outcome = run_program(_RUNNER, payload, timeout=timeout + 5.0, companions=companions)
+    if outcome["status"] != "ok":
+        raise AssayError(f"model {outcome['reason']}")
+    result = outcome["result"]
+    if not isinstance(result, dict):
+        raise AssayError(f"malformed model output: {json.dumps(result)[:160]!r}")
     if result.get("error"):
         raise AssayError(f"model error: {result['error']}")
     return result

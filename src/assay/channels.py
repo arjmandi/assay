@@ -10,8 +10,9 @@ A channel is a pair (observer, extractor). Three sources:
 - AGENT-DECLARED channels (`assay channel declare NAME --path a.b.c` or
   `--file extractor.py`): journaled at declaration. The dotted-path form is
   graded in-kernel (pure data lookup over the dict observation). The
-  extractor-file form is agent-authored code and runs ONLY in the verifier
-  sandbox (`python3 -I`, empty env, rlimits): `def extract(obs) -> value`.
+  extractor-file form is agent-authored code and runs ONLY in the sandbox
+  (`sandbox.run_program`: a scratch copy, `python -I`, empty env, the process
+  limits, no run directory, no network): `def extract(obs) -> value`.
 - Adapter-declared (pack) channels do not exist in 1.2.0: three worlds run on
   the host channels and the agent-declared ones alone.
 
@@ -31,15 +32,12 @@ from __future__ import annotations
 import hashlib
 import json
 import re
-import resource
-import subprocess
-import sys
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, load_jsonl, read_json
+from .sandbox import run_program
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 HOST_CHANNELS = ("goal", "level", "budget_remaining")
@@ -50,7 +48,7 @@ MAX_DECLARED_CHANNELS = 16
 _RUNNER = """\
 import importlib.util, json, sys
 payload = json.loads(sys.stdin.read())
-spec = importlib.util.spec_from_file_location("extractor", sys.argv[1])
+spec = importlib.util.spec_from_file_location("extractor", payload["extractor_path"])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 value = module.extract(payload["obs"])
@@ -195,40 +193,16 @@ def _run_extractor(
     stored = extractor_dir(paths) / f"{digest}.py"
     if not stored.exists():
         return False, f"stored extractor {digest[:12]} missing"
-    payload = json.dumps({"obs": obs}).encode()
-    cpu_seconds = max(1, int(EXTRACT_TIMEOUT_SECONDS))
-
-    def _limits() -> None:
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-
-    with tempfile.TemporaryDirectory(prefix="assay-channel-") as scratch:
-        try:
-            completed = subprocess.run(  # noqa: S603 - deliberate sandboxed run
-                [sys.executable, "-I", "-c", _RUNNER, str(stored.resolve())],
-                input=payload,
-                capture_output=True,
-                cwd=scratch,
-                env={},
-                timeout=EXTRACT_TIMEOUT_SECONDS,
-                preexec_fn=_limits,
-            )
-        except subprocess.TimeoutExpired:
-            return False, f"extractor timed out after {EXTRACT_TIMEOUT_SECONDS:g}s"
-    if completed.returncode != 0:
-        stderr = completed.stderr.decode(errors="replace").strip().splitlines()
-        tail = stderr[-1][:200] if stderr else "no stderr"
-        return False, f"extractor crashed: {tail}"
-    lines = [
-        line
-        for line in completed.stdout.decode(errors="replace").splitlines()
-        if line.strip()
-    ]
-    if not lines:
-        return False, "extractor produced no output"
-    try:
-        return True, json.loads(lines[-1])["value"]
-    except (json.JSONDecodeError, KeyError, TypeError):
-        return False, f"malformed extractor output: {lines[-1][:120]!r}"
+    payload = {"obs": obs, "extractor_path": str(stored.resolve())}
+    outcome = run_program(
+        _RUNNER, payload, timeout=EXTRACT_TIMEOUT_SECONDS, companions=(stored,)
+    )
+    if outcome["status"] != "ok":
+        return False, f"extractor {outcome['reason']}"
+    result = outcome["result"]
+    if not isinstance(result, dict) or "value" not in result:
+        return False, f"malformed extractor output: {json.dumps(result)[:120]!r}"
+    return True, result["value"]
 
 
 def _journal_position(paths: RunPaths, event: Mapping[str, Any]) -> tuple[list[dict[str, Any]], int | None]:

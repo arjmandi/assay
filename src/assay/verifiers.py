@@ -7,9 +7,11 @@ A claim `verify:<relative/path.py>` names a file that defines
 where `before`/`after` are the observation JSON objects and the returned str
 is the mandatory counter-fact ("actual"). At claim time the file is read,
 sha256-hashed, and copied to `.assay/verifiers/<hash>.py`; the hash is journaled
-on the prediction. At grading time the stored copy runs in a subprocess
-(`python3 -I`, fresh tmpdir cwd, empty environment, observations on stdin, one
-JSON line `{"ok": bool, "actual": str}` on stdout, 5s CPU and wall limits).
+on the prediction. At grading time the stored copy runs in the sandbox
+(`sandbox.run_program`: a scratch copy, `python -I`, an empty environment, the
+process limits, no path into the run directory, no network, no fork; the
+observations on stdin, one JSON line `{"ok": bool, "actual": str}` on stdout,
+5s CPU and wall limits).
 Crash, timeout, or malformed output grades as INVALID_CLAIM: not a miss, its
 own counter, and it halts a containing batch.
 
@@ -33,16 +35,12 @@ render exactly as they did.
 from __future__ import annotations
 
 import hashlib
-import json
-import resource
-import subprocess
-import sys
-import tempfile
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
+from .sandbox import run_program
 
 VERIFY_TIMEOUT_SECONDS = 5.0
 VACUOUS_MIN_GRADED = 5
@@ -53,7 +51,7 @@ _COUNTERS = ("graded", "passed", "failed", "invalid", "identity_same_verdict")
 _RUNNER = """\
 import importlib.util, json, sys
 payload = json.loads(sys.stdin.read())
-spec = importlib.util.spec_from_file_location("verifier", sys.argv[1])
+spec = importlib.util.spec_from_file_location("verifier", payload["verifier_path"])
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 ok, actual = module.verify(payload["before"], payload["after"])
@@ -99,53 +97,15 @@ def run_verifier(
     after: Mapping[str, Any],
     timeout: float = VERIFY_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    """Execute a stored verifier once, sandboxed. Returns a status record."""
+    """Execute a stored verifier once in the sandbox. Returns a status record."""
     stored = paths.verifiers / f"{digest}.py"
     if not stored.exists():
         return {"status": "invalid", "reason": f"stored verifier {digest[:12]} missing"}
-    payload = json.dumps({"before": before, "after": after}).encode()
-    cpu_seconds = max(1, int(timeout))
-
-    def _limits() -> None:
-        resource.setrlimit(resource.RLIMIT_CPU, (cpu_seconds, cpu_seconds))
-
-    with tempfile.TemporaryDirectory(prefix="assay-verify-") as scratch:
-        try:
-            completed = subprocess.run(  # noqa: S603 - deliberate sandboxed run
-                [sys.executable, "-I", "-c", _RUNNER, str(stored.resolve())],
-                input=payload,
-                capture_output=True,
-                cwd=scratch,
-                env={},
-                timeout=timeout,
-                preexec_fn=_limits,
-            )
-        except subprocess.TimeoutExpired:
-            return {
-                "status": "invalid",
-                "reason": f"verifier timed out after {timeout:g}s",
-            }
-    if completed.returncode != 0:
-        stderr = completed.stderr.decode(errors="replace").strip().splitlines()
-        tail = stderr[-1][:200] if stderr else "no stderr"
-        return {
-            "status": "invalid",
-            "reason": f"verifier crashed (exit {completed.returncode}): {tail}",
-        }
-    lines = [
-        line
-        for line in completed.stdout.decode(errors="replace").splitlines()
-        if line.strip()
-    ]
-    if not lines:
-        return {"status": "invalid", "reason": "verifier produced no output"}
-    try:
-        result = json.loads(lines[-1])
-    except json.JSONDecodeError:
-        return {
-            "status": "invalid",
-            "reason": f"malformed verifier output: {lines[-1][:120]!r}",
-        }
+    payload = {"before": before, "after": after, "verifier_path": str(stored.resolve())}
+    outcome = run_program(_RUNNER, payload, timeout=timeout, companions=(stored,))
+    if outcome["status"] != "ok":
+        return {"status": "invalid", "reason": f"verifier {outcome['reason']}"}
+    result = outcome["result"]
     if (
         not isinstance(result, dict)
         or not isinstance(result.get("ok"), bool)
