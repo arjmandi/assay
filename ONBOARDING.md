@@ -280,7 +280,9 @@ From the architecture document's section 2.1:
   built-ins included.
 - `secrets`, environment variable names whose values are redacted from every
   agent-supplied string before it is written. Names only, never values.
-- `observers` and `control`, accepted and journaled, no behavior in 1.1.0.
+- `observers` and `control`, accepted and journaled, no kernel behavior in
+  1.1.0. A world adapter may read `control` from the pinned registry as its
+  own settings (the OOLONG adapter's `bank_mode`).
 - `mode_note`, free text shown in status as data.
 - `gate`, default `required`, which is the rule: every paid action needs a
   prediction. `optional` and `off` are the control-arm modes for experiments.

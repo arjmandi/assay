@@ -130,6 +130,15 @@ Left on the experiment branch, deliberately:
   `cc65462f...`). `evidence/verify_all.py` checks all 56 journals against
   their heads with the standard library alone, and the suite runs it. The
   former assay-verify repository is archived with a pointer here.
+- OOLONG batch banking, the E5 variant (B3). `control.bank_mode: batch` in
+  the registry (`bench/oolong/registry_200_batch.json`) makes `BANK_FACT`
+  take several spans in one paid action (`spans`, base64 of a JSON list, all
+  verbatim or the whole action is refused) and `SUBMIT` take a plain-text
+  answer (`answer`, a space written as `_`) cited by the spans banked for the
+  question. The census and the sealed scoring are the same code, the default
+  (`single`) is unchanged, and the suite drives spam4k to WIN in both modes.
+  The registry's `control` block, declared-only for the kernel, is read by
+  the world here, which is what it is for.
 - `assay stop`: stops the run's daemon cleanly (SIGTERM, wait, report). Works
   without run state, so an orphaned daemon left behind by a hand-deleted
   `.assay` can be stopped. Never sends SIGKILL.
@@ -273,7 +282,8 @@ Left on the experiment branch, deliberately:
 - The legacy numbered-action path (O2): runs started without a registry,
   which spoke `ACTION1..7` and `ACTION6:x,y` with a 0 to 63 bound, had the
   CLI write their events, and admitted the grid claim forms. `assay start`
-  now requires `--registry`, `assay act` takes `NAME pname=value ...` on
+  now requires `--registry` for a fresh run (a resume uses the pinned one),
+  `assay act` takes `NAME pname=value ...` on
   every run, and every paid command goes through the daemon's gate. A
   directory that owns such a run (from before registries existed) can still
   be inspected (`status`, `view`, `audit`) but is refused on resume. With the

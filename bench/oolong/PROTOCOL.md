@@ -123,6 +123,29 @@ parsing uses a small format shim (gold parsing is stdlib and unaffected); instal
 python-dateutil for full DATE parity. NUMERIC/LABEL/COMPARISON/USER are
 unaffected.
 
+## The E5 variant: batch banking
+
+`registry_200_batch.json` sets `control.bank_mode: batch`. The registry's
+`control` block is declared-only for the kernel (journaled, pinned and
+hashed, no kernel behavior) and is read by the adapter from the run's pinned
+copy. Everything above holds except the shape of the two actuators:
+
+- **`BANK_FACT spans=<b64 json-list>`** banks several facts in one paid
+  action. Every span is verified as a verbatim substring in code; one missing
+  span refuses the whole action (journaled, nothing banked). Each verified
+  span is one banked fact for the current question.
+- **`SUBMIT answer=<plain text>`** answers in plain text. Action tokens are
+  whitespace-split, so a space is written as `_` (`more_common_than`,
+  `February_2022`). The census is unchanged (at least one verified span
+  banked for the current question), and those banked spans are the citation
+  recorded in the sealed submission. A registry that also gives SUBMIT a
+  `spans` parameter has it checked verbatim as in single mode.
+
+The default, `single`, is what every published OOLONG run was recorded under
+and what `registry_40.json` and `registry_200.json` select. Scoring is the
+same code in both modes. The test suite drives the spam4k pack to WIN in both
+(`tests/test_oolong_tenant.py`).
+
 ## Version pins & determinism
 
 - Dataset: `oolongbench/oolong-synth`, split `validation`, revision
@@ -141,6 +164,7 @@ unaffected.
     scorer.py             sealed-scoring wrapper over the vendored OOLONG scorer
     registry_40.json      BANK_FACT + SUBMIT rows, 40-action budget (small packs)
     registry_200.json     same rows, 200-action budget (~25-question packs)
+    registry_200_batch.json   the E5 variant: control.bank_mode batch, BANK_FACT {spans}, SUBMIT {answer}
     packs/build_pack.py   fetch, verify and build packs (fetch and build need pyarrow and pandas)
     packs/{corpus,questions,manifest}_{id}.*   the smoke packs whole, the others as manifests
     vendor/oolong_eval_helpers.py   upstream OOLONG scorer, verbatim (MIT)

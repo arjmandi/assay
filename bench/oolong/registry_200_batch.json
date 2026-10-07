@@ -1,0 +1,35 @@
+{
+  "budget": {
+    "actions": 200
+  },
+  "batching": {
+    "hand_cap": null
+  },
+  "control": {
+    "bank_mode": "batch"
+  },
+  "goal": {
+    "text": "Answer every question about the corpus. The corpus is a FILE in the run dir (see the observation's corpus_path): read it with your own offline tools, it is not in the observation. BANK_FACT {spans} commits several corpus-grounded facts in one action: spans is base64 of a JSON array of verbatim substrings, each checked in code, and one missing span refuses the whole action. SUBMIT {answer} answers the current question in plain text (write a space as _, for example more_common_than or February_2022); it is coverage-gated by the v1 census (>=1 verified span banked for the current question), and those banked spans are its citation. Answers are recorded SEALED and scored only at finalize; during the run the referee grades evidence integrity (span verbatim-presence and coverage), never correctness. WIN = all questions submitted with the census clean."
+  },
+  "mode_note": "OOLONG query-framed corpus pack, batch banking (the E5 variant, control.bank_mode: batch). Sized for ~25-question packs. Actuators: BANK_FACT, SUBMIT. See bench/oolong/PROTOCOL.md.",
+  "actions": [
+    {
+      "name": "BANK_FACT",
+      "params": {
+        "spans": {
+          "type": "str"
+        }
+      },
+      "description": "bank several facts in one action, each a verbatim corpus span; spans is base64 of a JSON array of strings. Every span is verified as a verbatim substring of the corpus in code; if any is not present the whole action is refused and the attempt is journaled."
+    },
+    {
+      "name": "SUBMIT",
+      "params": {
+        "answer": {
+          "type": "str"
+        }
+      },
+      "description": "submit the answer to the current question as plain text (a space written as _). Coverage-gated: at least one verified span must be banked for this question, and those spans are the citation; on acceptance the answer is sealed and scored only at finalize."
+    }
+  ]
+}

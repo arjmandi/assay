@@ -5,7 +5,8 @@ a world adapter exposing `factory(root, config)`, pre-registered action
 registries, a `PROTOCOL.md`, and a `RESULTS.md`.
 
 Status: **M2 complete** (2026-08-28). The query-framed corpus-pack adapter and
-registries (`adapter.py`, `registry_40.json`, `registry_200.json`), the sealed
+registries (`adapter.py`, `registry_40.json`, `registry_200.json`, and
+`registry_200_batch.json` for the E5 batch-banking variant), the sealed
 scorer reusing OOLONG's own scoring code (`scorer.py`, `vendor/`), the pack
 tooling (`packs/`), the smoke packs (`spam4k`, `spam8k`) and the manifests of
 the length-ladder packs (synth 128K, 1M, 4M), rebuilt on first use (see Packs

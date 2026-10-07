@@ -33,7 +33,9 @@ stay valid unchanged):
       "module_modes": {"name": "off"|"advise"|"block"},
       "secrets": ["ENV_NAME", ...],   # env values redacted at the journal boundary
       "observers": [...],             # DECLARED ONLY in 1.1.0 (journaled, inert)
-      "control": {...},               # DECLARED ONLY in 1.1.0 (journaled, inert)
+      "control": {...},               # DECLARED ONLY in 1.1.0: journaled and pinned,
+                                      # inert for the kernel; a world adapter may
+                                      # read it from the pinned copy (a mode switch)
       "mode_note": "free text",       # optional, shown in status (data only)
       "gate": "required"|"optional"|"off"   # CONTROL-ARM SWITCH (default
                                       # required). optional: act/commit steps may

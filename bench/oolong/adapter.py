@@ -42,6 +42,19 @@ then.
 Determinism: corpus load and span checks are pure (no network / time / random at
 run time), so the append-only journal replays to identical observations. The
 dataset revision is pinned in each pack's manifest.
+
+Banking modes, chosen by `control.bank_mode` in the run's pinned registry (the
+kernel journals the control block and leaves it to the world):
+
+    single (default)  one span per BANK_FACT, base64 answer and spans on SUBMIT,
+                      exactly as above and as every published OOLONG run was recorded.
+    batch             the E5 variant. BANK_FACT spans=<b64 json list> banks several
+                      verbatim spans in one paid action (one missing span refuses
+                      the whole action, journaled). SUBMIT answer=<plain text, a space
+                      written as _> is cited by the spans banked for the current
+                      question; a spans list, if the registry gives one, is checked
+                      verbatim as in single mode. The census and the sealed scoring
+                      are the same code.
 """
 
 from __future__ import annotations
@@ -61,6 +74,7 @@ from assay.core import AssayError
 _HERE = Path(__file__).resolve().parent
 
 ACTIONS = ("BANK_FACT", "SUBMIT")
+BANK_MODES = ("single", "batch")
 SPAN_PREVIEW = 80  # chars of a span echoed back in the observation
 LAST_RESULT_STATUSES = ("accepted", "refused", "sealed")
 
@@ -81,6 +95,27 @@ CENSUS_RULE = (
 def _packs_dir() -> Path:
     configured = os.getenv("ASSAY_OOLONG_PACKS")
     return Path(configured).expanduser().resolve() if configured else _HERE / "packs"
+
+
+def _bank_mode(root: Path) -> str:
+    """`control.bank_mode` of the run's pinned registry, `single` when absent."""
+    try:
+        registry = json.loads((Path(root) / ".assay" / "registry.json").read_text())
+    except (FileNotFoundError, json.JSONDecodeError):
+        return "single"
+    control = registry.get("control") if isinstance(registry, Mapping) else None
+    mode = str((control or {}).get("bank_mode", "single")).lower()
+    if mode not in BANK_MODES:
+        raise AssayError(f"control.bank_mode must be one of {list(BANK_MODES)}, got {mode!r}")
+    return mode
+
+
+def _plain_answer(raw: Any) -> str:
+    """A plain-text answer. Action tokens are whitespace-split, so a space is
+    written as `_` (`more_common_than`, `February_2022`)."""
+    if not isinstance(raw, str) or not raw:
+        raise AssayError("answer must be non-empty plain text (write a space as _)")
+    return raw.replace("_", " ")
 
 
 def _decode_str(raw: Any, field: str) -> str:
@@ -131,6 +166,7 @@ class OolongSession:
         if not pack_id:
             raise AssayError("no OOLONG pack id; pass a game id or set ASSAY_OOLONG_PACK")
         self.pack_id = pack_id
+        self.bank_mode = _bank_mode(self._root)
 
         corpus_file = packs / f"corpus_{pack_id}.txt"
         questions_file = packs / f"questions_{pack_id}.jsonl"
@@ -279,6 +315,8 @@ class OolongSession:
             "last_result": self._last_result,
             "scoring": "SEALED — correctness computed only at finalize()",
         }
+        if self.bank_mode == "batch":
+            data["bank_mode"] = "batch"
         return {
             "data": data,
             "state": state,
@@ -302,6 +340,7 @@ class OolongSession:
             "dataset_revision": self._manifest.get("dataset_revision"),
             "context_len": self._manifest.get("context_len"),
             "dataset": self._manifest.get("dataset"),
+            "bank_mode": self.bank_mode,
         }
 
     # -- actions -----------------------------------------------------------
@@ -327,6 +366,9 @@ class OolongSession:
         return self._observe()
 
     def _do_bank_fact(self, payload: Mapping[str, Any]) -> None:
+        if self.bank_mode == "batch":
+            self._bank_spans(payload)
+            return
         text = _decode_str(payload.get("text"), "text")
         span = _decode_str(payload.get("span"), "span")
         offset = self._find_span(span)
@@ -356,16 +398,55 @@ class OolongSession:
             "span_preview": span[:SPAN_PREVIEW],
         }
 
-    def _do_submit(self, payload: Mapping[str, Any]) -> None:
-        answer = _decode_str(payload.get("answer"), "answer")
+    def _bank_spans(self, payload: Mapping[str, Any]) -> None:
+        """Batch mode: several spans in one paid action. All verbatim, or the
+        whole action is refused and journaled; each verified span is one
+        banked fact for the current question."""
         spans = _decode_spans(payload.get("spans"))
+        text = _decode_str(payload["text"], "text") if payload.get("text") else None
+        offsets: list[tuple[int, int]] = []
+        for span in spans:
+            offset = self._find_span(span)
+            if offset < 0:
+                self._refusals += 1
+                self._last_result = {
+                    "action": "BANK_FACT",
+                    "status": "refused",
+                    "reason": "span_not_found",
+                    "detail": (
+                        "span is not a verbatim substring of the corpus; none of the "
+                        f"{len(spans)} banked"
+                    ),
+                    "span_preview": span[:SPAN_PREVIEW],
+                }
+                return
+            offsets.append((offset, offset + len(span)))
+        for span, (start, end) in zip(spans, offsets):
+            self._banked.append({"text": text or span, "span": span, "start": start, "end": end})
+            self._covered.append((start, end))
+        self._banks_for_current += len(spans)
+        self._last_result = {
+            "action": "BANK_FACT",
+            "status": "accepted",
+            "detail": f"{len(spans)} span(s) verified",
+            "spans_verified": len(spans),
+            "span_preview": spans[0][:SPAN_PREVIEW],
+        }
+
+    def _do_submit(self, payload: Mapping[str, Any]) -> None:
+        if self.bank_mode == "batch":
+            answer = _plain_answer(payload.get("answer"))
+            spans = _decode_spans(payload["spans"]) if payload.get("spans") else None
+        else:
+            answer = _decode_str(payload.get("answer"), "answer")
+            spans = _decode_spans(payload.get("spans"))
         current = self._current_question()
         if current is None:  # pragma: no cover - broker refuses acting past WIN
             raise AssayError("all questions already submitted")
 
         # Grounding gate: every cited span must be verbatim in the corpus.
         offsets: list[tuple[int, int]] = []
-        for span in spans:
+        for span in spans or ():
             offset = self._find_span(span)
             if offset < 0:
                 self._refusals += 1
@@ -394,6 +475,10 @@ class OolongSession:
             }
             return
 
+        if spans is None:
+            # Batch mode without a spans list: the citation is what was banked
+            # for this question (the census just checked there is some).
+            spans = [fact["span"] for fact in self._banked[len(self._banked) - self._banks_for_current:]]
         # Accepted: seal the answer (store; NEVER score or reveal mid-run).
         self._submissions.append(
             {

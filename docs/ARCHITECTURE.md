@@ -91,8 +91,10 @@ that would cross the cap is refused whole.
 **Required.** `actions`, non-empty. Everything else is optional.
 
 **Optional.** All other keys. Two are declared-only in 1.1.0 and journaled
-without behavior: `observers` and `control` (`registry.validate_registry`,
-honest gap).
+without kernel behavior: `observers` and `control` (`registry.validate_registry`,
+honest gap). A world adapter may read `control` from the run's pinned copy
+as its own settings, pinned and hashed with the rest (the OOLONG adapter's
+`bank_mode`).
 
 **Never here.** Action semantics (descriptions are data, never instructions, and
 the constitution says so to the agent). Credentials (`secrets` lists environment
