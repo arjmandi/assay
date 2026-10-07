@@ -670,9 +670,10 @@ its docstring, and `tests/test_vocabulary.py` enforces it.
 ## 6. The run model (1.2.0, design note 1)
 
 Status: a design note of the 1.2.0 milestone, written 2026-10-07 from the review of the
-same day, implemented by #12, #20, #24 and #16. Sections 1 to 5 describe the code at
-6ea56e4; where this note and a section above differ, the note is the target and the pull
-request that lands the change updates the section.
+same day and revised the same evening after an independent review against the code,
+implemented by #12, #20, #24 and #16. Sections 1 to 5 describe the code at 6ea56e4; where
+this note and a section above differ, the note is the target and the pull request that
+lands the change updates the section.
 
 ### 6.1 Why
 
@@ -688,7 +689,11 @@ Module `src/assay/records.py`. Frozen dataclasses with `slots=True`. Each has a
 classmethod `from_json(obj)` that validates the type of every known key and a method
 `to_json()` that emits exactly the keys the spec names plus the carried extras. The
 journal line is `json.dumps(record.to_json(), separators=(",", ":"), sort_keys=True)`,
-as today, so the chain rule and every published head are untouched.
+as today, so the chain rule and every published head are untouched. The reviewer's census
+of the 66 published journals: every one round-trips through that form with zero differing
+lines; the known keys and their observed types are `data` None or object, `predict` None
+or string, `predict_ok` None or bool, `level_before` None or int, `note` string,
+`available_actions` a list of strings or of integers, `declares` object, `gate_off` bool.
 
 - `Event`: `id`, `timestamp`, `action`, `data` (any JSON object or None), `counts_action`,
   `state`, `levels_completed`, `level_before`, `win_levels`, `available_actions` (strings
@@ -701,13 +706,16 @@ as today, so the chain rule and every published head are untouched.
 - `Claim`: `kind`, `text`, `window_s`, `channel`, `op`, `value`, `sign`, `direction`,
   `tol`, `path`, `verifier_hash`, `stat`, `over`, `horizon`, `on_fail`, `coerced`,
   `extra`. One class for every claim form; a field that does not apply is None.
-- `Grade`: the fields of `Claim` plus `ok`, `actual`, `bucket`, `invalid`, `ungradable`,
-  `verifier`, `identity_verdict`, `excluded_from_meter`, `machine`. On the journal a
-  coerced claim's kind is the string `coerced`, as today.
+- `Grade`: the fields of `Claim` plus `ok` (bool), `actual` (str), `bucket` (str),
+  `invalid` (bool), `ungradable` (bool), `verifier` (bool), `identity_verdict` (bool, the
+  string `invalid`, or None: a crashed identity probe is journaled as the string today),
+  `excluded_from_meter` (bool), `machine` (bool). On the journal a coerced claim's kind is
+  the string `coerced`, as today.
 - `Receipt`: `kind`, `outcome`, `detail`, `start_event`, `end_event`, `level`, `action`,
   `predict`, `grade` (the rendered lines), `because`, `modules`, `aggregates`, `channels`,
-  `steps`, `plan`, `estimated_tokens` (section 7.6), `timestamp`. Written to
-  `.assay/receipts/` and to the activity log as today.
+  `steps` (a tuple of `ReceiptStep`: `event`, `action`, `ok`, `failed`, `invalid`,
+  `ungated`, `machine`, `kind`, `problem`), `plan`, `estimated_tokens` (section 7.6),
+  `timestamp`. Written to `.assay/receipts/` and to the activity log as today.
 - `Mutation`: `mutation_id`, `action`, `data`, `reasoning`, `observation`, `claims` (a tuple
   of `Claim`, written by the daemon at spend time from #16 on, absent on older records),
   `timestamp`.
@@ -722,85 +730,123 @@ Module `src/assay/run.py`, class `Run`.
 Held in memory: `paths`, `config`, `registry`, `events` (a list of `Event`), `chain_head`,
 `chain_event`, `journal_bytes` (the length of `events.jsonl` after the last append or
 verification), `mutations` (the decoded log) with `mutations_bytes`, `manifest` (the module
-manifest), `modules` (the loaded module objects with their effective modes), `opened_at`.
+manifest), `modules` (the loaded module objects with their effective modes), `owner_hash`
+(the sha256 of the owner token from `owner.json`), `opened_at`.
 
 Read from disk on demand and never held: the activity log (append-only, written by both
-processes), `channels.json` and the readings cache, the verifier statistics, `hazards.json`,
-`aggregates.json`, the agenda files, the notes. They are small and each key has one writer.
+processes), `channels.json` (written by the CLI at declaration) and the readings cache
+(written by the daemon at grade time), the verifier statistics (daemon), `hazards.json`,
+`aggregates.json`, `goal.json` and `proposals.jsonl` (CLI), the notes. They are small and
+each key has one writer. Approvals and waivers move into the daemon (section 7.2), which
+removes the one file two processes rewrote.
 
 - `Run.load(paths)`: reads config, registry, the journal (every line into an `Event`,
-  contiguity checked), `chain.json` (the head recomputed when the file is absent or
-  behind), the mutation log and the manifest; loads the modules once (section 6.4). Every
-  CLI command calls it once at entry; the daemon calls it once in `serve`.
-- `run.append(pending)`: the only writer of `events.jsonl` on a registry run. Assigns
+  contiguity checked), `chain.json`, the mutation log, `owner.json` and the manifest.
+  `chain.json` absent: the head is recomputed and written. `chain.json` behind the journal
+  by the lines a crash left (its `event_id` strictly less than the last id and its head
+  equal to the head of that prefix): recomputed and written. Any other mismatch: `Run.load`
+  raises `CHAIN_DIVERGED` (kind invalid); `assay start` refuses and `assay audit` reports;
+  nothing is rewritten, so the evidence of an edit stays on disk. Modules load once
+  (section 6.4); the CLI loads them lazily, only for the commands that consult them
+  (status, the paid operations are the daemon's). Every CLI command calls `Run.load` once
+  at entry; the daemon calls it once in `serve`.
+- `run.append(pending)`: the only writer of `events.jsonl` while a daemon lives. Assigns
   `id = len(events)`, serializes, appends under the file lock with fsync, advances the
   held head with the exact line written, writes `chain.json`, anchors when due (every 25
   events and on WIN), appends to `events`, updates `journal_bytes`. It replaces
   `core.append_event` and the re-read in `live.record_event`.
-- `run.verify_disk()`: recomputes the head over the whole `events.jsonl` (hashing a file
-  is cheap next to one JSON parse; a ten-megabyte journal hashes in about twenty
-  milliseconds), compares it and the file length to the held values, compares the mutation
-  log the same way, and compares the manifest file to the held manifest. Any difference is
-  a `Tamper(what, expected, found)`. The daemon calls it before every paid action (section
-  8.3); `assay audit` reports the same comparison against `chain.json`.
+- Event 0 is the daemon's: on a fresh run `serve` takes the first observation, writes
+  `public_info` into `config.json`, appends the `START` event through `run.append` and runs
+  the observation kind's `after_record`, all before it binds the socket and reports READY;
+  `assay start` then prints status. The CLI writes `config.json`, the registry copy, the
+  owner file and the notes file before it spawns the daemon and never writes `config.json`
+  after. The one append outside a daemon is `reconcile` at start with no daemon alive
+  (section 6.5).
+- `run.verify_disk()`: recomputes the head over the whole `events.jsonl` and compares it
+  and the file length to the held values; compares the mutation log, `registry.json`,
+  `config.json` and the manifest file to the held copies the same way. Any difference is a
+  `Tamper(what, expected, found)`. The daemon calls it before every paid action (section
+  8.3); `assay audit` reports the same comparison against `chain.json`. Measured cost on
+  the published journals: the largest ARC journal (1172 events, 5.9 MB) hashes as a chain
+  in 5 ms and the largest journal of all (32 MB) in 32 ms; with the mutation log of the
+  same size, budget 70 ms per paid action worst case, against a world step that takes
+  seconds. An implementer may hold a raw digest of the file bytes instead of the chain and
+  compare `hashlib.file_digest`, which halves it.
 - Every function under `live.py`, `inspect.py`, `channels.py`, `modules.py`,
   `aggregates.py`, `agenda.py`, `model.py` and `carryover.py` that took `paths` and
-  reloaded the journal takes the run, and uses `run.paths` for its own files.
-  `core.load_events` stays for the checker-like readers (`analysis.run_python`) and no
-  function below the entry points calls it.
+  reloaded the journal takes the run, and uses `run.paths` for its own files. The
+  `ObservationKind` protocol's display and after-record methods (`after_record`,
+  `status_head_lines`, `result_lines`, `view_text`, `export_history`, `history_line`) take
+  the run too, so the frame extra stops reloading the journal (`render.current_image`,
+  `views.export_history` do today). `core.load_events` stays for the checker-like readers
+  (`analysis.run_python`) and no function below the entry points calls it.
 - The daemon holds one `Run` for its life; the request handlers of section 7.2 receive it.
   The id of the next event is the held count, never the line count on disk.
+- The manifest is reconstructed for a pre-manifest run only at `start`, never from a status
+  call (today `unlisted_lines` can write it).
 
-### 6.4 Modules under the run model
+### 6.4 Modules and adapters under the run model
 
 - A `Module` Protocol in `modules.py`: `NAME`, `CONSTITUTION`, `MODE`,
   `trigger(view, pending)`, `demand(view, pending)`, `telemetry(view)`, and the optional
   `observe(view, event)`.
 - `ModuleView(run)`, read-only: `events` (a tuple of `Event`), `registry`, `paths` for
-  reading a module's own files, plus two kernel methods: `record(kind, **fields)` appends
-  an activity record of a module-owned kind (`hazard_tagged` today) and `hazards()` returns
-  the tags; the hazard module uses them instead of writing `hazards.json` and the activity
-  log by path. `JournalView` is removed; `pending` keeps its shape.
-- Modules load once per process from the held manifest: the daemon at `serve`, the CLI in
-  `Run.load` for the status-time advisories (advisory only, as today).
+  reading a module's own files, plus two kernel methods: `record(kind, **fields)` persists
+  a module-owned record through the kernel (for `hazard_tagged`: the tag into
+  `hazards.json` and the activity record, exactly what the hazard module writes by path
+  today, so the HAZARDS line of the published runs that carry tags does not change) and
+  `hazards()` reads the file. `JournalView` is removed; `pending` keeps its shape.
+- Modules load once per process from the held manifest: the daemon at `serve`, the CLI
+  lazily for status.
 - `assay module install` becomes the daemon operation `install_module` (section 7.2): the
-  daemon checks the owner token, copies the file, checks the contract and the name, updates
-  the held manifest and writes it, journals `module_installed`, loads the module. While the
-  daemon lives the manifest on disk is a record, not the source of truth. At the next
-  start, `Run.load` admits a manifest entry only if the registry's `modules` list names
-  its source or a journaled `module_installed` record carries its hash (section 8.7).
+  daemon checks the owner token against the held hash, copies the file, checks the contract
+  and the name, updates the held manifest and writes it, records `module_installed` in the
+  activity log, loads the module. While the daemon lives the manifest on disk is a record,
+  not the source of truth. At the next start, `Run.load` admits a manifest entry only if
+  the registry's `modules` list names its source or a `module_installed` activity record
+  carries its hash; an entry without either is ignored and reported on the MODULES line
+  (section 8.7).
+- An `Adapter` Protocol in a new `adapters.py`, typed from the duck interface of section
+  2.2: `factory(root, config)` returning a session with `observation`, `step(action, data,
+  reasoning)`, the optional `finalize()` and `public_info`. #21 adds the optional `session`
+  capability. The conformance test checks every adapter in its table against it.
 
 ### 6.5 Recovery under the run model (#16)
 
-- The daemon writes `Mutation.claims` at spend time: the parsed claims, verifier hashes
-  included.
+- The daemon writes `Mutation.claims` at spend time for `act` and `commit` steps: the
+  parsed claims, verifier hashes included; the record keeps `reasoning` (`predict`,
+  `because`, `declares`). A model-plan step's record carries its plan reasoning and no
+  claims.
 - `reconcile`, at start with the daemon dead, grades the stored claims against the stored
   response through the live path's grader, `grade_pending(run, claims, prior, pending,
   elapsed_s=None)`; `elapsed_s=None` makes every windowed claim UNGRADABLE with the actual
   "UNGRADABLE: recovered, step duration unknown"; the event is journaled with `predict`,
-  `predict_ok` and `grade` and the note "recovered from broker mutation journal", and it is
-  gated. A mutation record without `claims` (written before #16) is recovered as today,
-  UNGATED, and the audit says why.
+  `predict_ok`, `grade`, `declares` from the reasoning, and the note "recovered from broker
+  mutation journal", and it is gated. A mutation record without `claims` (written before
+  #16, or a model-plan step) is recovered as today, UNGATED, and the audit says why.
 
 ### 6.6 Invariants and tests
 
-1. One writer: on a registry run only the daemon appends to `events.jsonl`, through
-   `run.append`.
+1. One writer: while a daemon lives only it appends to `events.jsonl`, through
+   `run.append`; the one append without a daemon is `reconcile` at start.
 2. At every quiescent point the held head equals the head recomputed over the file;
    `verify_disk` is the test.
 3. `Run.load` over a journal the daemon wrote yields records that re-serialize to the same
    lines; a test writes a thousand events through the daemon and checks that status, audit
    and view agree between the daemon's view and a fresh load.
-4. No function below the entry points reads `events.jsonl`: an AST test refuses
-   `load_events(` outside `run.py`, `core.py`, `analysis.py` and the tests.
+4. No function below the entry points reads `events.jsonl`: an AST test over `src/assay`
+   and `src/assay_grid` refuses `load_events(` outside `run.py`, `core.py` and
+   `analysis.py`.
 5. Every published journal under `evidence/` loads through `Event.from_json` and
    re-serializes identically (a test over the 66 journals).
-6. The replay gate passes unchanged.
+6. Two clients racing on one socket produce a contiguous journal (the daemon is
+   single-threaded and the CLI holds the run lock; the test pins it).
+7. The replay gate passes unchanged.
 
 ### 6.7 What changes for the agent and the operator
 
 Nothing visible: the same commands, the same lines. One paid action does constant journal
-work plus the graders.
+work plus the graders and one verification pass over the files.
 
 ## 7. The protocol, the errors and the surfaces (1.2.0, design note 2)
 
@@ -808,27 +854,40 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
 
 ### 7.1 The error model
 
-- `AssayError(message, *, code, kind, hint=None)`. `code` is UPPER_SNAKE, unique and
-  stable: once published it is part of the agent-facing contract, frozen like the outcome
-  tokens. `kind` is one of `usage` (the request is wrong: schema, syntax, a missing file,
-  an unknown action; exit 2), `world` (the adapter or the world failed or refused at the
-  kernel boundary; exit 3), `internal` (a bug or a corrupt file; exit 4), `invalid` (the
-  run can no longer be scored or continued: tamper, replay divergence, remote divergence;
+- `AssayError(message, *, code="UNSPECIFIED", kind="refused", hint=None)`. `code` is
+  UPPER_SNAKE, unique and stable. `kind` is one of `usage` (the request is wrong: schema,
+  syntax, a missing file, an unknown action; exit 2), `refused` (a well-formed request the
+  kernel refuses by rule: the budget, the gates, a module demand, the batching law, the
+  affordance check, the notes cap; exit 2, so the manuals' "exit 2" and the suite's
+  `returncode == 2` assertions stay true, and the kind carries the distinction on the socket
+  and in `--json`), `world` (the adapter or the world failed or refused at the kernel
+  boundary; exit 3), `internal` (a bug or a corrupt file; exit 4), `invalid` (the run can
+  no longer be scored or continued: tamper, chain or replay divergence, remote divergence;
   exit 5). `hint` is the next step in one sentence.
 - The catalogue, `src/assay/errors.py`, lists every code with its kind and a one-line
-  meaning. A test over the AST, in the pattern of the vocabulary test, refuses a `raise
-  AssayError(` without a code and a code outside the catalogue. The catalogue renders into
+  meaning. A test over the AST, in the pattern of the vocabulary test and covering
+  `src/assay` and `src/assay_grid` (211 raise sites today), refuses a `raise AssayError(`
+  whose `code=` is not a string literal or an `errors.NAME` attribute in the catalogue.
+  Adapters, examples and tests are not covered: the two bench adapters raise `AssayError`
+  without a code at twenty sites and keep working through the defaults. The argparse
+  error path (`Parser.error`) raises with `CLI_USAGE`. The catalogue renders into
   `docs/ERRORS.md` by a script in the repository; a test asserts the file is current.
+- The adapter boundary is the daemon's four calls into the session: `factory`,
+  `observation`, `step` and `finalize`. Anything raised there, `AssayError` or not, becomes
+  `WORLD_ERROR` (kind world) carrying the text; a `finalize` failure stays the warning on
+  the receipt, as today. Anything else that is not an `AssayError` becomes `INTERNAL` (kind
+  internal) with the traceback saved as today; ONBOARDING's troubleshooting section, which
+  shows that line with exit 2, follows.
 - Existing codes keep their names: `BUDGET_EXHAUSTED`, `LOCAL_REPLAY_DIVERGED`,
-  `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`, `UNGATED_STEP_REFUSED`;
-  `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` becomes `REMOTE_SESSION_UNAVAILABLE` with #21;
-  the module demand is `MODULE_DEMAND`. An adapter exception crossing the daemon boundary
-  becomes `WORLD_ERROR` (kind world) carrying the exception text; anything else that is not
-  an `AssayError` becomes `INTERNAL` (kind internal) with the traceback saved as today.
+  `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`, `UNGATED_STEP_REFUSED` (which becomes
+  the refusal of an unknown operation, section 7.2); the module demand is
+  `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` becomes
+  `REMOTE_SESSION_UNAVAILABLE` with #21, the last rename: the codes freeze at the 1.2.0
+  tag, like the outcome tokens.
 - The CLI prints to stderr one line `ERROR | CODE | message` and, when a hint exists, a
   second line `NEXT | hint`; multi-line help (the claims table) follows as today. The exit
-  code follows the kind. The `ERROR | ` prefix and exit 2 for usage errors are unchanged,
-  so the published manuals stay right.
+  code follows the kind. The `ERROR | ` prefix and exit 2 for usage and refused errors are
+  unchanged.
 - Over the socket the error is `{"v": 2, "ok": false, "error": {"code", "kind",
   "message", "hint"}}`; the client raises the same `AssayError`.
 - With `--json` the error object is the only output, on stdout, and the exit code follows
@@ -839,27 +898,33 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
 - `src/assay/ops.py`: `Operation(name, request, result, handler, paid, owner, offline)`.
   `request` and `result` are record classes with `from_json`, `to_json` and a
   `json_schema()` classmethod (hand-written per record, no dependency). `paid` marks the
-  operations that spend, `owner` the ones that need the owner token, `offline` the ones the
-  client runs from disk without the daemon.
+  operations that spend, `owner` the ones that need the owner token (checked by the daemon
+  against the held hash), `offline` the ones the client runs from disk without the daemon.
+  #24 builds the argparse parser from this table; the list below is complete.
 - Daemon operations, over the socket: `ping`, `observe`, `act` (`action`, `params` as an
   object or null, `predict`, `because`, `at_event`, `declares`), `commit` (`steps` as a list
   of `{action, params, predict}`, or `plan`, with `at_event` and `declares`), `reset`
-  (`because`, `at_event`, `declares`), `install_module` (`path`, `token`). The `step`
-  operation is removed: it was refused on every registry run, and every run has a registry
-  since 1.1.0's build. The owner operations that run in the CLI today (`goal ratify`,
-  `approve`, `waive`) stay offline in 1.2.0; they write small files the daemon reads on
-  demand.
-- Offline operations, in the client from disk: `status`, `view`, `audit`,
-  `channel declare`, `channel list`, `export`, `spend report`, `goal propose`, `goal
-  list`, the `model` commands, `module list`, `python`, `doctor`, `version`, `start`,
-  `stop`.
+  (`because`, `at_event`, `declares`), and the owner operations `install_module` (`path`,
+  `token`), `approve` (`action`, `token`), `waive` (`action`, `token`, `because`),
+  `goal_ratify` (`id`, `token`). The daemon holds the approvals and waivers in memory and
+  records each grant and use in the activity log as today, so the agent cannot write an
+  approval into a file and the file two processes rewrote is gone. The `step` operation is
+  removed: it was refused on every registry run and every run has a registry since the
+  1.1.0 build; the test that asserted `UNGATED_STEP_REFUSED` asserts that an unknown
+  operation is refused and no mutation is written.
+- Offline operations, in the client from disk: `start`, `stop`, `status`, `view` (with
+  `--export`), `audit`, `channel declare`, `channel list`, `export`, `spend report`,
+  `goal propose`, `goal list`, `model init`, `model replay`, `model solve`, `module list`,
+  `python`, `doctor`, `version`, `hooks install`, `hooks post-tool-use` (section 8.4),
+  `serve-tools` (section 7.5).
 - The wire: one JSON line per request, `{"v": 2, "token": "...", "op": "act", "args":
   {...}}`, one JSON line per reply, `{"v": 2, "ok": true, "result": {...}}` or the error
-  object. A request without `v`, or with another value, is refused with
-  `PROTOCOL_VERSION` (kind usage) before anything else; the client sends the version of the
-  package it belongs to. `broker.serve` is a dispatcher: read, authenticate, look the
-  operation up, decode the request record, call the handler with the run, encode the
-  result; one function per operation (#24).
+  object. The daemon reads the line, checks `v` (a request without it, or with another
+  value, is refused with `PROTOCOL_VERSION`, kind usage), authenticates the token, looks
+  the operation up, decodes the request record, calls the handler with the run, encodes the
+  result; one function per operation (#24). The client checks the reply's `v` the same way,
+  so a daemon that outlived an upgrade is refused rather than misread; the client sends the
+  version of the package it belongs to.
 - `action` and `params`: the client parses `NAME k=v ...` into the name and a scalar
   params object using the pinned registry (the coercion of `registry._coerce`), or takes
   `--params JSON` as given (#14); the daemon validates the object against the registry's
@@ -869,43 +934,59 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
 
 ### 7.3 `--json`
 
-Every CLI command accepts `--json` and prints exactly one JSON document on stdout: the
-result record (`Receipt`, `Status`, the audit report, the view record, the channel list)
-or the error object, nothing else; stderr stays empty on success. Without the flag the
-prose output is unchanged.
+Every command with a result record accepts `--json` and prints exactly one JSON document
+on stdout: the result record (`Receipt`, `Status`, the audit report, the view record, the
+channel list, the module list) or the error object, nothing else; stderr stays empty on
+success. `python`, `doctor`, `version`, `start` and `stop` have no result record and no
+flag. The view record is `{"event": Event, "previous": Event or null, "lines": [...]}`:
+the two events and the rendered lines, since the frame extra's view is prose. Without
+the flag the prose output is unchanged.
 
 ### 7.4 The `Status` record
 
+The rule: every fact a status line prints is a field of the record, so the renderer
+derives the lines and nothing is stored pre-rendered, with two exceptions: the module
+advisory lines and the observation kind's own lines, which are produced by code the
+kernel does not own.
+
 Blocks, each optional, each a small record: `run` (world id, event, progress as completed,
 total and label, paid, state), `mode` (local or remote, the lease text), `observation` (the
-JSON object and `omitted_lines`), `actions` (advertised or registered names), `registry`
-(actions with their schemas, flags and descriptions unless zero_prior, budget, gate,
-mode_note), `budget` (cap, spent, remaining), `gate` (mode, unpredicted), `agenda`,
-`foreign`, `channels` (registered, host values, declared readings), `model`, `hazards`,
-`spend`, `aggregates`, `mis_references`, `integrity` (the unpermitted ungated events),
-`anchors`, `emergence`, `unit` (paid actions this unit, recent hits and total), `claims`
-(the meters), `vacuous` (verifier digests), `advisories` (module lines), `recent` (history
-lines as records: event, paid, unit, action, mark, change, state), `notes` (text, size,
-cap state), `estimated_tokens`. `inspect.status_text` becomes `render_status(status)` and
-produces today's lines byte for byte, which the replay gate proves; `--json` prints the
-record; `--brief` (section 7.6) drops blocks under the budget.
+JSON object and `omitted_lines`), `actions` (advertised or registered names), `kind` (the
+observation kind's record, rendered by the kind: for the frame extra the image path and the
+advertised-actions line that `status_head_lines` prints today), `registry` (actions with
+their schemas, flags and descriptions unless zero_prior, budget, gate, mode_note), `budget`
+(cap, spent, remaining), `gate` (mode, unpredicted), `agenda` (goal text, source, achieved,
+pending proposals), `foreign` (the imported-knowledge facts), `channels` (registered, host
+values, declared readings with their event), `model` (fit, graded, rights, reason),
+`hazards` (every active tag; the renderer shows four), `spend`, `aggregates`,
+`mis_references`, `integrity` (the unpermitted ungated events), `anchors` (file, count,
+last event, last failure, writable), `emergence`, `unit` (paid actions this unit, recent
+hits and total), `claims` (the meters), `vacuous` (digest, graded, failed per verifier),
+`advisories` (module lines), `recent` (history lines as records: event, paid, unit, action,
+mark, change, state), `notes` (path, text, size, cap state, the demotion banner's facts:
+the archive's unit and whether the notes changed since), `estimated_tokens`.
+`inspect.status_text` becomes `render_status(status)` and produces today's lines byte for
+byte, which the replay gate proves; `--json` prints the record; `--brief` (section 7.6)
+drops blocks under the budget.
 
 ### 7.5 The surfaces
 
-- The CLI: a parser built from a table (#24); each command is either an offline function
-  over `Run.load` or a daemon operation through the client; the agent-facing lines are
-  unchanged.
+- The CLI: a parser built from the operation table (#24); each command is either an
+  offline function over `Run.load` or a daemon operation through the client; the
+  agent-facing lines are unchanged.
 - The tool server (#15): the module `assay.server`, shipped as the optional extra
   `server` (the `mcp` package), started per run by the operator (`assay serve-tools
   --run-dir DIR`, over stdio). One tool per operation in the table: daemon operations are
-  forwarded over the socket, offline operations run in the server process from disk;
-  `inputSchema` comes from the request record's `json_schema()`; the result is the record
-  as JSON with a `text` field holding the prose rendering, so a model can read either; a
-  tool error carries the error object. Command records in the activity log say
-  `surface: "mcp"`.
+  forwarded over the socket, offline operations run in the server process from disk, with
+  `Run.load` on every call and no cache (the daemon appends between calls; a load of the
+  largest ARC journal is 16 ms); `inputSchema` comes from the request record's
+  `json_schema()`; the result is the record as JSON with a `text` field holding the prose
+  rendering, so a model can read either; a tool error carries the error object. Command
+  records in the activity log say `surface: "mcp"`.
 - The hooks (#11): section 8.4.
-- Activity command records gain `surface` (`cli` or `mcp`) and, when the PostToolUse hook
-  of section 8.4 writes its record, join to `tool_use_id` and `session_id` by order.
+- Activity command records gain `surface` (`cli` or `mcp`); the PostToolUse record of
+  section 8.4 joins to them by the receipt's `end_event` when the tool output carries one,
+  and by order and command text otherwise.
 
 ### 7.6 Token-aware output (#23)
 
@@ -914,7 +995,9 @@ docs. The registry key `status_budget` (tokens, optional) and `assay status --br
 the renderer drops the lowest-value blocks first when over budget (the notes tail, the
 observation tail, the registry descriptions, the history beyond four lines) and appends
 one line, `TRUNCATED | <blocks> dropped to fit <budget> tokens; assay view and assay
-channel list show them`.
+channel list show them`. The estimate and the TRUNCATED line appear only in `--json`
+output and under `--brief` or a registry budget, never in the default prose status, which
+the replay gate compares.
 
 ## 8. The trust model (1.2.0, design note 3)
 
@@ -926,102 +1009,139 @@ README paragraph of section 8.8.
 | party | runs as | may write | may read |
 |---|---|---|---|
 | the operator (a human, or an agent with permission) | its own user | everything: the registry, the adapter, the modules, the run directory; holds the owner token | everything |
-| the agent under evaluation | the same uid as the daemon, in its own shell | the run directory outside `.assay/` (its verifier files, `model.py`, the knowledge file) and the one agent-owned path inside it, `.assay/NOTES.md` | everything, the journal included |
+| the agent under evaluation | the same uid as the daemon, in its own shell | the run directory outside `.assay/` and `.claude/` (its verifier files, `model.py`, the knowledge file) and the one agent-owned path inside the state directory, `.assay/NOTES.md` | everything, the journal included |
 | the daemon | the same uid, its own process | everything under `.assay/`, the anchor file | everything |
 | the world (the adapter) | inside the daemon | its own files under `.assay/` (pack tier, section 2.2) | the registry's `control` block from the pinned copy; nothing else of the kernel's |
-| agent code (verifiers, extractors, models) | a sandboxed subprocess | a scratch directory, nothing else | its own program file, the observation it is handed, the standard library |
+| agent code (verifiers, extractors, models) | a sandboxed subprocess | a scratch directory, nothing else | its own program file, the observation it is handed, the interpreter and its packages |
 
 The uid is shared. Nothing on disk is protected from the agent by permissions, and no
 secret the daemon holds is hidden from it (`.assay/broker.token` is 0600, which the same
 user reads). The boundary is therefore made of three things: detection by the daemon
 (8.3), refusal by the hooks in a Claude Code session (8.4), and the operator keeping the
 token and the launch outside the agent's reach (8.6). A separate uid for the daemon is the
-one real boundary and is an operator option, documented in ONBOARDING with the exact
-steps (a dedicated user owning `.assay/`, the socket group-readable, the agent in the
-group), not implemented by the kernel.
+one real boundary and is an operator option, documented in ONBOARDING by #31 with the
+exact steps (a dedicated user owning `.assay/`, the socket group-readable, the agent in
+the group), not implemented by the kernel. The owner operations (approve, waive, ratify)
+run in the daemon against the held token hash (section 7.2), so an approval cannot be
+written into a file by the agent.
 
 ### 8.2 What the daemon holds and checks at start
 
 `Run.load` (section 6.3) checks on every start: the journal's contiguity, the stored chain
-against the recomputed head, the anchor file's last head against the journal prefix (as
-`audit` does today), and the module manifest against its two sources of authority: the
-registry's `modules` list and the journaled `module_installed` records. A manifest entry
-without either is ignored and reported on the MODULES line. This raises an install from
-two file writes to three, one of them a forged journal record; it is not security, and the
-note says so.
+against the recomputed head (an unexplained mismatch refuses the start with
+`CHAIN_DIVERGED` and rewrites nothing), the anchor file's last head against the journal
+prefix and its seal (8.3), and the module manifest against its two sources of authority:
+the registry's `modules` list and the `module_installed` records of the activity log. A
+manifest entry without either is ignored and reported on the MODULES line. This raises an
+install from two file writes to three, one of them a forged activity record; it is not
+security, and the note says so.
 
 ### 8.3 What the daemon verifies before every spend
 
 Before every paid action the daemon calls `run.verify_disk()` (section 6.3): the journal's
-length and recomputed head, the mutation log's length and hash, the manifest file against
-the held manifest. On a difference it refuses the action with `TAMPER_DETECTED` (kind
-invalid, exit 5), appends an activity record `tamper_detected` with what differed, keeps
-its held head and count, and refuses every later paid action the same way until it is
-stopped. It never adopts the disk state and never appends to a changed file. The next
-`assay start` replays the journal through the adapter and fails on the first divergence
-(`LOCAL_REPLAY_DIVERGED`) or, when the edit kept the replay consistent, leaves a
-`chain.json` and an anchor that no longer match the file, which `assay audit` and the
-checker report. An edit that rewrote the journal, the chain file, the mutation log and the
-anchor file consistently, while the daemon was stopped, is caught only by a head published
-or anchored outside the agent's reach. That is the honest limit (8.8).
+length and recomputed head, the mutation log, `registry.json`, `config.json` and the
+manifest against the held copies. On a difference it refuses the action with
+`TAMPER_DETECTED` (kind invalid, exit 5), appends an activity record `tamper_detected`
+with what differed, appends a sealing record to the anchor file, `{"event_id":
+<held count - 1>, "head": <held head>, "seal": "tamper_detected"}`, keeps its held head
+and count, and refuses every later paid action the same way until it is stopped. It never
+adopts the disk state and never appends to a changed file. `assay audit` and the kernel
+treat a sealed anchor as "the journal ends exactly here": a prefix mismatch or any line
+beyond the sealed event is anchors DIVERGED and the run is invalid for scoring, whatever
+`chain.json` says, which is what makes the detection visible after the daemon is gone.
+The checker in `verify/` reads no anchors and keeps its limit honest: it reports the
+chain against `chain.json` and the published head only.
 
-The daemon writes the next event with `id = len(events)` from memory, so an edit that
-changed the number of lines becomes a contiguity violation in the file that every checker
-sees without special support.
+The next `assay start` after a tamper replays the journal through the adapter and fails
+on the first divergence (`LOCAL_REPLAY_DIVERGED`) or refuses on the chain
+(`CHAIN_DIVERGED`) or the sealed anchor. An edit that rewrote the journal, the chain file,
+the mutation log and the anchor file consistently, while the daemon was stopped, is caught
+only by a head published or anchored outside the agent's reach. That is the honest limit
+(8.8).
+
+The daemon writes the next event with `id = len(events)` from memory. Between
+`verify_disk` and `append` the world step runs, which can take seconds; an edit in that
+window is not refused, but one that changed the number of lines becomes a contiguity
+violation in the file, which every checker sees, and one that changed bytes is caught
+before the following action.
 
 ### 8.4 The hooks (Claude Code sessions)
 
 `hooks/` in the repository, installed into a run directory's project settings by
-`assay hooks install [--allow-world PATTERN ...] [--deny PATTERN ...]`, which writes
-`.claude/settings.json` hooks and a run-local `hooks.json` policy file next to it (outside
-`.assay/`, read by the hook scripts):
+`assay hooks install --policy FILE [--deny PATTERN ...]`, which writes the hook entries
+into `.claude/settings.json` and the policy (the refused paths, the deny patterns, the
+anchor directory and the token file path from the operator) into FILE, outside the run
+directory, whose path the hook commands carry; the hook scripts read nothing the agent can
+write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for the join,
+`mcp__assay__.*`. Paths are resolved against `CLAUDE_PROJECT_DIR` and realpath'd.
 
-- PreToolUse on `Bash`, `Write` and `Edit`: refuse a call whose command or path names
-  `.assay/` (any path under it except `.assay/NOTES.md`), the anchor directory recorded
-  in `config.json`, or the owner-token file, unless the command begins with `assay ` or
-  `"$ASSAY" `; refuse a Bash command that matches a deny pattern (the operator names the
-  world's client libraries, hosts and commands per run, so the agent reaches the world
-  only through `assay`). The refusal text names the rule and the allowed form. The
-  policy is a text match over the command; it is the operator's tool policy made explicit
-  and journaled, not a sandbox.
-- PostToolUse on the same tools: append `{"kind": "tool_use", "tool_use_id",
-  "session_id", "tool", "command_prefix"}` to `.assay/activity.jsonl` through
-  `assay activity note` (so the daemon's file lock is respected); a journal event joins to
-  its transcript by order: the `command_start` record of the `assay act` and the
-  `tool_use` record that follows it.
-- A test drives a scripted session through both hooks with the hook scripts invoked
-  directly on synthetic hook input: a refused write under `.assay/`, an allowed edit of
-  `NOTES.md`, a refused direct world call, an allowed `assay act`, and the ids on the
-  activity record.
+- PreToolUse: refuse a `Write`, `Edit`, `MultiEdit` or `NotebookEdit` whose resolved path
+  has the component `.assay` or `.claude` under the run directory (except
+  `.assay/NOTES.md`), or lies under the anchor directory, or is the token file or the
+  policy file. Refuse a `Bash` command that names any of those (the path component
+  `.assay`, not the string `.assay/`, so `rm -rf .assay` and `ln -s .assay x` are caught)
+  unless it is a single simple command beginning with `assay ` or `"$ASSAY" `: a command
+  that names a refused path and contains `;`, `&&`, `||`, `|`, a newline, `$(` or a
+  backtick is refused whatever it begins with. Refuse a `Bash` command that matches a deny
+  pattern: the operator names the world's client libraries, hosts and commands per run, so
+  the agent reaches the world only through `assay`. The refusal text names the rule and
+  the allowed form. The policy is a text match over the command; it is the operator's tool
+  policy made explicit and journaled, not a sandbox.
+- PostToolUse on the same matchers: run `assay hooks post-tool-use`, which reads the hook
+  JSON on stdin and appends one fixed-shape record to `.assay/activity.jsonl` under the file
+  lock: `{"kind": "tool_use", "tool_use_id", "session_id", "tool", "command_prefix",
+  "end_event"}`, with `end_event` taken from the tool output when it carries a receipt (the
+  `EVENT | e<id>` line, or the record under `--json`) and null otherwise. A journal event
+  joins to its transcript by `end_event`, and by order and command text when that is
+  missing (parallel tool calls make order alone unreliable).
+- A test drives the hook scripts directly on synthetic hook input: a refused write under
+  `.assay/`, an allowed edit of `NOTES.md`, a refused compound command, a refused direct
+  world call, an allowed `assay act`, and the `tool_use` record with its `end_event`.
 
 ### 8.5 The sandbox (#19)
 
-One module, `src/assay/sandbox.py`, with one function `run_program(program, payload,
-*, timeout, reads=())` used by the verifier runner, the channel extractor and the model
-runner. The program runs as `python -I -S` with an empty environment, a scratch working
-directory, `RLIMIT_CPU` (the timeout, rounded up), `RLIMIT_AS` 512 MB, `RLIMIT_FSIZE`
-1 MB, `RLIMIT_NPROC` 16, and the wall-clock timeout, and receives its payload on stdin
-and returns one JSON line on stdout, as today. On macOS the process runs under
-`sandbox-exec` with a profile that denies everything, then allows reading the interpreter
-prefix, the program file, the paths in `reads` (the extractor files and `model.py` for the
-model runner) and the scratch directory, allows writing the scratch directory, and denies
-network; on Linux under `bwrap --unshare-net --unshare-pid --die-with-parent` with the
-same read-only binds and a writable scratch. When neither tool is present the process runs
-with the limits alone, `assay doctor` prints `sandbox | process isolation only (no
-sandbox-exec or bwrap)`, and `config.json` records `sandbox` at start. The kernel's
-interpreter has numpy, so a verifier may import it; the profile allows the prefix. Tests:
-a verifier that reads `events.jsonl` fails, one that writes the run directory fails, one
-that opens a socket fails, one that allocates past the limit is killed, and the same
-verifier passes under the fallback with the doctor line saying so.
+One module, `src/assay/sandbox.py`, with one function `run_program(program, payload, *,
+timeout, reads=())` used by the verifier runner, the channel extractor and the model
+runner. The program is copied into a scratch directory and run from there as `python -I`
+(isolated: no `PYTHONPATH`, no user site, the current directory not on the path; not `-S`,
+which would drop site-packages and with them numpy, which verifiers may import), with an
+empty environment, the scratch directory as the working directory, `RLIMIT_CPU` (the
+timeout, rounded up), `RLIMIT_FSIZE` 1 MB, `RLIMIT_NPROC` 1 (the program cannot fork; a
+test proves a `subprocess` call fails), the wall-clock timeout, and on Linux `RLIMIT_AS`
+512 MB. macOS cannot set an address-space limit (`setrlimit` refuses it), so the memory
+limit is Linux-only, `doctor` and ONBOARDING say so, and the allocation test runs on Linux
+only. The payload goes in on stdin and one JSON line comes back on stdout, as today.
+
+On macOS the process runs under `sandbox-exec` with a deny-default profile that allows:
+`process-exec*`, `file-read-metadata`, `sysctl-read`, `mach-lookup`; `file-read*` on the
+root directory as a literal (the dynamic loader aborts without it), the interpreter's
+prefix and base prefix, `/usr/lib`, `/usr/share`, `/System`, `/private/var/db/dyld`,
+`/dev/null`, `/dev/urandom`, the scratch directory and the paths in `reads` (the
+extractor files and `model.py` for the model runner, copied into scratch as well when
+possible); `file-write*` on the scratch directory and `/dev/null`; and denies network.
+The list was measured on Darwin 25 with the kernel's interpreter and numpy and is
+OS-version dependent, so the module keeps it in one place with a comment per entry. On
+Linux the process runs under `bwrap --unshare-net --unshare-pid --die-with-parent` with
+the same read-only binds and a writable scratch. When neither tool is present the process
+runs with the limits alone, `assay doctor` prints `sandbox | process isolation only (no
+sandbox-exec or bwrap)`, and `config.json` records `sandbox` at start.
+
+Tests: a verifier that reads `events.jsonl` fails, one that writes the run directory
+fails, one that opens a socket fails, one that forks fails, one that allocates past the
+limit is killed (Linux), and the same verifier passes under the fallback with the doctor
+line saying so. The channels test that counts extractor calls through a marker file the
+extractor writes outside the run directory counts them through the daemon's readings
+cache instead.
 
 ### 8.6 The operator protocol (#31)
 
 The operator runs `assay start` with `--owner-token-file` pointing outside the run
-directory and outside the agent's working set, installs the hooks with the token file in
-the deny list, and starts the agent's session after that; the agent never sees the token.
-The three benchmark protocols, the new-world example and ONBOARDING describe that order,
-and a test runs the counter example the same way: operator start, agent act, no token in
-the agent's output.
+directory and outside the agent's working set, installs the hooks with the policy file
+and the token file in the refused paths, and starts the agent's session after that; the
+agent never sees the token. The three benchmark protocols, the new-world example and
+ONBOARDING describe that order, ONBOARDING gains the separate-uid section of 8.1, and a
+test runs the counter example the same way: operator start, agent act, no token in the
+agent's output.
 
 ### 8.7 Modules
 
@@ -1036,23 +1156,25 @@ load it.
 "ASSAY's record is tamper-evident, not tamper-proof. The agent and the daemon run as the
 same user, so the agent can write the run directory. The daemon holds the chain head in
 memory, verifies the journal on disk before every paid action, and refuses to continue on
-a difference; in a Claude Code session the shipped hooks refuse writes under `.assay/` and
-world access that bypasses `assay`; the operator holds the owner token outside the run.
-An agent that rewrites the journal, the chain file, the mutation log and the anchor file
-consistently while the daemon is stopped is caught only by a head published or anchored
-outside its reach, which is why heads are published with every evidence pack and why a
-separate user for the daemon is the recommended setup where the stakes warrant it. Nothing
-the agent asserts is load-bearing: every grade is computed by the kernel from the world's
-own response, and the published journals replay through the engine."
+a difference, sealing the anchor file at the last trusted event; in a Claude Code session
+the shipped hooks refuse writes under `.assay/` and world access that bypasses `assay`;
+the operator holds the owner token outside the run, and approvals and waivers are granted
+inside the daemon against it. An agent that rewrites the journal, the chain file, the
+mutation log and the anchor file consistently while the daemon is stopped is caught only
+by a head published or anchored outside its reach, which is why heads are published with
+every evidence pack and why a separate user for the daemon is the recommended setup where
+the stakes warrant it. Nothing the agent asserts is load-bearing: every grade is computed
+by the kernel from the world's own response, and the published journals replay through
+the engine."
 
 ### 8.9 What is not claimed
 
-Tamper-proofness; isolation of agent code beyond the sandbox's stated limits; any
-guarantee against an operator who controls the machine. The paper's AI-control sentence is
-qualified by the paragraph above at its next revision.
+Tamper-proofness; isolation of agent code beyond the sandbox's stated limits, which
+differ by platform; any guarantee against an operator who controls the machine. The
+paper's AI-control sentence is qualified by the paragraph above at its next revision.
 
 ### 8.10 Tests
 
-Those of 8.3 (an append, an edited line, a rewritten `chain.json`, a forged manifest
-entry, each detected before the next paid action, plus the start-time cross-check), 8.4,
-8.5 and 8.6.
+Those of 8.3 (an append, an edited line, a rewritten `chain.json`, an edited registry, a
+forged manifest entry, each detected before the next paid action; the sealed anchor read
+by `audit`; the start-time chain and manifest checks), 8.4, 8.5 and 8.6.
