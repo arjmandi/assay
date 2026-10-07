@@ -37,19 +37,21 @@ def test_the_checker_imports_only_the_standard_library():
 
 
 def test_the_checker_runs_with_the_harness_unimportable(tmp_path):
-    """-I isolates the interpreter: no PYTHONPATH, no site customizations, no
-    script directory on sys.path, so `import assay` would fail, and the checker
-    still verifies a published journal against its head."""
+    """-I -S isolates the interpreter: no PYTHONPATH, no site-packages (so an
+    editable install of the harness in the project's own environment is not
+    visible either), no script directory on sys.path, so `import assay` fails,
+    and the stdlib-only checker still verifies a published journal against its
+    head."""
     pack = EVIDENCE / "factorio"
     head = json.loads((pack / "heads.json").read_text())["runs"][0]["chain_head"]
     with gzip.open(pack / "journal-ironplate.jsonl.gz", "rb") as source, (tmp_path / "journal.jsonl").open("wb") as sink:
         shutil.copyfileobj(source, sink)
     probe = subprocess.run(
-        [sys.executable, "-I", "-c", "import assay"], capture_output=True, text=True, cwd=str(tmp_path),
+        [sys.executable, "-I", "-S", "-c", "import assay"], capture_output=True, text=True, cwd=str(tmp_path),
     )
     assert probe.returncode != 0, "the harness must be unimportable in this probe"
     checked = subprocess.run(
-        [sys.executable, "-I", str(CHECKER), str(tmp_path / "journal.jsonl"), "--json", "--expect-head", head],
+        [sys.executable, "-I", "-S", str(CHECKER), str(tmp_path / "journal.jsonl"), "--json", "--expect-head", head],
         capture_output=True, text=True, cwd=str(tmp_path), timeout=120,
     )
     assert checked.returncode == 0, checked.stderr
