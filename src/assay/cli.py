@@ -75,7 +75,7 @@ from .extras import kind_for, require_kind
 from .inspect import result_text, status_text, view_text
 from .live import execute_action, execute_steps, reset_level
 from .predictions import claims_help
-from .registry import gate_optional, load_registry_file
+from .registry import gate_mode, load_registry_file
 
 
 class Parser(argparse.ArgumentParser):
@@ -675,12 +675,20 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             "directory before the first anchor is due"
         )
     print(status_text(paths))
-    if registry_spec is not None and gate_optional(registry_spec):
+    if registry_spec is not None and gate_mode(registry_spec) == "optional":
         print(
             "USE | gate: optional — `assay act` runs with or without --predict "
             "(an unpredicted act is journaled UNGATED; the audit marks the run "
             "invalid for scoring); parameters go as `assay act NAME pname=value ...`; "
             "schemas are in REGISTRY above, semantics are never given — learn them by acting"
+        )
+    elif registry_spec is not None and gate_mode(registry_spec) == "off":
+        print(
+            "USE | gate: off — `assay act NAME pname=value ...` with no --predict "
+            "(predictions are not accepted on this run and nothing is graded; every "
+            "paid action is journaled UNGATED and the audit marks the run invalid "
+            "for scoring); schemas are in REGISTRY above, semantics are never given "
+            "— learn them by acting"
         )
     elif registry_spec is not None:
         print(

@@ -20,7 +20,7 @@ from .evidence import history_lines
 from .extras import kind_for
 from .registry import (
     budget_line,
-    gate_optional,
+    gate_mode,
     load_registry,
     notes_cap,
     registry_lines,
@@ -322,10 +322,17 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
     if registry:
         lines.extend(registry_lines(registry))
         lines.append(budget_line(registry, events))
-        if gate_optional(registry):
+        mode = gate_mode(registry)
+        if mode == "optional":
             lines.append(
                 "GATE | optional | --predict may be omitted; an unpredicted act is "
                 "journaled UNGATED and the audit marks this run invalid for scoring"
+            )
+        elif mode == "off":
+            lines.append(
+                "GATE | off | the prediction gate is off for this run (control arm): "
+                "no claim is accepted or graded, every paid action is journaled "
+                "UNGATED and the audit marks this run invalid for scoring"
             )
         lines.extend(_registry_status_lines(paths, registry, events))
     lines.extend(
@@ -424,6 +431,11 @@ def _registry_status_lines(
         )
     flagged = ungated_events(events)
     if flagged:
+        # TODO(owner: O10): on a control-arm run (gate optional or off) this
+        # line reads as an alarm to the agent on every status. E1 ran with it,
+        # so it is kept as is here and the paper discloses it; the review
+        # recommends a neutral `GATE | ... | n unpredicted actions` line for
+        # future control-arm users.
         lines.append(
             f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{first_ungated(events)}) "
             "— this run is INVALID FOR SCORING and trust earned after it is demoted"

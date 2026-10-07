@@ -36,10 +36,13 @@ stay valid unchanged):
       "observers": [...],             # DECLARED ONLY in v1-rc1 (journaled, inert)
       "control": {...},               # DECLARED ONLY in v1-rc1 (journaled, inert)
       "mode_note": "free text",       # optional, shown in status (data only)
-      "gate": "required"|"optional"   # CONTROL-ARM SWITCH (default required):
-                                      # optional admits act/commit steps with no
-                                      # prediction; they are journaled UNGATED and
-                                      # the audit keeps the run invalid for scoring
+      "gate": "required"|"optional"|"off"   # CONTROL-ARM SWITCH (default
+                                      # required). optional: act/commit steps may
+                                      # omit their prediction; a bare one is journaled
+                                      # UNGATED. off: the instrument is removed, no
+                                      # prediction is accepted or graded, every paid
+                                      # action is journaled UNGATED. Under both the
+                                      # audit keeps the run invalid for scoring.
     }
 
 Action tokens on the command line: `NAME pname=value pname2=value2`.
@@ -86,7 +89,7 @@ _ACTION_KEYS = {
 }
 _PARAM_KEYS = {"type", "min", "max", "enum"}
 _MODULE_MODES = ("off", "advise", "block")
-_GATES = ("required", "optional")
+_GATES = ("required", "optional", "off")
 
 DEFAULT_HAND_CAP = 3       # the batching law's kernel default; registry-overridable
 DEFAULT_NOTES_CAP = 16_000  # chars; generous enough that compliant runs never see it
@@ -292,12 +295,23 @@ def zero_prior(registry: Mapping[str, Any] | None) -> bool:
     return bool(registry and registry.get("zero_prior"))
 
 
+def gate_mode(registry: Mapping[str, Any] | None) -> str:
+    """The registry's gate mode: `required` (the rule, and the default),
+    `optional` (a prediction may be omitted, a bare act is journaled UNGATED)
+    or `off` (the instrument is removed: no prediction is accepted or graded,
+    every paid action is journaled UNGATED). The two relaxed modes are the
+    control-arm switches; under either the audit keeps the run invalid for
+    scoring. Neither is a scorable mode."""
+    value = (registry or {}).get("gate") if registry else None
+    return str(value) if value in _GATES else "required"
+
+
 def gate_optional(registry: Mapping[str, Any] | None) -> bool:
-    """True when the registry relaxes the prediction gate (`gate: optional`):
-    act/commit steps may omit their prediction. Such events are journaled
-    UNGATED (predict null, marker gate_optional) and the audit keeps the run
-    invalid for scoring. This is the control-arm switch, not a scorable mode."""
-    return bool(registry and registry.get("gate") == "optional")
+    return gate_mode(registry) == "optional"
+
+
+def gate_off(registry: Mapping[str, Any] | None) -> bool:
+    return gate_mode(registry) == "off"
 
 
 def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:

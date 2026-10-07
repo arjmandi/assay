@@ -291,10 +291,15 @@ def audit(paths: RunPaths) -> dict[str, Any]:
             problems.append("anchor: anchored event id beyond the journal")
     ungated = ungated_events(events)
     by_id = {int(event["id"]): event for event in events if event.get("id") is not None}
-    # gate: optional (control arm) — permitted bare acts; counted apart, still ungated.
-    ungated_permitted = [
-        event_id for event_id in ungated if by_id.get(event_id, {}).get("gate_optional")
-    ]
+    # The control arms (gate: optional, gate: off) permit bare acts; they are
+    # counted apart, with the mode that permitted them, and stay ungated.
+    permitted_modes = {
+        event_id: ("optional" if by_id[event_id].get("gate_optional") else "off")
+        for event_id in ungated
+        if event_id in by_id
+        and (by_id[event_id].get("gate_optional") or by_id[event_id].get("gate_off"))
+    }
+    ungated_permitted = sorted(permitted_modes)
     mutations = load_jsonl(paths.mutations)
     journaled = {
         int(event["mutation_id"]) for event in events if event.get("mutation_id") is not None
@@ -322,6 +327,7 @@ def audit(paths: RunPaths) -> dict[str, Any]:
         "anchor_env_mismatch": anchor_env_mismatch,
         "ungated": ungated,
         "ungated_permitted": ungated_permitted,
+        "ungated_permitted_by": sorted(set(permitted_modes.values())),
         "recovered_orphans": recovered,
         "mutations_pending": pending,
         "invalid_for_scoring": bool(ungated) or not contiguous
@@ -345,9 +351,10 @@ def audit_lines(report: Mapping[str, Any]) -> list[str]:
             "for scoring and trust earned after the first one is demoted"
         )
     if report.get("ungated_permitted"):
+        modes = ", ".join(f"`gate: {mode}`" for mode in report.get("ungated_permitted_by") or ["optional"])
         lines.append(
             f"AUDIT | {len(report['ungated_permitted'])} of them permitted by "
-            "`gate: optional` (control arm) — still invalid for scoring"
+            f"{modes} (control arm) — still invalid for scoring"
         )
     if report["recovered_orphans"]:
         lines.append(

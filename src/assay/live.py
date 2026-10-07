@@ -42,7 +42,7 @@ from .registry import (
     check_budget,
     check_registry_action,
     check_usd_budget,
-    gate_optional,
+    gate_mode,
     hand_cap,
     load_registry,
     notes_cap,
@@ -257,6 +257,26 @@ def level_advanced(event: Mapping[str, Any]) -> bool:
     )
 
 
+_UNGATED_MARKER = {"optional": "gate_optional", "off": "gate_off"}
+
+
+def _ungated_act(registry: Mapping[str, Any] | None, predict: str | None) -> bool:
+    """Whether this act goes unpredicted under the registry's gate mode. Under
+    `off` a supplied prediction is refused before any spend: the control arm
+    removes the instrument, it does not make it voluntary."""
+    mode = gate_mode(registry)
+    bare = not (predict or "").strip()
+    if mode == "off":
+        if not bare:
+            raise AssayError(
+                "the prediction gate is off for this run (registry gate: off): "
+                "`assay act` takes no --predict here, nothing is graded, and the "
+                "audit marks the run invalid for scoring"
+            )
+        return True
+    return mode == "optional" and bare
+
+
 def _claim_kind(registry: Mapping[str, Any] | None, events: Sequence[Mapping[str, Any]]):
     """Which extra claim forms this run admits: none on a registry run (the
     rule every published registry journal was recorded under, owner decision
@@ -278,8 +298,10 @@ def execute_action(
 ) -> dict[str, Any]:
     registry = load_registry(paths)
     events = head_events(paths, at_event)
-    # gate: optional (control arm) admits a bare act; it is journaled UNGATED.
-    ungated = gate_optional(registry) and not (predict or "").strip()
+    # The control arms: gate optional admits a bare act, gate off admits only
+    # bare acts (the instrument is removed). Either way the act is journaled
+    # UNGATED and the audit keeps the run invalid for scoring.
+    ungated = _ungated_act(registry, predict)
     claims = [] if ungated else parse_claims(predict, kind=_claim_kind(registry, events))
     check_channel_references(paths, claims)
     _admit_claims(paths, claims)
@@ -318,7 +340,7 @@ def execute_action(
     pending["predict_ok"] = predict_ok
     pending["grade"] = graded
     if ungated:
-        pending["gate_optional"] = True
+        pending[_UNGATED_MARKER[gate_mode(registry)]] = True
     if declares:
         pending["declares"] = {
             key: redact(str(value), secrets) for key, value in declares.items()
@@ -347,7 +369,7 @@ def execute_action(
     elif ungated:
         outcome = "UNGATED"
         detail = (
-            "no prediction supplied (gate: optional); nothing graded — the audit "
+            f"no prediction (gate: {gate_mode(registry)}); nothing graded — the audit "
             "counts this event as UNGATED"
         )
     elif missed:
@@ -431,12 +453,19 @@ def execute_steps(
             f"(got {len(raw_steps)}); longer batches belong to a replay-fit model "
             f"plan (`assay model replay` then `assay model solve`) — currently: {reason}"
         )
-    bare_ok = gate_optional(registry)
+    mode = gate_mode(registry)
+    bare_ok = mode in _UNGATED_MARKER
     events = head_events(paths, at_event)
     claim_kind = _claim_kind(registry, events)
     parsed: list[tuple[str, str, list[dict[str, Any]]]] = []
     for raw in raw_steps:
         token, predict = parse_step(raw, allow_bare=bare_ok)
+        if mode == "off" and predict:
+            raise AssayError(
+                "the prediction gate is off for this run (registry gate: off): "
+                'steps are bare (`--step "ACTION"`), nothing is graded, and the '
+                "audit marks the run invalid for scoring"
+            )
         claims = (
             [] if bare_ok and not predict
             else parse_claims(predict, kind=claim_kind)
@@ -483,7 +512,7 @@ def execute_steps(
         pending["predict_ok"] = predict_ok
         pending["grade"] = graded
         if ungated:
-            pending["gate_optional"] = True
+            pending[_UNGATED_MARKER[mode]] = True
         if declares:
             # The same record a single act carries: a declaration made for a
             # batch is evidence on every step it covered.
