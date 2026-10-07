@@ -1,0 +1,39 @@
+ASSAY
+Copyright (c) 2026 Mohsen Arjmandi
+
+ASSAY is licensed under the PolyForm Noncommercial License 1.0.0 (see
+LICENSE). This file lists the third-party material included in the
+repository and the terms it carries.
+
+1. Vendored OOLONG scoring code
+
+   File:     bench/oolong/vendor/oolong_eval_helpers.py
+   Origin:   https://github.com/abertsch72/oolong, path src/eval/eval_helpers.py,
+             commit 0bb7eabe839218fee7fe8d007f41cfc2fd3ae24c
+   License:  MIT, Copyright (c) 2025 Amanda Bertsch
+             (full text in bench/oolong/vendor/LICENSE.oolong)
+   sha256:   247583a3b653b91c39fb88a102460802f1493175b23d05a7217aead0d685c64c
+
+   The file is a byte-identical copy so that ASSAY's OOLONG scores are
+   computed by the benchmark's own code. It is loaded through
+   bench/oolong/scorer.py with its heavy dependencies stubbed. It is not
+   modified. bench/oolong/vendor/PROVENANCE.md records the pin.
+
+2. OOLONG corpus packs
+
+   Files:    bench/oolong/packs/corpus_*.txt, questions_*.jsonl, manifest_*.json
+   Origin:   derived from the OOLONG dataset at the revision pinned in each
+             pack's manifest, by bench/oolong/packs/build_pack.py.
+   Terms:    the dataset's own terms apply to the text (see the upstream
+             dataset card named in the manifests). These files are not covered
+             by the PolyForm license above.
+
+   TODO(owner: O3): whether the packs ship in the repository (14 MB of
+   upstream dataset text, with lines that look like personal data) or only
+   the two smoke packs (spam4k, spam8k) and the manifests, with the rest
+   fetched on first use through build_pack.py. The release review
+   recommends the latter. Nothing was removed pending that decision.
+
+No other third-party source is vendored. Python dependencies (numpy, pillow,
+pytest, and the benchmark client libraries) are installed from their own
+distributions under their own licenses and are not included here.

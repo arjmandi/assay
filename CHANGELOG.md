@@ -3,7 +3,27 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
-## Unreleased
+## 1.1.0 (the date is set at the tag)
+
+The first source-available release, under the PolyForm Noncommercial License
+1.0.0 (`LICENSE`, `NOTICE`). The release branch is `release/1.1.0`, cut from
+main at 0373b5f.
+
+### Which kernel the paper's campaigns ran on
+
+The ARC-AGI-3 campaign of 2026-08-22 to 08-25 ran on v1.0-rc1 (c4207c1,
+2026-08-22) with the agent manual then named `DOCTRINE.md`. Three later
+commits touched `src/assay` before the OOLONG final at 0373b5f: 566bcab
+(2026-08-25, the module field renamed from DOCTRINE to CONSTITUTION, after the
+ARC campaign), e4c669d (2026-08-26, the broker survives a client hangup, the
+client timeout became configurable through `ASSAY_BROKER_TIMEOUT`, the owner
+token never leads with a dash), and 3143cfd (2026-08-26, a comment only).
+Factorio M2 and the OOLONG four-arm comparison ran on that kernel. The 1.1.0
+kernel is a refactor of it, verified by replaying the 25 published run
+directories unchanged (the G2 gate below). Run configurations recorded
+`"harness": "assay"` and no version until now: 1.1.0 writes
+`harness_version` and `journal_spec` into `config.json`, and `assay version`
+prints them.
 
 ### Taken from the experiment branch (exp/2026-10)
 
@@ -48,6 +68,15 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- `assay version`: the harness version (`assay.__version__`, the one source
+  `pyproject.toml` reads), the journal spec it writes (`assay-journal-v1`),
+  the interpreter and its Python version. `assay doctor` prints the same
+  first. `LICENSE` (PolyForm Noncommercial 1.0.0 with the required notice),
+  `NOTICE` (the vendored OOLONG scorer under MIT, the corpus packs under the
+  dataset's terms, TODO(owner: O3) on shipping them), and
+  `RELEASE_CHECKLIST.md` (what must not ship, the pre-tag greps, the secrets
+  scan over every branch, the gates with their commands, the owner decisions
+  that gate the tag).
 - The coverage audit as a built-in module, `coverage_audit`, advise by
   default like every module (A1, split per the release review). It reads the
   journal's own change signal (the graded `change` or `noop` outcome, else

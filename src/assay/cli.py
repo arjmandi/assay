@@ -10,6 +10,7 @@ import traceback
 from pathlib import Path
 from typing import Any
 
+from . import JOURNAL_SPEC, __version__
 from .agenda import (
     grant_approval,
     grant_waiver,
@@ -139,6 +140,10 @@ def _parser() -> Parser:
         "stop",
         help="stop this run's environment owner (the daemon) cleanly; "
         "`assay start` resumes the run later",
+    )
+
+    commands.add_parser(
+        "version", help="the harness version, the journal spec it writes, the interpreter"
     )
 
     commands.add_parser(
@@ -600,6 +605,8 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         "registry": registry_spec is not None,
         "created_at": now_iso(),
         "harness": "assay",
+        "harness_version": __version__,
+        "journal_spec": JOURNAL_SPEC,
         "python": sys.executable,
     }
     config["binding_hash"] = binding_hash_of(config)
@@ -712,6 +719,7 @@ def _doctor(paths: RunPaths) -> int:
         lines.append((level, text))
 
     version = ".".join(str(part) for part in sys.version_info[:3])
+    note("ok", f"assay {__version__} | journal spec {JOURNAL_SPEC}")
     note("ok" if sys.version_info >= (3, 12) else "FAIL", f"python {version} at {sys.executable}")
     pinned = os.getenv("ASSAY_PYTHON")
     if pinned:
@@ -843,6 +851,14 @@ def main() -> None:
             except AssayError:
                 _discard_empty_state(paths)
                 raise
+            raise SystemExit(0)
+        if args.command == "version":
+            from . import JOURNAL_SPEC, __version__
+
+            print(
+                f"assay {__version__} | journal spec {JOURNAL_SPEC} | python "
+                f"{'.'.join(str(part) for part in sys.version_info[:3])} at {sys.executable}"
+            )
             raise SystemExit(0)
         if args.command == "doctor":
             raise SystemExit(_doctor(paths))

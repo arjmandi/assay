@@ -29,11 +29,35 @@ def test_pyproject_names_the_package_and_its_entry_point():
 def test_version_has_one_source():
     import assay
 
-    assert re.fullmatch(r"\d+\.\d+\.\d+(\.dev\d+)?", assay.__version__)
+    assert assay.__version__ == "1.1.0"
     # The launcher's inline metadata agrees with the kernel's floor.
     inline = (REPO / "src" / "assay_cli.py").read_text()
     assert 'requires-python = ">=3.12"' in inline
     assert '"numpy>=2.0,<3"' in inline
+
+
+def test_version_command_and_config_record(tmp_path):
+    import assay
+    from conftest import FAKE_ADAPTER, run_cli, stop_run
+
+    printed = run_cli(tmp_path, "version")
+    assert printed.returncode == 0, printed.stderr
+    assert printed.stdout.startswith(f"assay {assay.__version__} | journal spec assay-journal-v1 | python ")
+    run = tmp_path / "v"
+    run.mkdir()
+    (run / "reg.json").write_text('{"actions": [{"name": "NOOP", "params": {}}]}')
+    try:
+        started = run_cli(run, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory",
+                          "--registry", str(run / "reg.json"))
+        assert started.returncode == 0, started.stderr
+        import json
+
+        config = json.loads((run / ".assay" / "config.json").read_text())
+        assert config["harness_version"] == assay.__version__
+        assert config["journal_spec"] == "assay-journal-v1"
+        assert f"DOCTOR | ok | assay {assay.__version__} | journal spec assay-journal-v1" in run_cli(run, "doctor").stdout
+    finally:
+        stop_run(run)
 
 
 def test_daemon_is_a_package_module():

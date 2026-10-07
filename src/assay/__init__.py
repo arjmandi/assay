@@ -9,7 +9,8 @@ that wrote `from assay import connected_components` keep working.
 
 from dataclasses import dataclass
 
-__version__ = "1.1.0.dev0"
+__version__ = "1.1.0"
+JOURNAL_SPEC = "assay-journal-v1"
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ repeated_shapes = _forward("repeated_shapes")
 transition_story = _forward("transition_story")
 
 __all__ = [
+    "JOURNAL_SPEC",
     "Unknown",
     "__version__",
     "connected_components",
