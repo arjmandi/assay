@@ -35,10 +35,17 @@ Three trust classes decide where code may run:
 - **pack and module code** (adapters, behavior modules) is installed by the
   human, runs in the daemon, and is trusted like the kernel,
 - **agent-authored code** (verifiers, channel extractors, world models) is
-  untrusted and runs only in the verifier sandbox (`verifiers.run_verifier`,
-  `channels._run_extractor`, `model._run_sandbox`): `python3 -I`, an empty
-  environment, a scratch working directory, a CPU limit and a wall clock limit.
-  This is process isolation, not a network or filesystem jail.
+  untrusted and runs only in the sandbox (`sandbox.run_program`, behind
+  `verifiers.run_verifier`, `channels._run_extractor` and
+  `model._run_sandbox`): a scratch copy of the program, `python -I`, an empty
+  environment, CPU, file-size and process limits (no fork), a wall clock, and
+  the platform's jail, `sandbox-exec` on macOS or `bwrap` on Linux, which
+  denies the network and every path but the interpreter, its packages and the
+  scratch directory, the run directory included. The 512 MB memory limit is
+  Linux-only, since macOS refuses an address-space limit. Where neither tool
+  exists the limits alone apply, `assay doctor` says `sandbox | process
+  isolation only (no sandbox-exec or bwrap)`, and `config.json` records the
+  mode at start (section 8.5).
 
 The kernel law: **the kernel makes no LLM calls.** Every grade, refusal, meter
 and verdict is deterministic code over the journal. That is also what makes
@@ -435,7 +442,9 @@ relative to the run directory defining `def verify(before, after) ->
 (ok, actual)`. At claim time, before any spend, the file is read, sha256-hashed
 and copied to `.assay/verifiers/<hash>.py` (`verifiers.admit_verifier`, the hash
 is journaled on the claim as `verifier_hash`). At grading time the stored copy
-runs in the sandbox with both observation views on stdin and must emit one
+runs in the sandbox (section 8.5: a scratch copy under `sandbox-exec` on macOS
+or `bwrap` on Linux, no path into the run directory, no network, no fork, the
+memory limit Linux-only) with both observation views on stdin and must emit one
 JSON line `{"ok": bool, "actual": str}`. Crash, timeout (5 seconds CPU and
 wall) or malformed output grades as `INVALID_CLAIM`: not a miss, its own
 counter, `predict_ok` null, and it halts a containing batch. After each grading

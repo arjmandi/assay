@@ -34,6 +34,7 @@ src/assay/           the kernel: cli.py (the command line), broker.py (daemon
                       spawn, identity, the serve loop), broker_server.py (the
                       daemon module), live.py (the per-action loop), registry.py,
                       predictions.py, channels.py, verifiers.py, model.py,
+                      sandbox.py (the one place agent code runs),
                       modules.py, integrity.py (chain, anchors, audit, redaction),
                       agenda.py, carryover.py, aggregates.py, extras.py (the
                       observation-kind hook), words.py (the display vocabulary)

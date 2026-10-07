@@ -62,20 +62,23 @@ def test_budget_remaining_grades(tmp_path):
 
 EXTRACTOR = """\
 def extract(obs):
-    with open({marker!r}, "a") as handle:
-        handle.write("read\\n")
-    return obs["data"]["counter"] * 10
+    return obs["data"]["counter"] * 10 + (1 if obs["data"]["lamp"] == "on" else 0)
 """
 
 
 def test_status_shows_readings_without_spawning_extractors(tmp_path):
+    """An extractor leaves no trace outside its scratch directory (the sandbox
+    sees to that), so its runs are counted through what the daemon caches at
+    grade time in `.assay/channel_readings.json`, and a reading only a fresh
+    run could produce (the counter moved on after the last grading) tells a
+    spawn from a cached value."""
     run = tmp_path / "readings"
     _prepare(run, budget={"actions": 20})
-    marker = tmp_path / "extractor-calls.txt"
-    (run / "tens.py").write_text(EXTRACTOR.format(marker=str(marker)))
+    (run / "tens.py").write_text(EXTRACTOR)
+    cache = run / ".assay" / "channel_readings.json"
 
-    def calls() -> int:
-        return len(marker.read_text().splitlines()) if marker.exists() else 0
+    def graded_readings() -> dict:
+        return json.loads(cache.read_text()) if cache.exists() else {}
 
     try:
         assert _start(run).returncode == 0
@@ -87,25 +90,26 @@ def test_status_shows_readings_without_spawning_extractors(tmp_path):
         status = run_cli(run, "status")
         assert "counter=0 (path)" in status.stdout
         assert "tens=not yet graded (extractor)" in status.stdout
-        assert calls() == 0
-        # A graded claim runs the extractor (and the identity-free grade path
-        # reads it once per graded event) and caches the reading.
+        assert graded_readings() == {}  # no extractor has run
+        # A graded claim runs the extractor in the daemon and caches the reading.
         acted = run_cli(run, "act", "INC", "amount=2", "--predict", "ch tens = 20")
-        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout
-        after_grade = calls()
-        assert after_grade >= 1
+        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout, acted.stdout
+        assert graded_readings() == {"tens": {"event": 1, "value": 20}}
+        # Change the world without a tens claim: a fresh run would now read
+        # 21 while the cache still says 20 at e1, so the two are told apart.
+        moved = run_cli(run, "act", "SET_LAMP", "state=on", "--predict", "change")
+        assert moved.returncode == 0 and "OUTCOME | PREDICTED" in moved.stdout, moved.stdout
+        assert graded_readings() == {"tens": {"event": 1, "value": 20}}  # no extractor ran
         status = run_cli(run, "status")
         assert "counter=2 (path)" in status.stdout
-        assert "tens=20 @e1 (extractor, last graded)" in status.stdout
-        assert calls() == after_grade  # status spawned nothing
+        assert "tens=20 @e1 (extractor, last graded)" in status.stdout  # cached; a spawn would show 21
         listed = run_cli(run, "channel", "list")
-        assert "tens=20 @e1" in listed.stdout and calls() == after_grade
+        assert "tens=20 @e1" in listed.stdout
+        assert graded_readings() == {"tens": {"event": 1, "value": 20}}  # status and list spawned nothing
         fresh = run_cli(run, "channel", "list", "--read")
         assert fresh.returncode == 0, fresh.stderr
-        assert "tens=20 (extractor)" in fresh.stdout
-        assert calls() == after_grade + 1
-        cache = json.loads((run / ".assay" / "channel_readings.json").read_text())
-        assert cache["tens"] == {"event": 1, "value": 20}
+        assert "tens=21 (extractor)" in fresh.stdout  # computed fresh, one spawn
+        assert graded_readings() == {"tens": {"event": 1, "value": 20}}  # the CLI never writes the cache
     finally:
         stop_run(run)
 

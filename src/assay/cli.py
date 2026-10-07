@@ -56,6 +56,13 @@ from .modules import (
     pin_external_modules,
     unlisted_lines,
 )
+from .sandbox import (
+    FORCE_VARIABLE,
+    PROCESS_ISOLATION_ONLY,
+    check_imports,
+    sandbox_mode,
+    sandbox_text,
+)
 from .core import (
     AssayError,
     RunPaths,
@@ -572,6 +579,12 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         raise AssayError(
             f"ASSAY_MODE must be {LOCAL_MODE!r} or {REMOTE_MODE!r}, got {mode!r}"
         )
+    forced_sandbox = os.getenv(FORCE_VARIABLE)
+    if forced_sandbox is not None and forced_sandbox != PROCESS_ISOLATION_ONLY:
+        raise AssayError(
+            f"{FORCE_VARIABLE} must be {PROCESS_ISOLATION_ONLY!r} (the forced fallback) "
+            f"or unset, got {forced_sandbox!r}"
+        )
     adapter_spec: str | None = None
     if args.adapter:
         # Validated before anything is spawned or written: the file must exist
@@ -591,6 +604,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         "harness_version": __version__,
         "journal_spec": JOURNAL_SPEC,
         "python": sys.executable,
+        "sandbox": sandbox_mode(),
     }
     config["binding_hash"] = binding_hash_of(config)
     config["registry_hash"] = registry_hash_of(registry_spec)
@@ -710,6 +724,15 @@ def _doctor(paths: RunPaths) -> int:
                 "FAIL" if needed_by == "the kernel" else "WARN",
                 f"{name} is not importable by {sys.executable}; needed by {needed_by}",
             )
+    mode = sandbox_mode()
+    note("WARN" if mode == PROCESS_ISOLATION_ONLY else "ok", f"sandbox | {sandbox_text(mode)}")
+    importable, reason = check_imports(("numpy", "json"))
+    note(
+        "ok" if importable else "WARN",
+        "numpy and json import inside the sandbox"
+        if importable
+        else f"numpy and json do not import inside the sandbox: {reason}",
+    )
     socket_path = str(paths.socket)
     note(
         "ok" if len(socket_path.encode()) <= 100 else "FAIL",

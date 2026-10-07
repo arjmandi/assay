@@ -55,10 +55,11 @@ assay doctor
 
 It prints one `DOCTOR | ok | ...`, `DOCTOR | WARN | ...` or `DOCTOR | FAIL | ...`
 line per check: the Python version and path, numpy, pillow (a warning if
-missing, since only frame worlds need it), the socket path length, the anchor
-directory, and, inside a run directory, the run state, the daemon, the adapter
-(resolved and dry-imported) and the registry. The last line counts failures
-and warnings, and the exit code is 2 when something failed (`cli._doctor`).
+missing, since only frame worlds need it), the sandbox mode, the socket path
+length, the anchor directory, and, inside a run directory, the run state, the
+daemon, the adapter (resolved and dry-imported) and the registry. The last line
+counts failures and warnings, and the exit code is 2 when something failed
+(`cli._doctor`).
 
 ## 2. The counter world in five minutes
 
@@ -435,6 +436,15 @@ Frame worlds have no dict to walk, so their channels are extractor files:
 and run only in the sandbox against the observation view (`state`,
 `levels_completed`, `win_levels`, `available_actions`, `frames`). The 25
 ARC-AGI-3 runs declared up to sixteen such channels each.
+
+The sandbox is `sandbox-exec` on macOS and `bwrap` (bubblewrap) on Linux:
+agent code (verifiers, extractors, the world model) runs from a scratch copy
+with no network, no fork and no path into the run directory, under CPU,
+file-size and wall-clock limits, and the 512 MB memory limit is Linux-only,
+since macOS refuses an address-space limit. Without either tool the process
+limits alone apply, `assay doctor` prints `sandbox | process isolation only
+(no sandbox-exec or bwrap)` and `config.json` records that mode at start; on
+Linux, install bubblewrap.
 
 ### A separate user for the daemon
 
