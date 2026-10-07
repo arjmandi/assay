@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import json
 import os
 import shutil
 import sys
@@ -999,9 +1000,18 @@ def main() -> None:
                         str(entry.get("name")): str(entry.get("origin"))
                         for entry in load_manifest(paths)
                     }
-                    print("MODULES | active (name, mode, origin)")
+                    from .modules import JournalView
+
+                    view = JournalView(paths=paths, events=load_events(paths), registry=registry)
+                    print("MODULES | active (name, mode, origin), constitution, telemetry")
                     for item, mode in active_modules(paths, registry):
                         print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
+                        print(f"    constitution: {item.CONSTITUTION}")
+                        try:
+                            telemetry = item.telemetry(view)
+                        except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
+                            telemetry = {"error": f"{type(error).__name__}: {error}"}
+                        print(f"    telemetry: {json.dumps(telemetry, sort_keys=True, default=str)}")
                     for line in unlisted_lines(paths):
                         print(line)
             elif args.command == "goal":

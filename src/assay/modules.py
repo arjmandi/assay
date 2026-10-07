@@ -40,6 +40,15 @@ Built-ins (the standing nudge table plus the first structural module):
                   class gets the worst-case + recovery declaration demand on
                   its next use. Tags are permanent for the run and export as
                   the distinguished carryover class.
+- coverage_audit— the coverage-audit protocol as standing machinery: which
+                  available actions were never tried or never productive on
+                  this progress unit, a stall, a halt on re-issuing the move
+                  that just graded FALSE, a halt on a short loop of the same
+                  failing move, and a conclusion gate that demands a coverage
+                  audit when a declaration tags an impossibility or absence.
+                  World-neutral: it reads the journal's own change signal. An
+                  observation kind may add its own coverage (the frame world
+                  adds the grid regions a point action never probed).
 """
 
 from __future__ import annotations
@@ -339,6 +348,275 @@ class _Hazard:
         return {"tags": len(tags), "imported": sum(1 for tag in tags if tag.get("origin") == "import")}
 
 
+# --- coverage audit -----------------------------------------------------------
+
+COVERAGE_DEAD_MIN_TRIES = 6   # tried this often and never productive: believed dead
+COVERAGE_STALL_WINDOW = 8     # this many consecutive non-productive paid actions: a stall
+COVERAGE_LOOP_MIN = 3         # this many identical failing moves in a row: a loop
+# Declaration keys that tag an impossibility or absence conclusion, plus the
+# words looked for in a `conclusion=` value. Deliberately unambiguous.
+COVERAGE_SENTINELS = frozenset(
+    {"impossible", "unsolvable", "unwinnable", "absent", "missing", "dead_end", "give_up"}
+)
+
+
+def _unit_indices(events: Sequence[Mapping[str, Any]]) -> list[int]:
+    """Indices of the events on the current progress unit, in order (the
+    same walk as _level_action_count)."""
+    if not events:
+        return []
+    completed = int(events[-1]["levels_completed"])
+    indices: list[int] = []
+    for index in range(len(events) - 1, -1, -1):
+        if int(events[index]["levels_completed"]) != completed:
+            break
+        indices.append(index)
+    return list(reversed(indices))
+
+
+def _event_changed(events: Sequence[Mapping[str, Any]], index: int) -> bool:
+    """Did paid event `index` change the world? The graded change or noop
+    outcome when one exists, else the settled observation compared with the
+    previous event's (the last frame for frame worlds, the object for dict
+    worlds). Progress always counts as change."""
+    event = events[index]
+    level_before = event.get("level_before")
+    if level_before is not None and int(event["levels_completed"]) > int(level_before):
+        return True
+    for item in event.get("grade") or ():
+        if item.get("kind") == "change":
+            return bool(item.get("ok"))
+        if item.get("kind") == "noop":
+            return not item.get("ok")
+    if index == 0:
+        return False
+    previous = events[index - 1]
+    if "frames" in event and "frames" in previous:
+        return event["frames"][-1] != previous["frames"][-1]
+    return event.get("observation") != previous.get("observation")
+
+
+def _params_key(params: Any) -> tuple[tuple[str, str], ...]:
+    if not isinstance(params, Mapping):
+        return ()
+    return tuple(sorted((str(key), str(value)) for key, value in params.items()))
+
+
+def _move_of(event: Mapping[str, Any]) -> tuple[str, tuple[tuple[str, str], ...]]:
+    return str(event.get("action", "")).upper(), _params_key(event.get("data"))
+
+
+def _pending_move(pending: Mapping[str, Any]) -> tuple[str, tuple[tuple[str, str], ...]]:
+    return str(pending.get("name", "")).upper(), _params_key(pending.get("params"))
+
+
+def _format_move(move: tuple[str, tuple[tuple[str, str], ...]]) -> str:
+    name, params = move
+    if params:
+        return name + "(" + ",".join(f"{key}={value}" for key, value in params) + ")"
+    return name
+
+
+def _advertised(events: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The names the last event advertises, as the registry spells them."""
+    from .extras import kind_for
+
+    last = events[-1]
+    kind = kind_for(last)
+    if kind is not None:
+        names = [name.upper() for name in kind.advertised_names(last)]
+    else:
+        names = [str(value).upper() for value in last.get("available_actions") or ()]
+    return sorted(set(names))
+
+
+def coverage_ledger(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+    """The coverage facts for the current progress unit."""
+    indices = _unit_indices(events)
+    paid = [index for index in indices if events[index].get("counts_action")]
+    plays: dict[str, list[int]] = {}
+    for index in paid:
+        name = str(events[index].get("action", "")).upper()
+        record = plays.setdefault(name, [0, 0])
+        record[0] += 1
+        if _event_changed(events, index):
+            record[1] += 1
+    advertised = _advertised(events)
+    untried = [name for name in advertised if plays.get(name, (0, 0))[0] == 0]
+    dead = [
+        name
+        for name in advertised
+        if plays.get(name, (0, 0))[0] >= COVERAGE_DEAD_MIN_TRIES and plays[name][1] == 0
+    ]
+    tail = paid[-COVERAGE_STALL_WINDOW:]
+    stalled = (
+        len(tail) == COVERAGE_STALL_WINDOW
+        and str(events[-1].get("state")) == "NOT_FINISHED"
+        and not any(_event_changed(events, index) for index in tail)
+    )
+    return {
+        "unit": int(events[-1]["levels_completed"]),
+        "paid_on_unit": len(paid),
+        "paid_indices": paid,
+        "advertised": advertised,
+        "untried": untried,
+        "dead": dead,
+        "stalled": stalled,
+    }
+
+
+def _gap_phrase(events: Sequence[Mapping[str, Any]], ledger: Mapping[str, Any]) -> str:
+    from .extras import kind_for
+
+    parts: list[str] = []
+    if ledger["dead"]:
+        parts.append(f"never-productive actions [{', '.join(ledger['dead'])}]")
+    if ledger["untried"]:
+        parts.append(f"untried actions [{', '.join(ledger['untried'])}]")
+    kind = kind_for(events[-1])
+    extra = getattr(kind, "coverage_gap", None) if kind is not None else None
+    if callable(extra):
+        phrase = extra(events, ledger["paid_indices"])
+        if phrase:
+            parts.append(phrase)
+    if not parts:
+        return (
+            "coverage looks saturated: every available action has been productive. "
+            "If the conclusion still holds, name the unstated premise it rests on "
+            "(the observation itself is the classic one)."
+        )
+    return "unexercised: " + "; ".join(parts) + "."
+
+
+def _is_conclusion(pending: Mapping[str, Any] | None) -> bool:
+    if not pending:
+        return False
+    declares = {str(key).lower(): str(value).lower() for key, value in (pending.get("declares") or {}).items()}
+    if set(declares) & COVERAGE_SENTINELS:
+        return True
+    conclusion = declares.get("conclusion", "")
+    return any(word in conclusion for word in COVERAGE_SENTINELS)
+
+
+class _CoverageAudit:
+    NAME = "coverage_audit"
+    CONSTITUTION = (
+        "Provably unsolvable is a property of your model, not of the world. "
+        "Before you conclude that a progress unit is impossible or that something "
+        "is absent, every rule that conclusion rests on must have been exercised "
+        "by a graded transition in the regime where the conclusion needs it. "
+        "Consistency with the record is not evidence: the record may never have "
+        "visited the region your conclusion depends on. Enumerate the load-bearing "
+        "rules, check which the journal exercised, and buy cheap probes for the "
+        "gaps before the conclusion stands."
+    )
+    MODE = "advise"
+
+    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+        events = list(view.events)
+        if len(events) < 2:
+            return None
+        ledger = coverage_ledger(events)
+        paid = [event for event in events if event.get("counts_action")]
+        if pending and pending.get("kind") in ("act", "commit") and paid:
+            move = _pending_move(pending)
+            # The loop (the stronger condition) before the single re-issue, or
+            # the loop message could never fire.
+            tail = paid[-COVERAGE_LOOP_MIN:]
+            if (
+                len(tail) == COVERAGE_LOOP_MIN
+                and all(_move_of(event) == move for event in tail)
+                and all(event.get("predict_ok") is False for event in tail)
+            ):
+                return (
+                    f"{_format_move(move)} has missed {COVERAGE_LOOP_MIN} times in a row, "
+                    f"you are looping. Stop repeating it. {_gap_phrase(events, ledger)}"
+                )
+            last = paid[-1]
+            if last.get("predict_ok") is False and _move_of(last) == move:
+                return (
+                    f"re-issuing {_format_move(move)} unmodified, it just graded FALSE. "
+                    f"Halt: revise the model or probe an unexercised rule. "
+                    f"{_gap_phrase(events, ledger)}"
+                )
+        if _is_conclusion(pending):
+            return (
+                "impossibility or absence conclusion detected, run the COVERAGE AUDIT "
+                "before it stands. Enumerate the rules the conclusion load-bears on and "
+                "cite the graded events that exercised each. " + _gap_phrase(events, ledger)
+            )
+        if pending is None:
+            if ledger["paid_on_unit"] < 3:
+                return None
+            note = (
+                f" STALL: the last {COVERAGE_STALL_WINDOW} actions changed nothing. "
+                f"{_gap_phrase(events, ledger)}"
+                if ledger["stalled"]
+                else ""
+            )
+            return (
+                f"coverage level {ledger['unit'] + 1}: "
+                f"untried [{', '.join(ledger['untried']) or 'none'}], "
+                f"no-op-only [{', '.join(ledger['dead']) or 'none'}].{note}"
+            )
+        if pending.get("kind") == "reset" and ledger["stalled"]:
+            return (
+                f"resetting under a stall. {_gap_phrase(events, ledger)} Probe these "
+                "before treating the unit as impossible."
+            )
+        return None
+
+    def demand(
+        self, view: JournalView, pending: Mapping[str, Any] | None
+    ) -> dict[str, str] | None:
+        if not pending:
+            return None
+        declares = {str(key).lower(): value for key, value in (pending.get("declares") or {}).items()}
+        if _is_conclusion(pending) and not str(declares.get("coverage_audit", "")).strip():
+            return {
+                "coverage_audit": (
+                    "before an impossibility or absence claim, enumerate the load-bearing "
+                    "rules and cite the graded event ids that exercised each, and probe any "
+                    "unexercised rule first"
+                )
+            }
+        if pending.get("kind") in ("act", "commit"):
+            paid = [event for event in view.events if event.get("counts_action")]
+            if (
+                paid
+                and paid[-1].get("predict_ok") is False
+                and _move_of(paid[-1]) == _pending_move(pending)
+                and not str(declares.get("revised", "")).strip()
+            ):
+                return {
+                    "revised": (
+                        "the identical previous prediction graded FALSE, declare what you "
+                        "changed or choose a different action or region"
+                    )
+                }
+        return None
+
+    def telemetry(self, view: JournalView) -> dict[str, Any]:
+        events = list(view.events)
+        if not events:
+            return {}
+        ledger = coverage_ledger(events)
+        telemetry = {
+            "unit": ledger["unit"],
+            "paid_on_unit": ledger["paid_on_unit"],
+            "untried": len(ledger["untried"]),
+            "dead": len(ledger["dead"]),
+            "stalled": ledger["stalled"],
+        }
+        from .extras import kind_for
+
+        kind = kind_for(events[-1])
+        extra = getattr(kind, "coverage_telemetry", None) if kind is not None else None
+        if callable(extra):
+            telemetry.update(extra(events, ledger["paid_indices"]))
+        return telemetry
+
+
 BUILTINS = (
     _WallSpend(),
     _MissStreak(),
@@ -346,6 +624,7 @@ BUILTINS = (
     _ParkWithTest(),
     _Sharpness(),
     _Hazard(),
+    _CoverageAudit(),
 )
 
 

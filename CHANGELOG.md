@@ -48,6 +48,24 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- The coverage audit as a built-in module, `coverage_audit`, advise by
+  default like every module (A1, split per the release review). It reads the
+  journal's own change signal (the graded `change` or `noop` outcome, else
+  the settled observation compared with the previous event's) and groups by
+  the host progress unit, and provides: the untried and never-productive
+  actions on this unit, a stall (eight consecutive non-productive actions),
+  a halt on re-issuing the move that just graded FALSE (demand `revised=`),
+  a halt on three identical failing moves, and a conclusion gate keyed on
+  declarations (`impossible`, `unsolvable`, `unwinnable`, `absent`,
+  `missing`, `dead_end`, `give_up`, or a `conclusion=` value naming one;
+  demand `coverage_audit=`). The frame-world extra adds the grid regions a
+  point action never probed, derived from the observed frame shape and
+  surfaced only inside the gap phrases, never in the every-status line. The
+  external module file this grew from (`bench/arcagi/modules/coverage_audit.py`
+  on the experiment branch, and taken by the first entry of this release) is
+  retired; a run directory that pinned it keeps running the built-in.
+- `assay module list` shows each active module's constitution paragraph and
+  telemetry beside its name, mode and origin.
 - `assay stop`: stops the run's daemon cleanly (SIGTERM, wait, report). Works
   without run state, so an orphaned daemon left behind by a hand-deleted
   `.assay` can be stopped. Never sends SIGKILL.

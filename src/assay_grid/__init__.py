@@ -21,7 +21,7 @@ from typing import Any
 
 from assay.core import RunPaths, frame_at
 
-from . import analysis, claims, legacy, render, solve, views
+from . import analysis, claims, coverage, legacy, render, solve, views
 from .perception import build_scene_dossier
 
 __all__ = ["KIND", "FrameKind"]
@@ -98,6 +98,14 @@ class FrameKind:
 
     def python_namespace(self, events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         return analysis.namespace(events)
+
+    # -- the coverage audit's frame part ------------------------------------------
+
+    def coverage_gap(self, events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -> str | None:
+        return coverage.coverage_gap(events, paid_indices)
+
+    def coverage_telemetry(self, events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -> dict[str, Any]:
+        return coverage.coverage_telemetry(events, paid_indices)
 
     # -- the legacy numbered-action path ------------------------------------------
 

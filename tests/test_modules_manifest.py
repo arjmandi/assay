@@ -10,8 +10,6 @@ from pathlib import Path
 
 from conftest import FAKE_ADAPTER, run_cli, stop_run
 
-REPO = Path(__file__).resolve().parents[1]
-COVERAGE = REPO / "bench" / "arcagi" / "modules" / "coverage_audit.py"
 ACTIONS = [
     {"name": "INC", "params": {"amount": {"type": "int", "min": 1, "max": 2}}},
     {"name": "NOOP", "params": {}},
@@ -37,6 +35,13 @@ MODULE = _Rogue()
 '''
 
 CLASHER = ROGUE.replace('NAME = "rogue"', 'NAME = "hazard"')
+PROBE = ROGUE.replace('NAME = "rogue"', 'NAME = "probe"').replace("rogue fired", "probe fired")
+
+
+def _write_probe(directory: Path) -> Path:
+    module = directory / "probe.py"
+    module.write_text(PROBE)
+    return module
 
 
 def _prepare(run: Path, modules: list[str] | None = None) -> None:
@@ -66,11 +71,12 @@ def _manifest(run: Path) -> dict:
 
 def test_registry_modules_are_pinned_by_manifest_and_strangers_ignored(tmp_path):
     run = tmp_path / "manifest"
-    _prepare(run, modules=[str(COVERAGE)])
+    probe = _write_probe(tmp_path)
+    _prepare(run, modules=[str(probe)])
     try:
         assert _start(run).returncode == 0
         entries = _manifest(run)["modules"]
-        assert [entry["name"] for entry in entries] == ["coverage_audit"]
+        assert [entry["name"] for entry in entries] == ["probe"]
         assert entries[0]["origin"] == "registry" and len(entries[0]["sha256"]) == 64
         # A file written into the directory by hand never loads.
         (run / ".assay" / "modules" / "rogue.py").write_text(ROGUE)
@@ -80,16 +86,16 @@ def test_registry_modules_are_pinned_by_manifest_and_strangers_ignored(tmp_path)
         assert "rogue fired" not in status.stdout
         assert "MODULES | 1 file(s) in .assay/modules ignored" in status.stdout
         assert "rogue.py (not in the manifest)" in status.stdout
-        assert "MODULE coverage_audit |" in status.stdout  # the listed one runs
+        assert "MODULE probe | probe fired" in status.stdout  # the listed one runs
         listed = run_cli(run, "module", "list")
-        assert "coverage_audit | advise | registry" in listed.stdout
+        assert "probe | advise | registry" in listed.stdout
         assert "rogue.py (not in the manifest)" in listed.stdout
         # Editing the pinned copy breaks its hash: ignored and reported.
-        pinned = run / ".assay" / "modules" / "coverage_audit.py"
+        pinned = run / ".assay" / "modules" / "probe.py"
         pinned.write_text(pinned.read_text() + "\n# edited\n")
         status = run_cli(run, "status")
-        assert "MODULE coverage_audit |" not in status.stdout
-        assert "coverage_audit.py (modified since install)" in status.stdout
+        assert "MODULE probe |" not in status.stdout
+        assert "probe.py (modified since install)" in status.stdout
         assert "AUDIT | CLEAN" in run_cli(run, "audit").stdout
     finally:
         stop_run(run)
@@ -133,7 +139,8 @@ def test_run_without_a_manifest_reconstructs_it_from_the_registry(tmp_path):
     registry names them, so the manifest is rebuilt from the pinned copies and
     the module keeps running. Anything else in the directory stays unlisted."""
     run = tmp_path / "legacy"
-    _prepare(run, modules=[str(COVERAGE)])
+    probe = _write_probe(tmp_path)
+    _prepare(run, modules=[str(probe)])
     try:
         assert _start(run).returncode == 0
         (run / ".assay" / "modules" / "manifest.json").unlink()
@@ -141,11 +148,11 @@ def test_run_without_a_manifest_reconstructs_it_from_the_registry(tmp_path):
         for _ in range(3):
             assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
         status = run_cli(run, "status")
-        assert "MODULE coverage_audit |" in status.stdout
+        assert "MODULE probe | probe fired" in status.stdout
         assert "rogue fired" not in status.stdout
         assert "rogue.py (not in the manifest)" in status.stdout
         entries = _manifest(run)["modules"]
-        assert entries[0]["name"] == "coverage_audit" and entries[0]["reconstructed"] is True
+        assert entries[0]["name"] == "probe" and entries[0]["reconstructed"] is True
     finally:
         stop_run(run)
 
