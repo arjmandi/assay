@@ -264,7 +264,15 @@ def _parser() -> Parser:
     channel_declare.add_argument(
         "--file", help="extractor file: def extract(obs) -> value (sandboxed)"
     )
-    channel_commands.add_parser("list", help="list registered channels")
+    channel_list = channel_commands.add_parser(
+        "list", help="list registered channels with their current readings"
+    )
+    channel_list.add_argument(
+        "--read",
+        action="store_true",
+        help="compute extractor channels fresh (runs each extractor sandboxed) "
+        "instead of showing the last graded reading",
+    )
 
     model = commands.add_parser(
         "model",
@@ -1008,8 +1016,14 @@ def main() -> None:
                         f'like `ch {args.name} = V` now parse and grade'
                     )
                 else:
+                    from .channels import channel_lines
+
                     declared = load_declared(paths)
-                    print("CHANNELS | " + " · ".join(known_channels(paths)))
+                    events = load_events(paths)
+                    if events:
+                        print("\n".join(channel_lines(paths, events[-1], fresh=args.read)))
+                    else:
+                        print("CHANNELS | " + " · ".join(known_channels(paths)))
                     for name, spec in sorted(declared.items()):
                         detail = spec.get("path") or spec.get("hash", "")[:12]
                         print(f"  {name}: {spec['form']} {detail}")

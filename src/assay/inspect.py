@@ -442,6 +442,7 @@ def result_text(paths: RunPaths, receipt: Mapping[str, Any]) -> str:
     lines.extend(f"  {line}" for line in receipt.get("grade", ()))
     lines.extend(str(line) for line in receipt.get("modules", ()))
     lines.extend(str(line) for line in receipt.get("aggregates", ()))
+    lines.extend(str(line) for line in receipt.get("channels", ()))
     for step in receipt.get("steps", ()):
         mark = "·" if step.get("ungated") else ("✓" if step.get("ok") else "✗")
         lines.append(f"  e{int(step['event']):04d} {step['action']} {mark}")
@@ -716,7 +717,7 @@ def _registry_status_lines(
     from .agenda import agenda_lines, emergence_line
     from .aggregates import meter as aggregate_meter
     from .carryover import foreign_lines
-    from .channels import known_channels, load_declared
+    from .channels import channel_lines
     from .integrity import anchor_line, first_ungated, ungated_events
     from .model import batching_rights, fit_path, model_source
     from .modules import load_hazards, unlisted_lines
@@ -725,8 +726,7 @@ def _registry_status_lines(
     lines.extend(agenda_lines(paths, registry, events))
     lines.extend(unlisted_lines(paths))
     lines.extend(foreign_lines(paths))
-    if load_declared(paths):
-        lines.append("CHANNELS | registered: " + " · ".join(known_channels(paths)))
+    lines.extend(channel_lines(paths, events[-1]))
     if model_source(paths).exists():
         fit = read_json(fit_path(paths), None)
         if isinstance(fit, dict):

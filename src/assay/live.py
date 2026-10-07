@@ -17,7 +17,7 @@ import numpy as np
 from .agenda import check_rehearsal, consume_approval
 from .aggregates import open_aggregates, resolve_due
 from .broker import broker_step
-from .channels import check_channel_references
+from .channels import channel_change_lines, check_channel_references
 from .core import (
     AssayError,
     RunPaths,
@@ -379,6 +379,10 @@ def execute_action(
         receipt["modules"] = advisories
     if aggregate_lines:
         receipt["aggregates"] = aggregate_lines
+    if registry is not None:
+        changed = channel_change_lines(paths, prior, event)
+        if changed:
+            receipt["channels"] = changed
     return _receipt(paths, receipt)
 
 
@@ -547,6 +551,10 @@ def execute_steps(
         receipt["modules"] = advisories
     if aggregate_lines:
         receipt["aggregates"] = aggregate_lines
+    if registry is not None:
+        changed = channel_change_lines(paths, events[-1], final_events[-1])
+        if changed:
+            receipt["channels"] = changed
     return _receipt(paths, receipt)
 
 

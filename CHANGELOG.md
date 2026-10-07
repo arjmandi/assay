@@ -82,6 +82,15 @@ Left on the experiment branch, deliberately:
   module demand can key on a reset (a conclusion expressed as giving up on the
   current state) and the declaration is journaled on the RESET event.
 
+- Channel readings. Status prints a CHANNELS block on every registry run:
+  the registered names, the host values (`goal`, `level`,
+  `budget_remaining`), each declared path channel's current value, and each
+  extractor channel's last graded value with the event it was graded on
+  (cached by the daemon in `.assay/channel_readings.json`, so status never
+  spawns an extractor). `assay channel list --read` computes extractor values
+  fresh. Receipts print `CHANNELS | name: before -> after` for declared path
+  channels that changed across the act or the batch.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
@@ -156,6 +165,12 @@ Left on the experiment branch, deliberately:
   grid refusal on registry runs, view and the offline namespace end to end,
   and the OOLONG spam4k pack driven to WIN through the bench adapter with its
   sealed score written at finalize.
+- `budget_remaining` (ranked fix 10). The host channel was advertised but
+  refused to read, so a claim on it was accepted by the reference check and
+  then graded UNGRADABLE. It now reads as the registered cap minus the paid
+  actions up to and including the event (so `ch budget_remaining delta = -1`
+  holds for any paid action), and is UNGRADABLE only when no cap is
+  registered, with the reason saying so.
 
 ### Regression gates
 

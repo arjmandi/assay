@@ -5,13 +5,20 @@ A channel is a pair (observer, extractor). Three sources:
 - HOST channels, always present: `goal` (boolean — the environment's win
   state; the one channel an agent-invented proxy can never replace), `level`
   (levels completed — the milestone channel), and `budget_remaining` (paid
-  actions left under the registered cap, when one exists).
+  actions left under the registered cap after the event; ungradable when no
+  cap is registered).
 - AGENT-DECLARED channels (`assay channel declare NAME --path a.b.c` or
   `--file extractor.py`): journaled at declaration. The dotted-path form is
   graded in-kernel (pure data lookup over the dict observation). The
   extractor-file form is agent-authored code and runs ONLY in the verifier
   sandbox (`python3 -I`, empty env, rlimits): `def extract(obs) -> value`.
 - Pack channels are a later stage (no second domain pack exists yet).
+
+Readings. Status shows every channel's current value on a registry run
+without ever spawning an extractor: host and path channels are read from the
+latest event in-process, extractor channels show their last graded value and
+the event it was graded on, cached by the daemon in `.assay/channel_readings.json`
+at grade time. `assay channel list --read` computes extractor values fresh.
 
 Claims naming an unregistered channel are refused before any spend and
 counted on the mis-reference meter — the surviving referent-grounding
@@ -31,7 +38,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
+from .core import AssayError, RunPaths, append_jsonl, atomic_json, load_jsonl, read_json
 
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 HOST_CHANNELS = ("goal", "level", "budget_remaining")
@@ -52,6 +59,23 @@ sys.stdout.write("\\n" + json.dumps({"value": value}) + "\\n")
 
 def channels_path(paths: RunPaths) -> Path:
     return paths.state / "channels.json"
+
+
+def readings_path(paths: RunPaths) -> Path:
+    """Last graded extractor readings, written by the daemon only (so it never
+    races the CLI's writes to channels.json)."""
+    return paths.state / "channel_readings.json"
+
+
+def load_readings(paths: RunPaths) -> dict[str, dict[str, Any]]:
+    value = read_json(readings_path(paths), {})
+    return value if isinstance(value, dict) else {}
+
+
+def _remember_reading(paths: RunPaths, name: str, event_id: int, value: Any) -> None:
+    readings = load_readings(paths)
+    readings[name] = {"event": int(event_id), "value": value}
+    atomic_json(readings_path(paths), readings)
 
 
 def extractor_dir(paths: RunPaths) -> Path:
@@ -206,19 +230,46 @@ def _run_extractor(
         return False, f"malformed extractor output: {lines[-1][:120]!r}"
 
 
+def _journal_position(paths: RunPaths, event: Mapping[str, Any]) -> tuple[list[dict[str, Any]], int | None]:
+    """The journal and the event's index in it, or None for a pending event
+    (graded before it is appended; its id will be the journal's length)."""
+    events = load_jsonl(paths.events)
+    event_id = int(event.get("id", -1))
+    if 0 <= event_id < len(events) and int(events[event_id].get("id", -1)) == event_id:
+        return events, event_id
+    return events, None
+
+
+def _budget_remaining(paths: RunPaths, event: Mapping[str, Any]) -> tuple[bool, Any]:
+    """Paid actions left under the registered cap once this event is in the
+    journal: the cap minus every paid event up to and including it. A pending
+    event (grade time) counts itself."""
+    registry = read_json(paths.registry, None)
+    cap = ((registry or {}).get("budget") or {}).get("actions") if isinstance(registry, dict) else None
+    if cap is None:
+        return False, "budget_remaining needs a registered action cap (budget.actions)"
+    events, index = _journal_position(paths, event)
+    if index is None:
+        paid = sum(1 for record in events if record.get("counts_action"))
+        paid += 1 if event.get("counts_action") else 0
+    else:
+        paid = sum(1 for record in events[: index + 1] if record.get("counts_action"))
+    return True, max(0, int(cap) - paid)
+
+
 def channel_value(
-    paths: RunPaths, name: str, event: Mapping[str, Any]
+    paths: RunPaths, name: str, event: Mapping[str, Any], *, remember: bool = False
 ) -> tuple[bool, Any]:
-    """(True, value) or (False, reason). Host channels come from event fields;
-    path channels walk the dict observation; extractor channels run sandboxed."""
+    """(True, value) or (False, reason). Host channels come from event fields
+    and the registry cap; path channels walk the dict observation; extractor
+    channels run sandboxed, and with remember=True (grade time, in the daemon)
+    the reading is cached for status."""
     if name == "goal":
         return True, str(event["state"]) == "WIN"
     if name == "level":
         return True, int(event["levels_completed"])
     if name == "budget_remaining":
-        # Filled by the caller when a budget exists (it needs the full journal);
-        # graded standalone it reads as ungradable rather than guessing.
-        return False, "budget_remaining is a status meter, not a claimable reading"
+        return _budget_remaining(paths, event)
     spec = load_declared(paths).get(name)
     if spec is None:
         return False, f"channel {name!r} is not registered"
@@ -229,7 +280,72 @@ def channel_value(
         return _walk(observation, spec["path"])
     from .verifiers import observation_view
 
-    return _run_extractor(paths, spec["hash"], observation_view(event))
+    ok, value = _run_extractor(paths, spec["hash"], observation_view(event))
+    if ok and remember:
+        events, index = _journal_position(paths, event)
+        # A pending event takes the next id; the daemon is the only writer.
+        _remember_reading(paths, name, index if index is not None else len(events), value)
+    return ok, value
+
+
+def _render(value: Any) -> str:
+    try:
+        text = json.dumps(value)
+    except (TypeError, ValueError):
+        text = repr(value)
+    return text if len(text) <= 40 else text[:39] + "…"
+
+
+def channel_lines(
+    paths: RunPaths, event: Mapping[str, Any], *, fresh: bool = False
+) -> list[str]:
+    """The CHANNELS block: host values, path values read from the event, and
+    extractor values from the cache (or computed fresh when asked). Never
+    spawns a subprocess unless fresh is true."""
+    declared = load_declared(paths)
+    lines = ["CHANNELS | registered: " + " · ".join(known_channels(paths))]
+    host = []
+    for name in HOST_CHANNELS:
+        ok, value = channel_value(paths, name, event)
+        host.append(f"{name}={_render(value) if ok else 'n/a'}")
+    lines.append("CHANNELS | host: " + " · ".join(host))
+    if not declared:
+        return lines
+    readings = load_readings(paths)
+    rendered = []
+    for name, spec in sorted(declared.items()):
+        if spec["form"] == "path" or fresh:
+            ok, value = channel_value(paths, name, event)
+            rendered.append(
+                f"{name}={_render(value) if ok else 'unreadable'} ({spec['form']})"
+            )
+            continue
+        last = readings.get(name)
+        if isinstance(last, dict) and last.get("event") is not None:
+            rendered.append(
+                f"{name}={_render(last.get('value'))} @e{last['event']} (extractor, last graded)"
+            )
+        else:
+            rendered.append(f"{name}=not yet graded (extractor)")
+    lines.append("CHANNELS | declared: " + " · ".join(rendered))
+    return lines
+
+
+def channel_change_lines(
+    paths: RunPaths, before: Mapping[str, Any], after: Mapping[str, Any]
+) -> list[str]:
+    """Receipt lines for declared path channels that changed across a paid
+    span: `CHANNELS | name: before -> after`. Path channels only (no
+    subprocess on the receipt path)."""
+    lines: list[str] = []
+    for name, spec in sorted(load_declared(paths).items()):
+        if spec["form"] != "path":
+            continue
+        ok_before, was = channel_value(paths, name, before)
+        ok_after, now = channel_value(paths, name, after)
+        if ok_before and ok_after and was != now:
+            lines.append(f"CHANNELS | {name}: {_render(was)} -> {_render(now)}")
+    return lines
 
 
 def _numeric(value: Any) -> float | None:
@@ -247,7 +363,7 @@ def grade_channel_claim(
     """Grade one channel claim against before/after channel readings."""
     record = dict(claim)
     name = str(claim["channel"])
-    ok_after, after = channel_value(paths, name, event)
+    ok_after, after = channel_value(paths, name, event, remember=True)
     if not ok_after:
         return {**record, "ok": False, "ungradable": True, "actual": f"UNGRADABLE: {after}"}
     kind = claim["kind"]
