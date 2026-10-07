@@ -219,6 +219,7 @@ def test_exec_of_anything_but_the_interpreter_is_refused(paths):
 
 
 @darwin_only
+@jailed
 def test_the_process_argument_keys_are_denied_by_name(paths):
     # The named route to another process's arguments and environment: the
     # deny after the unfiltered allow wins. The MIB route is the OS's own
@@ -374,6 +375,13 @@ def test_profile_lists_existing_paths_each_with_a_reason(tmp_path):
     assert len(execs) == 1 and "process-exec*" not in execs[0]
     assert f'(literal "{sys.executable}")' in execs[0]
     assert f'(literal "{os.path.realpath(sys.executable)}")' in execs[0]
+    allowed_exec = {
+        ("literal", sys.executable),
+        ("literal", os.path.realpath(sys.executable)),
+        ("subpath", os.path.realpath(sys.prefix)),
+        ("subpath", os.path.realpath(sys.base_prefix)),
+    }
+    assert set(re.findall(r'\((literal|subpath) "([^"]+)"\)', execs[0])) <= allowed_exec, execs[0]
     denies = [line for line in lines if line.startswith("(deny ")]
     assert denies == [
         "(deny default)",

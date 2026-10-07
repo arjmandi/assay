@@ -190,12 +190,19 @@ def package_directories() -> list[str]:
     return found
 
 
-def _interpreter_paths() -> tuple[str, ...]:
-    """The interpreter as named and as resolved: the profile matches resolved
-    paths, and the executable of a venv is a symlink."""
+def _exec_filters() -> tuple[tuple[str, str], ...]:
+    """What may be exec'd: the interpreter as named and as resolved (the
+    profile matches resolved paths, and the executable of a venv is a
+    symlink), and the executables under its prefix and base prefix, because
+    the python.org framework's bin/python is a stub that spawns
+    Resources/Python.app/Contents/MacOS/Python in place, and the macOS CI
+    cells run that build. No shell lives under either prefix."""
     executable = sys.executable
     real = os.path.realpath(executable)
-    return (executable,) if real == executable else (executable, real)
+    literals = ((executable,) if real == executable else (executable, real))
+    return tuple(("literal", path) for path in literals) + tuple(
+        ("subpath", prefix) for prefix in _interpreter_prefixes()
+    )
 
 
 def darwin_rules(scratch: Path) -> list[Rule]:
@@ -205,9 +212,11 @@ def darwin_rules(scratch: Path) -> list[Rule]:
     `import json, numpy` with each entry removed in turn; each reason records
     what the measurement showed. Design note 3, section 8.5, lists them."""
     rules: list[Rule] = [
-        ("allow", "process-exec", tuple(("literal", path) for path in _interpreter_paths()),
-         "sandbox-exec execs the interpreter in place, and nothing else may be exec'd "
-         "(a shell included); without it execvp fails with EPERM"),
+        ("allow", "process-exec", _exec_filters(),
+         "sandbox-exec execs the interpreter in place, and the python.org framework stub "
+         "spawns the Python.app executable under the base prefix in place; nothing outside "
+         "the interpreter's prefixes may be exec'd, a shell included; without it execvp fails "
+         "with EPERM"),
         ("allow", "file-read-metadata", (),
          "stat and path lookup everywhere, no content; without it execvp fails before main"),
         ("allow", "sysctl-read", (),

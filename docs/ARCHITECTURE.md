@@ -1176,9 +1176,11 @@ with `SIGKILL`.
 
 On macOS the process runs under `sandbox-exec` with a deny-default profile: `(deny
 default)`, `(deny network*)`, then the rules, each with a comment giving its measured
-reason, a later rule winning over an earlier one. `process-exec` on the interpreter alone
-(`sys.executable` as named and as resolved: the program can exec nothing else, `/bin/sh`
-included). `file-read-metadata` and `sysctl-read` unfiltered (the interpreter's `os.uname`
+reason, a later rule winning over an earlier one. `process-exec` on the interpreter
+(`sys.executable` as named and as resolved) and the executables under its prefix and base
+prefix, which the python.org framework needs, its `bin/python` being a stub that spawns
+`Resources/Python.app/Contents/MacOS/Python` in place; the program can exec nothing
+outside them, `/bin/sh` included. `file-read-metadata` and `sysctl-read` unfiltered (the interpreter's `os.uname`
 reads `kern.ostype` and its kin by MIB, which only an unfiltered rule admits), then a deny
 of `sysctl-read` for the process-argument keys (`kern.procargs`, `kern.procargs2`) by name,
 which closes the `sysctlbyname` route to the arguments and exec-time environment of any
