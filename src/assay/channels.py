@@ -187,6 +187,20 @@ def _walk(observation: Any, dotted: str) -> tuple[bool, Any]:
     return True, node
 
 
+def _invalid_reason(outcome: Mapping[str, Any]) -> str:
+    """The words for a run the sandbox refused, as they have always read."""
+    kind = outcome.get("kind")
+    if kind == "timeout":
+        return f"extractor timed out after {EXTRACT_TIMEOUT_SECONDS:g}s"
+    if kind == "crash":
+        return f"extractor crashed: {str(outcome['tail'])[:200]}"
+    if kind == "no_output":
+        return "extractor produced no output"
+    if kind == "malformed":
+        return f"malformed extractor output: {str(outcome['output'])[:120]!r}"
+    return f"extractor {outcome['reason']}"
+
+
 def _run_extractor(
     paths: RunPaths, digest: str, obs: Mapping[str, Any]
 ) -> tuple[bool, Any]:
@@ -198,7 +212,7 @@ def _run_extractor(
         _RUNNER, payload, timeout=EXTRACT_TIMEOUT_SECONDS, companions=(stored,)
     )
     if outcome["status"] != "ok":
-        return False, f"extractor {outcome['reason']}"
+        return False, _invalid_reason(outcome)
     result = outcome["result"]
     if not isinstance(result, dict) or "value" not in result:
         return False, f"malformed extractor output: {json.dumps(result)[:120]!r}"

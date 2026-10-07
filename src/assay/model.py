@@ -256,6 +256,20 @@ def _channel_specs_for_sandbox(paths: RunPaths, declared: list[str]) -> dict[str
     return specs
 
 
+def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
+    """The words for a run the sandbox refused, as they have always read."""
+    kind = outcome.get("kind")
+    if kind == "timeout":
+        return f"model run timed out after {timeout:g}s"
+    if kind == "crash":
+        return f"model crashed in the sandbox: {str(outcome['tail'])[:300]}"
+    if kind == "no_output":
+        return "model produced no output"
+    if kind == "malformed":
+        return f"malformed model output: {str(outcome['output'])[:160]!r}"
+    return f"model {outcome['reason']}"
+
+
 def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     """Run the model runner in the sandbox: `model.py` and the extractor files
     of the declared channels travel as companions, and the payload's
@@ -265,9 +279,17 @@ def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> di
         for entry in payload["channels"].values()
         if entry.get("form") == "extractor"
     ]
-    outcome = run_program(_RUNNER, payload, timeout=timeout + 5.0, companions=companions)
+    # The budgets as they have always been: CPU at the search budget (two
+    # seconds at least), the wall clock five seconds past it.
+    outcome = run_program(
+        _RUNNER,
+        payload,
+        timeout=timeout + 5.0,
+        companions=companions,
+        cpu_seconds=max(2, int(timeout)),
+    )
     if outcome["status"] != "ok":
-        raise AssayError(f"model {outcome['reason']}")
+        raise AssayError(_invalid_reason(outcome, timeout))
     result = outcome["result"]
     if not isinstance(result, dict):
         raise AssayError(f"malformed model output: {json.dumps(result)[:160]!r}")

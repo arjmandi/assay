@@ -17,6 +17,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -33,7 +34,7 @@ from assay.sandbox import (
     sandbox_mode,
     sandbox_text,
 )
-from assay.verifiers import admit_verifier, grade_verifier_claim
+from assay.verifiers import VERIFY_TIMEOUT_SECONDS, admit_verifier, grade_verifier_claim
 
 BEFORE = {
     "state": "NOT_FINISHED",
@@ -46,10 +47,18 @@ AFTER = {**BEFORE, "data": {"counter": 1, "lamp": "off"}}
 EVENT = {**BEFORE, "observation": BEFORE["data"]}
 
 MODE = sandbox_mode()
-# The errors a refusal surfaces as: EPERM from sandbox-exec, ENOENT from a
+# The errno texts a refusal surfaces as: EPERM from sandbox-exec, ENOENT from a
 # bwrap namespace that does not hold the file, EAGAIN from RLIMIT_NPROC, and
-# the socket errors of an unshared network.
-REFUSALS = ("PermissionError", "FileNotFoundError", "BlockingIOError", "ConnectionRefusedError", "OSError")
+# the socket errors of an unshared network (a loopback nobody listens on, or
+# no route at all). A bare exception class name would also accept an
+# unrelated error, so none is listed.
+REFUSALS = (
+    "Operation not permitted",
+    "No such file or directory",
+    "Resource temporarily unavailable",
+    "Connection refused",
+    "Network is unreachable",
+)
 
 jailed = pytest.mark.skipif(
     MODE == PROCESS_ISOLATION_ONLY,
@@ -86,6 +95,37 @@ import subprocess
 def verify(before, after):
     subprocess.run(["true"], check=True)
     return True, "forked"
+"""
+
+EXECS_SHELL = """\
+import os
+
+def verify(before, after):
+    os.execv("/bin/sh", ["sh", "-c", "echo shell"])
+    return True, "never reached"
+"""
+
+READS_PROCARGS_BY_NAME = """\
+import ctypes
+import ctypes.util
+
+def verify(before, after):
+    libc = ctypes.CDLL(ctypes.util.find_library("c"), use_errno=True)
+    size = ctypes.c_size_t(1 << 16)
+    buffer = ctypes.create_string_buffer(size.value)
+    code = libc.sysctlbyname(b"kern.procargs2", buffer, ctypes.byref(size), None, 0)
+    return True, "ok" if code == 0 else f"errno {ctypes.get_errno()}"
+"""
+
+PRINTS_PAST_THE_CAP = """\
+import sys
+import time
+
+def verify(before, after):
+    sys.stdout.write("x" * (2 << 20))
+    sys.stdout.flush()
+    time.sleep(30)
+    return True, "never reached"
 """
 
 ALLOCATES = """\
@@ -127,7 +167,13 @@ def test_mode_is_the_platform_tool():
     if sys.platform == "darwin":
         assert MODE == SANDBOX_EXEC, sandbox_text(MODE)
     elif shutil.which(BWRAP):
-        assert MODE == BWRAP, sandbox_text(MODE)
+        # A stock Ubuntu 24.04 has bwrap on PATH and AppArmor refusing it a
+        # user namespace: then the probe fails and the doctor line says so.
+        probed, reason = sandbox._probe(BWRAP)
+        assert probed == MODE, (probed, reason, sandbox_text(MODE))
+        if MODE != BWRAP:
+            assert MODE == PROCESS_ISOLATION_ONLY
+            assert "the bwrap probe failed" in sandbox_text(MODE), sandbox_text(MODE)
     else:
         assert MODE == PROCESS_ISOLATION_ONLY
         assert sandbox_text(MODE).startswith("process isolation only (no sandbox-exec or bwrap)")
@@ -163,6 +209,32 @@ def test_opening_a_socket_is_refused(paths):
 def test_forking_is_refused(paths):
     # RLIMIT_NPROC 1 holds in every mode, the fallback included.
     _refused(_graded(paths, FORKS))
+
+
+@jailed
+def test_exec_of_anything_but_the_interpreter_is_refused(paths):
+    # sandbox-exec allows process-exec on the interpreter alone; under bwrap
+    # no /bin is bound, so the shell is not there to exec.
+    _refused(_graded(paths, EXECS_SHELL))
+
+
+@darwin_only
+def test_the_process_argument_keys_are_denied_by_name(paths):
+    # The named route to another process's arguments and environment: the
+    # deny after the unfiltered allow wins. The MIB route is the OS's own
+    # same-uid policy and stays open (sandbox.py says so where the rule is).
+    graded = _graded(paths, READS_PROCARGS_BY_NAME)
+    assert "invalid" not in graded, graded["actual"]
+    assert graded["actual"] == "errno 1"
+
+
+def test_output_past_the_cap_is_refused_at_once(paths):
+    started = time.monotonic()
+    graded = _graded(paths, PRINTS_PAST_THE_CAP)
+    elapsed = time.monotonic() - started
+    assert graded["invalid"] is True and graded["ok"] is False, graded
+    assert graded["actual"] == "INVALID_CLAIM: verifier produced more than 1 MB of output", graded
+    assert elapsed < 2 * VERIFY_TIMEOUT_SECONDS  # killed at the cap, not at the wall clock
 
 
 @linux_only
@@ -232,12 +304,27 @@ def test_run_program_status_records():
         "result": {"ok": True},
     }
     crashed = run_program("raise SystemExit(3)", {}, timeout=10.0)
-    assert crashed["status"] == "invalid" and crashed["reason"].startswith("crashed (exit 3)")
-    assert run_program("pass", {}, timeout=10.0) == {"status": "invalid", "reason": "produced no output"}
-    malformed = run_program("print('not json')", {}, timeout=10.0)
-    assert malformed["reason"].startswith("produced malformed output")
+    assert crashed == {
+        "status": "invalid",
+        "kind": "crash",
+        "reason": "crashed (exit 3): no stderr",
+        "exit": 3,
+        "tail": "no stderr",
+    }
+    assert run_program("pass", {}, timeout=10.0) == {
+        "status": "invalid",
+        "kind": "no_output",
+        "reason": "produced no output",
+    }
+    assert run_program("print('not json')", {}, timeout=10.0) == {
+        "status": "invalid",
+        "kind": "malformed",
+        "reason": "malformed output: 'not json'",
+        "output": "not json",
+    }
     assert run_program("while True: pass", {}, timeout=1.0) == {
         "status": "invalid",
+        "kind": "timeout",
         "reason": "timed out after 1s",
     }
 
@@ -277,11 +364,23 @@ def test_profile_lists_existing_paths_each_with_a_reason(tmp_path):
     for index, line in enumerate(lines):
         if line.startswith("(allow"):
             assert lines[index - 1].startswith("; "), line
-    quoted = re.findall(r'\(allow [^ ]+ \((?:subpath|literal) "([^"]+)"\)\)', profile)
+    quoted = re.findall(r'\((?:subpath|literal) "([^"]+)"\)', profile)
     assert quoted and all(os.path.exists(path) for path in quoted), quoted
     assert not any(os.path.exists(path) for path in omitted), omitted
     writes = re.findall(r'\(allow file-write\* \((subpath|literal) "([^"]+)"\)\)', profile)
     assert sorted(writes) == [("literal", "/dev/null"), ("subpath", str(scratch))]
+    assert "mach-lookup" not in profile
+    execs = [line for line in lines if line.startswith("(allow process-exec")]
+    assert len(execs) == 1 and "process-exec*" not in execs[0]
+    assert f'(literal "{sys.executable}")' in execs[0]
+    assert f'(literal "{os.path.realpath(sys.executable)}")' in execs[0]
+    denies = [line for line in lines if line.startswith("(deny ")]
+    assert denies == [
+        "(deny default)",
+        "(deny network*)",
+        '(deny sysctl-read (sysctl-name-prefix "kern.procargs"))',
+    ]
+    assert lines.index(denies[-1]) > lines.index("(allow sysctl-read)")
 
 
 def _cli(run: Path, *args: str, **env: str) -> subprocess.CompletedProcess[str]:
@@ -323,6 +422,25 @@ def test_doctor_prints_the_mode_and_start_records_it(tmp_path):
         started = run_cli(run, *_start_args(run))
         assert started.returncode == 0, started.stderr
         assert _config(run)["sandbox"] == MODE
+        broker = json.loads((run / ".assay" / "broker.json").read_text())
+        assert broker["status"] == "READY" and broker["sandbox"] == MODE
+        checked = run_cli(run, "doctor")
+        assert checked.returncode == 0, checked.stderr
+        assert "sandbox recorded at the run's creation" not in checked.stdout
+        # A run created under another mode: doctor says so, twice (the
+        # daemon's mode and this shell's both differ from the record).
+        config = _config(run)
+        config["sandbox"] = "another-jail"
+        (run / ".assay" / "config.json").write_text(json.dumps(config, sort_keys=True))
+        checked = run_cli(run, "doctor")
+        assert (
+            f"DOCTOR | WARN | sandbox recorded at the run's creation is another-jail, the daemon runs with {MODE}"
+            in checked.stdout
+        ), checked.stdout
+        assert (
+            f"DOCTOR | WARN | sandbox recorded at the run's creation is another-jail, this shell decides {MODE}"
+            in checked.stdout
+        ), checked.stdout
     finally:
         stop_run(run)
     forced_run = tmp_path / "forced"
@@ -339,3 +457,6 @@ def test_doctor_prints_the_mode_and_start_records_it(tmp_path):
     assert refused.returncode == 2
     assert "ASSAY_SANDBOX" in refused.stderr and "process-isolation-only" in refused.stderr
     assert not (other / ".assay" / "config.json").exists()
+    # The same refusal on a resume, before the resume branch runs.
+    resumed = _cli(forced_run, "start", "fake1", **{FORCE_VARIABLE: "off"})
+    assert resumed.returncode == 2 and "ASSAY_SANDBOX" in resumed.stderr

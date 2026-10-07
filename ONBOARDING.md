@@ -444,7 +444,15 @@ file-size and wall-clock limits, and the 512 MB memory limit is Linux-only,
 since macOS refuses an address-space limit. Without either tool the process
 limits alone apply, `assay doctor` prints `sandbox | process isolation only
 (no sandbox-exec or bwrap)` and `config.json` records that mode at start; on
-Linux, install bubblewrap.
+Linux, install bubblewrap. A stock Ubuntu 24.04 restricts unprivileged user
+namespaces through AppArmor, which bwrap needs: `doctor` then shows the probe
+failing with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`
+until `sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0` (or an
+AppArmor profile for bwrap) lifts the restriction. `ASSAY_SANDBOX=process-isolation-only`
+forces the fallback on any machine, which is how the suite tests it; `doctor`
+then says `forced by ASSAY_SANDBOX`, and `start` refuses any other value. The
+daemon records the mode it runs under in `broker.json`, and `doctor` warns
+when it differs from the one `config.json` recorded at the run's creation.
 
 ### A separate user for the daemon
 

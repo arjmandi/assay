@@ -440,6 +440,12 @@ def _remote_idle_seconds(paths: RunPaths, config: dict[str, Any]) -> float:
 
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
+    forced_sandbox = os.getenv(FORCE_VARIABLE)
+    if forced_sandbox is not None and forced_sandbox != PROCESS_ISOLATION_ONLY:
+        raise AssayError(
+            f"{FORCE_VARIABLE} must be {PROCESS_ISOLATION_ONLY!r} (the forced fallback) "
+            f"or unset, got {forced_sandbox!r}"
+        )
     requested = normalize_game_id(args.game_id)
     registry_spec = load_registry_file(args.registry) if args.registry is not None else None
     existing = read_json(paths.config)
@@ -578,12 +584,6 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     if mode not in {LOCAL_MODE, REMOTE_MODE}:
         raise AssayError(
             f"ASSAY_MODE must be {LOCAL_MODE!r} or {REMOTE_MODE!r}, got {mode!r}"
-        )
-    forced_sandbox = os.getenv(FORCE_VARIABLE)
-    if forced_sandbox is not None and forced_sandbox != PROCESS_ISOLATION_ONLY:
-        raise AssayError(
-            f"{FORCE_VARIABLE} must be {PROCESS_ISOLATION_ONLY!r} (the forced fallback) "
-            f"or unset, got {forced_sandbox!r}"
         )
     adapter_spec: str | None = None
     if args.adapter:
@@ -778,6 +778,24 @@ def _doctor(paths: RunPaths) -> int:
             note("ok", f"daemon not running (broker.json says {descriptor_status})")
         else:
             note("WARN", f"daemon not running (broker.json says {descriptor_status}); `assay start` resumes")
+        # The mode recorded at the run's creation against the daemon's own
+        # (broker.json, written before READY) and this shell's, as for the
+        # interpreter: a difference is a run graded under another jail.
+        recorded_sandbox = config.get("sandbox")
+        live_sandbox = descriptor.get("sandbox") if isinstance(descriptor, dict) else None
+        if isinstance(recorded_sandbox, str):
+            if daemon is not None and isinstance(live_sandbox, str) and live_sandbox != recorded_sandbox:
+                note(
+                    "WARN",
+                    f"sandbox recorded at the run's creation is {recorded_sandbox}, "
+                    f"the daemon runs with {live_sandbox}",
+                )
+            if recorded_sandbox != mode:
+                note(
+                    "WARN",
+                    f"sandbox recorded at the run's creation is {recorded_sandbox}, "
+                    f"this shell decides {mode}",
+                )
         adapter = config.get("adapter")
         if adapter:
             try:

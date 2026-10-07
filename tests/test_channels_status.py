@@ -67,11 +67,17 @@ def extract(obs):
 
 
 def test_status_shows_readings_without_spawning_extractors(tmp_path):
-    """An extractor leaves no trace outside its scratch directory (the sandbox
-    sees to that), so its runs are counted through what the daemon caches at
-    grade time in `.assay/channel_readings.json`, and a reading only a fresh
-    run could produce (the counter moved on after the last grading) tells a
-    spawn from a cached value."""
+    """Why the count goes through the cache: an extractor leaves no trace
+    outside its scratch directory (the sandbox refuses the marker file the
+    old test had it write), so its runs are counted through what the daemon
+    caches at grade time in `.assay/channel_readings.json`. Why 20 against
+    21: the extractor reads counter times ten plus one when the lamp is on,
+    so after the graded act the cache holds 20 at e1, and once the lamp is
+    on a fresh run can only read 21; a status line that says 20 came from
+    the cache, a `--read` line that says 21 came from a spawn. What this can
+    no longer catch: a status that spawned the extractor and discarded the
+    reading, which the marker file counted and the cache cannot see; the
+    code path (`channel_lines` without `fresh`) never calls an extractor."""
     run = tmp_path / "readings"
     _prepare(run, budget={"actions": 20})
     (run / "tens.py").write_text(EXTRACTOR)

@@ -251,8 +251,15 @@ Left on the experiment branch, deliberately:
   process limits and a wall clock, inside `sandbox-exec` on macOS (a
   deny-default profile measured on Darwin 25, kept in one place with a
   comment per entry) or `bwrap --unshare-net --unshare-pid` on Linux: no
-  network, no fork, no path into the run directory. Tests prove each refusal
-  on the grading result and that a verifier importing numpy still passes.
+  network, no fork, no exec of anything but the interpreter, no path into
+  the run directory, no reading of other processes' arguments through
+  `sysctl`, and at most 1 MB of output on each stream. Tests prove each
+  refusal on the grading result and that a verifier importing numpy still
+  passes.
+- CI's Linux cells install bubblewrap and lift Ubuntu 24.04's AppArmor
+  restriction on unprivileged user namespaces
+  (`kernel.apparmor_restrict_unprivileged_userns=0`), so the suite runs under
+  bwrap for real, and every cell prints its sandbox mode (#19).
 
 ### Changed
 
@@ -345,9 +352,10 @@ Left on the experiment branch, deliberately:
   directory, open a socket or fork (#19). The memory limit (512 MB) is
   Linux-only, since macOS refuses an address-space limit; where neither
   sandbox tool exists `assay doctor` reports `sandbox | process isolation
-  only (no sandbox-exec or bwrap)` and `config.json` records the mode at
-  start. The channels test counts extractor runs through the daemon's
-  readings cache instead of a marker file the extractor wrote.
+  only (no sandbox-exec or bwrap)`; `config.json` records the mode found at
+  the run's creation and `broker.json` the daemon's own, and `doctor` warns
+  when they differ. The channels test counts extractor runs through the
+  daemon's readings cache instead of a marker file the extractor wrote.
 
 ### Removed
 

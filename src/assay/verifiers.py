@@ -90,6 +90,21 @@ def admit_verifier(paths: RunPaths, claim: dict[str, Any]) -> None:
     )
 
 
+def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
+    """The journaled words for a run the sandbox refused, as they have always
+    read: the kind of failure in the verifier's own terms."""
+    kind = outcome.get("kind")
+    if kind == "timeout":
+        return f"verifier timed out after {timeout:g}s"
+    if kind == "crash":
+        return f"verifier crashed (exit {outcome['exit']}): {str(outcome['tail'])[:200]}"
+    if kind == "no_output":
+        return "verifier produced no output"
+    if kind == "malformed":
+        return f"malformed verifier output: {str(outcome['output'])[:120]!r}"
+    return f"verifier {outcome['reason']}"
+
+
 def run_verifier(
     paths: RunPaths,
     digest: str,
@@ -104,7 +119,7 @@ def run_verifier(
     payload = {"before": before, "after": after, "verifier_path": str(stored.resolve())}
     outcome = run_program(_RUNNER, payload, timeout=timeout, companions=(stored,))
     if outcome["status"] != "ok":
-        return {"status": "invalid", "reason": f"verifier {outcome['reason']}"}
+        return {"status": "invalid", "reason": _invalid_reason(outcome, timeout)}
     result = outcome["result"]
     if (
         not isinstance(result, dict)
