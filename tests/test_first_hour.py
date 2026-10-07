@@ -145,6 +145,9 @@ def test_a_registry_is_required_and_a_run_without_one_is_not_resumed(tmp_path):
     try:
         assert _start(run, adapter).returncode == 0
         assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
+        # A resume needs no --registry: the pinned one is used.
+        resumed = run_cli(run, "start", "fake1", "--adapter", adapter)
+        assert resumed.returncode == 0 and "RESUMED | fake1" in resumed.stdout
     finally:
         stop_run(run)
     (run / ".assay" / "registry.json").unlink()

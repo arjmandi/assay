@@ -118,8 +118,8 @@ def _parser() -> Parser:
     start.add_argument(
         "--registry",
         type=Path,
-        required=True,
-        help="JSON file registering the actions, their parameter schemas and the action budget",
+        help="JSON file registering the actions, their parameter schemas and the action "
+        "budget; required for a fresh run, optional on resume (the pinned one is used)",
     )
     start.add_argument(
         "--mode",
@@ -434,7 +434,7 @@ def _remote_idle_seconds(paths: RunPaths, config: dict[str, Any]) -> float:
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     requested = normalize_game_id(args.game_id)
-    registry_spec = load_registry_file(args.registry)
+    registry_spec = load_registry_file(args.registry) if args.registry is not None else None
     existing = read_json(paths.config)
     if isinstance(existing, dict):
         if getattr(args, "import_knowledge", None) is not None:
@@ -447,7 +447,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 "this directory owns a run without a registry, from before 1.1.0: "
                 "it can be inspected (status, view, audit) but not resumed"
             )
-        if registry_spec != read_json(paths.registry):
+        if registry_spec is not None and registry_spec != read_json(paths.registry):
             raise AssayError(
                 "this directory already owns a run with a different registry; "
                 "the registry cannot change in place"
@@ -553,6 +553,12 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         print(status_text(paths))
         return
 
+    if registry_spec is None:
+        raise AssayError(
+            "a fresh run needs --registry FILE: the registry names the actions, "
+            "their parameter schemas and the action budget (examples/example_registry.json "
+            "is the smallest one)"
+        )
     orphan = find_daemon(paths)
     if orphan is not None:
         raise AssayError(
