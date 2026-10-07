@@ -1,9 +1,8 @@
 # Contributing
 
 In 1.1.0 this repository takes issues only, not pull requests. ASSAY is
-source-available under the PolyForm Noncommercial License 1.0.0 (`LICENSE`),
-which lets you use, modify and share it for noncommercial purposes, and it is
-not an open-contribution project yet.
+open source under the Apache License 2.0 (`LICENSE`), and it is not an
+open-contribution project yet.
 
 Report what you find as an issue: a journal that audits wrong, a world the
 harness refuses, a document that misleads. Include the output of `assay

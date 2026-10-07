@@ -70,17 +70,15 @@ mkdir demo && cd demo
 
 ## Status
 
-1.1.0, the first source-available release. The ARC-AGI-3 campaign of
+1.1.0, the first open-source release. The ARC-AGI-3 campaign of
 2026-08-22 to 08-25 ran on v1.0-rc1, and the Factorio and OOLONG runs on that
 kernel plus two small fixes. 1.1.0 is a refactor of it, verified by replaying
 the 25 published run directories unchanged (`CHANGELOG.md`).
 
 ## License
 
-ASSAY is source-available under the PolyForm Noncommercial License 1.0.0
-(`LICENSE`): you may use, modify and share it for noncommercial purposes. For
-commercial terms contact the author. In 1.1.0 the repository takes issues
-only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
+ASSAY is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`). In
+1.1.0 the repository takes issues only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
 (`NOTICE`). The journal standard, the independent checker and the published
 journals are in `verify/` and `evidence/` under MIT (`verify/LICENSE`), so
 anyone can verify a journal without a license to the harness. They moved here

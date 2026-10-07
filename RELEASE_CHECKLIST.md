@@ -133,7 +133,7 @@ one entry per commit).
 | O6 hot-load | the manifest, owner install | nothing |
 | O7 the world id rule | decided: any string up to 64 characters without whitespace, control characters or path separators, kept as given | nothing |
 | O8 the nine agent branches | untouched (three of them move in the history rewrite) | the flip (delete before publishing) |
-| O9 contributions under PolyForm NC | decided: issues only in 1.1.0, stated in README.md and CONTRIBUTING.md | nothing |
+| O9 contributions | decided: Apache License 2.0 (changed from PolyForm NC on 2026-10-07), issues only in 1.1.0, stated in README.md and CONTRIBUTING.md | nothing |
 | O10 the INTEGRITY line on control-arm runs | decided: a neutral `GATE` line with a count, the audit unchanged | nothing |
 | O11 cut order under time pressure | not needed, the plan completed | nothing |
 

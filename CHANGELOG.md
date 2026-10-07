@@ -12,8 +12,8 @@ Changelog. Dates are UTC.
 
 ## 1.1.0 (the date is set at the tag)
 
-The first source-available release, under the PolyForm Noncommercial License
-1.0.0 (`LICENSE`, `NOTICE`). The release branch is `release/1.1.0`, cut from
+The first open-source release, under the Apache License 2.0 (`LICENSE`,
+`NOTICE`). The release branch is `release/1.1.0`, cut from
 main at 4dc53e1.
 
 ### Which kernel the paper's campaigns ran on
@@ -78,7 +78,7 @@ Left on the experiment branch, deliberately:
 - `assay version`: the harness version (`assay.__version__`, the one source
   `pyproject.toml` reads), the journal spec it writes (`assay-journal-v1`),
   the interpreter and its Python version. `assay doctor` prints the same
-  first. `LICENSE` (PolyForm Noncommercial 1.0.0 with the required notice),
+  first. `LICENSE` (Apache License 2.0),
   `NOTICE` (the vendored OOLONG scorer under MIT, the two smoke packs under
   the dataset's terms), and
   `RELEASE_CHECKLIST.md` (what must not ship, the pre-tag greps, the secrets
