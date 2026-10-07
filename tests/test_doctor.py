@@ -113,4 +113,4 @@ def test_launcher_honors_assay_python(tmp_path):
         capture_output=True, text=True, timeout=120, env=env,
     )
     assert refused.returncode == 126
-    assert "ASSAY_PYTHON=/bin/false is not a Python 3.12+" in refused.stderr
+    assert "ASSAY_PYTHON=/bin/false is not a Python 3.12+ with numpy 2.x" in refused.stderr

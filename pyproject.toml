@@ -1,0 +1,35 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "assay-harness"
+description = "ASSAY, a referee harness between an agent and a world: enforced predict-before-act, code-graded claims, hash-chained journals."
+readme = "README.md"
+requires-python = ">=3.12"
+license = {file = "LICENSE"}
+authors = [{name = "Mohsen Arjmandi"}]
+dynamic = ["version"]
+dependencies = [
+  "numpy>=2,<3",
+]
+
+[project.optional-dependencies]
+# Frame worlds (grid observations) render images; the kernel does not need pillow.
+grid = ["pillow>=10,<13"]
+# The ARC-AGI-3 benchmark adapter needs the arc-agi client and the grid extra.
+arcagi = ["arc-agi", "pillow>=10,<13"]
+dev = ["pytest"]
+
+[project.scripts]
+assay = "assay.cli:main"
+
+[project.urls]
+Homepage = "https://arjmandi.github.io/assay-site/"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["assay", "assay_grid"]
+
+[tool.setuptools.dynamic]
+version = {attr = "assay.__version__"}

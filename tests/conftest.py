@@ -55,7 +55,7 @@ def _daemons_under(root: Path) -> list[int]:
     found: list[int] = []
     for line in listing.splitlines():
         parts = line.strip().split(None, 1)
-        if len(parts) != 2 or not parts[0].isdigit() or "broker_server.py" not in parts[1]:
+        if len(parts) != 2 or not parts[0].isdigit() or "broker_server" not in parts[1]:
             continue
         marker = "--run-dir "
         if marker not in parts[1]:

@@ -24,6 +24,31 @@ do — names, typed parameter schemas, budgets, flags, the goal) and an
 for the user guide, `CONSTITUTION.md` for the agent-facing manual, and `bench/`
 for benchmark harnesses and results.
 
+## Install
+
+Python 3.12 or newer, macOS or Linux (the daemon uses Unix sockets and
+resource limits). Three ways in, pick one:
+
+1. **No install.** `bin/assay` is the launcher: it runs the first `python3` on
+   PATH that has numpy 2.x, else `uv run` resolves the inline dependencies,
+   else it builds a private runtime once. `ASSAY_PYTHON=/path/to/python`
+   pins the interpreter.
+2. **Editable install, recommended for benchmark worlds.** The same venv holds
+   the adapter's dependencies, and the daemon inherits it:
+
+   ```bash
+   python3 -m venv .venv && .venv/bin/pip install -e '.[grid]'
+   .venv/bin/assay doctor            # or put .venv/bin on PATH
+   ```
+
+   `[grid]` adds pillow for frame worlds (rendering); a dict world does not
+   need it. `[arcagi]` adds the ARC-AGI-3 client. `[dev]` adds pytest.
+3. **The CLI alone.** `pipx install '.[grid]'` puts `assay` on PATH in its own
+   environment, for worlds whose adapters have no dependencies of their own.
+
+`assay doctor` checks the interpreter, the dependencies, the anchor directory,
+and, inside a run directory, the daemon, the adapter and the registry.
+
 ## Quickstart (60 seconds, no API keys)
 
 ```bash

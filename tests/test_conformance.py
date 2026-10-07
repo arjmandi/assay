@@ -82,7 +82,8 @@ def test_every_adapter_exposes_the_factory_contract():
 def test_counter_quickstart_verbatim_from_the_readme(tmp_path):
     """The README quickstart, command by command."""
     readme = (REPO / "README.md").read_text()
-    block = readme[readme.index("```bash") + 7 : readme.index("```", readme.index("```bash") + 7)]
+    quickstart = readme[readme.index("## Quickstart"):]
+    block = quickstart[quickstart.index("```bash") + 7 : quickstart.index("```", quickstart.index("```bash") + 7)]
     commands = [line.strip() for line in block.splitlines() if line.strip().startswith('"$ASSAY"')]
     assert len(commands) == 6, block  # start, act, act, channel declare, act, audit
     run = tmp_path / "demo"

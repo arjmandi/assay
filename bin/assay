@@ -7,7 +7,10 @@ export UV_CACHE_DIR="${TMPDIR:-/tmp}/assay-runtime-${UID:-0}/uv-cache"
 export UV_NO_PROGRESS=1
 mkdir -p "$MPLCONFIGDIR" "$UV_CACHE_DIR"
 
-compatible='import sys; assert sys.version_info >= (3, 12); import numpy, PIL; assert 2 <= int(numpy.__version__.split(".")[0]) < 3; assert 10 <= int(PIL.__version__.split(".")[0]) < 13'
+# The kernel needs Python 3.12+ and numpy 2.x. pillow is the frame-world extra
+# (`pip install -e '.[grid]'`); an interpreter without it still runs every dict
+# world, and a frame world says what is missing.
+compatible='import sys; assert sys.version_info >= (3, 12); import numpy; assert 2 <= int(numpy.__version__.split(".")[0]) < 3'
 
 # 1. ASSAY_PYTHON pins the interpreter: the one whose site-packages hold the
 #    adapter's dependencies (a benchmark venv). The daemon inherits it. A pin
@@ -16,7 +19,7 @@ if [[ -n "${ASSAY_PYTHON:-}" ]]; then
   if "$ASSAY_PYTHON" -c "$compatible" >/dev/null 2>&1; then
     exec "$ASSAY_PYTHON" "$repo_dir/src/assay_cli.py" "$@"
   fi
-  echo "assay: ASSAY_PYTHON=$ASSAY_PYTHON is not a Python 3.12+ with numpy 2.x and pillow 10 to 12; fix it or unset ASSAY_PYTHON" >&2
+  echo "assay: ASSAY_PYTHON=$ASSAY_PYTHON is not a Python 3.12+ with numpy 2.x; fix it or unset ASSAY_PYTHON" >&2
   exit 126
 fi
 
@@ -34,10 +37,10 @@ if ! command -v python3 >/dev/null 2>&1 || ! python3 -c 'import sys; assert sys.
   exit 127
 fi
 
-# 4. A python3 >= 3.12 without numpy or pillow: a private runtime under the
-#    temp directory, built once. It never holds adapter dependencies; for a
-#    benchmark world install the package (pip install -e .) into a venv and
-#    point ASSAY_PYTHON at it.
+# 4. A python3 >= 3.12 without numpy: a private runtime under the temp
+#    directory, built once, with numpy and pillow. It never holds adapter
+#    dependencies; for a benchmark world install the package
+#    (pip install -e '.[grid]') into a venv and point ASSAY_PYTHON at it.
 python_tag="$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')"
 runtime_root="${TMPDIR:-/tmp}/assay-runtime-${UID:-0}/python-v1-${python_tag}"
 managed_python="$runtime_root/bin/python"

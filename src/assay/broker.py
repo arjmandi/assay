@@ -366,15 +366,24 @@ def start_broker(paths: RunPaths) -> None:
     }
     atomic_json(paths.broker, descriptor)
     log = (paths.state / "broker.log").open("ab", buffering=0)
-    script = Path(__file__).resolve().parents[1] / "broker_server.py"
+    # The daemon is the package's own module, run by the interpreter that
+    # runs this CLI, with the package's parent directory on its path so the
+    # spawn works installed (site-packages) and uninstalled (src/) alike.
+    package_dir = str(Path(__file__).resolve().parents[1])
+    inherited = os.environ.get("PYTHONPATH")
+    environment = {
+        **os.environ,
+        "PYTHONPATH": package_dir + (os.pathsep + inherited if inherited else ""),
+    }
     process = subprocess.Popen(
-        [sys.executable, str(script), "--run-dir", str(paths.root)],
+        [sys.executable, "-m", "assay.broker_server", "--run-dir", str(paths.root)],
         cwd=str(paths.root),
         stdin=subprocess.DEVNULL,
         stdout=log,
         stderr=log,
         start_new_session=True,
         close_fds=True,
+        env=environment,
     )
     current = read_json(paths.broker, {})
     if current.get("status") == "STARTING":
@@ -419,8 +428,8 @@ def find_daemon(paths: RunPaths) -> DaemonInfo | None:
     that pid can belong to another process of the same user, and after a
     hand-deleted `.assay` there is no broker.json at all while the daemon still
     serves the socket. So the identity is the process table: a live process
-    whose command line runs `broker_server.py` with `--run-dir` naming this
-    directory. Portable across macOS and Linux through `ps`."""
+    whose command line runs the `broker_server` module with `--run-dir` naming
+    this directory. Portable across macOS and Linux through `ps`."""
     roots = {str(paths.root), str(paths.root.resolve())}
     try:
         listing = subprocess.run(
@@ -438,7 +447,7 @@ def find_daemon(paths: RunPaths) -> DaemonInfo | None:
         if len(parts) != 2 or not parts[0].isdigit():
             continue
         pid, command = int(parts[0]), parts[1]
-        if pid == own or "broker_server.py" not in command:
+        if pid == own or "broker_server" not in command:
             continue
         if any(f"--run-dir {root}" in command for root in roots) and _alive(pid):
             return DaemonInfo(pid=pid, command=command)

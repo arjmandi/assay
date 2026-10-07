@@ -19,7 +19,7 @@ which are world-specific and where they live.
 One directory is one run. The kernel keeps all run state under `.assay/` inside
 it (`core.RunPaths`). Two processes touch that state:
 
-- the **daemon**, `src/broker_server.py` running `broker.serve`, which owns the
+- the **daemon**, the package module `assay.broker_server` running `broker.serve`, which owns the
   world session for the life of the run. On a registry run every paid action is
   executed here, behind the gate, and journaled here before the reply leaves the
   socket. The daemon is the only process that spends.

@@ -132,6 +132,21 @@ Left on the experiment branch, deliberately:
   explaining each key. The conformance table in `docs/ARCHITECTURE.md` gains
   the template column.
 
+- Packaging. `pyproject.toml` names the distribution `assay-harness`
+  (import names `assay` and `assay_grid`), reads the version from
+  `assay.__version__`, requires Python 3.12 or newer and numpy 2.x, puts
+  pillow in the `grid` extra (frame worlds only), the ARC client in
+  `arcagi`, pytest in `dev`, and installs the `assay` entry point. Three
+  documented install paths: the launcher with no install, an editable
+  install into a venv (recommended for benchmark worlds, the daemon inherits
+  it), and pipx for the CLI alone. The daemon is the package module
+  `assay.broker_server`, spawned as `python -m assay.broker_server` with the
+  package's parent on the path, so an installed package and a checkout
+  spawn it the same way. `bin/assay` demands numpy only; `assay doctor`
+  reports a missing pillow as a warning naming the extra. `.gitignore`
+  covers `.venv/`, `.scratch/`, build output and, so run state is never
+  committed, `.assay/`.
+
 ### Changed
 
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds

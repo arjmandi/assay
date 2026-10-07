@@ -716,13 +716,19 @@ def _doctor(paths: RunPaths) -> int:
     pinned = os.getenv("ASSAY_PYTHON")
     if pinned:
         note("ok", f"ASSAY_PYTHON={pinned}")
-    for name, module, low, high in (("numpy", "numpy", 2, 3), ("pillow", "PIL", 10, 13)):
+    for name, module, low, high, needed_by in (
+        ("numpy", "numpy", 2, 3, "the kernel"),
+        ("pillow", "PIL", 10, 13, "frame worlds only (pip install 'assay-harness[grid]')"),
+    ):
         try:
             loaded = __import__(module)
             major = int(str(loaded.__version__).split(".")[0])
             note("ok" if low <= major < high else "FAIL", f"{name} {loaded.__version__}")
         except ImportError:
-            note("FAIL", f"{name} is not importable by {sys.executable}")
+            note(
+                "FAIL" if needed_by == "the kernel" else "WARN",
+                f"{name} is not importable by {sys.executable}; needed by {needed_by}",
+            )
     socket_path = str(paths.socket)
     note(
         "ok" if len(socket_path.encode()) <= 100 else "FAIL",
