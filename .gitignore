@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+# mypy's incremental cache, written by the strict run CI makes (#27).
+.mypy_cache/
 # Hypothesis keeps its character tables and mined constants here; the example database is off.
 .hypothesis/
 .DS_Store
