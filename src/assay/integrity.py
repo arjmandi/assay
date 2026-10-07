@@ -214,6 +214,14 @@ def audit(paths: RunPaths) -> dict[str, Any]:
         event_id for event_id in ungated if by_id.get(event_id, {}).get("gate_optional")
     ]
     mutations = load_jsonl(paths.mutations)
+    journaled = {
+        int(event["mutation_id"]) for event in events if event.get("mutation_id") is not None
+    }
+    pending = [
+        int(item["mutation_id"])
+        for item in mutations
+        if item.get("mutation_id") is not None and int(item["mutation_id"]) not in journaled
+    ]
     recovered = [
         int(event["id"])
         for event in events
@@ -231,6 +239,7 @@ def audit(paths: RunPaths) -> dict[str, Any]:
         "ungated": ungated,
         "ungated_permitted": ungated_permitted,
         "recovered_orphans": recovered,
+        "mutations_pending": pending,
         "invalid_for_scoring": bool(ungated) or not contiguous
         or chain_state == "DIVERGED" or anchor_state == "DIVERGED",
         "problems": problems,
@@ -260,6 +269,13 @@ def audit_lines(report: Mapping[str, Any]) -> list[str]:
         lines.append(
             f"AUDIT | recovered orphan events {report['recovered_orphans'][:8]} "
             "(spend journaled by the broker; CLI died before recording)"
+        )
+    if report.get("mutations_pending"):
+        pending = report["mutations_pending"]
+        lines.append(
+            f"AUDIT | {len(pending)} spend(s) in the mutation journal not yet in the "
+            f"timeline {pending[:8]} (a step in flight, or a crash between spend and "
+            "record; `assay start` recovers them once the daemon is gone)"
         )
     for problem in report["problems"]:
         lines.append(f"AUDIT | problem: {problem}")

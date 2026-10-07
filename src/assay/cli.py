@@ -406,10 +406,21 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             raise AssayError(
                 f"this directory already owns a {existing_mode} run; mode cannot be changed in place"
             )
-        recovered = reconcile_mutations(paths)
+        # Orphan recovery (a spend the daemon journaled in mutations.jsonl
+        # before anyone appended its event) runs here and only here, and only
+        # once the daemon is confirmed dead or absent. While the daemon lives,
+        # a mutation without an event is a step in flight: recovering it from
+        # another process would double-count it the moment the daemon appends
+        # its own graded event. The numbered-action path is the one exception
+        # (its daemon never writes events, the CLI is the only writer).
+        recovered = 0
         owner = read_json(paths.broker, {})
         if owner.get("status") == "FINISHED":
+            if find_daemon(paths) is None:
+                recovered = reconcile_mutations(paths)
             print(f"RESUMED | {requested} | completed run")
+            if recovered:
+                print(f"JOURNAL | recovered {recovered} paid action(s) into timeline")
             print(status_text(paths))
             return
         if is_remote_config(existing):
@@ -419,6 +430,10 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                     "REMOTE_LEASE_EXPIRED | no live action was recorded for at least 15 minutes. The remote competition run is not recoverable; preserve this directory and use a fresh one"
                 )
             if not broker_ping(paths):
+                if find_daemon(paths) is None:
+                    # Real spends against the remote world: journal them
+                    # before refusing, so the record is complete.
+                    reconcile_mutations(paths)
                 raise AssayError(
                     "the remote competition owner is unavailable and cannot be reconstructed; preserve this directory and use a fresh one"
                 )
@@ -453,10 +468,19 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 if daemon is not None:
                     # Alive but unreachable (its socket is gone): stop it
                     # cleanly before replaying a fresh one.
-                    stop_broker(paths)
+                    result = stop_broker(paths)
+                    if not result["stopped"]:
+                        raise AssayError(
+                            f"the environment owner (pid {daemon.pid}) is "
+                            f"{result['reason']}; wait and rerun `assay start`"
+                        )
+                # Confirmed dead or absent: safe to recover orphaned spends.
+                recovered = reconcile_mutations(paths)
                 paths.socket.unlink(missing_ok=True)
                 start_broker(paths)
                 restarted = True
+            elif read_json(paths.registry, None) is None:
+                recovered = reconcile_mutations(paths)
             if not broker_matches_latest_event(paths):
                 raise AssayError(
                     "LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the latest timeline event"
@@ -668,7 +692,6 @@ def main() -> None:
                 else args.command,
             ),
         ):
-            reconcile_mutations(paths)
             if args.command == "status":
                 print(status_text(paths, history=args.history))
             elif args.command == "view":

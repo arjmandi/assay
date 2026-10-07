@@ -65,6 +65,18 @@ Left on the experiment branch, deliberately:
   action. A fresh start in a directory an orphaned daemon still serves is
   refused until `assay stop`. The liveness probe's timeout honors
   `ASSAY_BROKER_TIMEOUT` within 0.5 to 10 seconds.
+- Reconcile race (ranked fix 2). Orphan recovery (`reconcile_mutations`) ran
+  on every CLI command under the CLI's own lock, which the daemon never takes.
+  After a client died, a concurrent `assay status` could recover the mutation
+  the daemon was still grading, and the daemon then appended its own graded
+  event for the same mutation id: the run became both invalid and
+  double-counted. Recovery now runs only in `assay start`, and only once the
+  daemon is confirmed dead or absent (the ungated numbered-action path, whose
+  daemon never writes events, is the one exception). The audit reports a spend
+  that is in the mutation journal but not yet in the timeline as information,
+  never as a verdict. No cross-process lock was added around the daemon's
+  write window on purpose: it would block `assay status` for the length of a
+  slow step, and with recovery confined to a dead daemon it is not needed.
 
 ### Regression gates
 
