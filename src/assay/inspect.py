@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 from .core import AssayError, canonical_action, load_jsonl, read_json
 from .evidence import history_lines
 from .extras import kind_for
+from .meters import level_action_count, recent_predictions, sharpness
 from .records import Event, Receipt
 from .registry import (
     budget_line,
@@ -59,7 +60,8 @@ def _claim_meter_lines(run: Run) -> list[str]:
     rule = stats_rule(stats)
     entries = stats_entries(stats)
     vacuous = vacuous_hashes(stats)
-    graded_total = coerced = invalid = 0
+    sharp = sharpness(run.events)
+    invalid = 0
     counts: dict[str, list[int]] = {
         "world_model": [0, 0],
         "gamble": [0, 0],
@@ -69,12 +71,10 @@ def _claim_meter_lines(run: Run) -> list[str]:
             kind = item.kind
             if kind == "note":
                 continue
-            graded_total += 1
             if item.invalid or item.ungradable:
                 invalid += 1
                 continue
             if kind == "coerced":
-                coerced += 1
                 continue  # excluded from the capability meter
             if item.machine:
                 continue  # kernel-generated predictions never meter the agent
@@ -90,7 +90,7 @@ def _claim_meter_lines(run: Run) -> list[str]:
             slot[0] += 1
             if not item.ok:
                 slot[1] += 1
-    if not graded_total:
+    if not sharp.graded:
         return []
 
     def rate(slot: list[int]) -> str:
@@ -99,11 +99,10 @@ def _claim_meter_lines(run: Run) -> list[str]:
             return "0/0"
         return f"{missed}/{graded} ({100 * missed / graded:.1f}%)"
 
-    sharp = graded_total - coerced
     lines = [
         f"CLAIMS | world-model misses {rate(counts['world_model'])} | "
         f"gamble misses {rate(counts['gamble'])} | "
-        f"sharpness {sharp}/{graded_total} ({100 * sharp / graded_total:.0f}%) | "
+        f"sharpness {sharp.sharp}/{sharp.graded} ({100 * sharp.sharp / sharp.graded:.0f}%) | "
         f"invalid {invalid}"
     ]
     for digest in sorted(vacuous):
@@ -140,24 +139,6 @@ def _bounded(items: list[str], limit: int, *, preserve_ends: bool = False) -> li
         right = limit - left
         return items[:left] + [f"  … {omitted} more"] + items[-right:]
     return [f"  … {omitted} earlier"] + items[-limit:]
-
-
-def _level_action_count(events: Sequence[Event]) -> int:
-    completed = events[-1].levels_completed
-    count = 0
-    for event in reversed(events):
-        if event.levels_completed != completed:
-            break
-        if event.counts_action:
-            count += 1
-    return count
-
-
-def _recent_predictions(events: Sequence[Event], window: int = 10) -> tuple[int, int]:
-    graded = [event for event in events if event.predict_ok is not None]
-    recent = graded[-window:]
-    hits = sum(1 for event in recent if event.predict_ok)
-    return hits, len(recent)
 
 
 def _demotion_banner(run: Run, event: Event) -> list[str]:
@@ -287,8 +268,8 @@ def status_text(run: Run, *, history: int = 8) -> str:
     registry = run.registry
     paid = sum(1 for item in events if item.counts_action)
     game_id = str(run.config.get("game_id", "unknown"))
-    level_actions = _level_action_count(events)
-    hits, total = _recent_predictions(events)
+    level_actions = level_action_count(events)
+    hits, total = recent_predictions(events)
     prediction_summary = (
         f"predictions {hits}/{total} ✓ over the last {total}"
         if total

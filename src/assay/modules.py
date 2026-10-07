@@ -82,12 +82,12 @@ from .core import (
     import_path,
     read_json,
 )
+from .meters import level_action_count, recent_predictions, sharpness, unit_indices
 from .records import Event
+from .registry import MODULE_MODES
 
 if TYPE_CHECKING:
     from .run import Run
-
-_MODES = ("off", "advise", "block")
 
 
 class Module(Protocol):
@@ -146,26 +146,6 @@ def _unit(view: ModuleView) -> str:
     return unit_noun(view.events[-1].win_levels) if view.events else "unit"
 
 
-def _level_action_count(events: Sequence[Event]) -> int:
-    if not events:
-        return 0
-    completed = events[-1].levels_completed
-    count = 0
-    for event in reversed(events):
-        if event.levels_completed != completed:
-            break
-        if event.counts_action:
-            count += 1
-    return count
-
-
-def _recent_predictions(events: Sequence[Event], window: int = 10) -> tuple[int, int]:
-    graded = [event for event in events if event.predict_ok is not None]
-    recent = graded[-window:]
-    hits = sum(1 for event in recent if event.predict_ok)
-    return hits, len(recent)
-
-
 class _WallSpend:
     NAME = "wall_spend"
     CONSTITUTION = (
@@ -175,7 +155,7 @@ class _WallSpend:
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        level_actions = _level_action_count(view.events)
+        level_actions = level_action_count(view.events)
         if level_actions >= 25:
             return (
                 f"{level_actions} paid actions on this {_unit(view)}; stop manual "
@@ -188,7 +168,7 @@ class _WallSpend:
         return None
 
     def telemetry(self, view: ModuleView) -> dict[str, Any]:
-        return {"level_actions": _level_action_count(view.events)}
+        return {"level_actions": level_action_count(view.events)}
 
 
 class _MissStreak:
@@ -200,7 +180,7 @@ class _MissStreak:
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        hits, total = _recent_predictions(view.events)
+        hits, total = recent_predictions(view.events)
         misses = total - hits
         if misses >= 3:
             return (
@@ -213,7 +193,7 @@ class _MissStreak:
         return None
 
     def telemetry(self, view: ModuleView) -> dict[str, Any]:
-        hits, total = _recent_predictions(view.events)
+        hits, total = recent_predictions(view.events)
         return {"recent_hits": hits, "recent_graded": total}
 
 
@@ -280,17 +260,13 @@ class _Sharpness:
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        graded = coerced = 0
-        for event in view.events:
-            for item in event.grade:
-                if item.kind == "note" or item.machine:
-                    continue
-                graded += 1
-                if item.kind == "coerced":
-                    coerced += 1
-        if graded >= 20 and coerced * 2 > graded:
+        # The one count the CLAIMS line prints, over the agent's own claims:
+        # a model-plan step's machine prediction is never its vagueness.
+        counts = sharpness(view.events)
+        graded = counts.agent_graded
+        if graded >= 20 and counts.coerced * 2 > graded:
             return (
-                f"sharpness is {graded - coerced}/{graded}: over half your claims "
+                f"sharpness is {graded - counts.coerced}/{graded}: over half your claims "
                 "are coerced free text; they earn nothing. State checkable claims."
             )
         return None
@@ -390,20 +366,6 @@ COVERAGE_SENTINELS = frozenset(
 )
 
 
-def _unit_indices(events: Sequence[Event]) -> list[int]:
-    """Indices of the events on the current progress unit, in order (the
-    same walk as _level_action_count)."""
-    if not events:
-        return []
-    completed = events[-1].levels_completed
-    indices: list[int] = []
-    for index in range(len(events) - 1, -1, -1):
-        if events[index].levels_completed != completed:
-            break
-        indices.append(index)
-    return list(reversed(indices))
-
-
 def _event_changed(events: Sequence[Event], index: int) -> bool:
     """Did paid event `index` change the world? The graded change or noop
     outcome when one exists, else the settled observation compared with the
@@ -461,7 +423,7 @@ def _advertised(events: Sequence[Event]) -> list[str]:
 
 def coverage_ledger(events: Sequence[Event]) -> dict[str, Any]:
     """The coverage facts for the current progress unit."""
-    indices = _unit_indices(events)
+    indices = unit_indices(events)
     paid = [index for index in indices if events[index].counts_action]
     plays: dict[str, list[int]] = {}
     for index in paid:
@@ -886,7 +848,7 @@ def active_modules(run: Run) -> list[tuple[Module, str]]:
         output: list[tuple[Module, str]] = []
         for module in (*BUILTINS, *_load_external(run)):
             mode = str(modes.get(module.NAME, module.MODE))
-            if mode not in _MODES:
+            if mode not in MODULE_MODES:
                 mode = module.MODE
             if mode != "off":
                 output.append((module, mode))

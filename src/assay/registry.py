@@ -93,7 +93,7 @@ _ACTION_KEYS = {
     "description",
 }
 _PARAM_KEYS = {"type", "min", "max", "enum"}
-_MODULE_MODES = ("off", "advise", "block")
+MODULE_MODES = ("off", "advise", "block")
 _GATES = ("required", "optional", "off")
 
 DEFAULT_HAND_CAP = 3       # the batching law's kernel default; registry-overridable
@@ -234,11 +234,11 @@ def validate_registry(raw: Any) -> dict[str, Any]:
     modes = raw.get("module_modes")
     if modes is not None:
         if not isinstance(modes, Mapping) or not all(
-            isinstance(key, str) and value in _MODULE_MODES
+            isinstance(key, str) and value in MODULE_MODES
             for key, value in modes.items()
         ):
             raise AssayError(
-                f"module_modes must map module names to one of {list(_MODULE_MODES)}"
+                f"module_modes must map module names to one of {list(MODULE_MODES)}"
             )
         output["module_modes"] = dict(modes)
     secrets = raw.get("secrets")
