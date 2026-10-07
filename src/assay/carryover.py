@@ -7,17 +7,17 @@ and the import discipline demotes everything:
 
 - imported Verified lines land in .assay/PRIOR-NOTES.md under a FOREIGN header,
   demoted to Assumed until a CURRENT-run event id supports them;
-- imported verifier sources land in imported_verifiers/ as candidate files —
+- imported verifier sources land in imported_verifiers/ as candidate files;
   they earn standing only by being claimed (`verify:`) and graded again;
 - an imported model NEVER carries batching rights: the fit record does not
   travel; rights are re-earned by `assay model replay` on the current journal;
 - HAZARD TAGS are the one distinguished class (the carve-out the rationality
-  check forced): on a matching registration they import ACTIVE — the
+  check forced): on a matching registration they import ACTIVE: the
   declaration demand fires before the hazard does, which is the whole point;
   on a non-matching registration they import inactive and are listed foreign.
 
 The journal digest v1 is per-actuator outcome statistics replayed from the
-journal: attempts, split miss rates, invalid counts — plus the journal's
+journal: attempts, split miss rates, invalid counts, plus the journal's
 id-range and content hash so provenance is checkable.
 """
 
@@ -220,12 +220,12 @@ def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
     notes = str(knowledge.get("notes") or "")
     if notes.strip():
         header = (
-            "# PRIOR-NOTES (FOREIGN — imported knowledge)\n\n"
+            "# PRIOR-NOTES (FOREIGN: imported knowledge)\n\n"
             f"Source: {knowledge.get('game_id')} | exported journal "
             f"{ (knowledge.get('digest') or {}).get('events') } events | sha {sha[:12]}\n\n"
             "EVERY 'Verified' line below is DEMOTED TO ASSUMED here: trust it only\n"
             "after a CURRENT-run event id supports it. Graded mechanics and code\n"
-            "transfer; prose plans rot — re-derive the plan from the live frame.\n\n"
+            "transfer; prose plans rot: re-derive the plan from the live frame.\n\n"
             "---\n\n"
         )
         (paths.state / PRIOR_NOTES).write_text(header + notes)
@@ -260,7 +260,7 @@ def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
                 "evidence_event": tag.get("evidence_event"),
                 "origin": "import",
                 # THE CARVE-OUT: on a matching registration the demand imports
-                # ACTIVE — it must fire before the hazard does, not after.
+                # ACTIVE: it must fire before the hazard does, not after.
                 "active": bool(matching),
             }
             tags.append(record)
@@ -296,7 +296,7 @@ def foreign_lines(paths: RunPaths) -> list[str]:
     digest = knowledge.get("digest") or {}
     lines = [
         f"FOREIGN | imported knowledge from world {knowledge.get('game_id')} "
-        f"({digest.get('paid')} paid actions, final {digest.get('final_state')}) — "
+        f"({digest.get('paid')} paid actions, final {digest.get('final_state')}); "
         "everything below is demoted until re-earned here"
     ]
     if (paths.state / PRIOR_NOTES).exists():
@@ -306,7 +306,7 @@ def foreign_lines(paths: RunPaths) -> list[str]:
     if (paths.root / "imported_verifiers").is_dir():
         count = len(list((paths.root / "imported_verifiers").glob("*.py")))
         lines.append(
-            f"FOREIGN | {count} verifier candidate(s) in imported_verifiers/ — they "
+            f"FOREIGN | {count} verifier candidate(s) in imported_verifiers/; they "
             "earn standing only by being claimed and graded again"
         )
     if (paths.root / "imported_model.py").exists():
@@ -318,6 +318,6 @@ def foreign_lines(paths: RunPaths) -> list[str]:
     if active:
         lines.append(
             f"FOREIGN | {active} imported hazard tag(s) ACTIVE (declaration demand "
-            "retained on import — the carve-out)"
+            "retained on import, the carve-out)"
         )
     return lines

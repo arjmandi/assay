@@ -406,7 +406,7 @@ def _write_notes(paths: RunPaths, game_id: str) -> None:
     if paths.notes.exists():
         return
     paths.notes.write_text(
-        f"# Notes — {game_id}\n"
+        f"# Notes: {game_id}\n"
         "\n"
         "## Verified (cite event ids)\n"
         "\n"
@@ -635,14 +635,14 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         raise
     if owner_token is not None and token_file is not None:
         print(
-            f"OWNER TOKEN | written to {token_file} (mode 0600) — only its hash is "
+            f"OWNER TOKEN | written to {token_file} (mode 0600) | only its hash is "
             "stored in the run; pass the file's content as --token for "
             "ratifications, approvals and waivers (the agent proposes, never "
             "self-ratifies)"
         )
     elif owner_token is not None:
         print(
-            f"OWNER TOKEN | {owner_token} — printed once, only its hash is stored; "
+            f"OWNER TOKEN | {owner_token} | printed once, only its hash is stored; "
             "the launcher/owner keeps it OUTSIDE the run directory (ratifications, "
             "approvals, waivers require it; the agent proposes, never self-ratifies)"
         )
@@ -662,24 +662,24 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     print(status_text(paths))
     if gate_mode(registry_spec) == "optional":
         print(
-            "USE | gate: optional — `assay act` runs with or without --predict "
+            "USE | gate: optional; `assay act` runs with or without --predict "
             "(an unpredicted act is journaled UNGATED; the audit marks the run "
             "invalid for scoring); parameters go as `assay act NAME pname=value ...`; "
-            "schemas are in REGISTRY above, semantics are never given — learn them by acting"
+            "schemas are in REGISTRY above, semantics are never given: learn them by acting"
         )
     elif gate_mode(registry_spec) == "off":
         print(
-            "USE | gate: off — `assay act NAME pname=value ...` with no --predict "
+            "USE | gate: off; `assay act NAME pname=value ...` with no --predict "
             "(predictions are not accepted on this run and nothing is graded; every "
             "paid action is journaled UNGATED and the audit marks the run invalid "
-            "for scoring); schemas are in REGISTRY above, semantics are never given "
-            "— learn them by acting"
+            "for scoring); schemas are in REGISTRY above, semantics are never given: "
+            "learn them by acting"
         )
     else:
         print(
             'USE | every `assay act` needs --predict "<claims>"; parameters go as '
             "`assay act NAME pname=value ...`; schemas are in REGISTRY above, "
-            "semantics are never given — learn them by acting"
+            "semantics are never given: learn them by acting"
         )
 
 
@@ -913,7 +913,7 @@ def main() -> None:
                         paths, args.name, path=args.path, file=args.file
                     )
                     print(
-                        f"CHANNEL | declared {args.name} ({spec['form']}) — claims "
+                        f"CHANNEL | declared {args.name} ({spec['form']}); claims "
                         f'like `ch {args.name} = V` now parse and grade'
                     )
                 else:
@@ -930,7 +930,7 @@ def main() -> None:
                         print(f"  {name}: {spec['form']} {detail}")
             elif args.command == "model":
                 if args.model_command == "init":
-                    print(f"CREATED | {init_model(paths)} — declare CHANNELS, define next()")
+                    print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
                 elif args.model_command == "replay":
                     record = replay_model(paths)
                     print("\n".join(fit_lines(record)))
@@ -947,16 +947,16 @@ def main() -> None:
                             f"SOLVE | plan found | {len(result['actions'])} steps | "
                             f"nodes {result['nodes']}"
                         )
-                        print("ACTIONS | " + " → ".join(result["actions"]))
+                        print("ACTIONS | " + " -> ".join(result["actions"]))
                         print(
-                            "PLAN | .assay/model_plan.json — execute with "
+                            "PLAN | .assay/model_plan.json; execute with "
                             "`assay commit @.assay/model_plan.json` (needs replay-fit "
                             "promotion on the current journal)"
                         )
                     else:
                         print(
-                            f"SOLVE | no plan inside the model | nodes {result['nodes']} "
-                            "— actions() or next() are too narrow, or the goal needs "
+                            f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
+                            "actions() or next() are too narrow, or the goal needs "
                             "something unmodeled"
                         )
             elif args.command == "module":
@@ -991,7 +991,7 @@ def main() -> None:
                 if args.goal_command == "propose":
                     record = propose_goal(paths, args.text, args.because)
                     print(
-                        f"GOAL | proposal #{record['id']} journaled — awaiting owner "
+                        f"GOAL | proposal #{record['id']} journaled, awaiting owner "
                         "ratification (`assay goal ratify ID --token ...`)"
                     )
                 elif args.goal_command == "list":
@@ -1001,17 +1001,17 @@ def main() -> None:
                     for item in proposals:
                         print(
                             f"  #{item['id']} [{item['status']}] {item['text']}"
-                            + (f" — {item['because']}" if item.get("because") else "")
+                            + (f"; {item['because']}" if item.get("because") else "")
                         )
                 else:
                     proposal = ratify_goal(paths, args.id, args.token)
                     print(
-                        f"GOAL | ratified #{args.id}: {proposal['text']} — status now "
+                        f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
                         "re-presents it as the standing goal"
                     )
             elif args.command == "export":
                 target = export_knowledge(paths, args.out)
-                print(f"EXPORTED | {target} — import with `assay start WORLD_ID --import {target.name}`")
+                print(f"EXPORTED | {target}; import with `assay start WORLD_ID --import {target.name}`")
             elif args.command == "spend":
                 append_jsonl(
                     paths.activity,

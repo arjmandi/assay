@@ -62,7 +62,7 @@ def delta_lines(before: Any, after: Any, limit: int = 24) -> list[str]:
     for path, value in delta["removed"]:
         lines.append(f"- {path} (was {_short(value)})")
     for path, old, new in delta["changed"]:
-        lines.append(f"~ {path}: {_short(old)} → {_short(new)}")
+        lines.append(f"~ {path}: {_short(old)} -> {_short(new)}")
     if not lines:
         return ["no observed change"]
     if len(lines) > limit:

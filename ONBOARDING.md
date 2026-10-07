@@ -72,7 +72,7 @@ mkdir demo && cd demo
     --registry "<repo>/examples/example_registry.json"
 
 "$ASSAY" act INC amount=1 --predict "change"        # graded ✓
-"$ASSAY" act NOOP --predict "change"                # graded ✗ — with the counter-fact
+"$ASSAY" act NOOP --predict "change"                # graded ✗, with the counter-fact
 "$ASSAY" channel declare counter --path counter     # register a named reading
 "$ASSAY" act INC amount=2 --predict "ch counter = 3; win"   # WIN
 "$ASSAY" audit                                      # chain + integrity verdict
@@ -108,7 +108,7 @@ Line by line:
   nothing. The receipt begins
 
   ```
-  OUTCOME | SURPRISE | prediction missed: change — no observed change (0 keys)
+  OUTCOME | SURPRISE | prediction missed: change | no observed change (0 keys)
   ```
 
   The counter-fact is the machine's statement of what happened. A miss is

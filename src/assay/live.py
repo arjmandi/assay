@@ -146,7 +146,7 @@ def _notes_hard_stop(paths: RunPaths, registry: Mapping[str, Any] | None) -> Non
         return
     if size > 2 * cap:
         raise AssayError(
-            f"NOTES.md is {size} chars — more than twice the {cap}-char cap. One "
+            f"NOTES.md is {size} chars, more than twice the {cap}-char cap. One "
             "page is the contract: archive detail elsewhere and trim before the "
             "next paid action (overflow is auto-archived when a progress unit completes)"
         )
@@ -186,7 +186,7 @@ def _enforce_registry_gates(
                     f"{name} is registered destructive and refuses without a "
                     'declared worst case and recovery plan: add --declare '
                     '"worst_case=<what the worst outcome is>" --declare '
-                    '"recovery=<how the run recovers>" — the demand is structural '
+                    '"recovery=<how the run recovers>"; the demand is structural '
                     "(named, non-empty), never a demand for optimism; declaring "
                     "always unlocks the action"
                 )
@@ -345,10 +345,10 @@ def execute_action(
         outcome = "LEVEL_COMPLETE"
         detail = (
             f"{unit_noun(event['win_levels'])} {int(event['level_before']) + 1} complete; "
-            f"notes archived — re-verify carried assumptions in the new {unit_noun(event['win_levels'])}"
+            f"notes archived; re-verify carried assumptions in the new {unit_noun(event['win_levels'])}"
         )
         if not ok:
-            detail += "; prediction also missed — treat the mechanics as unproven"
+            detail += "; prediction also missed: treat the mechanics as unproven"
     elif event["state"] == "GAME_OVER":
         outcome = "GAME_OVER"
         detail = (
@@ -358,7 +358,7 @@ def execute_action(
     elif ungated:
         outcome = "UNGATED"
         detail = (
-            f"no prediction (gate: {gate_mode(registry)}); nothing graded — the audit "
+            f"no prediction (gate: {gate_mode(registry)}); nothing graded; the audit "
             "counts this event as UNGATED"
         )
     elif missed:
@@ -400,7 +400,7 @@ def execute_action(
 def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
     action, separator, predict = raw.partition("::")
     if allow_bare and action.strip() and not predict.strip():
-        return action.strip(), ""  # gate: optional — an unpredicted step
+        return action.strip(), ""  # gate: optional, an unpredicted step
     if not separator or not action.strip() or not predict.strip():
         raise AssayError(
             'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
@@ -439,7 +439,7 @@ def execute_steps(
         raise AssayError(
             f"the batching law caps hand-written batches at {cap} steps "
             f"(got {len(raw_steps)}); longer batches belong to a replay-fit model "
-            f"plan (`assay model replay` then `assay model solve`) — currently: {reason}"
+            f"plan (`assay model replay` then `assay model solve`); currently: {reason}"
         )
     mode = gate_mode(registry)
     bare_ok = mode in _UNGATED_MARKER
@@ -530,7 +530,7 @@ def execute_steps(
                 f"{canonical_action(event)}{discarded}"
             )
             if not ok:
-                detail += "; prediction also missed — treat the mechanics as unproven"
+                detail += "; prediction also missed: treat the mechanics as unproven"
             break
         if event["state"] == "GAME_OVER":
             outcome = "GAME_OVER"
@@ -695,7 +695,7 @@ def execute_model_plan(
             outcome = "SURPRISE"
             detail = (
                 f"model-plan step {index + 1} diverged: {problem}; the model is "
-                f"contradicted — rerun `assay model replay`{discarded}"
+                f"contradicted; rerun `assay model replay`{discarded}"
             )
             break
     if last_warning:

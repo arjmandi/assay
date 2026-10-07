@@ -1,4 +1,4 @@
-"""Behavior modules — declare → enforce → grade units.
+"""Behavior modules: declare -> enforce -> grade units.
 
 A module is constitution text + a trigger + a demand schema + a mode + telemetry:
 
@@ -6,7 +6,7 @@ A module is constitution text + a trigger + a demand schema + a mode + telemetry
     CONSTITUTION: str            # one paragraph of way-of-thinking text
     MODE: "advise"|"block"   # default; registry module_modes overrides per run
     trigger(view, pending) -> str | None      # advisory message when it fires
-    demand(view, pending) -> dict[str,str] | None   # {field: why} — structural
+    demand(view, pending) -> dict[str,str] | None   # {field: why}, structural
     observe(view, event) -> None              # optional: learn from outcomes
     telemetry(view) -> dict                    # free counters
 
@@ -29,18 +29,18 @@ or the owner installed); switching back is a one-line change in _load_external.
 
 Built-ins (the standing nudge table plus the first structural module):
 
-- wall_spend    — spend escalation on one progress unit (the spend-judgment tier)
-- miss_streak   — repeated prediction misses mean the notes story is wrong
-- null_forensics— a predicted-change/observed-nothing verdict flags the raw
+- wall_spend:     spend escalation on one progress unit (the spend-judgment tier)
+- miss_streak:    repeated prediction misses mean the notes story is wrong
+- null_forensics: a predicted-change/observed-nothing verdict flags the raw
                   observation for inspection before the hypothesis is closed
-- park_with_test— a reset should leave a re-entry test in the notes
-- sharpness     — a low sharp-claim ratio earns nothing
-- hazard        — effect-signature hazard tags: entered-loss-state
+- park_with_test: a reset should leave a re-entry test in the notes
+- sharpness:      a low sharp-claim ratio earns nothing
+- hazard:         effect-signature hazard tags: entered-loss-state
                   and milestone-drop transitions tag the action class; a tagged
                   class gets the worst-case + recovery declaration demand on
                   its next use. Tags are permanent for the run and export as
                   the distinguished carryover class.
-- coverage_audit— the coverage-audit protocol as standing machinery: which
+- coverage_audit: the coverage-audit protocol as standing machinery: which
                   available actions were never tried or never productive on
                   this progress unit, a stall, a halt on re-issuing the move
                   that just graded FALSE, a halt on a short loop of the same
@@ -132,7 +132,7 @@ class _WallSpend:
         level_actions = _level_action_count(view.events)
         if level_actions >= 25:
             return (
-                f"{level_actions} paid actions on this {_unit(view)} — stop manual "
+                f"{level_actions} paid actions on this {_unit(view)}; stop manual "
                 "probing; model the mechanics offline (`assay python`, or the "
                 "`assay model` tier: replay-verified models earn batching rights)"
             )
@@ -158,7 +158,7 @@ class _MissStreak:
         misses = total - hits
         if misses >= 3:
             return (
-                f"{misses} of the last {total} predictions missed — the mechanics "
+                f"{misses} of the last {total} predictions missed: the mechanics "
                 "story in NOTES.md is wrong; fix it before spending more actions"
             )
         return None
@@ -188,7 +188,7 @@ class _NullForensics:
             for item in event.get("grade") or ():
                 if item.get("kind") == "change" and not item.get("ok"):
                     return (
-                        f"e{event['id']} predicted change and observed nothing — "
+                        f"e{event['id']} predicted change and observed nothing; "
                         "run `assay view` on it and read the raw observation before "
                         "closing that hypothesis"
                     )
@@ -213,7 +213,7 @@ class _ParkWithTest:
     def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
         if pending and pending.get("kind") == "reset":
             return (
-                "resetting — record in NOTES.md what would have to be true to "
+                "resetting: record in NOTES.md what would have to be true to "
                 "revisit this state (park the line WITH its test)"
             )
         return None
@@ -245,7 +245,7 @@ class _Sharpness:
                     coerced += 1
         if graded >= 20 and coerced * 2 > graded:
             return (
-                f"sharpness is {graded - coerced}/{graded} — over half your claims "
+                f"sharpness is {graded - coerced}/{graded}: over half your claims "
                 "are coerced free text; they earn nothing. State checkable claims."
             )
         return None
@@ -282,7 +282,7 @@ class _Hazard:
                 "evidence_event") is not None else ""
             return (
                 f"{(pending or {}).get('name')} matches a recorded hazard signature "
-                f"{tag.get('signature') if tag else ''}{evidence} — declare "
+                f"{tag.get('signature') if tag else ''}{evidence}; declare "
                 "--declare worst_case=... and --declare recovery=... with this use"
             )
         return None
@@ -865,7 +865,7 @@ def consult_modules(
             reasons = "; ".join(f"{field}: {why}" for field, why in sorted(demands.items()))
             raise AssayError(
                 f"MODULE {module.NAME} | declaration demanded before this action: "
-                f"{wanted} ({reasons}) — the demand is structural; it never bans"
+                f"{wanted} ({reasons}); the demand is structural; it never bans"
             )
         message = module.trigger(view, pending)
         if message:
@@ -892,7 +892,7 @@ def advisory_lines(
     registry: Mapping[str, Any] | None,
     events: Sequence[Mapping[str, Any]],
 ) -> list[str]:
-    """Status-time advisories (no pending action) — the old nudge surface."""
+    """Status-time advisories (no pending action), the old nudge surface."""
     view = JournalView(paths=paths, events=events, registry=registry)
     lines: list[str] = []
     for module, _ in active_modules(paths, registry):

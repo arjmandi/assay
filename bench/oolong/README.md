@@ -50,7 +50,7 @@ The dataset's own terms apply to the text a fetch produces (`NOTICE`). The
 length-ladder packs were taken out of the repository and its history before
 publication (1.2.0, owner decision O3).
 
-`RESEARCH.md` is the source dossier — what OOLONG is (synth/real splits,
+`RESEARCH.md` is the source dossier: what OOLONG is (synth/real splits,
 scoring, kin like BABILong), the published model-only leaderboard, how Prime
 Agent benchmarked it (harness vs model axis, their controls), cost and duration
 estimates, and the two ASSAY framings: the **query-framed corpus pack** with the

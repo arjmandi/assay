@@ -1,4 +1,4 @@
-# Evidence pack №1 — ARC-AGI-3
+# Evidence pack №1: ARC-AGI-3
 
 The first evidence pack published under the `assay-journal-v1` standard: the
 25-game public-set record of the ASSAY referee harness, made independently
@@ -7,21 +7,21 @@ checkable.
 **The result, and where to check it without trusting anyone:** set RHAE
 **96.54**, computed by the ARC server itself on public scorecard
 [`702ccd4f`](https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32)
-— 24/25 games, 177/183 levels, 8,157 actions, per-game rows on the card.
+with 24/25 games, 177/183 levels, 8,157 actions, per-game rows on the card.
 Provenance, stated exactly: the agents played locally under a journaled,
 hard-capped protocol; scorecard ids were not captured during those runs, so
 the recorded action sequences were re-issued verbatim against the live ARC
 API to mint verifiable cards. The card is therefore a **verification replay
-of recorded action sequences** — the server confirms what each sequence
+of recorded action sequences**: the server confirms what each sequence
 achieves on the same game instances; wall-clock on the card is machine replay
 time, not agent time.
 
 ## Contents
 
-- **`HEADS.md` / `heads.json`** — published chain heads and paid-action
+- **`HEADS.md` / `heads.json`**: published chain heads and paid-action
   counts for all 25 canonical run journals (the commitment artifact; see
   HEADS.md for how to verify a shared run directory against them).
-- **`rhae.py` + `baselines.json`** — the benchmark's scoring function,
+- **`rhae.py` + `baselines.json`**: the benchmark's scoring function,
   reverse-derived from published scorecard JSONs and validated to reproduce
   **25/25 published game scores exactly** (worst error 0.000000):
   `python3 rhae.py --validate <dir-of-scorecard-jsons>`. Score a shared run:

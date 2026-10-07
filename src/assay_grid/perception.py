@@ -301,7 +301,7 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
             "changed_cells": None,
             "bbox": None,
             "lines": [
-                f"board size changed {left.shape[0]}x{left.shape[1]} → {right.shape[0]}x{right.shape[1]}"
+                f"board size changed {left.shape[0]}x{left.shape[1]} -> {right.shape[0]}x{right.shape[1]}"
             ],
         }
     delta = frame_delta(left, right)
@@ -324,7 +324,7 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
     }
     if delta["changed_cells"] > left.size * 3 // 5:
         flips = ", ".join(
-            f"{item['from']:x}→{item['to']:x}×{item['count']}"
+            f"{item['from']:x}->{item['to']:x}×{item['count']}"
             for item in delta["color_changes"][:5]
         )
         story["lines"] = lines + [f"board largely redrawn; color flips {flips}"]
@@ -435,18 +435,18 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
     for item in story["moved"][:limit]:
         lines.append(
             f"color {item['color']:x} size {item['size']} moved (x,y) "
-            f"({item['from_bbox'][2]},{item['from_bbox'][0]})→({item['to_bbox'][2]},{item['to_bbox'][0]}) "
+            f"({item['from_bbox'][2]},{item['from_bbox'][0]})->({item['to_bbox'][2]},{item['to_bbox'][0]}) "
             f"[dx={item['dx']:+d},dy={item['dy']:+d}]"
         )
     for item in story["recolored"][:limit]:
         y, x = item["representative"]
         lines.append(
-            f"size {item['size']} at (x,y) ({x},{y}) recolored {item['from_color']:x}→{item['to_color']:x}"
+            f"size {item['size']} at (x,y) ({x},{y}) recolored {item['from_color']:x}->{item['to_color']:x}"
         )
     for item in story["resized"][:limit]:
         y, x = item["representative"]
         lines.append(
-            f"color {item['color']:x} resized {item['from_size']}→{item['to_size']} near (x,y) ({x},{y})"
+            f"color {item['color']:x} resized {item['from_size']}->{item['to_size']} near (x,y) ({x},{y})"
         )
     for item in story["vanished"][:limit]:
         y, x = item["representative"]
@@ -464,7 +464,7 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
             lines.append(f"… {extra} more {name}")
     if len(lines) == 1:
         flips = ", ".join(
-            f"{item['from']:x}→{item['to']:x}×{item['count']}"
+            f"{item['from']:x}->{item['to']:x}×{item['count']}"
             for item in delta["color_changes"][:5]
         )
         lines.append(f"color flips {flips}")

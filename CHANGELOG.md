@@ -238,6 +238,13 @@ Left on the experiment branch, deliberately:
   keeps only repository-relevant rules).
 - Property tests for the claim parser, the chain rule, the ungated rule and
   the registry parameters, with hypothesis under the dev extra (#26).
+- CI on every push and pull request (`.github/workflows/ci.yml`: ubuntu and
+  macOS, Python 3.12 to 3.14, the suite, `ruff check`, the published journals
+  against their heads), ruff configured in `pyproject.toml` with its default
+  rule set and under the dev extra, `tests/test_hygiene.py` (no em dash or
+  arrow in the source or the docs, no machine path, the old manual name gone
+  from the code, over `git ls-files`), and the platform statement in
+  `README.md`: macOS and Linux, Windows not supported (#30).
 
 ### Changed
 
@@ -306,6 +313,14 @@ Left on the experiment branch, deliberately:
   `assay start` names its positional `world_id`. The ARC mapping (world id is
   the game id, a progress unit is a level, `GAME_OVER` is the engine's state)
   is stated once in `bench/arcagi/PROTOCOL.md`.
+- Em dashes and arrows out of every string and document. An arrow between
+  two values is `->`, the form the CHANNELS receipt lines already used; a
+  grade line reads `✗ claim | actual` and `! claim | actual` (the pipe is the
+  kernel's field separator), and the SURPRISE receipt detail follows it,
+  `prediction missed: claim | actual`; an em dash inside a `LABEL | text`
+  line became a colon or a semicolon. Nothing graded, journaled or chained
+  changes, except that the `actual` text of a channel delta or crossing
+  claim in a new journal reads `0 -> 1` where it read the arrow (#30).
 
 ### Removed
 

@@ -191,8 +191,8 @@ def _client_timeout(computed: float) -> float:
     """The client's socket wait, with an env-set floor for slow worlds.
 
     Defaults are unchanged when ASSAY_BROKER_TIMEOUT is unset (a fast local
-    sim keeps its exact behavior). A slow world — emulated, containerized, or
-    otherwise heavy per step — exports it as a floor in seconds so a long but
+    sim keeps its exact behavior). A slow world (emulated, containerized, or
+    otherwise heavy per step) exports it as a floor in seconds so a long but
     legitimate operation does not trip the client's give-up and orphan the
     owner's reply."""
     floor = os.getenv("ASSAY_BROKER_TIMEOUT")
@@ -296,7 +296,7 @@ def broker_gated(
     paths: RunPaths, payload: Mapping[str, Any], *, steps: int = 1
 ) -> dict[str, Any]:
     """Send one gated operation to the daemon; returns the receipt. The CLI is
-    a stateless display client on registry runs — enforcement happens where
+    a stateless display client on registry runs; enforcement happens where
     the session and credentials live."""
     timeout = _client_timeout(60.0 + 30.0 * max(1, steps))
     response = _request(paths, payload, timeout=timeout)
@@ -623,8 +623,8 @@ def serve(paths: RunPaths) -> None:
 
     sequence = max((int(item.get("mutation_id", 0)) for item in mutations), default=0)
     # Daemon-side gate: on a registry run, enforcement lives HERE,
-    # where the session and the credentials live. The bare `step` op is refused
-    # — a client speaking this socket directly cannot bypass the gate invisibly.
+    # where the session and the credentials live. The bare `step` op is refused:
+    # a client speaking this socket directly cannot bypass the gate invisibly.
     gated = read_json(paths.registry, None) is not None
     shared = {"sequence": sequence, "fresh_level": fresh_level}
 

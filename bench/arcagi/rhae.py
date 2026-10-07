@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compute ARC-AGI-3 RHAE from run journals — the benchmark's own metric.
+"""Compute ARC-AGI-3 RHAE from run journals: the benchmark's own metric.
 
 WHY THIS EXISTS. Games-cleared, levels-cleared and total-actions are COVERAGE
 statistics, not scores. The benchmark scores with RHAE, which penalizes
@@ -18,7 +18,7 @@ THE FORMULA (derived from published scorecard JSONs, not from documentation):
 
     game score, if the run did NOT reach WIN:
                   = 100 * sum(1..levels_completed) / sum(1..level_count)
-                    i.e. weighted progress only — efficiency earns nothing
+                    i.e. weighted progress only; efficiency earns nothing
 
     set score     = plain mean of the per-game scores
 
@@ -68,7 +68,7 @@ def game_rhae(level_actions, baselines, levels_completed: int, win: bool) -> flo
 def per_level_actions(events, level_count: int) -> list[int]:
     """Attribute every paid action to the level it was spent on.
 
-    A paid action taken while `levels_completed == k` belongs to level k+1 —
+    A paid action taken while `levels_completed == k` belongs to level k+1,
     resets and post-GAME_OVER retries included, matching how the published
     cards' level_actions sum to a run's total actions.
     """

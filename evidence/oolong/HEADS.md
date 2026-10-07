@@ -1,4 +1,4 @@
-# Published chain heads — the OOLONG evidence pack
+# Published chain heads: the OOLONG evidence pack
 
 **The commitment:** the recomputed `assay-journal-v1` chain heads of the
 three un-hinted OOLONG synth runs (neutral task framing, Opus 5). Any

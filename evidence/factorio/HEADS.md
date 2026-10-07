@@ -1,4 +1,4 @@
-# Published chain heads — the Factorio (FLE) evidence pack
+# Published chain heads: the Factorio (FLE) evidence pack
 
 **The commitment:** the recomputed `assay-journal-v1` chain heads of the
 three canonical Factorio lab-task wins (M2 calibration, action cap 64,

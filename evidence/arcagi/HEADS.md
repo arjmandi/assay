@@ -1,11 +1,11 @@
-# Published chain heads — the ARC-AGI-3 evidence pack
+# Published chain heads: the ARC-AGI-3 evidence pack
 
 **The commitment:** these are the recomputed `assay-journal-v1` chain heads
 of the 25 canonical run journals behind the published ARC-AGI-3 record
 (set RHAE 96.54, server-confirmed on public scorecard
 [`702ccd4f`](https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32)).
 They are published **before** any journal is shared: whenever a run
-directory is later shared with anyone, it must verify against its head here —
+directory is later shared with anyone, it must verify against its head here:
 
 ```bash
 python3 ../../verify/assay_verify.py <shared-run-dir> --expect-head <head below>
@@ -46,7 +46,7 @@ them from publication forward.
 | vc33 | sweep-1500 | 184 | 183 | 7/7 | WIN | intact | `4733d9963e2931cb0beb6dc6f2ea44d374994a3a26366f7be95634e62a8cfc56` |
 | wa30 | sweep-1500 | 1172 | 1171 | 9/9 | WIN | intact | `c2630cbe125126f8c0512751855bf377d79b09d0bd24a820932459cd97fe6811` |
 
-**Total paid actions: 8157** across 25 runs — 24 wins, one
+**Total paid actions: 8157** across 25 runs: 24 wins, one
 open game (lf52, 4/10, reported as the standing falsifier).
 
 Machine-readable copy: `heads.json`.

@@ -11,13 +11,13 @@ journal and reports:
 
 - chain intact / diverged (and against the anchors),
 - event-id contiguity,
-- UNGATED events — a paid non-RESET event carrying no prediction and no grade
+- UNGATED events: a paid non-RESET event carrying no prediction and no grade
   (the definition the archived bypass audits pre-registered). An ungated event
   INVALIDATES THE RUN FOR SCORING and demotes all trust earned after it: the
   gate refuses model-plan batching once one exists.
 
 Secrets redaction: values of registered secret env vars (plus the kernel's
-default list) never enter the journal — every agent-supplied string field is
+default list) never enter the journal; every agent-supplied string field is
 filtered at the boundary before it is written.
 """
 
@@ -141,7 +141,7 @@ def extend_chain(paths: RunPaths, appended_line: str, event_id: int, win: bool) 
     """Advance the stored chain by one appended journal line; anchor when due.
 
     The daemon calls this immediately after each event append. If the stored
-    state is behind (older appends, recovery), it recomputes from the journal —
+    state is behind (older appends, recovery), it recomputes from the journal:
     correctness over speed at this file size."""
     state = read_json(chain_path(paths), None)
     if (
@@ -207,7 +207,7 @@ def redact_mapping(
 
 
 def ungated_events(events: Sequence[Mapping[str, Any]]) -> list[int]:
-    """Paid non-RESET events with no prediction and no grade — the
+    """Paid non-RESET events with no prediction and no grade: the
     pre-registered bypass definition (evidence/bypass_audit.py)."""
     flagged: list[int] = []
     for event in events:
@@ -304,7 +304,7 @@ def audit(paths: RunPaths) -> dict[str, Any]:
             if anchor_state == "DIVERGED":
                 problems.append(
                     f"anchor: journal prefix at e{target} no longer matches the "
-                    "externally anchored head — the journal changed after anchoring"
+                    "externally anchored head; the journal changed after anchoring"
                 )
         else:
             anchor_state = "DIVERGED"
@@ -360,14 +360,14 @@ def audit_lines(report: Mapping[str, Any]) -> list[str]:
     ]
     if report["ungated"]:
         lines.append(
-            f"AUDIT | UNGATED events {report['ungated'][:8]} — the run is invalid "
+            f"AUDIT | UNGATED events {report['ungated'][:8]}; the run is invalid "
             "for scoring and trust earned after the first one is demoted"
         )
     if report.get("ungated_permitted"):
         modes = ", ".join(f"`gate: {mode}`" for mode in report.get("ungated_permitted_by") or ["optional"])
         lines.append(
             f"AUDIT | {len(report['ungated_permitted'])} of them permitted by "
-            f"{modes} (control arm) — still invalid for scoring"
+            f"{modes} (control arm), still invalid for scoring"
         )
     if report["recovered_orphans"]:
         lines.append(

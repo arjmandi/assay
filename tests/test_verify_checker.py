@@ -1,6 +1,6 @@
 """Conformance and tamper tests for the independent checker, verify/assay_verify.py.
 
-The fixture world is a synthetic thermostat — a non-game world with a JSON
+The fixture world is a synthetic thermostat, a non-game world with a JSON
 observation, exercising the general (non-frame) journal shape. No benchmark
 data appears anywhere in these tests (JOURNAL_SPEC.md is the only source of
 truth), which is itself a spec property under test: the standard stands alone.
@@ -146,7 +146,7 @@ class VerifyTests(unittest.TestCase):
 
     def test_injected_ungated_caught_even_with_consistent_chain(self):
         # The attacker appends a paid, claim-free action AND recomputes the
-        # chain — gate compliance must fail independently of tamper-evidence.
+        # chain; gate compliance must fail independently of tamper-evidence.
         def mutate(events):
             events.append(_event(9, "HEAT", 23.0, True, predict=None))
             return events

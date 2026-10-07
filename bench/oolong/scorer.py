@@ -1,4 +1,4 @@
-"""Sealed OOLONG scoring — reuse the authors' scorer verbatim, offline.
+"""Sealed OOLONG scoring: reuse the authors' scorer verbatim, offline.
 
 At `finalize()` the OOLONG adapter scores every SEALED SUBMIT answer against the
 gold answer using OOLONG's own scoring functions (RESEARCH.md §1.3): exact match
@@ -8,7 +8,7 @@ byte-identical `vendor/oolong_eval_helpers.py` (see vendor/PROVENANCE.md).
 
 The daemon runtime that serves the broker carries only numpy + pillow, so the
 scorer's heavy / paid imports (`litellm`, `datasets`, `tiktoken`,
-`transformers`, `jsonlines`) are stubbed and `dateutil` is shimmed when absent —
+`transformers`, `jsonlines`) are stubbed and `dateutil` is shimmed when absent,
 the exact isolation the M0 spike proved (`oolong-spike/scorer_isolation.py`).
 Nothing here touches the network, an API key, or a model.
 
@@ -110,7 +110,7 @@ def score_submissions(
     `submissions`: sealed records, each {"question_id", "answer", "spans",
     "event_id"?}. `questions_by_id`: question_id -> gold datapoint (must carry
     answer, answer_type, id, context_window_id, dataset). Correctness is computed
-    HERE and only here — never mid-run.
+    HERE and only here, never mid-run.
     """
     provenance = _install_stub_dependencies()
     helpers = load_eval_helpers()

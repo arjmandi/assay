@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""assay-verify — standalone integrity verifier for ASSAY journals.
+"""assay-verify: standalone integrity verifier for ASSAY journals.
 
 Spec: JOURNAL_SPEC.md (assay-journal-v1). Python 3.10+, standard library
 only. This is a clean reimplementation from the specification and shares no

@@ -9,14 +9,14 @@ state the agent has no writable path to.
         --adapter <repo>/bench/factorio/adapter.py:factory \
         --registry <repo>/bench/factorio/registry_lab64.json
 
-Two paid actuators (registry Option A — FLE parity):
+Two paid actuators (registry Option A, FLE parity):
 
     RUN  program=<base64 python>   execute one program against the FLE API
     WAIT ticks=<int>               advance the simulation by an exact tick count
 
 `program` is base64 because ASSAY action tokens are whitespace-split; see
 PROTOCOL.md. Every program is screened by a fail-closed AST gate before it
-reaches the interpreter — FLE's own namespace hands agent programs the raw RCON
+reaches the interpreter: FLE's own namespace hands agent programs the raw RCON
 client, and through it the Lua console, the host filesystem, and the production
 statistics the verifier reads. NAMESPACE_AUDIT.md documents the proof.
 
@@ -48,12 +48,12 @@ from assay.core import AssayError
 # ---------------------------------------------------------------------------
 
 TICKS_PER_SECOND = 60
-WINDOW_TICKS = 60 * TICKS_PER_SECOND  # 3600 — one 60-second measurement window
+WINDOW_TICKS = 60 * TICKS_PER_SECOND  # 3600, one 60-second measurement window
 MAX_WAIT_TICKS = WINDOW_TICKS  # one WAIT may not exceed a single window
 # Pathfinding tick allowance for a RUN that needs one (see _do_run and
 # PROTOCOL.md). Factorio's path finder answers only on an in-game event, and a
 # real route issues many sequential path queries, so ticks must keep flowing for
-# the WHOLE time the program runs — a fixed pre-counted allowance either starves
+# the WHOLE time the program runs; a fixed pre-counted allowance either starves
 # a long route or, having finished early, leaves later queries hitting a frozen
 # world (the connect_entities bug). Live execution therefore pumps ticks in
 # RUN_PATH_TICK_STEP increments alongside the worker thread until it returns
@@ -131,12 +131,12 @@ LAB_PLAY_STARTING_INVENTORY = {
 
 # ---------------------------------------------------------------------------
 # Pre-M2 hardening data. Both blocks are grounded in the pinned FLE 0.4.3
-# (Python 3.12.12) by enumerating a live instance, not guessed — see
+# (Python 3.12.12) by enumerating a live instance, not guessed; see
 # PROTOCOL.md ("Unknown-global monitor", "Throughput corroboration").
 # ---------------------------------------------------------------------------
 
 # (1) UNKNOWN-GLOBAL MONITOR. The exact set of names an agent program sees as
-# globals under FLE 0.4.3 — the union FLE's FactorioNamespace.eval_with_timeout
+# globals under FLE 0.4.3, the union FLE's FactorioNamespace.eval_with_timeout
 # assembles (NAMESPACE_AUDIT.md): non-underscore dir(builtins) | non-underscore
 # dir(namespace) | non-underscore persistent_vars keys, read from a live
 # instance at session start. The monitor (_compute_namespace_watch) reports any
@@ -217,7 +217,7 @@ _EXPECTED_FLE_GLOBALS = frozenset({
 # before levels 3 and 4 are credited (_entity_produces_target):
 #   "mined"     a MiningDrill/PumpJack whose .resources holds the target
 #   "smelted"   a Furnace whose .furnace_result holds the target (or whose
-#               .furnace_source holds its ore) — furnaces carry no recipe
+#               .furnace_source holds its ore); furnaces carry no recipe
 #   "assembled" an AssemblingMachine/ChemicalPlant/OilRefinery whose .recipe
 #               makes the target (recipe.name or a product name matches)
 # recipe categories come back null from get_prototype_recipe on 0.4.3, so the
@@ -283,7 +283,7 @@ def _entity_produces_target(entity: Any, target: str, kind: str) -> bool:
 
     This is the corroboration the win predicate demands before crediting a
     throughput statistic: a `dynamic` rate with no producing entity is
-    incoherent — a forged or injected stat (NAMESPACE_AUDIT.md residual risk 3).
+    incoherent, a forged or injected stat (NAMESPACE_AUDIT.md residual risk 3).
     Reads only public entity-model fields, all confirmed populated by
     get_entities() on the pinned version.
     """
@@ -313,7 +313,7 @@ def _entity_produces_target(entity: Any, target: str, kind: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Program screening — the capability boundary (see NAMESPACE_AUDIT.md)
+# Program screening: the capability boundary (see NAMESPACE_AUDIT.md)
 # ---------------------------------------------------------------------------
 
 # Fail closed: a node kind absent from this set is refused. Everything an FLE
@@ -518,7 +518,7 @@ class FactorioSession:
             raise AssayError(
                 "the factorio-learning-environment package is unavailable in this "
                 "runtime; install it (plus `a2a-sdk<1`) into the interpreter serving "
-                "the broker — see bench/factorio/PROTOCOL.md"
+                "the broker; see bench/factorio/PROTOCOL.md"
             ) from error
 
         world_id = str(config.get("game_id", "")).strip().lower()
@@ -567,7 +567,7 @@ class FactorioSession:
                 raise AssayError(
                     f"no Factorio server is listening on {self.address}:{self.tcp_port}; "
                     "start one with `python -m fle cluster start -n 1` (Docker must be "
-                    "running) — see bench/factorio/PROTOCOL.md"
+                    "running); see bench/factorio/PROTOCOL.md"
                 )
 
         try:
@@ -615,8 +615,8 @@ class FactorioSession:
         # broker replays the journal through a fresh copy of this session and
         # requires each observation to reproduce exactly, so a replayed
         # pathfinding RUN must REUSE the delta it spent live rather than re-derive
-        # it. `_recorded_path_deltas` holds those deltas — one per journaled
-        # pathfinding RUN, in order — read from the mutation journal at start;
+        # it. `_recorded_path_deltas` holds those deltas, one per journaled
+        # pathfinding RUN, in order, read from the mutation journal at start;
         # each is popped as its RUN is replayed (see _pump_pathfinding_ticks). It
         # is empty on a fresh run, so live RUNs pump adaptively. Backward
         # compatible: a pre-adaptive journal recorded +180, so 180 is reused.
@@ -636,7 +636,7 @@ class FactorioSession:
 
         # Unknown-global monitor: snapshot the program-visible globals once, at
         # session start, before any agent RUN has added its own variables to the
-        # namespace. Logging only — never refuses, never voids (PROTOCOL.md).
+        # namespace. Logging only: never refuses, never voids (PROTOCOL.md).
         self._namespace_watch = self._compute_namespace_watch()
         self._log_namespace_watch(root)
 
@@ -829,7 +829,7 @@ class FactorioSession:
 
         Reproduces FLE's own eval_with_timeout construction: non-underscore
         builtins | non-underscore namespace attributes | non-underscore
-        persistent_vars keys. A monitor only — it never raises, refuses, changes
+        persistent_vars keys. A monitor only: it never raises, refuses, changes
         state, or voids the run; every branch swallows its own failure.
         """
         import builtins as _bi
@@ -894,7 +894,7 @@ class FactorioSession:
 
         FLE's own accounting: total new output minus what the player hand-mined
         or hand-crafted. Chest-stuffing and hand-crafting land in `static` and
-        do not count here — the same reason FLE introduced the holdout.
+        do not count here, the same reason FLE introduced the holdout.
         """
         from fle.commons.models.achievements import ProductionFlows
         from fle.env.utils.achievements import calculate_achievements
@@ -925,13 +925,13 @@ class FactorioSession:
         1  the first unit of the target item has been produced
         2  an automated chain producing it exists
         3  a full 60 s window met the quota
-        4  the quota also held through the next 60 s — the holdout — = WIN
+        4  the quota also held through the next 60 s, the holdout: WIN
 
         Throughput corroboration (prevention): levels 3 and 4 read Factorio's
         production statistic, which any RCON escape can forge (NAMESPACE_AUDIT.md
         probe R). They are credited only if a real entity is actually producing
         the target (`producer_present`). A rate with no producing entity is
-        incoherent — a forged or injected stat — so the milestone is capped
+        incoherent, a forged or injected stat, so the milestone is capped
         below 3. For an unmapped target the corroboration cannot be grounded and
         is not enforced (fail-open), so a legitimate win is never blocked.
         """
@@ -1030,7 +1030,7 @@ class FactorioSession:
     def public_info(self) -> dict[str, Any]:
         return {
             "game_id": self.world_id,
-            "title": f"FLE lab-play {self.task_key} — {self.target_item} throughput",
+            "title": f"FLE lab-play {self.task_key}: {self.target_item} throughput",
             "map_seed": self.map_seed,
         }
 
@@ -1085,8 +1085,8 @@ class FactorioSession:
 
         The broker records every paid action to `.assay/mutations.jsonl` with the
         observation it produced, and on a local resume it replays that journal
-        through a fresh session, requiring each observation — the cursor `tick`
-        included — to reproduce exactly. A pathfinding RUN's live tick cost is
+        through a fresh session, requiring each observation, the cursor `tick`
+        included, to reproduce exactly. A pathfinding RUN's live tick cost is
         variable (the pump runs until the path finder answers), so replay cannot
         re-derive it; it must reuse what was spent. This reads that ledger.
 
@@ -1094,7 +1094,7 @@ class FactorioSession:
         stores the cursor AFTER each action, so the delta is this RUN's recorded
         tick minus the previous action's recorded tick (0 before the first, and 0
         after a RESET, which the journal's ticks already reflect). Only RUNs the
-        screen marks as needing the path finder are collected, in journal order —
+        screen marks as needing the path finder are collected, in journal order:
         exactly the RUNs that will call the pump on replay, so ledger and pump
         stay in lockstep (a skipped opener RESET is not a pathfinding RUN and
         cannot desynchronise them). A pre-adaptive journal recorded a flat +180
@@ -1102,7 +1102,7 @@ class FactorioSession:
 
         Best-effort and self-contained: an unreadable entry falls back to the
         legacy fixed allowance, and a missing or corrupt journal yields an empty
-        ledger, so every RUN then pumps adaptively — the fresh-run path.
+        ledger, so every RUN then pumps adaptively, the fresh-run path.
         """
         try:
             from assay.core import load_jsonl
@@ -1143,7 +1143,7 @@ class FactorioSession:
 
         Factorio's path finder answers only on an in-game event, so its result
         arrives only as ticks advance, and a real route issues many path queries
-        in sequence — ticks must keep flowing for as long as the program runs.
+        in sequence; ticks must keep flowing for as long as the program runs.
         This pumps them in RUN_PATH_TICK_STEP increments alongside the worker,
         never in one pre-counted block that could drain before the program's
         later queries (the connect_entities bug), until the worker returns (every
@@ -1154,7 +1154,7 @@ class FactorioSession:
         order, and it is reused verbatim: the pump still runs alongside the worker
         (which re-issues the same path queries and still needs ticks flowing) but
         stops at exactly the recorded total, topping up any shortfall if the
-        worker returned early. So the cursor — and thus the whole observation —
+        worker returned early. So the cursor, and thus the whole observation,
         reconstructs identically, which is what lets a variably-timed live run
         replay deterministically.
         """
@@ -1165,7 +1165,7 @@ class FactorioSession:
                 chunk = min(RUN_PATH_TICK_STEP, target - pumped)
                 self._advance(chunk)
                 pumped += chunk
-            if pumped < target:  # worker returned early — honor the recorded total
+            if pumped < target:  # worker returned early; honor the recorded total
                 self._advance(target - pumped)
             return
         pumped = 0
