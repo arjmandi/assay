@@ -214,7 +214,7 @@ class CommandStatus:
 def command_status(run: Run, command: str) -> Iterator[CommandStatus]:
     started_monotonic = time.monotonic()
     current = CommandStatus(run)
-    record = {
+    record: dict[str, Any] = {
         "status": "RUNNING",
         "command": command,
         "event": run.events[-1].id if run.events else None,

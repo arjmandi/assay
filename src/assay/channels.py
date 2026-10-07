@@ -397,7 +397,7 @@ def grade_channel_claim(
     if kind == "channel_delta":
         delta = after_number - before_number
         op = claim.op
-        target = float(claim.value) if _numeric(claim.value) is not None else None
+        target = _numeric(claim.value)
         if op == "sign":
             ok = delta > 0 if claim.sign == "+" else delta < 0
         elif target is None:  # pragma: no cover - parser guarantees a numeric value

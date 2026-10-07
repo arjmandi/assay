@@ -168,7 +168,8 @@ def redact_mapping(
             return [_walk(item) for item in node]
         return node
 
-    return _walk(dict(value))
+    output: dict[str, Any] = _walk(dict(value))
+    return output
 
 
 def ungated_events(events: Sequence[Event]) -> list[int]:

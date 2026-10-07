@@ -553,7 +553,7 @@ def solve_model(
     plan_steps = result.get("plan")
     if plan_steps is not None and not isinstance(plan_steps, list):
         raise AssayError("malformed model output: the plan is not a list")
-    record = {
+    record: dict[str, Any] = {
         "kind": "model-plan",
         "goal": goal,
         "nodes": int(result.get("nodes", 0)),

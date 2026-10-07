@@ -7,7 +7,9 @@ perception helpers re-exported below belong to the frame-world extra
 that wrote `from assay import connected_components` keep working.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
 __version__ = "1.2.0"
 JOURNAL_SPEC = "assay-journal-v1"
@@ -20,8 +22,8 @@ class Unknown:
     reason: str = "unspecified transition"
 
 
-def _forward(name: str):
-    def implementation(*args, **kwargs):
+def _forward(name: str) -> Callable[..., Any]:
+    def implementation(*args: Any, **kwargs: Any) -> Any:
         from assay_grid import perception
 
         return getattr(perception, name)(*args, **kwargs)

@@ -696,9 +696,10 @@ def serve(paths: RunPaths) -> None:
             )
         )
         warning: str | None = None
-        if encoded["state"] == "WIN" and callable(getattr(session, "finalize", None)):
+        finalize = getattr(session, "finalize", None)
+        if encoded["state"] == "WIN" and callable(finalize):
             try:
-                session.finalize()
+                finalize()
             except Exception as error:  # noqa: BLE001 - action is already journaled
                 warning = f"{type(error).__name__}: {error}"
         return _decode_observation(encoded), int(shared["sequence"]), warning
@@ -835,9 +836,10 @@ def serve(paths: RunPaths) -> None:
                         "mutation_id": shared["sequence"],
                     }
                     terminal = encoded["state"] == "WIN"
-                    if terminal and callable(getattr(session, "finalize", None)):
+                    finalize = getattr(session, "finalize", None)
+                    if terminal and callable(finalize):
                         try:
-                            session.finalize()
+                            finalize()
                         except Exception as error:  # noqa: BLE001 - action is already journaled
                             response["finalization_warning"] = (
                                 f"{type(error).__name__}: {error}"

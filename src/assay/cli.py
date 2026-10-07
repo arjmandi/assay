@@ -1050,10 +1050,10 @@ def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace)
             proposals = list_proposals(run)
             if not proposals:
                 print("GOAL | no proposals")
-            for item in proposals:
+            for entry in proposals:
                 print(
-                    f"  #{item['id']} [{item['status']}] {item['text']}"
-                    + (f"; {item['because']}" if item.get("because") else "")
+                    f"  #{entry['id']} [{entry['status']}] {entry['text']}"
+                    + (f"; {entry['because']}" if entry.get("because") else "")
                 )
         else:
             proposal = ratify_goal(run, args.id, args.token)

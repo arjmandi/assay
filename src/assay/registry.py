@@ -351,7 +351,12 @@ def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
         values = schema["enum"]
         if not isinstance(values, list) or not values:
             raise AssayError(f"parameter {where} enum must be a non-empty list")
-        expected: type | tuple[type, ...] = {"int": int, "float": (int, float), "str": str}[kind]
+        expected_types: dict[str, type | tuple[type, ...]] = {
+            "int": int,
+            "float": (int, float),
+            "str": str,
+        }
+        expected = expected_types[kind]
         for value in values:
             if isinstance(value, bool) or not isinstance(value, expected):
                 raise AssayError(
