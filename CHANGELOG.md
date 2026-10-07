@@ -399,11 +399,12 @@ Left on the experiment branch, deliberately:
 
 Recorded per commit in `paper/v4/RELEASE-1.1.0-LOG.md` of the archive, with
 the scripts under `paper/v4/release-gates/` there and the commands in
-`RELEASE_CHECKLIST.md`. Final results on the branch tip:
+`RELEASE_CHECKLIST.md`. Final results on the branch tip, after the owner's
+decisions were implemented (the second round, 2026-10-07):
 
-- G1, the suite: 139 passed (the 74 of main, two of them with one keyword
-  and one expected message changed, plus 65 new), run with the shell's
-  anchor directory unset to prove the isolation.
+- G1, the suite: 158 passed (the 74 of main, two of them with one keyword
+  and one expected message changed, plus 84 new, two legacy tests removed),
+  run with the shell's anchor directory unset to prove the isolation.
 - G2, the replay diff: zero differences in `status`, `audit`, `view` and
   `channel list` over the 25 published ARC-AGI-3 run directories (read-only
   copies, six of them recorded under `.arc/`) between the main kernel and
@@ -412,16 +413,20 @@ the scripts under `paper/v4/release-gates/` there and the commands in
   audit's pending-mutation line, and the one vocabulary change in the AGENDA
   goal text), with the hash seed pinned because the transition story's order
   was already process-dependent.
-- G3, the independent checker: all 25 published ARC-AGI-3 journals CLEAN with
-  their published heads matched, the three Factorio and three OOLONG packs
-  CLEAN, and the 24 E1, E2 and E3 journals under assay-runs CLEAN (the E1
-  ungated arm permits bare acts and its agents took none).
+- G3, the independent checker: all 56 published journals CLEAN with their
+  published heads matched (the 25 ARC-AGI-3, the three Factorio, the three
+  OOLONG, the twelve E1, the ten E2, the two E3 and the one G4), both from
+  the archived run directories and from the published copies under
+  `evidence/` (`evidence/verify_all.py`, which the suite also runs).
+- G4, the ft09 live regression on the release kernel at 82bfd5d: WIN 6 of 6
+  in 80 paid actions, 80 of 80 predicted, under the bar of 113 (decision
+  18), kernel audit CLEAN, checker CLEAN. Published as `evidence/g4`. The
+  commits after 82bfd5d change no journal field and no grading rule (the
+  replay diff above is the proof), so the gate stands for the tip.
 - G5, the clean machine: a fresh venv, `pip install -e '.[grid]'`, `assay
   doctor` clean, the README quickstart verbatim through the installed entry
   point, the OOLONG spam4k pack through the bench adapter with `assay stop`
   leaving no process, the launcher with `ASSAY_PYTHON` pinned. PASS.
-- G4, the ft09 live regression, is the owner's, scheduled separately on the
-  subscription after code freeze, and has not run.
 
 ## 1.0-rc1 (2026-08-22)
 

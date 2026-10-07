@@ -44,7 +44,11 @@ decisions and the tag; everything else can run on any checkout of
   back. Then `git push --force origin main release/1.1.0` and the tags, and
   delete the agent branches on origin (O8). The pre-rewrite objects stay on
   GitHub until its support purges them. The old and new tips of every moved
-  ref are recorded in the archive's release log.
+  ref are recorded in the archive's release log. Commit hashes quoted in
+  `CHANGELOG.md` from 0b6e6b9 on (0373b5f, 1630e46, 76ae414, a3233df, 82bfd5d
+  and the round-2 commits) change with the rewrite; filter-repo leaves the
+  map in `.git/filter-repo/commit-map`, and the quoted hashes are updated
+  from it in one last commit before the tag.
 
 ## 2. Must not ship
 
@@ -99,7 +103,9 @@ git grep -n -i 'arjmandi' release/1.1.0 -- . ':!LICENSE' ':!NOTICE'
 Expected: no key shapes, no secret assignments in history, zero machine paths
 on `release/1.1.0` and `main`, emails only inside `bench/oolong/packs`
 (the smoke packs' upstream dataset text), the owner's name only in
-`pyproject.toml` (the authors field) and the README's license section.
+`pyproject.toml` (the authors field and the homepage), `verify/LICENSE` (the
+MIT copyright line) and this file's own commands. The two machine-path hits
+are this file's grep patterns, not paths.
 
 ## 5. Regression gates
 
@@ -111,21 +117,22 @@ on `release/1.1.0` and `main`, emails only inside `bench/oolong/packs`
 | G4 ft09 live regression | scheduled by the owner on the subscription, after code freeze, per DECISIONS item 18 | WIN 6 of 6 within the published bar |
 | G5 clean machine | `bash paper/v4/release-gates/g5_clean_machine.sh <scratch dir>` (in the archive) | PASS |
 
-## 6. Owner decisions that gate the tag
+## 6. Owner decisions
 
-From the release review, section 7. Each is marked `TODO(owner: O<n>)` where
-the conservative default was implemented.
+From the release review, section 7, decided on 2026-10-07 and implemented
+in the second round of the release branch (the archive's release log has
+one entry per commit).
 
-| Decision | Default on the branch | Blocks |
+| Decision | On the branch | Blocks |
 |---|---|---|
 | O1 grid claim forms on frame registry runs | refused, as before | nothing (behavior preserved) |
 | O2 the legacy numbered-action path | decided: deleted with the rules tier that only ran on it, a registry is required | nothing |
 | O3 the OOLONG corpora | decided: the smoke packs ship, the others fetch on first use, the tree is clean | the history rewrite (section 1), before the flip |
-| O4 the experiment tooling and the E1 files | left on `exp/2026-10` | nothing on the branch (the paper cites the archive) |
+| O4 the experiment tooling and the E1 files | left on `exp/2026-10`, tagged `exp-2026-10` and the tag pushed | nothing on the branch (the paper cites the archive) |
 | O5 the owner token | decided: `--owner-token-file` ships (K7), the protocol rewrite is deferred to the next release | nothing |
 | O6 hot-load | the manifest, owner install | nothing |
 | O7 the world id rule | decided: any string up to 64 characters without whitespace, control characters or path separators, kept as given | nothing |
-| O8 the nine agent branches | untouched | the flip (delete before publishing) |
+| O8 the nine agent branches | untouched (three of them move in the history rewrite) | the flip (delete before publishing) |
 | O9 contributions under PolyForm NC | decided: issues only in 1.1.0, stated in README.md and CONTRIBUTING.md | nothing |
 | O10 the INTEGRITY line on control-arm runs | decided: a neutral `GATE` line with a count, the audit unchanged | nothing |
 | O11 cut order under time pressure | not needed, the plan completed | nothing |
