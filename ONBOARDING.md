@@ -618,7 +618,7 @@ observe(view, event) -> None                  optional, learn from outcomes
 telemetry(view) -> dict                       free counters
 ```
 
-`view` is `modules.JournalView(paths, events, registry)`. `pending` is the
+`view` is `modules.ModuleView(run)`: `view.events` (the journal as `Event` records, read-only), `view.registry`, `view.paths`, and `view.record(kind, **fields)` and `view.hazards()` for what a module persists. `pending` is the
 action about to be taken, `{"kind": act|commit|reset, "name", "params",
 "claims", "declares"}`, or `None` at status time. Ship at advise. Demands are
 for checkable structure (named, non-empty fields), never for confidence, and

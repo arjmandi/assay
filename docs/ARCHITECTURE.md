@@ -22,12 +22,31 @@ One directory is one run. The kernel keeps all run state under `.assay/` inside
 it (`core.RunPaths`). Two processes touch that state:
 
 - the **daemon**, the package module `assay.broker_server` running `broker.serve`, which owns the
-  world session for the life of the run. On a registry run every paid action is
-  executed here, behind the gate, and journaled here before the reply leaves the
-  socket. The daemon is the only process that spends.
-- the **CLI**, `assay.cli.main`, a stateless display client on registry runs. It
-  validates what it can before talking to the daemon, sends the gated operation
-  over a Unix socket (`broker.broker_gated`), and prints the receipt.
+  world session for the life of the run. It loads the run strict
+  (`run.Run.load`: a contiguity problem or a diverged chain refuses the start
+  with `CHAIN_DIVERGED` and rewrites nothing), writes event 0 on a fresh run
+  (the first observation, the session's `public_info` into `config.json`, the
+  `START` line) before it binds the socket and reports READY, and from then on
+  is the only writer of `events.jsonl`, `chain.json`, `mutations.jsonl` and the
+  anchor file: every paid action is executed here, behind the gate, appended
+  through `run.append` and journaled before the reply leaves the socket. The
+  daemon is the only process that spends.
+- the **CLI**, `assay.cli.main`, a stateless display client on registry runs. At
+  `start` it writes `config.json`, the registry copy, the owner file and the
+  notes file before it spawns the daemon, and never writes `config.json` after.
+  Every other command loads the run once, lenient (the readers report what the
+  loader finds), validates what it can before talking to the daemon, sends the
+  gated operation over a Unix socket (`broker.broker_gated`), and prints the
+  receipt. Its one append to the journal is `reconcile` at start, with no
+  daemon alive, which recovers a spend the daemon journaled but never recorded.
+
+Both processes read the journal through one object, `run.Run` (section 6.3):
+the configuration, the registry, every event as a `records.Event`, the chain
+head, the mutation log, the manifest and the owner hash, loaded once per
+process and passed to every function below the entry points. The small files
+beside the journal (the activity log, `channels.json`, the readings cache, the
+verifier statistics, hazards, aggregates, the agenda files, the notes) stay on
+disk and are read on demand; each has one writer.
 
 Three trust classes decide where code may run:
 
@@ -307,16 +326,24 @@ ships at advise until an A/B shows blocking pays.
     observe(view, event) -> None                  optional, learn from outcomes
     telemetry(view) -> dict                       free counters
 
-`view` is `modules.JournalView(paths, events, registry)`. `pending` is the
-action about to be taken: `{"kind": act|commit|reset, "name", "params",
-"claims", "declares"}`, or `None` at status time. Modules are consulted before
-every paid action on a registry run (`modules.consult_modules` from
-`live._enforce_registry_gates` and `live.reset_level`), told the outcome after
-every recorded event (`modules.observe_outcome`), and asked for status-time
-advisories (`modules.advisory_lines`). In block mode an unmet demand refuses
-with `MODULE name | declaration demanded before this action: --declare f=...`
-and the declaration always unlocks the action. Declarations are journaled on
-the event under `declares`.
+The contract is the `modules.Module` protocol, and `view` is
+`modules.ModuleView(run)`: `view.events` (the journal as `records.Event`
+records, read-only), `view.registry`, `view.paths` (for reading a module's
+own files), and the two kernel methods a module persists through,
+`view.record(kind, **fields)` (an activity record of that kind; for
+`hazard_tagged` the tag goes into `hazards.json` as well, exactly what the
+hazard module wrote by path before) and `view.hazards()`. A module never
+writes a kernel file by path. `pending` is the action about to be taken:
+`{"kind": act|commit|reset, "name", "params", "claims", "declares"}` with the
+claims as `records.Claim` records, or `None` at status time. Modules are
+consulted before every paid action on a registry run
+(`modules.consult_modules` from `live._enforce_registry_gates` and
+`live.reset_level`), told the outcome after every recorded event
+(`modules.observe_outcome`), and asked for status-time advisories
+(`modules.advisory_lines`). In block mode an unmet demand refuses with
+`MODULE name | declaration demanded before this action: --declare f=...` and
+the declaration always unlocks the action. Declarations are journaled on the
+event under `declares`.
 
 Six built-ins, all `MODE = "advise"`: `wall_spend`, `miss_streak`,
 `null_forensics`, `park_with_test`, `sharpness`, `hazard` (effect-signature
@@ -327,9 +354,15 @@ re-issue halt, the loop halt, the conclusion gate keyed on declares).
 
 External modules: `modules: ["path.py"]` in the registry, copied into
 `.assay/modules/` at start (`modules.pin_external_modules`), loaded by
-`modules._load_external`. 1.2.0 pins them by manifest with a sha256 and adds an
-owner-authorized install command, so the hot-add channel is sanctioned and
-journaled rather than a directory glob.
+`modules._load_external` from the manifest the run holds. 1.2.0 pins them by
+manifest with a sha256 and adds an owner-authorized install command, so the
+hot-add channel is sanctioned and journaled rather than a directory glob. The
+modules load once per run object (`modules.active_modules`): in the daemon
+once per gated request until #20 holds one run for its life, in the CLI once
+per command that consults them. A run pinned before the manifest existed has
+it rebuilt from the registry's `modules` list at `assay start`
+(`modules.reconstruct_manifest`), never from a status call: the loader never
+writes.
 
 **Required.** Nothing. A registry with no `modules` key runs the built-ins at
 their default modes.
@@ -503,14 +536,22 @@ audit that recomputes integrity from the artifacts alone.
 
 **Contract.**
 
-- **The journal**, `.assay/events.jsonl`, one JSON object per line, built by
-  `core.make_event` and appended by `core.append_event` with fsync and a file
-  lock. Fields per `JOURNAL_SPEC.md` section 2: `id` (equal to the line index,
-  checked on every load by `core.load_events`), `timestamp`, `action`, `data`,
+- **The journal**, `.assay/events.jsonl`, one JSON object per line: a
+  `records.Event`, built by `core.make_event` and appended by `run.Run.append`
+  (the one writer while a daemon lives) with fsync and a file lock, as
+  `json.dumps(event.to_json(), separators=(",", ":"), sort_keys=True)`. Fields
+  per `JOURNAL_SPEC.md` section 2: `id` (equal to the line index, checked on
+  every load by `run.Run.load`, which decodes every line through
+  `records.Event.from_json`, refuses a wrong type on a known key and carries an
+  unknown key through unchanged), `timestamp`, `action`, `data`,
   `counts_action`, `state`, `levels_completed`, `level_before`, `win_levels`,
   `available_actions`, `frames` and `n_frames` or `observation`, `note`,
-  `predict`, `predict_ok`, `grade`, `mutation_id`, plus `declares` and
-  `gate_optional` when present.
+  `predict`, `predict_ok`, `grade` (a tuple of `records.Grade`), `mutation_id`,
+  plus `declares`, `gate_optional` and `gate_off` when present. The grades,
+  the claims (`records.Claim`), the receipts (`records.Receipt`) and the
+  mutation records (`records.Mutation`) are typed the same way, and every
+  published journal under `evidence/` reads and re-serializes to the same
+  bytes (`tests/test_records.py`).
 - **The write-ahead spend record**, `.assay/mutations.jsonl`, appended by the
   daemon before the event line (`broker.serve`, `direct_stepper`). A crash
   between spend and record is recovered by `broker.reconcile_mutations`, which
@@ -518,9 +559,16 @@ audit that recomputes integrity from the artifacts alone.
   journal`. The audit lists recovered orphans.
 - **The chain.** `head_0 = sha256("assay-chain-v1")`, `head_n =
   sha256(hex(head_{n-1}) || line_n)` over the raw line (`integrity._advance`).
-  On registry runs the daemon advances `.assay/chain.json` after every append
-  (`live._record`, `integrity.extend_chain`) and recomputes from the whole file
-  when the stored state is behind.
+  `run.Run.load` recomputes the head over every line it reads and classifies
+  the stored `chain.json` as intact, absent, behind by the lines a crash left
+  (its `event_id` below the last id, its head equal to the head of that
+  prefix) or diverged; `run.Run.append` advances the held head with the exact
+  line it wrote and writes `chain.json` after every append, so an absent or
+  crash-behind chain is held as the recomputed head and repaired by the next
+  append. A strict load (`start`, the daemon) refuses a diverged chain or a
+  contiguity problem with `CHAIN_DIVERGED` and rewrites nothing; a lenient
+  load (the readers) reports it: `audit` as before, and status on an
+  INTEGRITY line.
 - **Anchors.** Every 25 events and on WIN the head is appended to the anchor
   file outside the run (`integrity.ANCHOR_EVERY`, `integrity.anchor_file`). An
   unwritable anchor directory degrades to chain-only integrity today and is
@@ -697,6 +745,24 @@ same day and revised the same evening after an independent review against the co
 implemented by #12, #20, #24 and #16. Sections 1 to 5 describe the code at 6ea56e4; where
 this note and a section above differ, the note is the target and the pull request that
 lands the change updates the section.
+
+What #12 landed, and where it stops: the records of 6.2 (`records.py`, without `Status`,
+which is #13's), the run of 6.3 (`run.py`: `Run.load` strict and lenient, `run.append`,
+`run.verify_disk` with its `Tamper` record, the mutation log through
+`run.record_mutation`), the signature change of 6.3 across the kernel and the frame
+extra, event 0 written by the daemon, the `Module`, `ModuleView` and `Adapter` protocols
+of 6.4, and the tests of 6.6 (the 66-journal round trip, the AST walk, the daemon's
+journal read back). Three things 6.3 and 6.4 describe wait for the pull requests they
+name: the daemon builds one `Run` per gated request, loaded strict, and loads once at
+`serve` for event 0 and the replay, until #20 holds one run for its life and calls
+`verify_disk` before every paid action; approvals and waivers stay files until #24 moves
+the owner operations into the daemon; `install_module` stays a CLI command until #24.
+`core.load_events` and `core.append_event` are gone rather than kept: `analysis`
+builds the agent's namespace from the held records (the journal still reaches the agent
+as plain JSON objects), and the AST test still refuses `load_events(` outside `run.py`,
+`core.py` and `analysis.py`. A malformed journal line (a wrong type on a known key, a
+missing required key) is a decoding error on the internal path, not a refusal, until
+#13 gives it the `internal` kind.
 
 ### 6.1 Why
 
