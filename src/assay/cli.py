@@ -193,7 +193,7 @@ def _parser() -> Parser:
     act.add_argument(
         "--predict",
         required=False,
-        help='what this action does, e.g. "move 12,5 1,0" (see below); required '
+        help='what this action does, e.g. "change; ch counter delta = 1" (see below); required '
         "unless the registry sets gate: optional",
     )
     act.add_argument("--because", help="short reason for choosing this action")

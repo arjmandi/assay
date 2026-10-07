@@ -514,8 +514,9 @@ Each item is the message you see and what to do.
   daemon and a dependency is missing there. Install the adapter's
   dependencies into that interpreter, or set `ASSAY_PYTHON` to the venv that
   has them.
-- `invalid world id 'my-world': a world id is 2 to 16 characters of a-z and
-  0-9 ...`. Choose an id that fits the rule.
+- `invalid world id 'my world': it contains whitespace. A world id is any
+  non-empty string up to 64 characters with no whitespace, control characters
+  or path separators, kept as given`. Choose an id that fits the rule.
 - `assay act --help` prints the general claim table first and the grid forms
   under a section headed `FRAME WORLDS ONLY`. On a dict run those forms are
   refused by name before any spend.

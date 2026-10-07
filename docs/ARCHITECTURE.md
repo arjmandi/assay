@@ -29,7 +29,7 @@ it (`core.RunPaths`). Two processes touch that state:
   validates what it can before talking to the daemon, sends the gated operation
   over a Unix socket (`broker.broker_gated`), and prints the receipt.
 
-Three trust classes, from `DESIGN.md` section 2, decide where code may run:
+Three trust classes decide where code may run:
 
 - **kernel code** is trusted and runs in the daemon and the CLI,
 - **pack and module code** (adapters, behavior modules) is installed by the
@@ -284,8 +284,8 @@ diffed against it (the E1 ungated variants on the experiment branch).
 **Role.** Behavior modules: declare, advise, demand units over the journal. A
 module turns a way of thinking into a trigger that fires at the right moment
 and, in block mode, into a structural demand the agent satisfies by declaring
-named fields. The shipping ladder is telemetry first, teeth later (`DESIGN.md`
-section 5.2): everything ships at advise until an A/B shows blocking pays.
+named fields. The shipping ladder is telemetry first, teeth later: everything
+ships at advise until an A/B shows blocking pays.
 
 **Owner.** The harness for built-ins, the human installer for external ones
 (pack-tier trust). The agent never installs a module mid-run.
@@ -606,8 +606,8 @@ say **present**, **optional, unused**, or **world-specific** with the file.
 
 | Component | ARC-AGI-3 | Factorio (FLE) | OOLONG | Counter example | New-world template |
 |---|---|---|---|---|---|
-| Registry file | `bench/arcagi/registry_{200,500,1500}.json` (differ in the cap only) | `bench/factorio/registry_lab{64,128}.json` | `bench/oolong/registry_{40,200}.json` (cap only) | `examples/example_registry.json` | `examples/new_world/registry.json` (every optional key present, explained in its README) |
-| Registry: actions | `ACTION1..ACTION7`, `ACTION6 x,y` int 0..63, descriptions | `RUN program=<str base64>`, `WAIT ticks=<int 1..3600>`, descriptions | `BANK_FACT text,span=<str base64>`, `SUBMIT answer,spans=<str base64>`, descriptions | `INC amount=<int 1..2>`, `SET_LAMP state=<on\|off>`, `NOOP`, `BOMB` | `TURN delta=<int -3..3>`, `OPEN`, `ENTER`, `PEEK what=<code\|door>`, `ALARM`, `DRILL`, `SIREN volume=<float 0..1>` |
+| Registry file | `bench/arcagi/registry_{200,500,1500}.json` (differ in the cap only) | `bench/factorio/registry_lab{64,128}.json` | `bench/oolong/registry_{40,200}.json` (cap only) and `registry_200_batch.json` (`control.bank_mode: batch`, which changes the action forms) | `examples/example_registry.json` | `examples/new_world/registry.json` (every optional key present, explained in its README) |
+| Registry: actions | `ACTION1..ACTION7`, `ACTION6 x,y` int 0..63, descriptions | `RUN program=<str base64>`, `WAIT ticks=<int 1..3600>`, descriptions | `BANK_FACT text,span=<str base64>`, `SUBMIT answer,spans=<str base64>`, descriptions; the batch registry: `BANK_FACT spans=<str base64>` (several spans in one action), `SUBMIT answer=<str>` (plain text, `_` for a space) | `INC amount=<int 1..2>`, `SET_LAMP state=<on\|off>`, `NOOP`, `BOMB` | `TURN delta=<int -3..3>`, `OPEN`, `ENTER`, `PEEK what=<code\|door>`, `ALARM`, `DRILL`, `SIREN volume=<float 0..1>` |
 | Registry: budget | actions 200, 500 or 1500 | actions 64 or 128 | actions 40 or 200 | actions 40 | actions 60, usd 5.0 |
 | Registry: batching | `hand_cap: null` | `hand_cap: null` | `hand_cap: null` | default 3 | `hand_cap: 3` |
 | Registry: goal, mode_note | optional, unused | present (goal text, mode_note) | present (goal text, mode_note) | present | present |
@@ -653,8 +653,9 @@ and from `channels.json`, `verifiers/`, `hazards.json`, `model.py` and
 
 ## 5. What must never change
 
-Frozen by the public contract (`assay-journal-v1`) and by the 31 published
-journals that verify against their heads:
+Frozen by the public contract (`assay-journal-v1`) and by the 66 published
+journals under `evidence/`, which `evidence/verify_all.py` verifies against
+their heads:
 
 - the journal field names, including the historical ones: `levels_completed`,
   `win_levels`, `level_before`, `state`, `frames`, `n_frames`, `observation`,

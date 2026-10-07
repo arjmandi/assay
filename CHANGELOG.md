@@ -457,6 +457,17 @@ Left on the experiment branch, deliberately:
   already the process table, never a stored pid. Reproduced by stalling that
   one write for a second; found by the second CI run on ubuntu, in two of
   three cells on different tests (#30).
+- Dangling references, stale rules and plan codes out of the shipped tree.
+  `docs/ARCHITECTURE.md` no longer cites `DESIGN.md` (a file not in the
+  repository), describes the OOLONG batch registry, and counts the 66
+  published journals under `evidence/`, as does the `words.py` docstring;
+  the integrity docstring names the checker's ungated rule instead of
+  `evidence/bypass_audit.py`; the stale world id TODO in `core.py` and the
+  planning-code comments in `predictions.py`, `live.py`, `modules.py` and
+  the frame-world extra are plain sentences that say what the code does;
+  the `aggregates.py` and `modules.py` docstrings say when and where the
+  code runs; ONBOARDING quotes the current world id rule, GUIDE the grade
+  text as printed, and the `--predict` help a general claim (#29).
 
 ### Regression gates
 

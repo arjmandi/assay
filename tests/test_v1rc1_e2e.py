@@ -145,7 +145,8 @@ def test_channels_grade_and_misreference(tmp_path):
         assert "MIS-REFERENCE | 1" in status.stdout
         assert "CHANNELS | registered:" in status.stdout
         assert "EMERGENCE |" in status.stdout and "declared channels 1" in status.stdout
-        # goal channel claims sit in the gamble bucket.
+        # A claim on a declared channel grades in the world_model bucket; only
+        # the goal and level channels gamble.
         event = _events(run)[-1]
         assert event["grade"][0]["bucket"] == "world_model"
     finally:

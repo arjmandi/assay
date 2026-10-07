@@ -60,8 +60,9 @@ def open_aggregates(
 ) -> list[str]:
     """Register this action's aggregate claims as open; supersede duplicates.
 
-    Returns display lines. Called by the gate at spend time (the action's
-    mechanical claims have already validated)."""
+    Returns display lines. live.py calls it after the graded event is recorded
+    (the action's mechanical claims validated before the spend), so an
+    aggregate opens at the paid event that carried it."""
     aggregate_claims = [claim for claim in claims if claim.get("kind") == "aggregate"]
     if not aggregate_claims:
         return []
@@ -118,8 +119,9 @@ def open_aggregates(
 def resolve_due(
     paths: RunPaths, events: Sequence[Mapping[str, Any]]
 ) -> list[str]:
-    """Resolve every open aggregate whose horizon has passed. Gate calls this
-    after each spend. A failed reading resolves as FAILED (rule 3), never skips."""
+    """Resolve every open aggregate whose horizon has passed. live.py calls it
+    after each paid event is recorded, right after `open_aggregates`. A failed
+    reading resolves as FAILED (rule 3), never skips."""
     state = load_state(paths)
     if not state["open"]:
         return []

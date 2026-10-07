@@ -10,22 +10,26 @@ A module is constitution text + a trigger + a demand schema + a mode + telemetry
     observe(view, event) -> None              # optional: learn from outcomes
     telemetry(view) -> dict                    # free counters
 
-The shipping ladder is telemetry-first, teeth later: everything ships at
-advise until an A/B shows blocking pays (owner law). Demands are always for
+The shipping ladder is telemetry first, teeth later: every built-in ships with
+MODE "advise", and a run that wants teeth sets `module_modes` in its registry,
+because no A/B has yet shown that blocking pays. Demands are always for
 checkable structure (named, non-empty fields supplied via --declare or the
 destructive-gate flags), never for confidence. Module code is pack-tier trust:
 installed by the human at registration (`modules: [path.py]`) or by the owner
-mid-run (`assay module install PATH --token TOK`), loaded daemon-side, never
-writable by the agent. Installed files are pinned into `.assay/modules/` and
-listed in `.assay/modules/manifest.json` with their sha256; a file in that
-directory that is not listed, or whose hash no longer matches, is never loaded
-and status says so. This is the sanctioned hot-add channel: the owner installs,
+mid-run (`assay module install PATH --token TOK`), never writable by the
+agent. The daemon loads the modules at every gated action, and the CLI
+process loads them as well: `assay start` (the pin), `assay status` (the
+advisories), `assay module list` and `assay module install` each import the
+module files. Installed files are pinned into `.assay/modules/` and listed in
+`.assay/modules/manifest.json` with their sha256; a file in that directory
+that is not listed, or whose hash no longer matches, is never loaded and
+status says so. This is the sanctioned hot-add channel: the owner installs,
 the install is journaled, nothing else in the directory counts.
 
-TODO(owner: O6): the review offered the alternative of keeping the directory
-glob and having the paper call the channel unguarded. The manifest is the
-conservative default implemented here (the run loads only what the registry
-or the owner installed); switching back is a one-line change in _load_external.
+The manifest, not a directory glob, decides what loads: `_load_external` reads
+the manifest's listed files whose hash still matches and nothing else, so the
+run loads only what the registry or the owner installed, and a file the agent
+writes into the directory is not a module.
 
 Built-ins (the standing nudge table plus the first structural module):
 

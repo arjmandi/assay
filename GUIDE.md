@@ -72,7 +72,7 @@ Line by line, what actually happens:
   spending; applies the action; grades the claim against what actually
   happened. The counter moved, so: ✓ PREDICTED.
 - **`act NOOP --predict "change"`**: same claim, but NOOP changes nothing:
-  ✗ SURPRISE, with the counter-fact ("no observed change, 0 keys"). Misses
+  ✗ SURPRISE, with the counter-fact ("no observed change (0 keys)"). Misses
   are the product, not the failure: each one corrects the agent's model at
   the price of one action.
 - **`channel declare counter --path counter`**: registers a named reading
