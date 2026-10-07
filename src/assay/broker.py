@@ -558,6 +558,24 @@ def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]
     return mutations, fresh_level
 
 
+def _open_run(run: Run, session: Session) -> None:
+    """Event 0 is the daemon's (docs/ARCHITECTURE.md section 6.3): on a fresh
+    run, the first observation, the session's `public_info` into config.json,
+    START through the one writer, and the observation kind's after-record
+    work, all before the socket binds and READY is reported."""
+    from .extras import kind_for
+
+    public_info = json.loads(json.dumps(getattr(session, "public_info", {})))
+    run.config = {**run.config, "public_info": dict(public_info or {})}
+    atomic_json(run.paths.config, run.config)
+    event = run.append(
+        make_event(session.observation, "START", None, None, note="initial observation")
+    )
+    kind = kind_for(event)
+    if kind is not None:
+        kind.after_record(run, event)
+
+
 def serve(paths: RunPaths) -> None:
     config = read_json(paths.config)
     if not isinstance(config, dict):
@@ -573,6 +591,9 @@ def serve(paths: RunPaths) -> None:
             fresh_level = False
         else:
             mutations, fresh_level = _replay_local_session(session, run)
+        if not run.events:
+            _open_run(run, session)
+            config = run.config
         token = (paths.state / "broker.token").read_text().strip()
         try:
             paths.socket.unlink()

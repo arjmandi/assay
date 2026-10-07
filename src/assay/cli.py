@@ -25,7 +25,6 @@ from .broker import (
     REMOTE_MODE,
     broker_gated,
     broker_matches_latest_event,
-    broker_observe,
     broker_ping,
     check_adapter_spec,
     find_daemon,
@@ -71,14 +70,13 @@ from .core import (
     atomic_json,
     command_status,
     load_jsonl,
-    make_event,
     normalize_game_id,
     now_iso,
     read_json,
     require_run,
     run_lock,
 )
-from .extras import kind_for, require_kind
+from .extras import require_kind
 from .inspect import result_text, status_text, view_text
 from .predictions import claims_help
 from .registry import gate_mode, load_registry_file
@@ -637,17 +635,14 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 f"{summary['hazards_foreign_inactive']}) | everything FOREIGN, "
                 "demoted until re-earned (see status)"
             )
+        # Event 0 is the daemon's: it takes the first observation, writes
+        # public_info into config.json and appends START before it reports
+        # READY. This process wrote config.json, the registry copy, the owner
+        # file and the notes before the spawn and never writes config.json
+        # after it; the status below is read from the journal the daemon
+        # opened.
         start_broker(paths)
-        observation, public_info = broker_observe(paths)
-        config["public_info"] = public_info
-        atomic_json(paths.config, config)
-        run.config = config
-        event = run.append(
-            make_event(observation, "START", None, None, note="initial observation")
-        )
-        kind = kind_for(event)
-        if kind is not None:
-            kind.after_record(run, event)
+        run = Run.load(paths, strict=False)
     except Exception:
         stop_broker(paths)
         shutil.rmtree(paths.state, ignore_errors=True)
