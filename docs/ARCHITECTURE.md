@@ -44,8 +44,8 @@ replay possible: a local run resumes by replaying its own journal through the
 adapter (`broker._replay_local_session`) and refusing to continue if the world
 no longer reproduces a recorded observation.
 
-The public contract the kernel must keep honoring is in the assay-verify
-repository: `JOURNAL_SPEC.md` (`assay-journal-v1`, the event schema, the chain
+The public contract the kernel must keep honoring is in `verify/`:
+`JOURNAL_SPEC.md` (`assay-journal-v1`, the event schema, the chain
 rule, the ungated rule, the verdict) and `CLAIM_GRAMMAR.md` (the claim forms and
 what a graded claim asserts). Section 5 lists the identifiers that are frozen by
 that contract.
@@ -378,7 +378,7 @@ numeric readings before and after. Claims on `goal` and `level` sit in the
 (`agg ch NAME mean|min|max OP V over Na horizon Ma on-fail advise|revoke_batching`)
 are additive, open at the gate and resolve at their horizon (`aggregates.py`).
 
-**The worked example** (the Factorio M2 runs, `assay-verify/evidence/factorio`).
+**The worked example** (the Factorio M2 runs, `evidence/factorio`).
 The pattern is declare early, name referents, claim every action with a channel
 form. The irongear run declared seven path channels at its first event:
 
@@ -523,7 +523,7 @@ audit that recomputes integrity from the artifacts alone.
 kind stored over the record (every meter is recomputed). Plaintext secrets.
 World-specific fields.
 
-**Extension points.** None in v1. Spec v2 (planned, in assay-verify) chains a
+**Extension points.** None in v1. Spec v2 (planned, in `verify/`) chains a
 canonical form so that agent prose becomes redactable, and reserves the general
 aliases `progress`, `progress_total`, `status`.
 
@@ -629,7 +629,7 @@ say **present**, **optional, unused**, or **world-specific** with the file.
 | Rules tier | optional, unused (registry runs refuse it) | not applicable | not applicable | not applicable | not applicable |
 | Kernel imports from the world | none | none | none | none | none |
 
-Counts come from the published journals (`assay-verify/evidence/*/journal-*.jsonl.gz`)
+Counts come from the published journals (`evidence/*/journal-*.jsonl.gz`)
 and from `channels.json`, `verifiers/`, `hazards.json`, `model.py` and
 `model_fit.json` in the run directories. The template column is what
 `tests/test_conformance.py` exercises on every run of the suite.

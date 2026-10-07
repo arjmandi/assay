@@ -6,7 +6,7 @@ the protocol record.
 
 Status: **M2 calibration complete** (2026-08-26): three lab-play throughput
 tasks played, three won (ironplate 5 actions, irongear 9, circuit 9), every
-journal CLEAN under `assay audit` and assay-verify, zero policy refusals. See
+journal CLEAN under `assay audit` and the independent checker, zero policy refusals. See
 `RESULTS.md`. The 24-task sweep (M3) has not run.
 
 | file | what it is |

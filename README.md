@@ -12,7 +12,8 @@ terminal, or an LLM agent) and a world you register:
 - **Hash-chained journals** — everything lands in an append-only journal with
   a rolling hash chain and external anchors; `assay audit` recomputes
   integrity from the artifacts alone, and any world contact that bypassed the
-  gate marks the run invalid.
+  gate marks the run invalid. The journal standard and an independent checker
+  are in `verify/`, every published journal with its head in `evidence/`.
 - **Memory + agency layer** — knowledge export/import between runs (imported
   knowledge lands FOREIGN and must be re-earned), a standing goal with a
   proposal lane the agent cannot self-ratify, behavior modules, and safety
@@ -80,6 +81,7 @@ ASSAY is source-available under the PolyForm Noncommercial License 1.0.0
 (`LICENSE`): you may use, modify and share it for noncommercial purposes. For
 commercial terms contact the author. In 1.1.0 the repository takes issues
 only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
-(`NOTICE`). The journal standard and the independent checker live in the
-separate assay-verify repository under MIT, so anyone can verify a journal
-without a license to the harness.
+(`NOTICE`). The journal standard, the independent checker and the published
+journals are in `verify/` and `evidence/` under MIT (`verify/LICENSE`), so
+anyone can verify a journal without a license to the harness. They moved here
+from the retired assay-verify repository, which is archived with a pointer.

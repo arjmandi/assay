@@ -7,7 +7,6 @@ independent checker agrees. Not the default, never scorable."""
 from __future__ import annotations
 
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -41,11 +40,7 @@ def _events(run: Path) -> list[dict]:
     return [json.loads(line) for line in lines if line.strip()]
 
 
-def _assay_verify() -> Path | None:
-    configured = os.getenv("ASSAY_VERIFY")
-    candidates = [Path(configured)] if configured else []
-    candidates.append(Path(__file__).resolve().parents[2] / "assay-verify" / "assay_verify.py")
-    return next((c for c in candidates if c.is_file()), None)
+CHECKER = Path(__file__).resolve().parents[1] / "verify" / "assay_verify.py"
 
 
 def test_off_is_a_valid_value_and_the_default_is_required():
@@ -102,9 +97,7 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         assert report["chain"] == "intact"
     finally:
         stop_run(run)
-    checker = _assay_verify()
-    if checker is None:
-        pytest.skip("independent checker not found (set ASSAY_VERIFY or check out assay-verify beside this repo)")
+    checker = CHECKER
     checked = subprocess.run(
         [sys.executable, str(checker), str(run), "--json"],
         capture_output=True, text=True, timeout=60,

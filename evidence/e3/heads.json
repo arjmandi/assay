@@ -1,0 +1,55 @@
+{
+ "spec": "assay-journal-v1",
+ "world": "arcagi3-public-set",
+ "experiment": "E3",
+ "generated": "2026-10-07",
+ "protocol_files": [
+  "E3_PROTOCOL.md",
+  "E1_E2_RESULTS.md",
+  "E1_E2_E3_run_table.json"
+ ],
+ "checker": "assay_verify.py at the commit that publishes this pack, run on the decompressed journal.jsonl beside its chain.json, with --expect-head",
+ "total_paid_actions": 199,
+ "runs": [
+  {
+   "run": "ft09-import-s1",
+   "game": "ft09",
+   "arm": "import",
+   "seed": 1,
+   "import_source": "evidence/e1/ft09-gated-s1",
+   "cap": 200,
+   "state_dir": ".assay",
+   "events": 81,
+   "paid": 80,
+   "progress": "6/6",
+   "final_state": "WIN",
+   "chain_head": "5b5ad05569fb80362e3e0f125a86d5c16a95dbbf4514b07156c19faab22a357c",
+   "stored_chain": "intact",
+   "expect_head": "match",
+   "ungated": 0,
+   "verdict": "CLEAN",
+   "journal_sha256": "27d3fb82a293c5a1889c9a7d565ad507f2521c02805daa9c3c33cfea1c46f454",
+   "published_bytes": 14147
+  },
+  {
+   "run": "tr87-import-s1",
+   "game": "tr87",
+   "arm": "import",
+   "seed": 1,
+   "import_source": "evidence/e1/tr87-gated-s1",
+   "cap": 1500,
+   "state_dir": ".assay",
+   "events": 120,
+   "paid": 119,
+   "progress": "6/6",
+   "final_state": "WIN",
+   "chain_head": "bae62c21c55d3e2a1e58e5bcdf86e03e3f41a7241d28cdbe81df5f2896afdfbb",
+   "stored_chain": "intact",
+   "expect_head": "match",
+   "ungated": 0,
+   "verdict": "CLEAN",
+   "journal_sha256": "363a521f25f6b314d1fdbe9a5b4e77c0803c20da75919f30efdbe37acdbc3ae0",
+   "published_bytes": 42683
+  }
+ ]
+}

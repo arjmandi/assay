@@ -12,7 +12,7 @@ is an ARC level (so status shows `level n/m` and the receipts say "level"),
 `WIN` is the engine's win state, and `GAME_OVER` is the engine's game-over
 state, which `assay reset` recovers from without a reason. The journal field
 names are the historical ones from this benchmark and are fixed by the public
-journal spec (assay-verify, `JOURNAL_SPEC.md` section 7).
+journal spec (`verify/JOURNAL_SPEC.md`, section 7).
 
 ## Running a game
 

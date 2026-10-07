@@ -1,7 +1,7 @@
 # Test fixtures
 
 `lf52_prefix.jsonl.gz` is derived from the published ARC-AGI-3 journal of the
-lf52 run (`assay-verify/evidence/arcagi/journal-lf52.jsonl.gz`, MIT): events 0
+lf52 run (`evidence/arcagi/journal-lf52.jsonl.gz`, MIT): events 0
 to 82, reduced to the fields a behavior module reads (`id`, `action`, `data`,
 `counts_action`, `state`, `levels_completed`, `level_before`, `win_levels`,
 `available_actions`, `predict`, `predict_ok`, the grade records cut to `kind`,

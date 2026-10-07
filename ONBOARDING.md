@@ -470,18 +470,18 @@ is `head_0 = sha256("assay-chain-v1")`, `head_n = sha256(hex(head_{n-1}) ||
 line_n)` over the raw journal lines, and the anchors are its heads written
 outside the run.
 
-The independent checker is `assay_verify.py` in the assay-verify repository.
-It shares no code with the harness and reads only the journal:
+The independent checker is `verify/assay_verify.py`. It shares no code with
+the harness and reads only the journal:
 
 ```bash
-python3 assay_verify.py <run-directory>
-python3 assay_verify.py <run-directory> --expect-head <sha256>
+python3 verify/assay_verify.py <run-directory>
+python3 verify/assay_verify.py <run-directory> --expect-head <sha256>
 ```
 
 To publish a run, publish the journal (`.assay/events.jsonl`) and its chain
 head. Anyone holding the journal can then verify it is byte-identical to the
-one whose head was published. The evidence packs under `assay-verify/evidence`
-are the worked example.
+one whose head was published. The evidence packs under `evidence/` are the
+worked example, and `evidence/verify_all.py` checks every one of them.
 
 What the public contract freezes, from the architecture document's section 5:
 the journal field names, including the historical `levels_completed`,

@@ -1,0 +1,42 @@
+{
+ "spec": "assay-journal-v1",
+ "world": "arcagi3-public-set",
+ "experiment": "G4",
+ "generated": "2026-10-07",
+ "note": "The live ft09 regression gate of release 1.1.0 (RELEASE_CHECKLIST.md, G4): one gated run on the release branch at 82bfd5d, registry_200.json, the 1.1.0 constitution, the E1 gated prompt template, claude-opus-5, one session. The bar is decision 18 of the paper's DECISIONS.md (WIN 6 of 6 within 113 paid actions).",
+ "checker": "verify/assay_verify.py at the commit that publishes this pack, run on the decompressed journal.jsonl beside its chain.json, with --expect-head",
+ "total_paid_actions": 80,
+ "runs": [
+  {
+   "run": "ft09-release-s1",
+   "game": "ft09",
+   "arm": "gated",
+   "seed": 1,
+   "gate": "required",
+   "cap": 200,
+   "kernel": "release/1.1.0 at 82bfd5d",
+   "model": "claude-opus-5",
+   "state_dir": ".assay",
+   "events": 81,
+   "paid": 80,
+   "progress": "6/6",
+   "final_state": "WIN",
+   "per_unit_paid": [
+    4,
+    7,
+    14,
+    21,
+    21,
+    13
+   ],
+   "chain_head": "cc65462fd7dc52106ed3afe90a51d0e5c2fa7f3e5045b218c496166d7a8e8350",
+   "stored_chain": "intact",
+   "expect_head": "match",
+   "ungated": 0,
+   "verdict": "CLEAN",
+   "cost_usd_list_price": 11.39,
+   "bar": "WIN 6/6 within 113 paid actions",
+   "bar_met": true
+  }
+ ]
+}

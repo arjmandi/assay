@@ -27,7 +27,7 @@ Packs used: `spam4k` (5 questions, 4096-token corpus) and `spam8k` (25 questions
   `levels_completed` 1→5, ending `GAME_COMPLETE` / state `WIN` at e11 (11 paid
   actions, per-question paid `[3, 2, 2, 2, 2]`). `assay audit` → **CLEAN** (chain
   intact, anchors intact, contiguous). External
-  `assay-verify.py <run>` → **verdict CLEAN**, ungated paid events **0**.
+  `verify/assay_verify.py <run>` → **verdict CLEAN**, ungated paid events **0**.
 - **E — sealed scoring at finalize.** `.assay/oolong_score.{json,md}` written by
   `finalize()` using the reused vendored OOLONG scorer (sha256 `247583a3…`),
   answers fed as `Answer: {x}`, network none. Mean **0.9125** over 5, **4 exact

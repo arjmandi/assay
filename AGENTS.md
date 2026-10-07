@@ -23,9 +23,9 @@ suite before calling a task done.
 
 `docs/ARCHITECTURE.md` is the component model and the single source: one
 section per component, the frame-world extra, the conformance table, and the
-list of what never changes. The public journal contract lives in the
-assay-verify repository: `JOURNAL_SPEC.md` (`assay-journal-v1`) and
-`CLAIM_GRAMMAR.md`. The kernel must keep honoring both.
+list of what never changes. The public journal contract lives in `verify/`:
+`JOURNAL_SPEC.md` (`assay-journal-v1`) and `CLAIM_GRAMMAR.md`, beside the
+independent checker. The kernel must keep honoring both.
 
 ## What never changes
 

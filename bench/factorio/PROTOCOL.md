@@ -342,7 +342,7 @@ CLAIMS | world-model misses 0/12 (0.0%) | gamble misses 0/1 (0.0%) | sharpness 1
 AUDIT  | CLEAN | events 7 (paid 6) | contiguous yes | chain intact | anchors intact (1)
 ```
 
-Standalone verifier (`assay-verify/assay_verify.py`, spec
+Standalone verifier (`verify/assay_verify.py`, spec
 `assay-journal-v1`): `verdict CLEAN`, ungated paid events 0.
 
 Cost and duration on this hardware (Apple Silicon, box64-emulated server,

@@ -13,7 +13,7 @@ publication — calibration to price and de-risk the 24-task sweep (M3).
 | circuit (electronic_circuit) | **WIN 4/4** | 9 | $4.44 | ~17 min | CLEAN | 0 |
 
 Every win triple-verified (kernel `assay audit` CLEAN, standalone
-`assay-verify` CLEAN on the fresh journal, throughput corroboration enforced
+the independent checker CLEAN on the fresh journal, throughput corroboration enforced
 with a real producing entity present). Zero ungated events. **Zero policy
 refusals across all three — the safety screen imposed no capability tax on
 any legitimate program** (the owner's capability-cost concern, answered by

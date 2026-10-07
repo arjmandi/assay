@@ -6,8 +6,8 @@ game, and progress unit, not level, unless the world really is a game with
 levels. This module is the one place the prose words live, and its docstring
 is the allowlist the vocabulary test enforces.
 
-Frozen, because the public journal contract (`assay-journal-v1` in
-assay-verify) and the 31 published journals fix them:
+Frozen, because the public journal contract (`assay-journal-v1`,
+verify/JOURNAL_SPEC.md) and the 31 published journals fix them:
 
 - the journal fields `levels_completed`, `win_levels`, `level_before`,
   `state`, `frames`, `n_frames`, `observation`,

@@ -5,13 +5,12 @@ before any spend, exactly as before. Under "optional" the daemon accepts it,
 executes it, and journals it UNGATED (predict null, predict_ok null, grade [],
 marker gate_optional true). The audit counts those events separately as
 ungated_permitted while keeping the run INVALID FOR SCORING, and the
-independent assay-verify checker agrees. Everything runs through the real CLI,
+independent checker (verify/assay_verify.py) agrees. Everything runs through the real CLI,
 broker and fake adapter."""
 
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 import sys
@@ -27,19 +26,7 @@ ACTIONS = [
 ]
 
 
-def _assay_verify() -> Path | None:
-    """The independent checker, when a copy is reachable: ASSAY_VERIFY names
-    the script, else a sibling checkout of assay-verify next to this repo.
-    No machine path is assumed; the dependent test skips when neither exists."""
-    configured = os.getenv("ASSAY_VERIFY")
-    candidates = [Path(configured)] if configured else []
-    candidates.append(
-        Path(__file__).resolve().parents[2] / "assay-verify" / "assay_verify.py"
-    )
-    for candidate in candidates:
-        if candidate.is_file():
-            return candidate
-    return None
+CHECKER = Path(__file__).resolve().parents[1] / "verify" / "assay_verify.py"
 
 
 def _registry(run_dir: Path, **extra) -> Path:
@@ -185,9 +172,7 @@ def test_an_unmarked_ungated_event_is_still_an_integrity_finding(tmp_path):
 
 
 def test_assay_verify_reports_an_optional_gate_journal_invalid(tmp_path):
-    checker = _assay_verify()
-    if checker is None:
-        pytest.skip("independent checker not found (set ASSAY_VERIFY or check out assay-verify beside this repo)")
+    checker = CHECKER
     run = tmp_path / "ver"
     run.mkdir()
     registry = _registry(run, gate="optional")

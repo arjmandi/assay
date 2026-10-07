@@ -64,7 +64,7 @@ bench/{arcagi,factorio,oolong}/   benchmark adapters, registries, protocols and
 - **`CONSTITUTION.md` is not for you.** It is the manual an agent under
   evaluation reads. You maintain the harness's source.
 - **The hash chain in `integrity.py` is the product's core trust claim**, and
-  the journal format is a public contract (assay-verify's `JOURNAL_SPEC.md`).
+  the journal format is a public contract (`verify/JOURNAL_SPEC.md`).
   A change to chaining, redaction, anchors, the ungated rule, or any field
   named in `docs/ARCHITECTURE.md` section 5 needs the full suite green and the
   replay diff over the published run directories, not a spot check.

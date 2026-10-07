@@ -51,8 +51,8 @@ merged. Two things were taken from it, by cherry-pick and by file copy:
   split into a world-neutral built-in plus a frame-world extra is a later
   entry in this changelog.
 - `tests/test_gate_optional.py` from the gate commit, with its absolute path
-  to the independent checker replaced by `ASSAY_VERIFY` or a sibling checkout
-  of assay-verify, else a skip.
+  to the independent checker replaced by the checker's place in this
+  repository, `verify/assay_verify.py`.
 - `tests/test_coverage_module.py` reduced to the two tests that need no
   archived run directory.
 
@@ -115,6 +115,21 @@ Left on the experiment branch, deliberately:
   exactly what it marks: an ungated event without the mode's marker still
   raises the INTEGRITY line, on any run. The audit is unchanged (such runs
   stay invalid for scoring, the permitted events counted apart).
+- The journal standard and the independent checker moved in (A5, B2).
+  `verify/` holds `assay_verify.py` (unchanged in logic, the standard library
+  only, sharing no code with `src/assay`, which
+  `tests/test_verify_independence.py` enforces by reading its imports and by
+  running it with the harness unimportable), `JOURNAL_SPEC.md`,
+  `CLAIM_GRAMMAR.md` and its own tests, under MIT (`verify/LICENSE`).
+  `evidence/` holds every published journal with its committed head and the
+  checker's verdict: the ARC-AGI-3, Factorio and OOLONG packs as published,
+  the E1, E2 and E3 packs (journals and stored chains only, since the pinned
+  registries and creation records carry local paths and stay with the
+  archived run directories), and the new G4 pack, the live ft09 regression
+  gate of this release (WIN 6 of 6 in 80 paid actions, CLEAN, head
+  `cc65462f...`). `evidence/verify_all.py` checks all 56 journals against
+  their heads with the standard library alone, and the suite runs it. The
+  former assay-verify repository is archived with a pointer here.
 - `assay stop`: stops the run's daemon cleanly (SIGTERM, wait, report). Works
   without run state, so an orphaned daemon left behind by a hand-deleted
   `.assay` can be stopped. Never sends SIGKILL.

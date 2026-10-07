@@ -56,7 +56,7 @@ the pre-tag grep in section 3:
 - `tests/test_night_orchestrator.py`, `tests/test_e3_prepare.py`, the
   archived-run test of the old `tests/test_coverage_module.py`, and the
   absolute checker path that `tests/test_gate_optional.py` carried (replaced
-  by `ASSAY_VERIFY` or a sibling checkout).
+  by the checker's place in this repository, `verify/assay_verify.py`).
 - `bench/arcagi/registry_e2_1500_coverage.json` (an absolute module path).
 - The E1 registries and the two ungated constitution variants with
   `E1_CONSTITUTION_DIFF.md` (whether they ship is owner decision O4).
@@ -107,7 +107,7 @@ on `release/1.1.0` and `main`, emails only inside `bench/oolong/packs`
 |---|---|---|
 | G1 the suite | `uv run --with pytest --with numpy --with pillow pytest tests/` | all green (the 74 of main plus every new test) |
 | G2 replay diff | `python3 paper/v4/release-gates/g2_replay_diff.py --main <main checkout> --release <release checkout> --python <venv python> --vocab` (in the archive) | zero differences over the 25 published run directories, four commands each |
-| G3 independent checker | `python3 paper/v4/release-gates/g3_verify.py` (in the archive) | 25 published ARC runs CLEAN with heads matched, the Factorio and OOLONG packs CLEAN, the 24 E1, E2 and E3 runs CLEAN |
+| G3 independent checker | `python3 paper/v4/release-gates/g3_verify.py` (in the archive), and `python3 evidence/verify_all.py` here | 25 published ARC runs CLEAN with heads matched, the Factorio, OOLONG and G4 packs CLEAN, the 24 E1, E2 and E3 runs CLEAN, all 56 published journals matching their heads |
 | G4 ft09 live regression | scheduled by the owner on the subscription, after code freeze, per DECISIONS item 18 | WIN 6 of 6 within the published bar |
 | G5 clean machine | `bash paper/v4/release-gates/g5_clean_machine.sh <scratch dir>` (in the archive) | PASS |
 
