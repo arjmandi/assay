@@ -1,14 +1,19 @@
 """Shared test plumbing for the ASSAY test suite.
 
 Unit tests import the assay package directly; end-to-end tests drive the real
-CLI (and therefore the real broker subprocess) with the fake adapter in this
-directory.
+CLI (and therefore the real broker subprocess) with the adapters in this
+directory. Nothing a test does leaves the pytest temp root: anchors and caches
+are redirected there for the whole session, and any daemon still serving a
+directory under it is stopped when the session ends.
 """
 
 from __future__ import annotations
 
+import os
+import signal
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -37,6 +42,54 @@ def stop_run(run_dir: Path) -> None:
     from assay.core import RunPaths
 
     stop_broker(RunPaths(Path(run_dir)))
+
+
+def _daemons_under(root: Path) -> list[int]:
+    """Pids of every daemon whose --run-dir lies under root."""
+    try:
+        listing = subprocess.run(
+            ["ps", "-eo", "pid=,command="], capture_output=True, text=True, timeout=10
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    found: list[int] = []
+    for line in listing.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2 or not parts[0].isdigit() or "broker_server.py" not in parts[1]:
+            continue
+        marker = "--run-dir "
+        if marker not in parts[1]:
+            continue
+        run_dir = parts[1].split(marker, 1)[1].strip()
+        if run_dir.startswith(str(root)):
+            found.append(int(parts[0]))
+    return found
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolated_session(tmp_path_factory: pytest.TempPathFactory):
+    """Anchors and caches under the temp root, never under the home directory,
+    and no daemon outlives the session."""
+    root = tmp_path_factory.getbasetemp()
+    previous = {key: os.environ.get(key) for key in ("ASSAY_ANCHOR_DIR", "XDG_CACHE_HOME")}
+    os.environ["ASSAY_ANCHOR_DIR"] = str(root / "anchors")
+    os.environ["XDG_CACHE_HOME"] = str(root / "cache")
+    try:
+        yield
+    finally:
+        for pid in _daemons_under(root):
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and _daemons_under(root):
+            time.sleep(0.1)
+        for key, value in previous.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
 
 
 @pytest.fixture

@@ -93,12 +93,22 @@ def check_adapter_spec(spec: str, root: Path) -> None:
     missing factory is a plain refusal here, not a daemon that never comes up
     and a pointer to broker.log."""
     module_name, attribute = split_adapter_spec(spec)
+    # The daemon script lives beside the package, so an adapter may import
+    # `assay` whether or not the package is installed; the dry import sees the
+    # same path.
+    package_dir = str(Path(__file__).resolve().parents[1])
+    inherited = os.environ.get("PYTHONPATH")
+    environment = {
+        **os.environ,
+        "PYTHONPATH": package_dir + (os.pathsep + inherited if inherited else ""),
+    }
     try:
         completed = subprocess.run(
             [sys.executable, "-c", _DRY_IMPORT, spec, str(root)],
             capture_output=True,
             text=True,
             cwd=str(root) if root.is_dir() else None,
+            env=environment,
             timeout=60.0,
             check=False,
         )

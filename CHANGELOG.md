@@ -146,6 +146,16 @@ Left on the experiment branch, deliberately:
   --declare` was. Every step of a batch now carries the declaration, redacted
   like the single-act form. Declaration counts over the historical journals
   are therefore lower bounds for batches.
+- Test hygiene (ranked fix 9). The suite isolates `ASSAY_ANCHOR_DIR` and
+  `XDG_CACHE_HOME` under the pytest temp root for the whole session (a
+  contributor's first `pytest` no longer writes anchors under their home
+  directory) and stops any daemon still serving a directory under that root
+  when the session ends. No test reads an absolute path on the authoring
+  machine. Two new tenants: a deterministic frame world
+  (`tests/grid_adapter.py`) that exercises rendering, the frame grader, the
+  grid refusal on registry runs, view and the offline namespace end to end,
+  and the OOLONG spam4k pack driven to WIN through the bench adapter with its
+  sealed score written at finalize.
 
 ### Regression gates
 
