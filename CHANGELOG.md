@@ -46,6 +46,26 @@ Left on the experiment branch, deliberately:
 - The resume tooling (`resume_at.py`, `notes_at.py`, `e2_prepare.py`,
   `e3_prepare.py`), the run launcher and the orchestrator.
 
+### Added
+
+- `assay stop`: stops the run's daemon cleanly (SIGTERM, wait, report). Works
+  without run state, so an orphaned daemon left behind by a hand-deleted
+  `.assay` can be stopped. Never sends SIGKILL.
+
+### Fixed
+
+- Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
+  the pid stored in `broker.json`: a live process running `broker_server.py`
+  with `--run-dir` naming the directory. A stale descriptor (pid reuse after a
+  reboot) is never signalled and is marked `STOPPED`. The daemon handles
+  SIGTERM: idle it exits at once, inside a step it finishes the step, journals
+  it, replies, then exits, writing `status: STOPPED`. `assay start` on a run
+  whose daemon does not answer but is alive, ours, and still owns its socket
+  refuses with "busy or hung" and names `assay stop` instead of killing it mid
+  action. A fresh start in a directory an orphaned daemon still serves is
+  refused until `assay stop`. The liveness probe's timeout honors
+  `ASSAY_BROKER_TIMEOUT` within 0.5 to 10 seconds.
+
 ### Regression gates
 
 Recorded per commit in `paper/v4/RELEASE-1.1.0-LOG.md` of the archive. The

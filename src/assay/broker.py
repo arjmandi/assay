@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import importlib
 import importlib.util
 import json
@@ -158,9 +159,20 @@ def _request(
     return response
 
 
+PING_TIMEOUT_MIN = 0.5
+PING_TIMEOUT_MAX = 10.0
+STOP_WAIT_SECONDS = 10.0
+
+
+def _ping_timeout() -> float:
+    """The liveness probe's wait. ASSAY_BROKER_TIMEOUT raises it (a slow world
+    answers a ping late while it is inside a step) within [0.5, 10] seconds."""
+    return min(PING_TIMEOUT_MAX, max(PING_TIMEOUT_MIN, _client_timeout(PING_TIMEOUT_MIN)))
+
+
 def broker_ping(paths: RunPaths) -> bool:
     try:
-        return bool(_request(paths, {"op": "ping"}, timeout=0.5).get("pong"))
+        return bool(_request(paths, {"op": "ping"}, timeout=_ping_timeout()).get("pong"))
     except AssayError:
         return False
 
@@ -292,14 +304,86 @@ def start_broker(paths: RunPaths) -> None:
     raise AssayError("environment owner did not start; see .assay/broker.log")
 
 
-def stop_broker(paths: RunPaths) -> None:
-    descriptor = read_json(paths.broker, {})
-    pid = descriptor.get("pid") if isinstance(descriptor, dict) else None
-    if isinstance(pid, int):
-        try:
-            os.kill(pid, signal.SIGTERM)
-        except ProcessLookupError:
-            pass
+@dataclasses.dataclass(frozen=True)
+class DaemonInfo:
+    """A live process identified as this run's environment owner."""
+
+    pid: int
+    command: str
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def find_daemon(paths: RunPaths) -> DaemonInfo | None:
+    """Identify this run's daemon by process, never by a stored pid alone.
+
+    broker.json names a pid, but after a reboot (or a long-lived run directory)
+    that pid can belong to another process of the same user, and after a
+    hand-deleted `.assay` there is no broker.json at all while the daemon still
+    serves the socket. So the identity is the process table: a live process
+    whose command line runs `broker_server.py` with `--run-dir` naming this
+    directory. Portable across macOS and Linux through `ps`."""
+    roots = {str(paths.root), str(paths.root.resolve())}
+    try:
+        listing = subprocess.run(
+            ["ps", "-eo", "pid=,command="],
+            capture_output=True,
+            text=True,
+            timeout=10.0,
+            check=False,
+        ).stdout
+    except (OSError, subprocess.TimeoutExpired):
+        listing = ""
+    own = os.getpid()
+    for line in listing.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) != 2 or not parts[0].isdigit():
+            continue
+        pid, command = int(parts[0]), parts[1]
+        if pid == own or "broker_server.py" not in command:
+            continue
+        if any(f"--run-dir {root}" in command for root in roots) and _alive(pid):
+            return DaemonInfo(pid=pid, command=command)
+    return None
+
+
+def stop_broker(paths: RunPaths, wait: float = STOP_WAIT_SECONDS) -> dict[str, Any]:
+    """Stop this run's daemon if, and only if, a live process is identified as
+    ours. Sends SIGTERM (the daemon finishes any in-flight step, writes STOPPED
+    and exits), then waits up to `wait` seconds. Never sends SIGKILL: a kill
+    inside a step could leave a paid action applied in the world and absent
+    from the journal. Returns what happened."""
+    daemon = find_daemon(paths)
+    if daemon is None:
+        paths.socket.unlink(missing_ok=True)
+        descriptor = read_json(paths.broker, {})
+        if isinstance(descriptor, dict) and descriptor.get("status") in {"READY", "STARTING"}:
+            # A stale descriptor: the process it names is gone or is not ours.
+            atomic_json(paths.broker, {**descriptor, "status": "STOPPED", "stale": True})
+        return {"stopped": False, "pid": None, "reason": "no live environment owner"}
+    started = time.monotonic()
+    try:
+        os.kill(daemon.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return {"stopped": True, "pid": daemon.pid, "elapsed": 0.0}
+    while time.monotonic() - started < wait:
+        if not _alive(daemon.pid):
+            paths.socket.unlink(missing_ok=True)
+            return {"stopped": True, "pid": daemon.pid, "elapsed": time.monotonic() - started}
+        time.sleep(0.05)
+    return {
+        "stopped": False,
+        "pid": daemon.pid,
+        "reason": f"still inside a step after {wait:g}s; it exits when the step ends",
+    }
 
 
 def _event_observation(event: Mapping[str, Any]) -> dict[str, Any]:
@@ -411,6 +495,33 @@ def serve(paths: RunPaths) -> None:
         )
         return
 
+    class _StopRequested(Exception):
+        pass
+
+    lifecycle = {"in_request": False, "stop": False}
+
+    def _on_terminate(signum: int, frame: Any) -> None:
+        # Idle: leave now. Inside a request: finish it, reply, then leave. A
+        # paid action is never cut between spend and record by a plain stop.
+        lifecycle["stop"] = True
+        if not lifecycle["in_request"]:
+            raise _StopRequested
+
+    signal.signal(signal.SIGTERM, _on_terminate)
+
+    def _stopped() -> None:
+        atomic_json(
+            paths.broker,
+            {
+                "status": "STOPPED",
+                "pid": os.getpid(),
+                "mode": config.get("mode", LOCAL_MODE),
+                "stopped_at": time.time(),
+            },
+        )
+        server.close()
+        paths.socket.unlink(missing_ok=True)
+
     sequence = max((int(item.get("mutation_id", 0)) for item in mutations), default=0)
     # Daemon-side gate: on a registry run, enforcement lives HERE,
     # where the session and the credentials live. The bare `step` op is refused
@@ -456,7 +567,15 @@ def serve(paths: RunPaths) -> None:
         return _decode_observation(encoded), shared["sequence"], warning
 
     while True:
-        connection, _ = server.accept()
+        if lifecycle["stop"]:
+            _stopped()
+            return
+        try:
+            connection, _ = server.accept()
+        except _StopRequested:
+            _stopped()
+            return
+        lifecycle["in_request"] = True
         terminal = False
         with connection:
             try:
@@ -591,6 +710,7 @@ def serve(paths: RunPaths) -> None:
                 # journaled; a lost response must never take down the owner.
                 # Keep serving so the client can re-read state on its next call.
                 print(f"broker: client gone before reply ({error}); continuing", flush=True)
+        lifecycle["in_request"] = False
         if terminal:
             atomic_json(
                 paths.broker,

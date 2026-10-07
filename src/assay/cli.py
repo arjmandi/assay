@@ -5,7 +5,6 @@ import datetime as dt
 import os
 import shutil
 import sys
-import time
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +24,7 @@ from .broker import (
     broker_matches_latest_event,
     broker_observe,
     broker_ping,
+    find_daemon,
     is_remote_config,
     reconcile_mutations,
     start_broker,
@@ -107,6 +107,12 @@ def _parser() -> Parser:
         type=Path,
         metavar="KNOWLEDGE.json",
         help="import a prior run's exported knowledge (lands FOREIGN, demoted)",
+    )
+
+    commands.add_parser(
+        "stop",
+        help="stop this run's environment owner (the daemon) cleanly; "
+        "`assay start` resumes the run later",
     )
 
     status = commands.add_parser(
@@ -426,8 +432,28 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         else:
             restarted = False
             if not broker_ping(paths):
-                stop_broker(paths)
-                time.sleep(0.05)
+                daemon = find_daemon(paths)
+                if daemon is not None and paths.socket.exists():
+                    # Alive, identified as ours, socket present, not answering:
+                    # it is inside a step (slow world) or hung. Killing it here
+                    # could leave a paid action applied and unjournaled.
+                    started_at = read_json(paths.broker, {}).get("started_at")
+                    when = (
+                        dt.datetime.fromtimestamp(float(started_at), dt.timezone.utc).isoformat(
+                            timespec="seconds"
+                        )
+                        if isinstance(started_at, (int, float))
+                        else "unknown time"
+                    )
+                    raise AssayError(
+                        f"the environment owner is busy or hung (pid {daemon.pid}, "
+                        f"started {when}); wait and rerun `assay start`, or run "
+                        "`assay stop` (it exits after the current step)"
+                    )
+                if daemon is not None:
+                    # Alive but unreachable (its socket is gone): stop it
+                    # cleanly before replaying a fresh one.
+                    stop_broker(paths)
                 paths.socket.unlink(missing_ok=True)
                 start_broker(paths)
                 restarted = True
@@ -444,6 +470,13 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         print(status_text(paths))
         return
 
+    orphan = find_daemon(paths)
+    if orphan is not None:
+        raise AssayError(
+            f"a live environment owner (pid {orphan.pid}) still serves this "
+            "directory but its run state is missing (was `.assay` removed by "
+            "hand?); run `assay stop` here first, then start again"
+        )
     paths.root.mkdir(parents=True, exist_ok=True)
     mode = str(args.mode or os.getenv("ASSAY_MODE", LOCAL_MODE)).lower()
     if mode not in {LOCAL_MODE, REMOTE_MODE}:
@@ -532,6 +565,26 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         )
 
 
+def _stop(paths: RunPaths) -> None:
+    """Stop the daemon cleanly. Works without run state (an orphaned daemon
+    after a hand-deleted `.assay`) because identity comes from the process
+    table, not from broker.json."""
+    result = stop_broker(paths)
+    if result["stopped"]:
+        print(
+            f"STOPPED | environment owner pid {result['pid']} exited after "
+            f"{result.get('elapsed', 0.0):.2f}s | `assay start` resumes the run"
+        )
+        return
+    if result["pid"] is None:
+        print(f"STOP | {result['reason']} for {paths.root}")
+        return
+    raise AssayError(
+        f"the environment owner (pid {result['pid']}) is {result['reason']}; "
+        "rerun `assay stop` after it, or wait"
+    )
+
+
 def _print_replay(result: dict[str, Any]) -> None:
     pixels = (
         "render() not defined"
@@ -594,6 +647,15 @@ def main() -> None:
         if args.command == "start":
             with run_lock(paths):
                 _start(paths, args)
+            raise SystemExit(0)
+        if args.command == "stop":
+            if paths.state.is_dir():
+                with run_lock(paths):
+                    _stop(paths)
+            else:
+                # No run state here (an orphaned daemon after a hand-deleted
+                # `.assay`): stop without creating state as a side effect.
+                _stop(paths)
             raise SystemExit(0)
 
         require_run(paths)
