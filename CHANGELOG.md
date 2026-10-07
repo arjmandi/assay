@@ -297,10 +297,14 @@ Left on the experiment branch, deliberately:
   replaced by "no machine path under `tools/`", which the hygiene test
   enforces tree-wide. No kernel behavior change.
 - Strict mypy in CI and a pre-commit configuration (#27). Every cell runs
-  `mypy --strict src/assay` after ruff, through uv under the cell's
-  interpreter, and `[tool.mypy]` in `pyproject.toml` (strict, Python 3.12 as
-  the floor, `src/assay`; the frame-world extra followed for its types and
-  not under the gate yet) makes a plain `mypy` from the root the same run.
+  `mypy --strict src/assay src/assay_grid` after ruff, through uv under the
+  cell's interpreter, and `[tool.mypy]` in `pyproject.toml` (strict, Python
+  3.12 as the floor, the kernel and the frame-world extra) makes a plain
+  `mypy` from the root the same run. The extra needed two annotations, which
+  the kernel-only check had not reported because the editable install made
+  the followed package look installed: `Counter[int]` for the lattice origin
+  scores in `perception.py`, and a variable-length tuple for the neighbor
+  steps in `analysis.py`, which the code extends with the diagonals.
   `.pre-commit-config.yaml`, for whoever wants the gate before each commit,
   runs the same ruff and mypy commands through uv and a grep for the em dash
   and the arrow over the staged files; it is optional, CI is the gate. No

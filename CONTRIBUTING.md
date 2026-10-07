@@ -12,6 +12,6 @@ directory.
 
 If you work on the source anyway, for a fork or for what comes after 1.2.0,
 `.pre-commit-config.yaml` runs the checks CI runs (`ruff check src tests`,
-`mypy --strict src/assay`, and a grep for the em dash and the arrow over the
-staged files) before each commit for whoever installs it with
+`mypy --strict src/assay src/assay_grid`, and a grep for the em dash and the
+arrow over the staged files) before each commit for whoever installs it with
 `uv run --with pre-commit pre-commit install`; it is optional, CI is the gate.

@@ -171,7 +171,7 @@ def infer_lattice(grid: np.ndarray) -> dict[str, Any]:
             continue
         origins = []
         for boundaries in (boundaries_y, boundaries_x):
-            scores = Counter()
+            scores: Counter[int] = Counter()
             for boundary, count in boundaries.items():
                 scores[boundary % scale] += count
             origins.append(scores.most_common(1)[0][0] if scores else 0)
