@@ -736,20 +736,28 @@ manifest), `modules` (the loaded module objects with their effective modes), `ow
 Read from disk on demand and never held: the activity log (append-only, written by both
 processes), `channels.json` (written by the CLI at declaration) and the readings cache
 (written by the daemon at grade time), the verifier statistics (daemon), `hazards.json`,
-`aggregates.json`, `goal.json` and `proposals.jsonl` (CLI), the notes. They are small and
-each key has one writer. Approvals and waivers move into the daemon (section 7.2), which
-removes the one file two processes rewrote.
+`aggregates.json`, `proposals.jsonl` (CLI) and `goal.json` (the daemon, at ratification),
+the notes. They are small and each key has one writer. Approvals and waivers move into the
+daemon (section 7.2): approvals are held in memory for their 600 seconds, waivers last the
+run and are rebuilt at `Run.load` from the `liveness_waived` activity records, so neither
+has a file, and the one file two processes rewrote is gone. The three owner commands need
+the daemon alive.
 
-- `Run.load(paths)`: reads config, registry, the journal (every line into an `Event`,
-  contiguity checked), `chain.json`, the mutation log, `owner.json` and the manifest.
-  `chain.json` absent: the head is recomputed and written. `chain.json` behind the journal
-  by the lines a crash left (its `event_id` strictly less than the last id and its head
-  equal to the head of that prefix): recomputed and written. Any other mismatch: `Run.load`
-  raises `CHAIN_DIVERGED` (kind invalid); `assay start` refuses and `assay audit` reports;
-  nothing is rewritten, so the evidence of an edit stays on disk. Modules load once
-  (section 6.4); the CLI loads them lazily, only for the commands that consult them
-  (status, the paid operations are the daemon's). Every CLI command calls `Run.load` once
-  at entry; the daemon calls it once in `serve`.
+- `Run.load(paths, strict)`: reads config, registry, the journal (every line into an
+  `Event`), `chain.json`, the mutation log, `owner.json`, the manifest and the
+  `liveness_waived` activity records. It never writes. What it finds about the record goes
+  into `run.integrity`: a contiguity problem, a chain file that is absent, behind by the
+  lines a crash left (its `event_id` strictly less than the last id and its head equal to
+  the head of that prefix), or diverged. `serve` and `start` load strict: a contiguity
+  problem or a diverged chain raises `CHAIN_DIVERGED` (kind invalid), the start is refused
+  and nothing is rewritten, so the evidence of an edit stays on disk; an absent or
+  crash-behind chain is held as the recomputed head and written by the daemon's next
+  `run.append`, as today. The readers (`audit`, `status`, `view` and the rest) load
+  lenient: `audit` reports `run.integrity` as it reports today (the three pre-chain
+  published runs keep printing `chain absent`) and the INTEGRITY line shows it. Modules
+  load once (section 6.4); the CLI loads them lazily, only for the commands that consult
+  them. Every CLI command calls `Run.load` once at entry; the daemon calls it once in
+  `serve`.
 - `run.append(pending)`: the only writer of `events.jsonl` while a daemon lives. Assigns
   `id = len(events)`, serializes, appends under the file lock with fsync, advances the
   held head with the exact line written, writes `chain.json`, anchors when due (every 25
@@ -867,7 +875,9 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
 - The catalogue, `src/assay/errors.py`, lists every code with its kind and a one-line
   meaning. A test over the AST, in the pattern of the vocabulary test and covering
   `src/assay` and `src/assay_grid` (211 raise sites today), refuses a `raise AssayError(`
-  whose `code=` is not a string literal or an `errors.NAME` attribute in the catalogue.
+  without `code=`, and one whose `code=` is not a string literal or an `errors.NAME`
+  attribute in the catalogue. The catalogue's kind wins for a catalogued code; the `kind`
+  keyword applies only to `UNSPECIFIED`.
   Adapters, examples and tests are not covered: the two bench adapters raise `AssayError`
   without a code at twenty sites and keep working through the defaults. The argparse
   error path (`Parser.error`) raises with `CLI_USAGE`. The catalogue renders into
@@ -879,8 +889,9 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
   internal) with the traceback saved as today; ONBOARDING's troubleshooting section, which
   shows that line with exit 2, follows.
 - Existing codes keep their names: `BUDGET_EXHAUSTED`, `LOCAL_REPLAY_DIVERGED`,
-  `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`, `UNGATED_STEP_REFUSED` (which becomes
-  the refusal of an unknown operation, section 7.2); the module demand is
+  `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`; `UNGATED_STEP_REFUSED` is retired with
+  the `step` operation (section 7.2) and an unknown operation is refused with
+  `UNKNOWN_OPERATION` (kind usage); the module demand is
   `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` becomes
   `REMOTE_SESSION_UNAVAILABLE` with #21, the last rename: the codes freeze at the 1.2.0
   tag, like the outcome tokens.
@@ -906,12 +917,13 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
   of `{action, params, predict}`, or `plan`, with `at_event` and `declares`), `reset`
   (`because`, `at_event`, `declares`), and the owner operations `install_module` (`path`,
   `token`), `approve` (`action`, `token`), `waive` (`action`, `token`, `because`),
-  `goal_ratify` (`id`, `token`). The daemon holds the approvals and waivers in memory and
-  records each grant and use in the activity log as today, so the agent cannot write an
-  approval into a file and the file two processes rewrote is gone. The `step` operation is
+  `goal_ratify` (`id`, `token`). The daemon holds the approvals in memory, rebuilds the
+  waivers from the activity log at load, and records each grant and use in the activity
+  log as today, so the agent cannot write an approval into a file and the file two
+  processes rewrote is gone; the three owner commands need the daemon alive. The `step` operation is
   removed: it was refused on every registry run and every run has a registry since the
   1.1.0 build; the test that asserted `UNGATED_STEP_REFUSED` asserts that an unknown
-  operation is refused and no mutation is written.
+  operation is refused with `UNKNOWN_OPERATION` and no mutation is written.
 - Offline operations, in the client from disk: `start`, `stop`, `status`, `view` (with
   `--export`), `audit`, `channel declare`, `channel list`, `export`, `spend report`,
   `goal propose`, `goal list`, `model init`, `model replay`, `model solve`, `module list`,
@@ -995,9 +1007,9 @@ docs. The registry key `status_budget` (tokens, optional) and `assay status --br
 the renderer drops the lowest-value blocks first when over budget (the notes tail, the
 observation tail, the registry descriptions, the history beyond four lines) and appends
 one line, `TRUNCATED | <blocks> dropped to fit <budget> tokens; assay view and assay
-channel list show them`. The estimate and the TRUNCATED line appear only in `--json`
-output and under `--brief` or a registry budget, never in the default prose status, which
-the replay gate compares.
+channel list show them`. The estimate appears in `--json` output only. The prose status
+truncates only under `--brief` or when the registry sets `status_budget`; no published
+registry sets it, so the replay gate is unaffected.
 
 ## 8. The trust model (1.2.0, design note 3)
 
@@ -1052,7 +1064,10 @@ beyond the sealed event is anchors DIVERGED and the run is invalid for scoring, 
 The checker in `verify/` reads no anchors and keeps its limit honest: it reports the
 chain against `chain.json` and the published head only.
 
-The next `assay start` after a tamper replays the journal through the adapter and fails
+The remedy is the operator's: the anchor file is the operator's own file outside the run,
+and removing the seal by hand lets the run resume, with the `tamper_detected` activity
+record standing as the record of what happened. The next `assay start` after a tamper
+replays the journal through the adapter and fails
 on the first divergence (`LOCAL_REPLAY_DIVERGED`) or refuses on the chain
 (`CHAIN_DIVERGED`) or the sealed anchor. An edit that rewrote the journal, the chain file,
 the mutation log and the anchor file consistently, while the daemon was stopped, is caught
@@ -1080,9 +1095,14 @@ write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for t
   `.assay/NOTES.md`), or lies under the anchor directory, or is the token file or the
   policy file. Refuse a `Bash` command that names any of those (the path component
   `.assay`, not the string `.assay/`, so `rm -rf .assay` and `ln -s .assay x` are caught)
-  unless it is a single simple command beginning with `assay ` or `"$ASSAY" `: a command
-  that names a refused path and contains `;`, `&&`, `||`, `|`, a newline, `$(` or a
-  backtick is refused whatever it begins with. Refuse a `Bash` command that matches a deny
+  unless it is a single simple command whose first word is the launcher path pinned in the
+  policy file (the absolute path of `bin/assay` or of the installed `assay` entry point,
+  written by `hooks install`), or `"$ASSAY"` when the policy pins the value the operator
+  exported into the session before the agent ran. The bare word `assay` and the variable
+  are not trusted on their own, since the agent controls its shell: a command that
+  assigns, exports, unsets or aliases `ASSAY` or `PATH`, or defines a function named
+  `assay`, is refused. A command that names a refused path and contains `;`, `&&`, `||`,
+  `|`, a newline, `$(` or a backtick is refused whatever it begins with. Refuse a `Bash` command that matches a deny
   pattern: the operator names the world's client libraries, hosts and commands per run, so
   the agent reaches the world only through `assay`. The refusal text names the rule and
   the allowed form. The policy is a text match over the command; it is the operator's tool
@@ -1101,8 +1121,10 @@ write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for t
 ### 8.5 The sandbox (#19)
 
 One module, `src/assay/sandbox.py`, with one function `run_program(program, payload, *,
-timeout, reads=())` used by the verifier runner, the channel extractor and the model
-runner. The program is copied into a scratch directory and run from there as `python -I`
+timeout, companions=())` used by the verifier runner, the channel extractor and the model
+runner. The program and its companions (the extractor files and `model.py` for the model
+runner) are copied into a scratch directory, the payload's paths are rewritten to the
+copies, and the program runs from there as `python -I`
 (isolated: no `PYTHONPATH`, no user site, the current directory not on the path; not `-S`,
 which would drop site-packages and with them numpy, which verifiers may import), with an
 empty environment, the scratch directory as the working directory, `RLIMIT_CPU` (the
@@ -1116,9 +1138,9 @@ On macOS the process runs under `sandbox-exec` with a deny-default profile that 
 `process-exec*`, `file-read-metadata`, `sysctl-read`, `mach-lookup`; `file-read*` on the
 root directory as a literal (the dynamic loader aborts without it), the interpreter's
 prefix and base prefix, `/usr/lib`, `/usr/share`, `/System`, `/private/var/db/dyld`,
-`/dev/null`, `/dev/urandom`, the scratch directory and the paths in `reads` (the
-extractor files and `model.py` for the model runner, copied into scratch as well when
-possible); `file-write*` on the scratch directory and `/dev/null`; and denies network.
+`/dev/null`, `/dev/urandom` and the scratch directory, and nothing under the run
+directory, since every file the program needs was copied into scratch; `file-write*` on
+the scratch directory and `/dev/null`; and denies network.
 The list was measured on Darwin 25 with the kernel's interpreter and numpy and is
 OS-version dependent, so the module keeps it in one place with a comment per entry. On
 Linux the process runs under `bwrap --unshare-net --unshare-pid --die-with-parent` with
