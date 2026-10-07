@@ -145,6 +145,18 @@ drawing conclusions: (a) the counting collapse and the 114-minute churn may be
 flaw in the referee idea — a candidate for redesign; (b) every cell is n=1, so the
 within-band ordering is directional, not precise.
 
+Update 2026-10-07 (E5, `evidence/e5`): the 1M run was repeated on release 1.1.0
+with the actuators batched (several spans per BANK_FACT, a plain-text SUBMIT,
+`registry_200_batch.json`), same de-hinted framing, cost bands fixed before
+launch. Same 0.740, 43.39 USD against 48.76, 76 minutes against 114. The journal
+timestamps place the paid phase at seven and a half minutes (single mode: under
+six of 114). The cost sits in the offline phase, where both ASSAY agents
+hand-classified all 20,321 reviews through the model while the naive agent
+labelled about 2,655 and trained a classifier for the rest. Caveat (a) is
+therefore retired in the form above: the actuator mechanics are not the seat of
+the gap. The candidate cause is the offline strategy chosen under the harness
+framing, untested at n=1 per arm.
+
 ### Provenance and confounds
 
 Backend claude-opus-5 for all arms. Grader bench/oolong/scorer.py ->

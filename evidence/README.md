@@ -15,6 +15,7 @@ standard (`../verify/JOURNAL_SPEC.md`). The packs:
 | `g4/` | the live ft09 regression gate of release 1.1.0 | 1 |
 | `e1b/` | experiment E1b, the prediction instrument removed (three games, two seeds, gate off) | 6 |
 | `factorio-110/` | the two Factorio lab tasks replayed on the release build, and the hand-played smoke | 3 |
+| `e5/` | experiment E5, OOLONG 1M in batched bank mode on the release build | 1 |
 
 Each pack has a `README.md`, a `HEADS.md` with the published heads and
 verdicts, and the machine-readable `heads.json`. Journals are gzipped

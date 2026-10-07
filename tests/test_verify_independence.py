@@ -64,4 +64,4 @@ def test_every_published_journal_verifies_against_its_head():
         [sys.executable, str(EVIDENCE / "verify_all.py")], capture_output=True, text=True, timeout=600,
     )
     assert completed.returncode == 0, completed.stdout + completed.stderr
-    assert "| 65 journals, 0 failed" in completed.stdout
+    assert "| 66 journals, 0 failed" in completed.stdout

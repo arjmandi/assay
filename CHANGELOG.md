@@ -132,9 +132,11 @@ Left on the experiment branch, deliberately:
   archived run directories), the G4 pack, the live ft09 regression gate of
   this release (WIN 6 of 6 in 80 paid actions, CLEAN, head `cc65462f...`),
   the E1b pack (the prediction instrument removed, six journals that read
-  INVALID FOR SCORING by design) and the Factorio 1.1.0 pack (ironplate and
-  circuit replayed on this release, and the hand-played smoke).
-  `evidence/verify_all.py` checks all 65 journals against their heads with
+  INVALID FOR SCORING by design), the Factorio 1.1.0 pack (ironplate and
+  circuit replayed on this release, and the hand-played smoke) and the E5 pack
+  (OOLONG 1M in batched bank mode on this release, 0.740 for 43.39 USD against
+  48.76 in single mode, with the paid phase at seven and a half minutes of 76).
+  `evidence/verify_all.py` checks all 66 journals against their heads with
   the standard library alone, and the suite runs it. The former assay-verify
   repository is archived with a pointer here.
 - OOLONG batch banking, the E5 variant (B3). `control.bank_mode: batch` in

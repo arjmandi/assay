@@ -113,7 +113,7 @@ are this file's grep patterns, not paths.
 |---|---|---|
 | G1 the suite | `uv run --with pytest --with numpy --with pillow pytest tests/` | all green (the 74 of main plus every new test) |
 | G2 replay diff | `python3 paper/v4/release-gates/g2_replay_diff.py --main <main checkout> --release <release checkout> --python <venv python> --vocab` (in the archive) | zero differences over the 25 published run directories, four commands each |
-| G3 independent checker | `python3 paper/v4/release-gates/g3_verify.py` (in the archive), and `python3 evidence/verify_all.py` here | 25 published ARC runs CLEAN with heads matched, the Factorio, OOLONG, G4 and Factorio 1.1.0 packs CLEAN, the 24 E1, E2 and E3 runs CLEAN, the six E1b runs INVALID FOR SCORING as their pack states, all 65 published journals matching their heads |
+| G3 independent checker | `python3 paper/v4/release-gates/g3_verify.py` (in the archive), and `python3 evidence/verify_all.py` here | 25 published ARC runs CLEAN with heads matched, the Factorio, OOLONG, G4, Factorio 1.1.0 and E5 packs CLEAN, the 24 E1, E2 and E3 runs CLEAN, the six E1b runs INVALID FOR SCORING as their pack states, all 66 published journals matching their heads |
 | G4 ft09 live regression | scheduled by the owner on the subscription, after code freeze, per DECISIONS item 18 | WIN 6 of 6 within the published bar |
 | G5 clean machine | `bash paper/v4/release-gates/g5_clean_machine.sh <scratch dir>` (in the archive) | PASS |
 
