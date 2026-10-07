@@ -1,0 +1,32 @@
+# Optional, for whoever wants the gate before each commit; CI runs the same
+# checks and is the gate. Needs uv, like everything else here:
+#
+#   uv run --with pre-commit pre-commit install
+#
+# The ruff and mypy hooks run the exact CI commands through uv, so the tool
+# versions and the environment are the ones CI sees, not a pinned mirror. The
+# third hook is the typography half of tests/test_hygiene.py over the staged
+# files: no em dash (U+2014) and no arrow (U+2192), matched by their UTF-8
+# bytes so this file passes its own rule, over the same suffixes and with the
+# same exclusions (historical results and the evidence packs' data).
+repos:
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff check src tests
+        entry: uv run --with ruff ruff check src tests
+        language: system
+        pass_filenames: false
+        files: '^(src/.*\.py|tests/.*\.py|pyproject\.toml)$'
+      - id: mypy
+        name: mypy --strict src/assay
+        entry: uv run --with mypy --with numpy --with pillow mypy --strict src/assay
+        language: system
+        pass_filenames: false
+        files: '^(src/.*\.py|pyproject\.toml)$'
+      - id: no-em-dash-or-arrow
+        name: no em dash or arrow
+        entry: '\xe2\x80\x94|\xe2\x86\x92'
+        language: pygrep
+        files: '\.(py|md|toml|yml|txt|json)$'
+        exclude: '^(bench/[^/]+/RESULTS\.md$|evidence/(?!(.*/)?(README|HEADS)\.md$))'

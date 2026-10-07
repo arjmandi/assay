@@ -296,6 +296,15 @@ Left on the experiment branch, deliberately:
   queue against the counter example, and the release rule "`tools/` entirely"
   replaced by "no machine path under `tools/`", which the hygiene test
   enforces tree-wide. No kernel behavior change.
+- Strict mypy in CI and a pre-commit configuration (#27). Every cell runs
+  `mypy --strict src/assay` after ruff, through uv under the cell's
+  interpreter, and `[tool.mypy]` in `pyproject.toml` (strict, Python 3.12 as
+  the floor, `src/assay`; the frame-world extra followed for its types and
+  not under the gate yet) makes a plain `mypy` from the root the same run.
+  `.pre-commit-config.yaml`, for whoever wants the gate before each commit,
+  runs the same ruff and mypy commands through uv and a grep for the em dash
+  and the arrow over the staged files; it is optional, CI is the gate. No
+  behavior change.
 
 ### Changed
 

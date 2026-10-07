@@ -15,17 +15,23 @@ code. `AGENTS.md` is the short version of this file for any coding agent.
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/      # full suite
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/test_registry.py  # one file
 uv run --with ruff ruff check src tests                                       # the linter
+uv run --with mypy --with numpy --with pillow mypy --strict src/assay          # strict typing over the kernel
 ```
 
 Or, in a venv with the editable install: `pip install -e '.[grid,dev]'` then
 `pytest tests/`. The suite isolates anchors and caches under the pytest temp
 root and stops every daemon it started. ruff is configured in `pyproject.toml`
 with its default rule set, and `uv run --with ruff ruff check src tests` must
-pass. `tests/test_hygiene.py` enforces the writing rule (no em dash and no
+pass; mypy is configured there too, strict over `src/assay` and checked as
+Python 3.12, and `uv run --with mypy --with numpy --with pillow mypy --strict
+src/assay` must be clean (a plain `mypy` from the root is the same run).
+`tests/test_hygiene.py` enforces the writing rule (no em dash and no
 arrow in the source or the docs, no machine path, the old manual name gone
-from the code). Run the full suite before considering any task done. If it
-fails for reasons unrelated to your change, say so rather than fixing unrelated
-breakage.
+from the code). `.pre-commit-config.yaml` runs the same ruff and mypy commands
+and a grep for the em dash and the arrow before each commit for whoever
+installs it (optional; CI is the gate). Run the full suite before considering
+any task done. If it fails for reasons unrelated to your change, say so rather
+than fixing unrelated breakage.
 
 ## Layout
 
