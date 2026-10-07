@@ -37,7 +37,7 @@ def _neighbors(
     cell: tuple[int, int], diagonal: bool = False
 ) -> tuple[tuple[int, int], ...]:
     row, column = cell
-    steps = ((-1, 0), (1, 0), (0, -1), (0, 1))
+    steps: tuple[tuple[int, int], ...] = ((-1, 0), (1, 0), (0, -1), (0, 1))
     if diagonal:
         steps += ((-1, -1), (-1, 1), (1, -1), (1, 1))
     return tuple((row + dr, column + dc) for dr, dc in steps)

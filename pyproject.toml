@@ -44,3 +44,14 @@ target-version = "py312"
 # build with a different default cannot move the gate; `ruff check src tests`
 # must pass. Import order and line length are not enforced.
 select = ["E4", "E7", "E9", "F"]
+
+[tool.mypy]
+# A plain `mypy` from the repository root is the run CI makes on every cell,
+# `uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid`:
+# strict over the kernel and the frame-world extra, checked as Python 3.12,
+# the floor of requires-python. numpy and pillow ship their types; nothing
+# else from outside the standard library is imported under src.
+strict = true
+warn_unused_ignores = true
+python_version = "3.12"
+files = ["src/assay", "src/assay_grid"]

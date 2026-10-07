@@ -22,16 +22,24 @@ drives the real CLI and the real daemon
 with the adapters under `tests/`. It redirects `ASSAY_ANCHOR_DIR` and
 `XDG_CACHE_HOME` under the pytest temp root and stops every daemon it started
 when the session ends, so nothing lands under the home directory. Run the whole
-suite before calling a task done, and the linter with it:
+suite before calling a task done, and the linter and the type checker with
+it:
 
 ```bash
 uv run --with ruff ruff check src tests
+uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid
 ```
 
 ruff is configured in `pyproject.toml` with its default rule set and nothing
-more. `tests/test_hygiene.py` enforces the writing rule over every tracked
+more; mypy is configured there too, strict over the kernel and the frame-world
+extra and checked as Python 3.12, so a plain `mypy` from the root is the same
+run. `tests/test_hygiene.py` enforces the writing rule over every tracked
 file: no em dash and no arrow in the source or the docs, no machine path, the
-old manual name gone from the code.
+old manual name gone from the code. `.pre-commit-config.yaml` runs the same
+ruff and mypy commands and a grep for the em dash and the arrow over the
+staged files before each commit, for whoever wants that
+(`uv run --with pre-commit pre-commit install`); it is optional, CI is the
+gate.
 
 ## Where the contracts are
 
@@ -78,7 +86,7 @@ commands' output in its description.
 1. The suite green and ruff clean:
    `uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/`
    and `uv run --with ruff ruff check src tests`. From #27 on, strict mypy
-   clean as well.
+   clean as well: `uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid`.
 2. A change under `src/` runs G2 and G3. G2 is the replay diff over the 25
    published run directories, run from the owner's archive:
    `python3 <archive>/paper/v4/release-gates/g2_replay_diff.py --main <checkout of 4dc53e1> --release <the checkout under test> --python <an interpreter with numpy and pillow> --vocab`,
