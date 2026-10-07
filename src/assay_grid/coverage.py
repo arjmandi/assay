@@ -1,4 +1,5 @@
-"""The frame world's part of the coverage audit: which regions of the grid a
+"""The frame world's part of the coverage audit: its change signal (the
+settled frame against the previous event's) and which regions of the grid a
 point action (one with integer x and y parameters) has probed on the current
 progress unit. Region buckets come from the observed frame shape, never from
 a constant. Surfaced only inside the conclusion gap phrase and the stall
@@ -13,6 +14,16 @@ from typing import Any
 from assay.records import Event
 
 REGION_EDGE = 8
+
+
+def changed(previous: Event, event: Event) -> bool:
+    """Did the world change between two consecutive frame events? The
+    settled frame of each compared, and the observation object when either
+    event has no frames, exactly as the kernel's coverage audit compared them
+    before the signal moved behind the kind."""
+    if event.frames is None or previous.frames is None:
+        return event.observation != previous.observation
+    return event.frames[-1] != previous.frames[-1]
 
 
 def _regions(events: Sequence[Event], paid_indices: Sequence[int]) -> dict[str, Any] | None:

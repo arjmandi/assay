@@ -369,8 +369,11 @@ COVERAGE_SENTINELS = frozenset(
 def _event_changed(events: Sequence[Event], index: int) -> bool:
     """Did paid event `index` change the world? The graded change or noop
     outcome when one exists, else the settled observation compared with the
-    previous event's (the last frame for frame worlds, the object for dict
-    worlds). Progress always counts as change."""
+    previous event's: the object for dict worlds, and the observation kind's
+    own signal for its shape (the settled frame, for frame worlds). Progress
+    always counts as change."""
+    from .extras import kind_for
+
     event = events[index]
     if event.level_advanced:
         return True
@@ -382,8 +385,9 @@ def _event_changed(events: Sequence[Event], index: int) -> bool:
     if index == 0:
         return False
     previous = events[index - 1]
-    if event.frames is not None and previous.frames is not None:
-        return event.frames[-1] != previous.frames[-1]
+    kind = kind_for(event)
+    if kind is not None:
+        return kind.changed(previous, event)
     return event.observation != previous.observation
 
 
