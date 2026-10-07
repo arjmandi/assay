@@ -117,18 +117,6 @@ def test_core_parse_action_dispatches_to_registry():
     assert (name, params) == ("INC", {"amount": 1})
 
 
-def test_numbered_mode_parse_action_unchanged_without_registry():
-    assert parse_action("ACTION6:3,14") == ("ACTION6", {"x": 3, "y": 14})
-    assert parse_action("RESET") == ("RESET", None)
-    assert parse_action("action1") == ("ACTION1", None)
-    with pytest.raises(AssayError, match="ACTION1..ACTION7"):
-        parse_action("ACTION8")
-    with pytest.raises(AssayError, match="requires coordinates"):
-        parse_action("ACTION6")
-    with pytest.raises(AssayError, match="0..63"):
-        parse_action("ACTION6:99,2")
-
-
 # --- affordance check -------------------------------------------------------
 
 

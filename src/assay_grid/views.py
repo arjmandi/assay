@@ -1,6 +1,6 @@
 """The frame halves of status, result, inspect, view and export: board text,
-settled and animation diffs, the scene summary, click candidates, the RULES
-and PLAN lines, and the npz export."""
+settled and animation diffs, the scene summary, click candidates, the
+advertised-action line, and the npz export."""
 
 from __future__ import annotations
 
@@ -11,11 +11,10 @@ from typing import Any
 
 import numpy as np
 
-from assay.core import AssayError, RunPaths, canonical_action, frame_at, load_events, read_json
+from assay.core import AssayError, RunPaths, canonical_action, frame_at, load_events
 from assay.registry import budget_line, load_registry
 from assay.words import progress_text
 
-from .legacy import available_line
 from .perception import (
     connected_components,
     infer_lattice,
@@ -23,8 +22,7 @@ from .perception import (
     repeated_shapes,
     transition_story,
 )
-from .render import current_image, observation_hash, render_event
-from .rules import rules_hash
+from .render import current_image, render_event
 
 
 def _bbox(mask: np.ndarray, margin: int = 1) -> tuple[int, int, int, int]:
@@ -148,58 +146,17 @@ def _scene_summary(grid: np.ndarray) -> list[str]:
     return lines
 
 
-def rules_lines(paths: RunPaths, event: Mapping[str, Any]) -> list[str]:
-    """The RULES and PLAN status lines when a rules.py exists."""
-    lines: list[str] = []
-    current_hash = rules_hash(paths)
-    if current_hash is None:
-        return lines
-    verification = read_json(paths.verification, {})
-    fresh = (
-        isinstance(verification, dict)
-        and verification.get("event") == int(event["id"])
-        and verification.get("rules_hash") == current_hash
-        and verification.get("observation_hash") == observation_hash(frame_at(event))
-    )
-    if fresh:
-        status = verification.get("status")
-        gaps = verification.get("gaps") or []
-        summary = (
-            f"RULES | {status} | {verification.get('explained', 0)}/"
-            f"{verification.get('transitions', 0)} transitions explained"
-        )
-        if gaps:
-            summary += f" | {len(gaps)} gaps"
-        lines.append(summary)
-        mismatch = verification.get("first_mismatch")
-        if status == "MISMATCH" and isinstance(mismatch, dict):
-            lines.append(
-                f"  first mismatch e{mismatch.get('event')}: {mismatch.get('detail')}"
-            )
-        lines.extend(f"  gap: {gap}" for gap in gaps[:3])
-    else:
-        lines.append(
-            "RULES | rules.py present, replay unchecked or stale — run `assay rules replay`"
-        )
-    plan = read_json(paths.plan, {})
-    if isinstance(plan, dict) and plan.get("kind") == "solve-plan":
-        source = plan.get("source", {})
-        checks = (
-            ("event", int(event["id"])),
-            ("observation_hash", observation_hash(frame_at(event))),
-            ("rules_hash", current_hash),
-        )
-        stale = [name for name, expected in checks if source.get(name) != expected]
-        if stale:
-            lines.append(
-                f"PLAN | stale ({', '.join(stale)} changed) — rerun `assay rules solve`"
-            )
-        else:
-            lines.append(
-                f"PLAN | fresh | {len(plan.get('actions', ()))} actions — execute with "
-                "`assay commit @.assay/plan.json`"
-            )
-    return lines
+def advertised_names(event: Mapping[str, Any]) -> list[str]:
+    """A frame world advertises bare action ids; registered names carry the
+    ACTION prefix. The affordance check compares names, so render the ids."""
+    return [f"ACTION{int(value)}" for value in event.get("available_actions") or ()]
+
+
+def available_line(event: Mapping[str, Any]) -> str:
+    # Bare action numbers: semantics are earned by acting, never assumed.
+    return "ACTIONS | available: " + (
+        " · ".join(str(number) for number in event["available_actions"]) or "none"
+    ) + " · RESET (built-in)"
 
 
 def status_head_lines(

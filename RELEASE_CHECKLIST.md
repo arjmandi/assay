@@ -119,7 +119,7 @@ the conservative default was implemented.
 | Decision | Default on the branch | Blocks |
 |---|---|---|
 | O1 grid claim forms on frame registry runs | refused, as before | nothing (behavior preserved) |
-| O2 the legacy numbered-action path | moved to `assay_grid.legacy`, undocumented | nothing (deletion is for 1.2) |
+| O2 the legacy numbered-action path | decided: deleted with the rules tier that only ran on it, a registry is required | nothing |
 | O3 the OOLONG corpora | decided: the smoke packs ship, the others fetch on first use, the tree is clean | the history rewrite (section 1), before the flip |
 | O4 the experiment tooling and the E1 files | left on `exp/2026-10` | nothing on the branch (the paper cites the archive) |
 | O5 the owner token | `--owner-token-file` plus the honest paragraph | nothing (the protocols are unchanged) |

@@ -32,8 +32,8 @@ src/assay/           the kernel: cli.py (the command line), broker.py (daemon
                       modules.py, integrity.py (chain, anchors, audit, redaction),
                       agenda.py, carryover.py, aggregates.py, extras.py (the
                       observation-kind hook), words.py (the display vocabulary)
-src/assay_grid/      the frame-world extra: perception, rules tier, grid claims,
-                      rendering, views, the legacy numbered-action vocabulary
+src/assay_grid/      the frame-world extra: perception, grid claims, rendering,
+                      views
 src/assay_cli.py     PEP 723 entry point for the zero-install launcher
 bin/assay            the launcher (ASSAY_PYTHON pins the interpreter)
 examples/            counter_world.py and example_registry.json (the quickstart),

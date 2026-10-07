@@ -44,8 +44,8 @@ from .registry import (
     check_usd_budget,
     gate_mode,
     hand_cap,
-    load_registry,
     notes_cap,
+    require_registry,
 )
 from .verifiers import admit_verifier
 from .words import unit_noun
@@ -88,7 +88,8 @@ def paid_step(
     token: str,
     reasoning: Mapping[str, Any] | None = None,
     note: str = "",
-    registry: Mapping[str, Any] | None = None,
+    *,
+    registry: Mapping[str, Any],
     stepper: Any = None,
 ) -> tuple[dict[str, Any], dict[str, Any], str | None, float]:
     prior = load_events(paths)[-1]
@@ -96,15 +97,12 @@ def paid_step(
     if name == "RESET":
         raise AssayError("use `assay reset`; reset cannot hide inside a batch")
     kind = kind_for(prior)
-    if registry is not None:
-        # A frame world advertises bare ids; the kind renders them as names.
-        advertised = (
-            kind.advertised_names(prior) if kind is not None else prior["available_actions"]
-        )
-        check_registry_action(name, advertised)
-    elif kind is not None:
-        kind.legacy_check_action(token, prior["available_actions"])
-    secrets = tuple((registry or {}).get("secrets") or ())
+    # A frame world advertises bare ids; the kind renders them as names.
+    advertised = (
+        kind.advertised_names(prior) if kind is not None else prior["available_actions"]
+    )
+    check_registry_action(name, advertised)
+    secrets = tuple(registry.get("secrets") or ())
     reasoning = redact_mapping(reasoning, secrets)
     step = stepper or broker_step
     started = time.monotonic()
@@ -117,17 +115,16 @@ def paid_step(
 
 def record_event(paths: RunPaths, pending: Mapping[str, Any]) -> dict[str, Any]:
     event = append_event(paths, pending)
-    if load_registry(paths) is not None:
-        # Registry runs are chained: the exact appended line advances the
-        # daemon-held rolling hash (tamper-evidence).
-        try:
-            last_line = paths.events.read_text().splitlines()[-1]
-        except (FileNotFoundError, IndexError):
-            last_line = ""
-        if last_line:
-            extend_chain(
-                paths, last_line, int(event["id"]), win=str(event["state"]) == "WIN"
-            )
+    # The journal is chained: the exact appended line advances the
+    # daemon-held rolling hash (tamper-evidence).
+    try:
+        last_line = paths.events.read_text().splitlines()[-1]
+    except (FileNotFoundError, IndexError):
+        last_line = ""
+    if last_line:
+        extend_chain(
+            paths, last_line, int(event["id"]), win=str(event["state"]) == "WIN"
+        )
     kind = kind_for(event)
     if kind is not None:
         kind.after_record(paths, event, load_events(paths))
@@ -167,10 +164,7 @@ def _enforce_registry_gates(
     in_batch: bool,
 ) -> list[str]:
     """All pre-spend teeth beyond schema/claims/affordance/budget. Returns
-    module advisory lines. Everything here is registry-gated: the numbered-action path
-    never reaches it."""
-    if registry is None:
-        return []
+    module advisory lines."""
     check_usd_budget(load_jsonl(paths.activity), registry)
     _notes_hard_stop(paths, registry)
     advisories: list[str] = []
@@ -278,15 +272,6 @@ def _ungated_act(registry: Mapping[str, Any] | None, predict: str | None) -> boo
     return mode == "optional" and bare
 
 
-def _claim_kind(registry: Mapping[str, Any] | None, events: Sequence[Mapping[str, Any]]):
-    """Which extra claim forms this run admits: none on a registry run (the
-    rule every published registry journal was recorded under, owner decision
-    O1), the observation kind's own forms on the legacy path."""
-    if registry is not None or not events:
-        return None
-    return kind_for(events[-1])
-
-
 def execute_action(
     paths: RunPaths,
     token: str,
@@ -297,13 +282,14 @@ def execute_action(
     declares: Mapping[str, str] | None = None,
     stepper: Any = None,
 ) -> dict[str, Any]:
-    registry = load_registry(paths)
+    registry = require_registry(paths)
     events = head_events(paths, at_event)
     # The control arms: gate optional admits a bare act, gate off admits only
     # bare acts (the instrument is removed). Either way the act is journaled
     # UNGATED and the audit keeps the run invalid for scoring.
     ungated = _ungated_act(registry, predict)
-    claims = [] if ungated else parse_claims(predict, kind=_claim_kind(registry, events))
+    # No observation kind's own claim forms are admitted (owner decision O1).
+    claims = [] if ungated else parse_claims(predict)
     check_channel_references(paths, claims)
     _admit_claims(paths, claims)
     advisories = _enforce_registry_gates(
@@ -318,7 +304,7 @@ def execute_action(
     )
     check_budget(events, registry, planned=1)
     start_event = int(events[-1]["id"])
-    secrets = tuple((registry or {}).get("secrets") or ())
+    secrets = tuple(registry.get("secrets") or ())
     predict_journal = redact(predict, secrets) or ""
     because_journal = redact(because, secrets)
     reasoning: dict[str, Any] = {"predict": predict}
@@ -350,9 +336,8 @@ def execute_action(
     all_events = load_events(paths)
     observe_outcome(paths, registry, all_events, event)
     aggregate_lines: list[str] = []
-    if registry is not None:
-        aggregate_lines.extend(open_aggregates(paths, claims, all_events))
-        aggregate_lines.extend(resolve_due(paths, all_events))
+    aggregate_lines.extend(open_aggregates(paths, claims, all_events))
+    aggregate_lines.extend(resolve_due(paths, all_events))
     lines = grade_lines(graded)
     if event["state"] == "WIN":
         outcome, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
@@ -406,10 +391,9 @@ def execute_action(
         receipt["modules"] = advisories
     if aggregate_lines:
         receipt["aggregates"] = aggregate_lines
-    if registry is not None:
-        changed = channel_change_lines(paths, prior, event)
-        if changed:
-            receipt["channels"] = changed
+    changed = channel_change_lines(paths, prior, event)
+    if changed:
+        receipt["channels"] = changed
     return write_receipt(paths, receipt)
 
 
@@ -419,7 +403,7 @@ def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
         return action.strip(), ""  # gate: optional — an unpredicted step
     if not separator or not action.strip() or not predict.strip():
         raise AssayError(
-            'each step needs its own prediction: --step "ACTION1 :: <claims>"'
+            'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
         )
     # Case is normalized later by parse_action (action names only); parameter
     # values in registry runs keep the case the agent typed.
@@ -446,7 +430,7 @@ def execute_steps(
 ) -> dict[str, Any]:
     if not raw_steps:
         raise AssayError("no steps supplied")
-    registry = load_registry(paths)
+    registry = require_registry(paths)
     cap = hand_cap(registry)
     if cap is not None and len(raw_steps) > cap:
         from .model import batching_rights
@@ -460,7 +444,6 @@ def execute_steps(
     mode = gate_mode(registry)
     bare_ok = mode in _UNGATED_MARKER
     events = head_events(paths, at_event)
-    claim_kind = _claim_kind(registry, events)
     parsed: list[tuple[str, str, list[dict[str, Any]]]] = []
     for raw in raw_steps:
         token, predict = parse_step(raw, allow_bare=bare_ok)
@@ -470,10 +453,7 @@ def execute_steps(
                 'steps are bare (`--step "ACTION"`), nothing is graded, and the '
                 "audit marks the run invalid for scoring"
             )
-        claims = (
-            [] if bare_ok and not predict
-            else parse_claims(predict, kind=claim_kind)
-        )
+        claims = [] if bare_ok and not predict else parse_claims(predict)
         parsed.append((token, predict, claims))
     validate_batch_tokens([token for token, _, _ in parsed], registry)
     for _, _, claims in parsed:
@@ -491,7 +471,7 @@ def execute_steps(
     )
     check_budget(events, registry, planned=len(parsed))
     start_event = int(events[-1]["id"])
-    secrets = tuple((registry or {}).get("secrets") or ())
+    secrets = tuple(registry.get("secrets") or ())
     records: list[dict[str, Any]] = []
     outcome = "PREDICTED"
     detail = f"all {len(parsed)} steps landed as predicted"
@@ -574,9 +554,8 @@ def execute_steps(
         detail += f"; scorecard finalization warning: {last_warning}"
     final_events = load_events(paths)
     aggregate_lines: list[str] = []
-    if registry is not None:
-        aggregate_lines.extend(open_aggregates(paths, all_claims, final_events))
-        aggregate_lines.extend(resolve_due(paths, final_events))
+    aggregate_lines.extend(open_aggregates(paths, all_claims, final_events))
+    aggregate_lines.extend(resolve_due(paths, final_events))
     receipt: dict[str, Any] = {
         "kind": "commit",
         "outcome": outcome,
@@ -589,10 +568,9 @@ def execute_steps(
         receipt["modules"] = advisories
     if aggregate_lines:
         receipt["aggregates"] = aggregate_lines
-    if registry is not None:
-        changed = channel_change_lines(paths, events[-1], final_events[-1])
-        if changed:
-            receipt["channels"] = changed
+    changed = channel_change_lines(paths, events[-1], final_events[-1])
+    if changed:
+        receipt["channels"] = changed
     return write_receipt(paths, receipt)
 
 
@@ -609,12 +587,7 @@ def execute_model_plan(
     from .channels import channel_value
     from .model import batching_rights, model_hash, plan_path
 
-    registry = load_registry(paths)
-    if registry is None:
-        raise AssayError(
-            "model plans belong to registry runs; this numbered-action run has the "
-            "rules.py tier instead"
-        )
+    registry = require_registry(paths)
     events = head_events(paths, at_event)
     candidate = Path(reference[1:] if reference.startswith("@") else reference)
     path = candidate if candidate.is_absolute() else paths.root / candidate
@@ -750,7 +723,7 @@ def reset_level(
     stepper: Any = None,
 ) -> dict[str, Any]:
     events = head_events(paths, at_event)
-    registry = load_registry(paths)
+    registry = require_registry(paths)
     declared = dict(declares or {})
     advisories = _enforce_registry_gates(
         paths,
@@ -762,24 +735,23 @@ def reset_level(
         declares=declared,
         in_batch=False,
     )
-    if registry is not None:
-        # Reset itself is never destructive-flagged, but modules may advise or
-        # demand (park-with-test, a conclusion expressed as a reset); consult
-        # with the reset pending and its declarations explicitly.
-        advisories.extend(
-            consult_modules(
-                paths,
-                registry,
-                events,
-                {
-                    "kind": "reset",
-                    "name": "RESET",
-                    "params": None,
-                    "claims": [],
-                    "declares": declared,
-                },
-            )
+    # Reset itself is never destructive-flagged, but modules may advise or
+    # demand (park-with-test, a conclusion expressed as a reset); consult
+    # with the reset pending and its declarations explicitly.
+    advisories.extend(
+        consult_modules(
+            paths,
+            registry,
+            events,
+            {
+                "kind": "reset",
+                "name": "RESET",
+                "params": None,
+                "claims": [],
+                "declares": declared,
+            },
         )
+    )
     check_budget(events, registry, planned=1)
     prior = events[-1]
     reason = because

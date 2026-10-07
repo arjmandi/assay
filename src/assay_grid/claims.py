@@ -1,10 +1,9 @@
 """The frame-world claim forms and their grader.
 
 `cell`, `move`, `vanish` and `region` are coordinate claims over a grid, with
-x = column and y = row. They are admitted only on runs without a registry
-(the legacy numbered-action path); on registry runs the kernel refuses them,
-which is the rule every published registry journal was recorded under.
-Whether frame-world registry runs should admit them is owner decision O1.
+x = column and y = row. The kernel recognizes them and refuses them by name
+before any spend, which is the rule every published journal was recorded
+under. Whether frame worlds should admit them is owner decision O1.
 
 `grade_claims` grades every plain claim of a frame event, the general forms
 included, by cell comparison of the settled frames, exactly as the kernel did
@@ -42,7 +41,7 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 HELP = """\
-FRAME WORLDS ONLY (grid observations) | x=column y=row | refused on registry runs
+FRAME WORLDS ONLY (grid observations) | x=column y=row | recognized, not admitted in 1.1.0
   cell X,Y=V           cell at column X, row Y becomes hex color V
   move X,Y DX,DY       the object covering X,Y shifts by (DX,DY) and vacates its old cells
   vanish X,Y           every cell of the object covering X,Y stops being its color

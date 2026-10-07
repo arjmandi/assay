@@ -65,8 +65,9 @@ enforces it before anything is spent.
 the file (`registry.load_registry_file`, `registry.validate_registry`), copies
 the canonical form to `.assay/registry.json`, and records `registry_hash` in
 `config.json`. A later `start` with a different registry is refused
-(`cli._start`). A run without a registry is the legacy numbered-action path,
-which is not world-neutral and is described in section 3.
+(`cli._start`). Every run has one: `--registry` is required since 1.1.0, and
+a directory that owns a run started without one (before registries existed)
+can be inspected but not resumed.
 
 **Contract.** The JSON schema in the `registry.py` module docstring, validated
 key by key. Top-level keys: `actions` (required), `budget`, `goal`, `batching`,
@@ -455,9 +456,6 @@ way past the hand-batch cap (`live.execute_model_plan`), every step is graded
 against the channel values and marked `machine: true`, so machine predictions
 never enter the agent's meters. Imported models never carry rights.
 
-The grid executable-rules tier (`rules.py`, numbered-action runs only) is this
-law's frame-world instance and belongs to the extra (section 3).
-
 **Required.** Nothing.
 
 **Optional.** Verifier claims, a world model, model plans.
@@ -531,9 +529,8 @@ aliases `progress`, `progress_total`, `status`.
 ## 3. The frame-world extra
 
 Frame worlds (observation is a grid) have a tier the dict worlds do not need:
-image rendering, a scene dossier, perception helpers, grid claim forms, the
-executable-rules tier and a legacy numbered-action vocabulary. In 1.1.0 these
-live outside the kernel in the extra package `assay_grid` (`src/assay_grid/`,
+image rendering, a scene dossier, perception helpers and the grid claim
+forms. In 1.1.0 these live outside the kernel in the extra package `assay_grid` (`src/assay_grid/`,
 same repository, same distribution), selected automatically by observation
 shape (`"frames" in event`, the test `core.general_event` makes), never by
 configuration: registries are pinned per run and the 25 published run
@@ -542,34 +539,29 @@ auditing them.
 
 What lives in the extra, by module: `perception.py` (connected components,
 repeated shapes, lattice inference, line graph, frame delta, motion trace,
-transition story, the scene dossier), `rules.py` (the rules contract, replay,
-solve), `claims.py` (the claim kinds `cell`, `move`, `vanish`, `region` and
-the frame grader, which also grades the general forms on frames by cell
-comparison), `render.py` (the palette, one PNG per event, the observation hash,
-the frame history line, the one pillow import), `views.py` (the frame halves of
-status, result, inspect, view and export: board text, diffs, scene summary,
-animation, click candidates, the RULES and PLAN lines), `solve.py` (`assay
-rules` and the solve-plan executor behind `assay commit @.assay/plan.json`),
-`analysis.py` (the grid namespace of `assay python`), and `legacy.py` (the
-numbered-action path: `ACTION1..7`, `ACTION6:x,y`, the 0 to 63 bound, the
-coordinate form of `assay act`, the advertised-id to name rendering the
-affordance check needs, the status nudges of runs without a registry).
+transition story, the scene dossier), `claims.py` (the claim kinds `cell`,
+`move`, `vanish`, `region` and the frame grader, which also grades the general
+forms on frames by cell comparison), `render.py` (the palette, one PNG per
+event, the frame history line, the one pillow import), `views.py` (the frame
+halves of status, result, inspect, view and export: board text, diffs, scene
+summary, animation, click candidates, the advertised-action line and the
+advertised-id to name rendering the affordance check needs), and
+`analysis.py` (the grid namespace of `assay python`).
 
 What stays in the kernel because the journal format has it: the frame encoding
 (`core.grid_to_rows`, `core.rows_to_grid`, the frame branch of
 `core.normalize_observation` and `core.make_event`, `core.frame_at`,
 `core.general_event`). numpy stays a kernel dependency for that encoding in
 1.1.0. `textobs.py` stays. The dict branch of `evidence.history_lines` stays.
-The parser declares the frame-only subcommand (`rules`) and the `view` flags
-(`--grid`, `--frames`, `--crop`, `--export`) itself, inert on a dict run, so
-the command line surface is kernel-owned while the behavior is the extra's.
+The parser declares the frame-only `view` flags (`--grid`, `--frames`,
+`--crop`, `--export`) itself, inert on a dict run, so the command line surface
+is kernel-owned while the behavior is the extra's.
 
 The hook is one kernel module, `extras.py`: the `ObservationKind` protocol
 (`applies`, `claim_patterns`, `claim_fields`, `claims_help`, `grade_claims`,
 `after_record`, `status_head_lines`, `status_lines`, `result_lines`,
 `view_text`, `history_line`, `canonical_action`, `advertised_names`,
-`python_namespace`, the `legacy_*` methods, `wall_spend_advice`,
-`execute_plan`, `cli_handle`, `export_history`) and the functions
+`python_namespace`, `export_history`) and the functions
 `kind_for(event)` (imports `assay_grid` lazily and only when an event has
 frames), `all_kinds()` (every importable kind, used when help is rendered) and
 `require_kind`. `assay_grid.KIND` is the one implementation. A dict run never
@@ -579,12 +571,13 @@ assay.cli` imports neither (the conformance tests pin both).
 Behavior preserved, proven by the replay diff over the 25 published run
 directories (zero differences in `status`, `audit`, `view` and `channel list`
 against the main kernel): no journal field changes, no change to grade
-records, the grid claim forms stay refused on registry runs exactly as before
+records, the grid claim forms stay refused exactly as before
 (`predictions.parse_claims` with `kind=None`, the refusal now names the form),
-which is why no published registry journal contains one. Whether frame-world
-registry runs should gain those forms is owner decision O1. Whether the legacy
-numbered-action path is deleted in 1.2 is O2 (it moved, undocumented, as
-recommended).
+which is why no published journal contains one. Whether frame worlds should
+gain those forms is owner decision O1. The legacy numbered-action path (runs
+without a registry, `ACTION1..7` and `ACTION6:x,y` with the 0 to 63 bound,
+the status nudges) and the executable-rules tier that only ran there are
+deleted in 1.1.0 (O2).
 
 ## 4. Per-world conformance
 

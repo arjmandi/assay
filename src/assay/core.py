@@ -45,20 +45,8 @@ class RunPaths:
         return self.state / "activity.jsonl"
 
     @property
-    def verification(self) -> Path:
-        return self.state / "verify.json"
-
-    @property
-    def plan(self) -> Path:
-        return self.state / "plan.json"
-
-    @property
     def notes(self) -> Path:
         return self.state / "NOTES.md"
-
-    @property
-    def rules(self) -> Path:
-        return self.root / "rules.py"
 
     @property
     def dossier(self) -> Path:
@@ -407,22 +395,12 @@ def canonical_action(event: Mapping[str, Any]) -> str:
 
 
 def parse_action(
-    token: str, registry: Mapping[str, Any] | None = None
+    token: str, registry: Mapping[str, Any]
 ) -> tuple[str, dict[str, Any] | None]:
-    """Parse an action token: against the registry on registry runs, else the
-    legacy numbered vocabulary of the frame-world extra."""
-    if registry is not None:
-        from .registry import parse_registry_action
+    """Parse an action token against the run's registry."""
+    from .registry import parse_registry_action
 
-        return parse_registry_action(token, registry)
-    from .extras import all_kinds
-
-    for kind in all_kinds():
-        return kind.legacy_parse_action(token)
-    raise AssayError(
-        "a run without a registry speaks the frame-world extra's action "
-        "vocabulary, and the extra (assay_grid) is not importable"
-    )
+    return parse_registry_action(token, registry)
 
 
 def segment_start(events: Sequence[Mapping[str, Any]], index: int | None = None) -> int:

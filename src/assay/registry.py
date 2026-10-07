@@ -1,10 +1,9 @@
 """Registry-driven general actions with a hard action budget.
 
-A run started with `assay start WORLD_ID --registry file.json --adapter mod:factory`
-replaces the fixed RESET/ACTION1-7 vocabulary with registered action names and
-typed parameter schemas. Semantics are never part of the registry — the agent
-learns them by acting. Without a registry nothing in this module runs and the
-numbered-action path is untouched.
+Every run starts with `assay start WORLD_ID --registry file.json --adapter
+mod:factory`: the registry names the actions and their typed parameter
+schemas, and RESET is built in. Semantics are never part of the registry — the
+agent learns them by acting.
 
 Registry JSON schema (v2 — every key beyond "actions" is optional; v1 files
 stay valid unchanged):
@@ -275,7 +274,7 @@ def action_spec(
 def hand_cap(registry: Mapping[str, Any] | None) -> int | None:
     """The batching law's hand-written-batch cap; None means uncapped."""
     if not registry:
-        return None  # numbered-action path: no cap
+        return None
     batching = registry.get("batching")
     if batching is not None and "hand_cap" in batching:
         return batching["hand_cap"]
@@ -283,7 +282,7 @@ def hand_cap(registry: Mapping[str, Any] | None) -> int | None:
 
 
 def notes_cap(registry: Mapping[str, Any] | None) -> int | None:
-    """The notes size cap in characters; None disables it (numbered-action mode: disabled)."""
+    """The notes size cap in characters; None disables it."""
     if not registry:
         return None
     if "notes_cap" in registry:
@@ -354,9 +353,21 @@ def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
 
 
 def load_registry(paths: RunPaths) -> dict[str, Any] | None:
-    """The registry pinned at `assay start`, or None for a numbered-action run."""
+    """The registry pinned at `assay start`, or None when the directory has
+    none (a run started before 1.1.0 without one: readable, not resumable)."""
     value = read_json(paths.registry, None)
     return value if isinstance(value, dict) else None
+
+
+def require_registry(paths: RunPaths) -> dict[str, Any]:
+    """The pinned registry, for anything that acts. Every run since 1.1.0 has one."""
+    registry = load_registry(paths)
+    if registry is None:
+        raise AssayError(
+            "this run has no registry: runs without one are not supported since "
+            "1.1.0 (`assay start` takes --registry)"
+        )
+    return registry
 
 
 def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str) -> Any:

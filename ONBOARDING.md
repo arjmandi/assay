@@ -568,8 +568,7 @@ the column the world adds to the table in `docs/ARCHITECTURE.md` section 4.
 - Channels: host channels claimed, declared channels and their form, claim
   kinds used.
 - Verifiers and the world model.
-- Journal shape, audit verdict, the frame extra and the rules tier (frame
-  worlds only).
+- Journal shape, audit verdict, the frame extra (frame worlds only).
 - Kernel imports from the world: none, always.
 
 The executable form is `tests/test_conformance.py`: the kernel imports

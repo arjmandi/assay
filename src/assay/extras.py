@@ -3,15 +3,15 @@
 The kernel knows two observation shapes: a JSON object under `observation`
 (every world) and a list of integer grids under `frames` (frame worlds). The
 journal format has both, so the frame encoding stays in `core`. Everything
-else a frame world wants (rendering, a scene dossier, perception helpers, grid
-claim forms, the executable-rules tier, the legacy numbered-action vocabulary)
-lives in the extra package `assay_grid`, selected here by observation shape
+else a frame world wants (rendering, a scene dossier, perception helpers, the
+grid claim forms) lives in the extra package `assay_grid`, selected here by
+observation shape
 and never by configuration: registries are pinned per run and the published
 run directories carry no such key.
 
 A dict run never imports `assay_grid`, so the kernel can be loaded without
 pillow and without the extra at all: the parser declares the frame-only
-subcommand and flags itself, and the claim help lists the extra's forms only
+`view` flags itself, and the claim help lists the extra's forms only
 when help is rendered. A frame run that cannot import the extra gets one clear
 refusal instead of a traceback.
 """
@@ -54,9 +54,6 @@ class ObservationKind(Protocol):
     def status_head_lines(
         self, paths: RunPaths, event: Mapping[str, Any], registry: Mapping[str, Any] | None
     ) -> list[str]: ...
-    def status_lines(
-        self, paths: RunPaths, event: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
-    ) -> list[str]: ...
     def result_lines(
         self, paths: RunPaths, receipt: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
     ) -> list[str]: ...
@@ -70,17 +67,8 @@ class ObservationKind(Protocol):
     def advertised_names(self, event: Mapping[str, Any]) -> list[str]: ...
     def python_namespace(self, events: Sequence[Mapping[str, Any]]) -> dict[str, Any]: ...
 
-    # The legacy numbered-action path (runs without a registry).
-    def legacy_parse_action(self, token: str) -> tuple[str, dict[str, Any] | None]: ...
-    def legacy_action_token(self, action: str, coordinates: Sequence[str]) -> str: ...
-    def legacy_check_action(self, token: str, available: Sequence[Any]) -> None: ...
-    def legacy_nudges(self, events: Sequence[Mapping[str, Any]]) -> list[str]: ...
-    def wall_spend_advice(self, level_actions: int) -> str | None: ...
-    def execute_plan(self, paths: RunPaths, reference: str, at_event: int | None) -> dict[str, Any]: ...
-
-    # CLI: the kernel declares the frame-only subcommand and flags (inert on
-    # a dict run); the kind handles them and exports the grid history.
-    def cli_handle(self, paths: RunPaths, args: Any) -> None: ...
+    # CLI: the kernel declares the frame-only view flags (inert on a dict
+    # run); the kind exports the grid history.
     def export_history(self, paths: RunPaths, destination: Path) -> Path: ...
 
 

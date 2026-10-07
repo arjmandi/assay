@@ -329,15 +329,12 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
             f"{unit_line_label(event['win_levels'])} | {level_actions} paid actions this "
             f"{unit_noun(event['win_levels'])} | {prediction_summary}",
             *_claim_meter_lines(paths, events),
-            *(kind.status_lines(paths, event, events) if kind is not None else ()),
         ]
     )
     if registry:
         from .modules import advisory_lines
 
         lines.extend(advisory_lines(paths, registry, events))
-    elif kind is not None:
-        lines.extend(kind.legacy_nudges(events))
     lines.extend(
         [
             "RECENT | ✓ prediction held · ✗ prediction missed",

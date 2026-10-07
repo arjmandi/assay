@@ -1,11 +1,9 @@
-"""Rendering for frame worlds: the palette, PNG images per event, the
-observation hash the rules tier pins plans to, and the frame form of the
-history line. This is the one place pillow is imported.
+"""Rendering for frame worlds: the palette, PNG images per event, and the
+frame form of the history line. This is the one place pillow is imported.
 """
 
 from __future__ import annotations
 
-import hashlib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
@@ -37,11 +35,6 @@ PALETTE = np.asarray(
     ],
     dtype=np.uint8,
 )
-
-
-def observation_hash(grid: np.ndarray) -> str:
-    value = np.asarray(grid, dtype=np.int16)
-    return hashlib.sha256(value.tobytes()).hexdigest()
 
 
 def image_path(paths: RunPaths, event_id: int, frame_id: int | None = None) -> Path:

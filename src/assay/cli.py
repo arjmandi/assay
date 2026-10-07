@@ -74,7 +74,6 @@ from .core import (
 )
 from .extras import kind_for, require_kind
 from .inspect import result_text, status_text, view_text
-from .live import execute_action, execute_steps, reset_level
 from .predictions import claims_help
 from .registry import gate_mode, load_registry_file
 
@@ -114,7 +113,8 @@ def _parser() -> Parser:
     start.add_argument(
         "--registry",
         type=Path,
-        help="JSON file registering general actions, parameter schemas, and an action budget",
+        required=True,
+        help="JSON file registering the actions, their parameter schemas and the action budget",
     )
     start.add_argument(
         "--mode",
@@ -184,7 +184,7 @@ def _parser() -> Parser:
     )
     act.lazy_epilog = claims_help
     act.add_argument("action")
-    act.add_argument("coordinates", nargs="*", help=argparse.SUPPRESS)
+    act.add_argument("params", nargs="*", metavar="pname=value", help=argparse.SUPPRESS)
     act.add_argument(
         "--predict",
         required=False,
@@ -251,24 +251,6 @@ def _parser() -> Parser:
     )
     python.add_argument("source", nargs="?")
     python.add_argument("--file", type=Path)
-
-    # Frame worlds without a registry: the executable-rules tier. Declared
-    # here, handled by the frame-world extra at run time.
-    rules = commands.add_parser(
-        "rules",
-        help="frame worlds, no registry: the executable-rules tier (rules.py, replay-verify, search)",
-    )
-    subcommands = rules.add_subparsers(dest="rules_command", required=True)
-    subcommands.add_parser("help", help="print the compact rules.py contract")
-    subcommands.add_parser("init", help="create a rules.py template without overwriting")
-    subcommands.add_parser(
-        "replay", help="check rules.py against every recorded transition"
-    )
-    solve = subcommands.add_parser(
-        "solve", help="A* search rules.py for a plan to the next progress unit, with per-step predictions"
-    )
-    solve.add_argument("--seconds", type=float, default=15.0)
-    solve.add_argument("--max-nodes", type=int, default=250_000)
 
     channel = commands.add_parser(
         "channel", help="declare and list registered channels (named readings)"
@@ -387,16 +369,6 @@ def _parse_declares(raw: list[str]) -> dict[str, str]:
     return declares
 
 
-def _action_token(paths: RunPaths, action: str, coordinates: list[str], general: bool) -> str:
-    if general:
-        # Registry runs: `assay act NAME pname=value ...` — the extra tokens are
-        # typed parameters; case is preserved (values may be case-sensitive).
-        return " ".join([action, *coordinates])
-    events = load_events(paths)
-    kind = require_kind(events[-1] if events else None, "a run without a registry")
-    return kind.legacy_action_token(action, coordinates)
-
-
 def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
     """Where the owner token goes instead of stdout, if anywhere: the flag,
     else ASSAY_OWNER_TOKEN_FILE, else nowhere (printed once, as before). The
@@ -457,9 +429,7 @@ def _remote_idle_seconds(paths: RunPaths, config: dict[str, Any]) -> float:
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     requested = normalize_game_id(args.game_id)
-    registry_spec = (
-        load_registry_file(args.registry) if args.registry is not None else None
-    )
+    registry_spec = load_registry_file(args.registry)
     existing = read_json(paths.config)
     if isinstance(existing, dict):
         if getattr(args, "import_knowledge", None) is not None:
@@ -467,7 +437,12 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 "knowledge imports happen at run start; this directory already "
                 "owns a run"
             )
-        if registry_spec is not None and registry_spec != read_json(paths.registry):
+        if read_json(paths.registry, None) is None:
+            raise AssayError(
+                "this directory owns a run without a registry, from before 1.1.0: "
+                "it can be inspected (status, view, audit) but not resumed"
+            )
+        if registry_spec != read_json(paths.registry):
             raise AssayError(
                 "this directory already owns a run with a different registry; "
                 "the registry cannot change in place"
@@ -493,8 +468,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         # once the daemon is confirmed dead or absent. While the daemon lives,
         # a mutation without an event is a step in flight: recovering it from
         # another process would double-count it the moment the daemon appends
-        # its own graded event. The numbered-action path is the one exception
-        # (its daemon never writes events, the CLI is the only writer).
+        # its own graded event.
         recovered = 0
         owner = read_json(paths.broker, {})
         if owner.get("status") == "FINISHED":
@@ -561,8 +535,6 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 paths.socket.unlink(missing_ok=True)
                 start_broker(paths)
                 restarted = True
-            elif read_json(paths.registry, None) is None:
-                recovered = reconcile_mutations(paths)
             if not broker_matches_latest_event(paths):
                 raise AssayError(
                     "LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the latest timeline event"
@@ -602,7 +574,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         "seed": args.seed,
         "mode": mode,
         "adapter": adapter_spec,
-        "registry": registry_spec is not None,
+        "registry": True,
         "created_at": now_iso(),
         "harness": "assay",
         "harness_version": __version__,
@@ -610,26 +582,21 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         "python": sys.executable,
     }
     config["binding_hash"] = binding_hash_of(config)
-    if registry_spec is not None:
-        config["registry_hash"] = registry_hash_of(registry_spec)
-        # Pinned at start so every later command, whatever its environment,
-        # anchors to and audits the same file.
-        config["anchor_file"] = str(environment_anchor_file(paths))
+    config["registry_hash"] = registry_hash_of(registry_spec)
+    # Pinned at start so every later command, whatever its environment,
+    # anchors to and audits the same file.
+    config["anchor_file"] = str(environment_anchor_file(paths))
     paths.state.mkdir(parents=True, exist_ok=True)
     atomic_json(paths.config, config)
-    if registry_spec is not None:
-        atomic_json(paths.registry, registry_spec)
+    atomic_json(paths.registry, registry_spec)
     (paths.state / "python").write_text(sys.executable + "\n")
-    # Owner authority exists for registry runs; the numbered-action path stays
-    # unchanged (no token line in its start output).
-    owner_token = mint_owner_token(paths) if registry_spec is not None else None
+    owner_token = mint_owner_token(paths)
     try:
-        if owner_token is not None and token_file is not None:
+        if token_file is not None:
             _write_owner_token(token_file, owner_token)
-        if registry_spec is not None:
-            # Module files are loaded once here to check their contract; a
-            # refusal must leave no half-initialized run behind.
-            pin_external_modules(paths, registry_spec)
+        # Module files are loaded once here to check their contract; a
+        # refusal must leave no half-initialized run behind.
+        pin_external_modules(paths, registry_spec)
         start_broker(paths)
         observation, public_info = broker_observe(paths)
         config["public_info"] = public_info
@@ -676,20 +643,20 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         print(
             f"STARTED | {requested} | local simulator | competition accounting | replay recovery enabled"
         )
-    if registry_spec is not None and not anchor_status(paths)["writable"]:
+    if not anchor_status(paths)["writable"]:
         print(
             f"WARNING | {anchor_line(paths)} | set ASSAY_ANCHOR_DIR to a writable "
             "directory before the first anchor is due"
         )
     print(status_text(paths))
-    if registry_spec is not None and gate_mode(registry_spec) == "optional":
+    if gate_mode(registry_spec) == "optional":
         print(
             "USE | gate: optional — `assay act` runs with or without --predict "
             "(an unpredicted act is journaled UNGATED; the audit marks the run "
             "invalid for scoring); parameters go as `assay act NAME pname=value ...`; "
             "schemas are in REGISTRY above, semantics are never given — learn them by acting"
         )
-    elif registry_spec is not None and gate_mode(registry_spec) == "off":
+    elif gate_mode(registry_spec) == "off":
         print(
             "USE | gate: off — `assay act NAME pname=value ...` with no --predict "
             "(predictions are not accepted on this run and nothing is graded; every "
@@ -697,16 +664,11 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             "for scoring); schemas are in REGISTRY above, semantics are never given "
             "— learn them by acting"
         )
-    elif registry_spec is not None:
+    else:
         print(
             'USE | every `assay act` needs --predict "<claims>"; parameters go as '
             "`assay act NAME pname=value ...`; schemas are in REGISTRY above, "
             "semantics are never given — learn them by acting"
-        )
-    else:
-        print(
-            'USE | open IMAGE first; every `assay act` needs --predict "<claims>" '
-            "(`assay act --help` lists the claim forms)"
         )
 
 
@@ -791,7 +753,7 @@ def _doctor(paths: RunPaths) -> int:
             except AssayError as error:
                 note("FAIL", f"adapter: {error}")
         else:
-            note("WARN", "no adapter recorded (a numbered-action run)")
+            note("WARN", "no adapter recorded")
         if paths.registry.exists():
             try:
                 from .registry import validate_registry
@@ -875,12 +837,7 @@ def main() -> None:
         require_run(paths)
         with (
             run_lock(paths),
-            command_status(
-                paths,
-                f"rules {args.rules_command}"
-                if getattr(args, "rules_command", None)
-                else args.command,
-            ),
+            command_status(paths, args.command),
         ):
             if args.command == "status":
                 print(status_text(paths, history=args.history))
@@ -895,74 +852,49 @@ def main() -> None:
                         f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(paths, destination)}"
                     )
             elif args.command == "act":
-                general = read_json(paths.registry, None) is not None
-                token = _action_token(paths, args.action, args.coordinates, general)
-                if general:
-                    # Daemon-side gate: enforcement where the session lives.
-                    receipt = broker_gated(
-                        paths,
-                        {
-                            "op": "gated_act",
-                            "action_token": token,
-                            "predict": args.predict,
-                            "because": args.because,
-                            "at_event": args.at_event,
-                            "declares": _parse_declares(args.declare),
-                        },
-                    )
-                else:
-                    receipt = execute_action(
-                        paths,
-                        token,
-                        predict=args.predict,
-                        because=args.because,
-                        at_event=args.at_event,
-                    )
+                # `assay act NAME pname=value ...`: the extra tokens are typed
+                # parameters; case is preserved (values may be case-sensitive).
+                # Daemon-side gate: enforcement where the session lives.
+                receipt = broker_gated(
+                    paths,
+                    {
+                        "op": "gated_act",
+                        "action_token": " ".join([args.action, *args.params]),
+                        "predict": args.predict,
+                        "because": args.because,
+                        "at_event": args.at_event,
+                        "declares": _parse_declares(args.declare),
+                    },
+                )
                 print(result_text(paths, receipt))
             elif args.command == "commit":
                 if bool(args.plan) == bool(args.step):
                     raise AssayError(
-                        "commit takes either @plan.json (from `assay model solve` on "
-                        "registry runs, `assay rules solve` on frame runs without one) "
-                        'or one or more --step "ACTION :: claims"'
+                        "commit takes either @plan.json (from `assay model solve`) "
+                        'or one or more --step "NAME pname=value :: claims"'
                     )
-                if read_json(paths.registry, None) is not None:
-                    receipt = broker_gated(
-                        paths,
-                        {
-                            "op": "gated_commit",
-                            "plan": args.plan,
-                            "steps": args.step,
-                            "at_event": args.at_event,
-                            "declares": _parse_declares(args.declare),
-                        },
-                        steps=max(1, len(args.step)),
-                    )
-                elif args.plan:
-                    events = load_events(paths)
-                    kind = require_kind(events[-1] if events else None, "a plan commit without a registry")
-                    receipt = kind.execute_plan(paths, args.plan, args.at_event)
-                else:
-                    receipt = execute_steps(paths, args.step, at_event=args.at_event)
+                receipt = broker_gated(
+                    paths,
+                    {
+                        "op": "gated_commit",
+                        "plan": args.plan,
+                        "steps": args.step,
+                        "at_event": args.at_event,
+                        "declares": _parse_declares(args.declare),
+                    },
+                    steps=max(1, len(args.step)),
+                )
                 print(result_text(paths, receipt))
             elif args.command == "reset":
-                if read_json(paths.registry, None) is not None:
-                    receipt = broker_gated(
-                        paths,
-                        {
-                            "op": "gated_reset",
-                            "because": args.because,
-                            "at_event": args.at_event,
-                            "declares": _parse_declares(args.declare),
-                        },
-                    )
-                else:
-                    receipt = reset_level(
-                        paths,
-                        because=args.because,
-                        at_event=args.at_event,
-                        declares=_parse_declares(args.declare),
-                    )
+                receipt = broker_gated(
+                    paths,
+                    {
+                        "op": "gated_reset",
+                        "because": args.because,
+                        "at_event": args.at_event,
+                        "declares": _parse_declares(args.declare),
+                    },
+                )
                 print(result_text(paths, receipt))
             elif args.command == "channel":
                 if args.channel_command == "declare":
@@ -1103,9 +1035,6 @@ def main() -> None:
                     args.source if args.source is not None else args.file.read_text()
                 )
                 run_python(paths, source)
-            elif args.command == "rules":
-                events = load_events(paths)
-                require_kind(events[-1] if events else None, "the rules tier").cli_handle(paths, args)
             else:
                 raise AssayError(f"unsupported command {args.command}")
         raise SystemExit(0)

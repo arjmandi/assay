@@ -162,9 +162,6 @@ def export_knowledge(paths: RunPaths, out: Path | None = None) -> Path:
             if isinstance(fit, dict)
             else None,
         }
-    rules_entry = None
-    if paths.rules.exists():
-        rules_entry = paths.rules.read_text()[:_SOURCE_CAP]
     knowledge = {
         "knowledge_format": KNOWLEDGE_FORMAT,
         "exported_at": time.time(),
@@ -177,7 +174,6 @@ def export_knowledge(paths: RunPaths, out: Path | None = None) -> Path:
         "hazards": load_hazards(paths),
         "verifiers": verifiers,
         "model": model_entry,
-        "rules": rules_entry,
     }
     target = out or (paths.root / "assay_knowledge.json")
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -248,8 +244,6 @@ def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
     model_entry = knowledge.get("model")
     if isinstance(model_entry, Mapping) and model_entry.get("source"):
         (paths.root / "imported_model.py").write_text(str(model_entry["source"]))
-    if knowledge.get("rules"):
-        (paths.root / "imported_rules.py").write_text(str(knowledge["rules"]))
 
     hazards_imported = hazards_foreign = 0
     incoming = [tag for tag in knowledge.get("hazards") or [] if isinstance(tag, Mapping)]

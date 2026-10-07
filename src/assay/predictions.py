@@ -134,8 +134,9 @@ def parse_claims(
 
     The core forms parse on every run. An observation kind's own forms (the
     frame world's `cell`, `move`, `vanish`, `region`) parse only when `kind`
-    is given; a claim in another kind's form is refused before any spend,
-    which is the rule on every registry run (owner decision O1).
+    is given, which nothing in 1.1.0 does: such a claim is refused by name
+    before any spend, the rule every published journal was recorded under
+    (owner decision O1).
     """
     extra_patterns = list(kind.claim_patterns()) if kind is not None else []
     help_text = GENERAL_CLAIMS_HELP + (("\n" + kind.claims_help()) if kind is not None else "")
@@ -239,7 +240,7 @@ def parse_claims(
                 if any(pattern.match(part) for _, pattern in other.claim_patterns()):
                     raise AssayError(
                         f"claim {part!r} is a {other.name}-world form and this run does "
-                        f"not admit it (frame-world forms are refused on registry runs)\n"
+                        f"not admit it (frame-world forms are not admitted in 1.1.0)\n"
                         f"{help_text}"
                     )
             if _KEYWORD.match(part):

@@ -71,7 +71,7 @@ def test_registry_v2_fields_roundtrip():
 def test_registry_v2_defaults_and_refusals():
     spec = validate_registry(BASE)
     assert hand_cap(spec) == 3           # the batching law's kernel default
-    assert hand_cap(None) is None        # numbered-action path: no cap
+    assert hand_cap(None) is None        # no registry: uncapped
     assert notes_cap(spec) == 16_000
     assert not zero_prior(spec)
     for bad in [

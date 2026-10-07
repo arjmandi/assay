@@ -201,28 +201,25 @@ Left on the experiment branch, deliberately:
 ### Changed
 
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds
-  perception, the rules tier, the grid claim forms and grader, rendering (the
-  one pillow import), the frame halves of status, result, inspect, view and
-  export, the grid namespace of `assay python`, the solve-plan executor, and
-  the legacy numbered-action vocabulary (`ACTION1..7`, `ACTION6:x,y`, moved
-  undocumented, TODO(owner: O2) on deleting it in 1.2). The kernel keeps the
-  frame encoding the journal format has, and one hook, `assay.extras`,
-  selects the extra by observation shape (`frames` present), never by
-  configuration, so the published run directories need no change. A dict run
-  never imports `assay_grid` or pillow. The parser declares the frame-only
-  `rules` subcommand and the `view` flags itself, inert on a dict run. The
-  `ACTION` prefix matching in the affordance check is gone: a frame world's
-  advertised ids are rendered as names by the extra before the check. The
-  refusal of a grid claim form on a registry run now names the form
-  ("a frames-world form ... refused on registry runs") instead of claiming
-  the run has no grid observation. Every historical field name, state value
+  perception, the grid claim forms and grader, rendering (the one pillow
+  import), the frame halves of status, result, inspect, view and export, and
+  the grid namespace of `assay python`. The kernel keeps the frame encoding
+  the journal format has, and one hook, `assay.extras`, selects the extra by
+  observation shape (`frames` present), never by configuration, so the
+  published run directories need no change. A dict run never imports
+  `assay_grid` or pillow. The parser declares the frame-only `view` flags
+  itself, inert on a dict run. The `ACTION` prefix matching in the affordance
+  check is gone: a frame world's advertised ids are rendered as names by the
+  extra before the check. The refusal of a grid claim form now names the
+  form ("a frames-world form ... not admitted") instead of claiming the run
+  has no grid observation. Every historical field name, state value
   and claim form is untouched. Proven by the replay diff over the 25
   published run directories: zero differences in `status`, `audit`, `view`
   and `channel list` against the main kernel.
 - `parse_claims(text, kind=None)` replaces `parse_claims(text, general=...)`.
   The core forms parse on every run; an observation kind's forms parse only
-  when the kind is given (the legacy path), and are refused by name
-  otherwise. Test-only API change.
+  when the kind is given, which nothing does in 1.1.0 (owner decision O1), and
+  are refused by name otherwise. Test-only API change.
 - `live.py` exposes its seam under public names (`paid_step`,
   `record_event`, `write_receipt`, `head_events`, `level_advanced`,
   `validate_batch_tokens`) so an observation kind's executor builds on it
@@ -244,6 +241,18 @@ Left on the experiment branch, deliberately:
 
 ### Removed
 
+- The legacy numbered-action path (O2): runs started without a registry,
+  which spoke `ACTION1..7` and `ACTION6:x,y` with a 0 to 63 bound, had the
+  CLI write their events, and admitted the grid claim forms. `assay start`
+  now requires `--registry`, `assay act` takes `NAME pname=value ...` on
+  every run, and every paid command goes through the daemon's gate. A
+  directory that owns such a run (from before registries existed) can still
+  be inspected (`status`, `view`, `audit`) but is refused on resume. With the
+  path went the executable-rules tier that only ran there (`rules.py`, `assay
+  rules help|init|replay|solve`, `assay commit @.assay/plan.json`, the RULES
+  and PLAN status lines): its registry counterpart, the general world model
+  (`assay model`), stays. None of the 25 published run directories used
+  either, and the replay diff is unchanged.
 - The OOLONG length-ladder packs (`synth128k`, `synth1m`, `synth4m`: 14 MB of
   upstream dataset text, O3). Their manifests stay, now with the sha256 of the
   questions file beside the corpus's, and `bench/oolong/packs/build_pack.py
@@ -286,8 +295,7 @@ Left on the experiment branch, deliberately:
   the daemon was still grading, and the daemon then appended its own graded
   event for the same mutation id: the run became both invalid and
   double-counted. Recovery now runs only in `assay start`, and only once the
-  daemon is confirmed dead or absent (the ungated numbered-action path, whose
-  daemon never writes events, is the one exception). The audit reports a spend
+  daemon is confirmed dead or absent. The audit reports a spend
   that is in the mutation journal but not yet in the timeline as information,
   never as a verdict. No cross-process lock was added around the daemon's
   write window on purpose: it would block `assay status` for the length of a

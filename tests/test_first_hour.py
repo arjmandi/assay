@@ -118,3 +118,24 @@ def test_act_help_leads_with_the_general_table(tmp_path):
     assert "ACTION6" not in text
     committed = run_cli(tmp_path, "commit", "--help")
     assert "FRAME WORLDS ONLY" in committed.stdout
+
+
+def test_a_registry_is_required_and_a_run_without_one_is_not_resumed(tmp_path):
+    """Every run has a registry since 1.1.0: `assay start` demands --registry,
+    and a directory that owns a pre-registry run is readable but not resumable."""
+    run = tmp_path / "noreg"
+    run.mkdir()
+    adapter = f"{REPO / 'examples' / 'counter_world.py'}:factory"
+    bare = run_cli(run, "start", "fake1", "--adapter", adapter)
+    assert bare.returncode == 2 and "--registry" in bare.stderr
+    assert not (run / ".assay").exists()
+    (run / "reg.json").write_text(json.dumps({"actions": ACTIONS, "budget": {"actions": 20}}))
+    try:
+        assert _start(run, adapter).returncode == 0
+        assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
+    finally:
+        stop_run(run)
+    (run / ".assay" / "registry.json").unlink()
+    assert run_cli(run, "status").returncode == 0
+    resumed = _start(run, adapter)
+    assert resumed.returncode == 2 and "not resumed" in resumed.stderr

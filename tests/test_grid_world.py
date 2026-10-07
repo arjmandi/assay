@@ -60,7 +60,7 @@ def test_frame_world_end_to_end(tmp_path):
         assert "cells changed" in moved.stdout
         missed = run_cli(run, "act", "ACTION2", "--predict", "change")
         assert missed.returncode == 0 and "OUTCOME | SURPRISE" in missed.stdout
-        # Grid claim forms are refused on registry runs (today's rule, O1);
+        # Grid claim forms are recognized and refused (owner decision O1);
         # nothing is spent.
         before = len(_events(run))
         refused = run_cli(run, "act", "ACTION6", "x=1", "y=1", "--predict", "cell 1,1=5")

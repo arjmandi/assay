@@ -130,26 +130,11 @@ class _WallSpend:
 
     def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
         level_actions = _level_action_count(view.events)
-        if view.registry is not None:
-            # Registry runs own the general model tier.
-            if level_actions >= 25:
-                return (
-                    f"{level_actions} paid actions on this {_unit(view)} — stop manual "
-                    "probing; model the mechanics offline (`assay python`, or the "
-                    "`assay model` tier: replay-verified models earn batching rights)"
-                )
-            return None
-        # No registry: the observation kind's own tier, if it has one.
-        from .extras import kind_for
-
-        kind = kind_for(view.events[-1]) if view.events else None
-        if kind is not None:
-            return kind.wall_spend_advice(level_actions)
         if level_actions >= 25:
             return (
                 f"{level_actions} paid actions on this {_unit(view)} — stop manual "
-                "probing; re-read your notes, kill dead assumptions, and model the "
-                "mechanics offline with `assay python` before spending more"
+                "probing; model the mechanics offline (`assay python`, or the "
+                "`assay model` tier: replay-verified models earn batching rights)"
             )
         return None
 
