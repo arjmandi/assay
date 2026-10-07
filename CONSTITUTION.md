@@ -161,10 +161,11 @@ def verify(before, after) -> tuple[bool, str]:
   miss, its own counter, and it halts a containing batch. Test a verifier
   offline (`assay python`) before claiming with it.
 - After each grading the harness also runs your verifier on the identity
-  transition (before, before) and journals both verdicts. A verifier that has
-  been graded 5+ times and has never failed is flagged **VACUOUS** in status
-  and its passes stop counting. A verifier must be able to fail: assert the
-  specific transition you expect, not a tautology.
+  transition (before, before) and journals both verdicts. A verifier whose
+  identity verdict equals its real verdict on every one of 5+ gradings is
+  flagged **VACUOUS** in status and its passes stop counting: it does not use
+  the transition. Never having failed is reported as an advisory, not a flag.
+  Assert the specific transition you expect, not a tautology.
 
 Example — "this action increments the counter by exactly 1":
 
