@@ -4,8 +4,12 @@ This folder is the Factorio Learning Environment (FLE) benchmark harness for
 ASSAY: the world adapter, the pre-registered action registries, the namespace
 escape audit, and (from M2 on) the results record.
 
-Status: **M1 complete** — adapter, registries, and audit exist and a smoke run
-reaches WIN. No scored runs yet; M2 pre-registers bars before any.
+Status: **M2 calibration complete** (2026-08-26): three tasks played, three
+won, journals CLEAN, zero policy refusals (`RESULTS.md`). Those are
+calibration numbers, not the sweep. Vocabulary: ASSAY's prose says world and
+progress unit; here the world id is the task alias from the table below, a
+progress unit is one milestone of the four (`win_levels` is 4), and WIN is the
+throughput bar held through the holdout window.
 
 ## Version pins
 

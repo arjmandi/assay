@@ -4,8 +4,10 @@ The Factorio Learning Environment (FLE) benchmark harness for ASSAY: a world
 adapter exposing `factory(root, config)`, pre-registered action registries, and
 the protocol record.
 
-Status: **M1 complete** (adapter + registries + namespace escape audit + smoke
-WIN on `ironore`). No scored runs yet.
+Status: **M2 calibration complete** (2026-08-26): three lab-play throughput
+tasks played, three won (ironplate 5 actions, irongear 9, circuit 9), every
+journal CLEAN under `assay audit` and assay-verify, zero policy refusals. See
+`RESULTS.md`. The 24-task sweep (M3) has not run.
 
 | file | what it is |
 |---|---|

@@ -147,6 +147,25 @@ Left on the experiment branch, deliberately:
   covers `.venv/`, `.scratch/`, build output and, so run state is never
   committed, `.assay/`.
 
+- Documentation. `ONBOARDING.md`, the long form for attaching a world,
+  derived from `docs/ARCHITECTURE.md` (install, the counter world in five
+  minutes, the component model, the adapter, the registry, the operator's
+  side, running an agent with the Factorio channel pattern as the worked
+  example, modules, verify and publish, troubleshooting, the conformance
+  checklist). `AGENTS.md` for coding agents. `CONSTITUTION.md` gains a
+  Channels section (declare early, name referents, claim every action, the
+  three forms with the recorded Factorio claims), a "Before you conclude"
+  section (the coverage audit declarations), the coverage audit's demands
+  under the gates, `budget_remaining` among the host channels and one line on
+  `agg` claims. `GUIDE.md` and `README.md` updated for the extra, the install
+  paths, the owner operations, the 1.1.0 limits and the license. Stale
+  facts fixed: the Factorio README and PROTOCOL (M2 calibration, three of
+  three won), the OOLONG README (M2 complete, the four-arm comparison), the
+  channels, registry, inspect and modules docstrings, the pillow sentence.
+  `CLAUDE.md` is rewritten for the harness alone (the fleet operations
+  sections are gone, as is `docs/agent-journal`, and `.claude/settings.json`
+  keeps only repository-relevant rules).
+
 ### Changed
 
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds

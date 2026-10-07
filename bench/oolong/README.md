@@ -1,19 +1,22 @@
 # OOLONG benchmark
 
-Planned benchmark; runs and results will be documented here. It will follow
-the same shape as `bench/arcagi`: a world adapter exposing
-`factory(root, config)`, pre-registered action registries, a PROTOCOL.md, and
-a RESULTS.md.
+The OOLONG benchmark harness for ASSAY, in the same shape as `bench/arcagi`:
+a world adapter exposing `factory(root, config)`, pre-registered action
+registries, a `PROTOCOL.md`, and a `RESULTS.md`.
 
-Current status: **M1 built** — the query-framed corpus-pack adapter and
-registry (`adapter.py`, `registry_40.json`, `registry_200.json`), the sealed
-scorer reusing OOLONG's own scoring code (`scorer.py`, `vendor/`), the
-extract-and-dedup pack tooling (`packs/`), and the two smoke-test packs
-(`spam4k`, `spam8k`). See `PROTOCOL.md` for the pack format, actuators
-(`BANK_FACT`, `SUBMIT`), the v1 census, sealed-scoring flow, version pins, and
-the determinism argument; `RESULTS.md` records the hand-driven acceptance run
-(no LLM). Scored runs with a model, the long-corpus length ladder, and the
-goal-framed variant are later milestones.
+Status: **M2 complete** (2026-08-28). The query-framed corpus-pack adapter and
+registries (`adapter.py`, `registry_40.json`, `registry_200.json`), the sealed
+scorer reusing OOLONG's own scoring code (`scorer.py`, `vendor/`), the pack
+tooling (`packs/`), the smoke packs (`spam4k`, `spam8k`) and the length-ladder
+packs (synth 128K, 1M, 4M). `RESULTS.md` records the four-arm comparison (the
+raw model, a naive agent, a published agent, and ASSAY de-hinted) on the
+length ladder, with the honest confounds. `PROTOCOL.md` has the pack format,
+the actuators (`BANK_FACT`, `SUBMIT`), the v1 census, the sealed-scoring flow,
+the version pins and the determinism argument. The spam4k pack is also a tenant
+of the harness's own test suite (`tests/test_oolong_tenant.py`). Vocabulary:
+ASSAY's prose says world and progress unit; here the world id is the pack id,
+a progress unit is one question answered (`win_levels` is the question count),
+and WIN is every question submitted with the census clean.
 
 `RESEARCH.md` is the source dossier — what OOLONG is (synth/real splits,
 scoring, kin like BABILong), the published model-only leaderboard, how Prime

@@ -33,8 +33,8 @@ stay valid unchanged):
       "modules": ["path.py", ...],    # behavior modules, pack-tier trust
       "module_modes": {"name": "off"|"advise"|"block"},
       "secrets": ["ENV_NAME", ...],   # env values redacted at the journal boundary
-      "observers": [...],             # DECLARED ONLY in v1-rc1 (journaled, inert)
-      "control": {...},               # DECLARED ONLY in v1-rc1 (journaled, inert)
+      "observers": [...],             # DECLARED ONLY in 1.1.0 (journaled, inert)
+      "control": {...},               # DECLARED ONLY in 1.1.0 (journaled, inert)
       "mode_note": "free text",       # optional, shown in status (data only)
       "gate": "required"|"optional"|"off"   # CONTROL-ARM SWITCH (default
                                       # required). optional: act/commit steps may
@@ -248,7 +248,7 @@ def validate_registry(raw: Any) -> dict[str, Any]:
             value = raw[declared_only]
             if not isinstance(value, (list, Mapping)):
                 raise AssayError(f"{declared_only} must be a JSON array or object")
-            # v1-rc1: accepted and journaled, no runtime behavior (honest gap).
+            # 1.1.0: accepted and journaled, no runtime behavior (honest gap).
             output[declared_only] = json.loads(json.dumps(value))
     if "gate" in raw:
         if raw["gate"] not in _GATES:

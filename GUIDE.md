@@ -27,11 +27,15 @@ claims and world models then grade against.
 
 ## 1. Requirements
 
-- Python 3.12+ with `numpy` and `pillow` (only grid-rendering worlds need
-  pillow). Benchmark worlds may need their own client packages — each
-  `bench/<name>/PROTOCOL.md` names them.
-- The launcher is **`bin/assay`** at the repo root; the example world lives
-  in **`examples/`** at the repo root. That is the entire public surface.
+- Python 3.12 or newer with `numpy`. `pillow` is the frame-world extra (grid
+  observations render to images): `pip install -e '.[grid]'`, and a dict
+  world never needs it. Benchmark worlds need their own client packages;
+  each `bench/<name>/PROTOCOL.md` names them. macOS and Linux (the daemon
+  uses Unix sockets and resource limits).
+- Three install paths are in `README.md` (the `bin/assay` launcher with no
+  install, an editable install into a venv, pipx). `ONBOARDING.md` is the
+  long form of this guide for someone attaching a new world, and
+  `docs/ARCHITECTURE.md` is the component model it derives from.
 
 ## 2. Quickstart (60 seconds, no API keys)
 
@@ -159,8 +163,14 @@ class MySession:
         ...
 ```
 
-Grid worlds return `"frame": [grid]` (a 2-D array of 0–15) instead of
-`"data"`; ASSAY then renders images and grid views automatically.
+Frame worlds return `"frame": [grid]` (a 2-D array of 0 to 15) instead of
+`"data"`; the frame-world extra (`src/assay_grid`, selected by the
+observation's shape, never by configuration) then renders images, the scene
+dossier and the grid views. A world that refuses an action for its own reasons
+reports the refusal through the observation (a status field and a counter), so
+the spend is journaled as evidence; raising from `step()` aborts the action
+before anything is spent. `examples/new_world/` is a template with every part
+of the contract in place.
 
 That one observation object is the observer stream. The agent (or you) can
 then register **channels** — named readings of it — at run time:
@@ -177,6 +187,13 @@ Two facts worth knowing before you write an adapter:
 - On local (non-competition) runs, resume works by **replaying the journal
   through your adapter** — so your world must be deterministic given the
   same action sequence and seed.
+- The daemon runs in the interpreter that ran `assay start`; the adapter's
+  dependencies live there. `ASSAY_PYTHON` pins it for the launcher, and
+  `assay doctor` reports it, dry-imports the adapter, and checks the registry.
+
+The declare-early, claim-every-action channel pattern that the Factorio runs
+used is worked through in `CONSTITUTION.md` (the Channels section) and in
+`ONBOARDING.md` chapter 7.
 
 ## 5. Running an LLM agent on it
 
@@ -190,14 +207,26 @@ that shape — see `bench/arcagi/PROTOCOL.md` for a real one.
 ## 6. Owner operations (your side of the run)
 
 ```bash
+assay start WORLD ... --owner-token-file ~/.assay/tokens/run7   # keep the token out of the agent's terminal
 assay goal ratify 2 --token TOK    # accept the agent's goal proposal #2
 assay approve PAY --token TOK      # one use of an approval-gated action
 assay waive DRIVE --token TOK --because "sim rehearsed on Tuesday's binding"
+assay module install audit.py --token TOK   # add a behavior module mid-run (journaled, manifest-pinned)
+assay module list                  # active modules, modes, constitution, telemetry
 assay spend report --usd 4.20 --tokens 91000 --id turn-7  # feed the LLM bill
 assay audit                        # chain, anchors, contiguity, ungated scan
+assay stop                         # stop the daemon cleanly; start resumes
+assay doctor                       # interpreter, dependencies, anchors, daemon, adapter, registry
 assay export                       # knowledge file for the next run
 assay start WORLD ... --import assay_knowledge.json   # warm-start, demoted
 ```
+
+The owner token is printed once at `start` unless `--owner-token-file` (or
+`ASSAY_OWNER_TOKEN_FILE`) writes it to a file outside the run directory. In
+every benchmark run so far the agent ran `start` itself and therefore held the
+token; the file is the operator-starts pattern. Chain heads are anchored
+outside the run directory (`ASSAY_ANCHOR_DIR`, recorded in `config.json` at
+start, shown on the ANCHORS status line).
 
 Imported knowledge always lands FOREIGN: prior "Verified" notes demote to
 Assumed, imported verifiers/models carry no standing until re-graded here,
@@ -214,12 +243,15 @@ the emergence meter (self-authored verifiers, channels, models, proposals —
 initiative the harness never demanded). `assay audit` is the integrity verdict:
 any ungated event marks the run invalid for scoring.
 
-## 8. Honest limits (v1-rc1)
+## 8. Honest limits (1.1.0)
 
 One adapter = one observer stream; turn-based synchronous worlds only;
 `observers`/`control` registry blocks are declared-but-inert; the verifier
-sandbox is subprocess isolation (empty env, CPU/wall limits), not a network
-jail; containment, watchdog, and the wake scheduler are deployment-stage
-items that do not exist yet. The gate is daemon-side on registry runs — a
+sandbox is subprocess isolation (empty env, CPU/wall limits), not a network or
+filesystem jail, and `assay python` runs in-process without one; containment,
+watchdog, and the wake scheduler are deployment-stage items that do not exist
+yet; macOS and Linux only. The gate is daemon-side on registry runs — a
 process that bypasses the CLI still cannot spend without its step being
-journaled and flagged.
+journaled and flagged. The registry's `gate: optional` and `gate: off` are
+control-arm switches for experiments; the audit marks such runs invalid for
+scoring.

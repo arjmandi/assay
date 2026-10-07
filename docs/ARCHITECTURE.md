@@ -346,10 +346,10 @@ agent (or the operator). Available in every world.
 **Contract.** Three sources (`channels.py`):
 
 - **Host channels**, always present: `goal` (true when `state == "WIN"`),
-  `level` (`levels_completed`). `budget_remaining` is advertised by
-  `channels.known_channels` in the current code but `channels.channel_value`
-  refuses to read it, so a claim on it grades UNGRADABLE. 1.1.0 makes it
-  gradable (ranked fix 10).
+  `level` (`levels_completed`), and `budget_remaining` (the registered action
+  cap minus the paid actions up to and including the event, so
+  `ch budget_remaining delta = -1` holds for any paid action, and UNGRADABLE
+  only when no cap is registered, with the reason saying so).
 - **Declared path channels**: `assay channel declare NAME --path a.b.c`. The
   dotted path walks the observation object the adapter put under `data`, so a
   Factorio reading is declared as `--path tick`, not `--path data.tick` (the
@@ -652,12 +652,19 @@ journals that verify against their heads:
 - the claim syntax: `noop`, `change`, `level+1`, `win`, `verify:PATH`, the
   `ch` forms, the `agg` form, `@within Ns`, and the frame forms `cell`, `move`,
   `vanish`, `region` on frame worlds,
-- the host channel names `goal` and `level`,
+- the grade `actual` texts ("level advanced", "level did not advance",
+  "state WIN"), which are graded facts inside journals,
+- the host channel names `goal`, `level` and `budget_remaining`,
 - the chain seed `assay-chain-v1`, the chain rule, the ungated rule and the
   `RESET` exemption,
-- the config key `game_id`, the knowledge-file key `game_id`, and the activity
-  kinds.
+- the config key `game_id`, the knowledge-file key `game_id`, the import
+  summary key `source_game`, and every activity record kind,
+- the receipt outcome tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
+  `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`,
+- the state-directory layout, including `.assay/levels/level-N.md`, and the
+  `L<n>` prefix of the RECENT history lines.
 
-Display strings are not frozen. The vocabulary pass of 1.1.0 changes prose
-(game to world, level to progress unit where the world is not a game) and
-nothing above.
+Display strings are not frozen. The vocabulary pass of 1.1.0 changed prose
+(game to world, board to state, level to progress unit where the world is
+not a game) and nothing above. `src/assay/words.py` carries the same list as
+its docstring, and `tests/test_vocabulary.py` enforces it.

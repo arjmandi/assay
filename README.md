@@ -7,8 +7,8 @@ terminal, or an LLM agent) and a world you register:
   registered actions do; every paid action requires a checkable prediction,
   validated before anything is spent.
 - **Code-graded claims** — every prediction is graded in code against what
-  actually happened: change/noop, level and win gambles, executable
-  verifiers, and named channels with delta/threshold claims.
+  actually happened: change/noop, progress and goal gambles, executable
+  verifiers, and named channels with equality, delta and threshold claims.
 - **Hash-chained journals** — everything lands in an append-only journal with
   a rolling hash chain and external anchors; `assay audit` recomputes
   integrity from the artifacts alone, and any world contact that bypassed the
@@ -21,8 +21,10 @@ terminal, or an LLM agent) and a world you register:
 You supply two things: a **registry** (a JSON contract of what the agent may
 do — names, typed parameter schemas, budgets, flags, the goal) and an
 **adapter** (one Python file plugging ASSAY into your world). See `GUIDE.md`
-for the user guide, `CONSTITUTION.md` for the agent-facing manual, and `bench/`
-for benchmark harnesses and results.
+for the user guide, `ONBOARDING.md` for attaching a new world end to end,
+`docs/ARCHITECTURE.md` for the component model, `CONSTITUTION.md` for the
+agent-facing manual, `AGENTS.md` if you are a coding agent working on the
+harness, and `bench/` for benchmark harnesses and results.
 
 ## Install
 
@@ -41,7 +43,7 @@ resource limits). Three ways in, pick one:
    .venv/bin/assay doctor            # or put .venv/bin on PATH
    ```
 
-   `[grid]` adds pillow for frame worlds (rendering); a dict world does not
+   `[grid]` adds pillow for frame worlds (rendering). A dict world does not
    need it. `[arcagi]` adds the ARC-AGI-3 client. `[dev]` adds pytest.
 3. **The CLI alone.** `pipx install '.[grid]'` puts `assay` on PATH in its own
    environment, for worlds whose adapters have no dependencies of their own.
@@ -67,4 +69,16 @@ mkdir demo && cd demo
 
 ## Status
 
-v1-rc1. Private; no license granted yet.
+1.1.0, the first source-available release. The ARC-AGI-3 campaign of
+2026-08-22 to 08-25 ran on v1.0-rc1, and the Factorio and OOLONG runs on that
+kernel plus two small fixes. 1.1.0 is a refactor of it, verified by replaying
+the 25 published run directories unchanged (`CHANGELOG.md`).
+
+## License
+
+ASSAY is source-available under the PolyForm Noncommercial License 1.0.0
+(`LICENSE`): you may use, modify and share it for noncommercial purposes. For
+commercial terms contact the author. The vendored OOLONG scorer is MIT
+(`NOTICE`). The journal standard and the independent checker live in the
+separate assay-verify repository under MIT, so anyone can verify a journal
+without a license to the harness.

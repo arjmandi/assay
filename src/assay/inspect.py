@@ -367,7 +367,7 @@ def _registry_status_lines(
     registry: Mapping[str, Any],
     events: Sequence[Mapping[str, Any]],
 ) -> list[str]:
-    """The v1-rc1 status surfaces: agenda, foreign knowledge, model standing,
+    """The registry-run status surfaces: agenda, foreign knowledge, model standing,
     channels, hazards, spend, aggregates, integrity."""
     from .agenda import agenda_lines, emergence_line
     from .aggregates import meter as aggregate_meter

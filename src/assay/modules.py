@@ -1,6 +1,6 @@
 """Behavior modules — declare → enforce → grade units.
 
-A module is doctrine text + a trigger + a demand schema + a mode + telemetry:
+A module is constitution text + a trigger + a demand schema + a mode + telemetry:
 
     NAME: str                # unique, lowercase
     CONSTITUTION: str            # one paragraph of way-of-thinking text

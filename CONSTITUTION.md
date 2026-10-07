@@ -77,13 +77,56 @@ is a miss for the action.
 | `ch NAME crosses V [from below/above]` | the channel crosses a threshold | straddle check |
 
 **Channels** are named readings you register once and then claim against:
-`goal` (true at the win state) and `level` are built in; declare your own with
-`assay channel declare NAME --path a.b.c` (a dotted path into the observation)
-or `--file extractor.py` (`def extract(obs) -> value`, sandboxed like a
-verifier). A claim naming an unregistered channel is refused free and counted
-— register the referent first. Claims on `goal`/`level` are gambles; the rest
-meter your world model. Any claim may end with `@within Ns` to only grade if
-the result settled in time (a late settle is UNGRADABLE, not a miss).
+`goal` (true at the win state), `level` (progress units completed) and
+`budget_remaining` (paid actions left under the cap) are built in; declare
+your own with `assay channel declare NAME --path a.b.c` (a dotted path into
+the observation) or `--file extractor.py` (`def extract(obs) -> value`,
+sandboxed like a verifier). A claim naming an unregistered channel is refused
+free and counted — register the referent first. Claims on `goal`/`level` are
+gambles; the rest meter your world model. Any claim may end with `@within Ns`
+to only grade if the result settled in time (a late settle is UNGRADABLE, not
+a miss). Statistical claims over a window (`agg ch NAME mean >= V over Na
+horizon Ma on-fail advise`) exist and are additive to a mechanical claim;
+`assay act --help` lists the form.
+
+## Channels: declare early, name referents, claim every action
+
+The strongest runs on record share one habit: they declare channels at the
+first event and never take a paid action without a channel claim on it. A
+channel is a referent the referee can read; a claim on it is a fact about the
+mechanics that costs nothing extra to make and is graded against the world's
+own response. Read the observation once, decide which readings matter, and
+declare them before the first action:
+
+```bash
+"$ASSAY" channel declare tick     --path tick
+"$ASSAY" channel declare ents     --path entities_total
+"$ASSAY" channel declare refusals --path policy_refusals
+"$ASSAY" channel declare prod     --path throughput_corroboration.producer_present
+```
+
+The dotted path walks the observation object you see under OBSERVATION, so a
+reading shown as `"tick": 360` is `--path tick`, never `--path data.tick` (the
+latter grades UNGRADABLE on every claim). Then claim against them with the
+three forms, as these predictions from a recorded run do:
+
+```bash
+"$ASSAY" act RUN program=... --predict "change; ch tick = 180; ch ents delta sign +; ch refusals = 0; ch prod = False"
+"$ASSAY" act RUN program=... --predict "change; ch tick = 360; ch ents = 27; ch refusals = 0; ch prod = True"
+"$ASSAY" act WAIT ticks=3600 --predict "verify:checks/first_window.py; ch tick = 3600; ch wins = 1; ch prod = True"
+"$ASSAY" act WAIT ticks=3600 --predict "win; level+1; ch tick = 7200; ch wins = 2; ch gears delta >= 16; ch prod = True"
+```
+
+Equality (`ch tick = 360`) pins a value, delta (`ch ents delta sign +`,
+`ch gears delta >= 16`) pins a change, crossing (`ch automated crosses 16
+from below`) pins a threshold, and a tolerance (`ch lastrate = 20 ± 5`)
+admits noise. The second line above missed on `ch ents = 27` and the receipt
+said `ch ents = 18`: that counter-fact is the point. Status shows every
+channel's current reading in its CHANNELS block, and a receipt shows which
+path channels changed.
+
+Frame worlds (grid observations) declare extractor channels instead:
+`--file extractor.py` with `def extract(obs) -> value` over `obs["frames"]`.
 
 Free text that is not a claim is kept as commentary; if nothing gradable
 remains it is coerced to `change` — journaled as its own **coerced** kind,
@@ -173,6 +216,34 @@ Model plans halt on the first divergence, like any batch.
   is the contract; detail belongs in files or the journal.
 - A **hazard-tagged** action class (one that previously entered a loss state)
   wants the same worst_case/recovery declaration — the demand is cheap; pay it.
+- The **coverage audit** module asks for `--declare revised=...` when you
+  re-issue the exact move that just graded FALSE (say what you changed, or
+  choose another action or region), and for `--declare coverage_audit=...`
+  when a declaration tags an impossibility or absence (see below).
+
+## Before you conclude
+
+Provably unsolvable is a property of your model, not of the world. Every
+impossibility proof on record that was wrong was consistent with the whole
+journal and wrong on a rule that no graded transition had ever exercised.
+Before you conclude that a progress unit is impossible, that something is
+absent, or that a line is a dead end, run the coverage audit: list the rules
+the conclusion rests on, cite the graded event that exercised each in the
+regime the conclusion needs, and buy cheap probes for the gaps first. The
+harness keeps the ledger for you (status shows the untried and never
+productive actions on this unit, and a stall) and asks for the audit as a
+declaration when a conclusion is tagged:
+
+```bash
+"$ASSAY" act MOVE direction=north --predict "noop" \
+    --declare "impossible=the exit cannot be reached from this room" \
+    --declare "coverage_audit=rules: MOVE blocked by walls (e12,e19), TAKE has no effect here (e21-e26); untried: PUSH; probing PUSH next"
+"$ASSAY" reset --because "dead end" --declare "dead_end=..." --declare "coverage_audit=..."
+```
+
+A conclusion expressed as a reset carries the same declarations. A re-issued
+failing move carries `--declare revised=...`. The declarations are
+structural: name them and the action runs; the module never bans.
 
 ## The standing goal and your proposals
 

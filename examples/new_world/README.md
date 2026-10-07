@@ -29,7 +29,7 @@ Run it:
   `refused`, `data.refusals` counts) so the spend is journaled as evidence.
   Raising instead aborts the action before anything is spent.
 - `finalize()` runs once when `state` becomes `WIN`. It writes its own file
-  under `.assay/`; the kernel never reads it.
+  under `.assay/`, and the kernel never reads it.
 - `public_info` is stored in `config.json` at start, for humans and tools.
 - Determinism: the code of each door comes from the seed. A local run resumes
   by replaying its journal through a fresh session, so the same actions must
@@ -38,19 +38,19 @@ Run it:
 ## The registry, key by key
 
 Every key beyond `actions` is optional. This file sets all of them so the
-shape is visible; delete what you do not need.
+shape is visible. Delete what you do not need.
 
 | key | what it does here |
 |---|---|
 | `actions` | the seven actuators. `TURN delta=<int -3..3>`, `PEEK what=<code\|door>` and `SIREN volume=<float 0..1>` show the three parameter types with bounds and an enum. Every parameter is required on the command line. |
-| `description` on `TURN` | admissible, untrusted text shown as data; withheld under `zero_prior` |
+| `description` on `TURN` | admissible, untrusted text shown as data, withheld under `zero_prior` |
 | `destructive: true` on `ALARM` | refuses without `--declare worst_case=... --declare recovery=...`, banned inside batches |
-| `approval: true` on `DRILL` | default deny; the owner grants one use with `assay approve DRILL --token TOK` |
+| `approval: true` on `DRILL` | default deny, the owner grants one use with `assay approve DRILL --token TOK` |
 | `liveness: live` plus `rehearsal_quota: 1` on `SIREN` | refuses until an imported sim-binding run shows one graded rehearsal, or the owner waives it (`assay waive SIREN --token TOK --because ...`) |
-| `budget.actions` | the hard cap; a batch that would cross it is refused whole |
+| `budget.actions` | the hard cap, and a batch that would cross it is refused whole |
 | `budget.usd` | the dollar cap, fed by `assay spend report` |
 | `goal.text` | the standing goal shown in every status until the world reports WIN |
-| `batching.hand_cap` | hand-written batches cap at 3 steps (the default); a replay-fit model lifts it |
+| `batching.hand_cap` | hand-written batches cap at 3 steps (the default), and a replay-fit model lifts it |
 | `notes_cap` | `.assay/NOTES.md` size in characters (default 16000); paid actions refuse past twice the cap |
 | `zero_prior` | true withholds every description |
 | `modules` | paths to external behavior module files, pinned at start with a manifest |
