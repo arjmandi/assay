@@ -1,8 +1,8 @@
 name: CI
 
+# push only: with pull_request as well, every push to a branch with an open pull request ran the six-cell matrix twice, and the macOS cells bill at ten times the Linux rate.
 on:
   push:
-  pull_request:
 
 jobs:
   suite:
