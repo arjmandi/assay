@@ -1,7 +1,8 @@
 """Paid-action execution: act with a graded prediction, batch with per-step
 claims, and reset with a reason. Every paid action is journaled by the broker
-before the response is recorded, so a crash between spend and record is
-recovered on the next start.
+before the response is recorded, with its parsed claims, so a crash between
+spend and record is recovered on the next start with its prediction and
+grade (`recovered_pending`, docs/ARCHITECTURE.md section 6.5).
 
 Every function here takes the run (docs/ARCHITECTURE.md section 6.3): the
 journal is the held `run.events`, the one writer is `run.append`, and the
@@ -14,9 +15,9 @@ executor builds on (the frame world's solve-plan executor in assay_grid).
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol
 
 from .agenda import check_rehearsal, consume_approval
 from .aggregates import open_aggregates, resolve_due
@@ -36,8 +37,8 @@ from .core import (
 from .extras import kind_for
 from .integrity import redact, redact_mapping
 from .modules import consult_modules, observe_outcome
-from .predictions import grade_action_claims, grade_lines, parse_claims
-from .records import Claim, Event, Grade, Receipt, ReceiptStep
+from .predictions import grade_lines, grade_pending, parse_claims
+from .records import Claim, Event, Grade, Mutation, Receipt, ReceiptStep
 from .registry import (
     action_spec,
     check_budget,
@@ -54,12 +55,25 @@ from .words import unit_noun
 if TYPE_CHECKING:
     from .run import Run
 
-# The daemon-side spend: (run, action, data, reasoning) -> (observation,
-# mutation id, finalization warning). `broker_step` is the client-side form.
-Stepper = Callable[
-    ["Run", str, "dict[str, Any] | None", "Mapping[str, Any] | None"],
-    "tuple[dict[str, Any], int, str | None]",
-]
+class Stepper(Protocol):
+    """The daemon-side spend: the disk verified, the world stepped, and the
+    mutation recorded with the parsed claims of an act or a commit step, their
+    admitted verifier hashes included, so a crash between spend and record
+    keeps the prediction (docs/ARCHITECTURE.md section 6.5). `claims` is None
+    for a step that carries no claims of its own (a model-plan step, a reset),
+    and the record then carries no `claims` key. Returns the observation, the
+    mutation id and the finalization warning. `broker_step` is the
+    client-side form."""
+
+    def __call__(
+        self,
+        run: Run,
+        action: str,
+        data: dict[str, Any] | None,
+        reasoning: Mapping[str, Any] | None,
+        *,
+        claims: Sequence[Claim] | None = None,
+    ) -> tuple[dict[str, Any], int, str | None]: ...
 
 
 def write_receipt(run: Run, receipt: Receipt) -> Receipt:
@@ -106,6 +120,7 @@ def paid_step(
     note: str = "",
     *,
     stepper: Stepper | None = None,
+    claims: Sequence[Claim] | None = None,
 ) -> tuple[Event, Event, str | None, float]:
     registry = require_registry(run)
     prior = run.events[-1]
@@ -122,7 +137,7 @@ def paid_step(
     reasoning = redact_mapping(reasoning, secrets)
     step = stepper or broker_step
     started = time.monotonic()
-    response, mutation_id, warning = step(run, name, data, reasoning)
+    response, mutation_id, warning = step(run, name, data, reasoning, claims=claims)
     elapsed = time.monotonic() - started
     pending = make_event(response, name, data, prior, note=redact(note, secrets) or "")
     pending = pending.updated(mutation_id=mutation_id)
@@ -300,6 +315,37 @@ def _graded_pending(
     return pending
 
 
+def recovered_pending(run: Run, mutation: Mutation, prior: Event, pending: Event) -> Event:
+    """The pending event of a recovered spend with its prediction on the line
+    (docs/ARCHITECTURE.md section 6.5): the record's claims, their admitted
+    verifier hashes included, graded against the stored response through the
+    live path's grader with the step duration unknown, and `predict`,
+    `predict_ok`, `grade` and `declares` from the record's reasoning, so the
+    event is gated by its fields like the one the daemon would have written.
+    A record whose claims are empty was a bare act of a control arm, and it
+    is journaled as the live path journals one: UNGATED, with the mode's
+    marker. The caller passes only a record that carries `claims`."""
+    registry = run.registry
+    secrets = tuple((registry or {}).get("secrets") or ())
+    reasoning = mutation.reasoning or {}
+    predict = str(reasoning.get("predict") or "")
+    declares = reasoning.get("declares")
+    claims = list(mutation.claims or ())
+    ungated = not claims
+    graded = [] if ungated else grade_pending(run, claims, prior, pending, elapsed_s=None)
+    _, _, predict_ok = _grade_summary(graded)
+    return _graded_pending(
+        pending,
+        ungated=ungated,
+        predict=redact(predict, secrets) or "",
+        predict_ok=None if ungated else predict_ok,
+        graded=graded,
+        marker=_UNGATED_MARKER.get(gate_mode(registry)),
+        declares=dict(declares) if isinstance(declares, Mapping) else None,
+        secrets=secrets,
+    )
+
+
 def execute_action(
     run: Run,
     token: str,
@@ -341,11 +387,11 @@ def execute_action(
     if declares:
         reasoning["declares"] = dict(declares)
     pending, prior, warning, elapsed = paid_step(
-        run, token, reasoning, note=because or "", stepper=stepper
+        run, token, reasoning, note=because or "", stepper=stepper, claims=claims
     )
     graded = (
         [] if ungated
-        else grade_action_claims(run, claims, prior, pending, elapsed_s=elapsed)
+        else grade_pending(run, claims, prior, pending, elapsed_s=elapsed)
     )
     missed, invalid_any, predict_ok = _grade_summary(graded)
     if ungated:
@@ -503,13 +549,13 @@ def execute_steps(
     all_claims: list[Claim] = []
     for index, (token, predict, claims) in enumerate(parsed):
         pending, prior, warning, elapsed = paid_step(
-            run, token, {"predict": predict}, stepper=stepper
+            run, token, {"predict": predict}, stepper=stepper, claims=claims
         )
         last_warning = warning or last_warning
         ungated = bare_ok and not predict
         graded = (
             [] if ungated
-            else grade_action_claims(run, claims, prior, pending, elapsed_s=elapsed)
+            else grade_pending(run, claims, prior, pending, elapsed_s=elapsed)
         )
         missed, invalid_any, predict_ok = _grade_summary(graded)
         if ungated:

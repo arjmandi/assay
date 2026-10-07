@@ -44,7 +44,8 @@ it (`core.RunPaths`). Two processes touch that state:
   loader finds), validates what it can before talking to the daemon, sends the
   gated operation over a Unix socket (`broker.broker_gated`), and prints the
   receipt. Its one append to the journal is `reconcile` at start, with no
-  daemon alive, which recovers a spend the daemon journaled but never recorded.
+  daemon alive, which recovers a spend the daemon journaled but never recorded,
+  with its prediction regraded from the record (section 6.5).
 
 Both processes read the journal through one object, `run.Run` (section 6.3):
 the configuration, the registry, every event as a `records.Event`, the chain
@@ -564,10 +565,23 @@ audit that recomputes integrity from the artifacts alone.
   published journal under `evidence/` reads and re-serializes to the same
   bytes (`tests/test_records.py`).
 - **The write-ahead spend record**, `.assay/mutations.jsonl`, appended by the
-  daemon before the event line (`broker.serve`, `direct_stepper`). A crash
-  between spend and record is recovered by `broker.reconcile_mutations`, which
-  appends the missing event with the note `recovered from broker mutation
-  journal`. The audit lists recovered orphans.
+  daemon before the event line (`broker._Daemon.spend`, through
+  `run.record_mutation`): a `records.Mutation` with the action, its data, the
+  reasoning (`predict`, `because`, `declares`), the world's response and, from
+  1.2.0 on, for an act and for each commit step, the parsed claims with their
+  admitted verifier hashes (`claims`); a model-plan step's record carries its
+  plan reasoning and no claims, a reset's none. A crash between spend and
+  record is recovered by `broker.reconcile_mutations` at the next `assay
+  start` with the daemon dead, the one append outside a daemon: a record with
+  claims is regraded against its stored response through the live path's
+  grader (`live.recovered_pending`, `predictions.grade_pending` with
+  `elapsed_s=None`, under which a claim with an `@within` window is UNGRADABLE
+  with the actual `UNGRADABLE: recovered, step duration unknown`) and
+  journaled with `predict`, `predict_ok`, `grade` and `declares`, gated by its
+  fields; a record without claims is journaled UNGATED, as before 1.2.0. Both
+  carry the note `recovered from broker mutation journal`. The audit lists
+  recovered orphans and says which were recovered without their prediction
+  (section 6.5).
 - **The chain.** `head_0 = sha256("assay-chain-v1")`, `head_n =
   sha256(hex(head_{n-1}) || line_n)` over the raw line (`integrity._advance`).
   `run.Run.load` recomputes the head over every line it reads and classifies
@@ -768,7 +782,10 @@ strict at `serve`, and every request handler receives it; it calls `verify_disk`
 every paid action and refuses on a difference with `TAMPER_DETECTED`, holding a flag that
 refuses every later paid action until it is stopped (the sealing record in the anchor
 file and audit's reading of it are #10's); the modules load once at `serve`;
-`install_module` is the daemon operation of 6.4. One thing 6.3 describes still waits:
+`install_module` is the daemon operation of 6.4. What #16 landed: the claims on the
+mutation record at spend time and the regrade at recovery of 6.5, with
+`predictions.grade_pending` the one grader of the live path and of recovery. One thing
+6.3 describes still waits:
 approvals and waivers stay files until #24 moves the owner operations into the daemon.
 `core.load_events` and `core.append_event` are gone rather than kept: `analysis`
 builds the agent's namespace from the held records (the journal still reaches the agent
@@ -957,6 +974,19 @@ the daemon alive.
   `predict_ok`, `grade`, `declares` from the reasoning, and the note "recovered from broker
   mutation journal", and it is gated. A mutation record without `claims` (written before
   #16, or a model-plan step) is recovered as today, UNGATED, and the audit says why.
+
+Landed by #16. Two details the bullets leave open: a bare act or step of a control arm
+(`gate: optional`, `gate: off`) spends with an empty claim list, so its record carries
+`claims: []` and recovery journals it as the live path does, UNGATED with the mode's
+marker, counted among the permitted; and recovery is the grade and the journal line only:
+the modules do not observe a recovered outcome, an aggregate claim on a recovered record
+is not opened, and no receipt is written, since no command is waiting for one. The audit
+names a recovered event without its prediction (`recovered_without_prediction` in
+`audit.json`, the line `n of them recovered without its prediction: the record predates
+1.2.0 or was a model-plan step; counted UNGATED above`); the independent checker needs
+no change, since the ungated rule reads the fields. `grade_pending(run, claims, prior,
+pending, *, elapsed_s)` takes the duration as a required keyword, so every live caller
+passes the measured one and only recovery passes None.
 
 ### 6.6 Invariants and tests
 

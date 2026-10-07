@@ -26,9 +26,9 @@ __all__ = [
     "GENERAL_CLAIMS_HELP",
     "claim_bucket",
     "claims_help",
-    "grade_action_claims",
     "grade_general_claims",
     "grade_lines",
+    "grade_pending",
     "parse_claims",
 ]
 
@@ -325,21 +325,29 @@ def grade_general_claims(
     return graded
 
 
-def grade_action_claims(
+RECOVERED_WINDOW_ACTUAL = "UNGRADABLE: recovered, step duration unknown"
+
+
+def grade_pending(
     run: Run,
     claims: Sequence[Claim],
-    prior_event: Event,
-    event: Event,
+    prior: Event,
+    pending: Event,
     *,
-    elapsed_s: float | None = None,
+    elapsed_s: float | None,
 ) -> list[Grade]:
-    """Grade every claim of one paid action: the observation kind's grader or
-    the general one, then channels, then verifiers.
+    """Grade every claim of one paid action against its pending event: the
+    observation kind's grader or the general one, then channels, then
+    verifiers. The live path and recovery share it (docs/ARCHITECTURE.md
+    section 6.5).
 
     Aggregate claims are NOT graded here; they open at the gate and resolve at
     their horizon. A claim with a validity window grades only if the result
-    settled inside it (`elapsed_s` is the daemon-measured step duration); a
-    late settle is UNGRADABLE: its own outcome, never a silent pass or miss.
+    settled inside it: `elapsed_s` is the daemon-measured step duration on the
+    live path, and None on recovery, where the duration died with the process,
+    so every windowed claim is UNGRADABLE with `RECOVERED_WINDOW_ACTUAL`. A
+    late settle is UNGRADABLE too: its own outcome, never a silent pass or
+    miss.
     """
     from .channels import grade_channel_claim
     from .verifiers import grade_verifier_claim, observation_view
@@ -351,7 +359,13 @@ def grade_action_claims(
         if claim.kind in {"note", "aggregate"}:
             continue
         window = claim.window_s
-        if window is not None and elapsed_s is not None and elapsed_s > float(window):
+        if window is None:
+            timely.append(claim)
+        elif elapsed_s is None:
+            stale.append(
+                Grade.of(claim, ok=False, ungradable=True, actual=RECOVERED_WINDOW_ACTUAL)
+            )
+        elif elapsed_s > float(window):
             stale.append(
                 Grade.of(
                     claim,
@@ -370,20 +384,20 @@ def grade_action_claims(
         for claim in timely
         if claim.kind != "verify" and claim.kind not in CHANNEL_KINDS
     ]
-    kind = kind_for(event)
+    kind = kind_for(pending)
     if kind is not None:
-        graded.extend(kind.grade_claims(plain, prior_event, event))
+        graded.extend(kind.grade_claims(plain, prior, pending))
     else:
-        graded.extend(grade_general_claims(plain, prior_event, event))
+        graded.extend(grade_general_claims(plain, prior, pending))
     graded.extend(
-        grade_channel_claim(run, claim, prior_event, event)
+        grade_channel_claim(run, claim, prior, pending)
         for claim in timely
         if claim.kind in CHANNEL_KINDS
     )
     verify_claims = [claim for claim in timely if claim.kind == "verify"]
     if verify_claims:
-        before_view = observation_view(prior_event)
-        after_view = observation_view(event)
+        before_view = observation_view(prior)
+        after_view = observation_view(pending)
         graded.extend(
             grade_verifier_claim(run.paths, claim, before_view, after_view)
             for claim in verify_claims

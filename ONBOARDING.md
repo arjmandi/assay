@@ -714,7 +714,11 @@ Each item is the message you see and what to do.
   ```
 
   Recovery happens only at `assay start`, only once the daemon is confirmed
-  dead or absent.
+  dead or absent. The recovered event carries its prediction and grade,
+  regraded from the record's claims against the stored response (a claim
+  with an `@within` window grades UNGRADABLE, since the step's duration is
+  lost), and the run stays CLEAN; a record written before 1.2.0 or by a
+  model-plan step is recovered UNGATED and the audit says why.
 - Anchors. The `ANCHORS |` status line says where the heads go and when the
   last one was written. `start` prints a `WARNING | ANCHORS | ... NOT
   WRITABLE` line when the directory cannot be written; set `ASSAY_ANCHOR_DIR`

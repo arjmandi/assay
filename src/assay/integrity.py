@@ -274,6 +274,18 @@ def audit(run: Run) -> dict[str, Any]:
         for event in events
         if "recovered from broker mutation journal" in str(event.note or "")
     ]
+    # A recovered event carries its prediction and grade from 1.2.0 on
+    # (section 6.5) and is gated by its fields like any other. One without
+    # them was recovered from a record that predates 1.2.0 or belonged to a
+    # model-plan step: UNGATED like any other, and the audit says why. A
+    # control arm's bare act recovered with its marker is counted with the
+    # permitted ones instead.
+    flagged = set(ungated)
+    recovered_without_prediction = [
+        event_id
+        for event_id in recovered
+        if event_id in flagged and event_id not in permitted_modes
+    ]
     report = {
         "computed_at": time.time(),
         "events": len(events),
@@ -289,6 +301,7 @@ def audit(run: Run) -> dict[str, Any]:
         "ungated_permitted": sorted(permitted_modes),
         "ungated_permitted_by": sorted(set(permitted_modes.values())),
         "recovered_orphans": recovered,
+        "recovered_without_prediction": recovered_without_prediction,
         "mutations_pending": pending,
         "invalid_for_scoring": bool(ungated) or not contiguous or malformed is not None
         or chain_state == "DIVERGED" or anchor_state == "DIVERGED",
@@ -320,6 +333,12 @@ def audit_lines(report: Mapping[str, Any]) -> list[str]:
         lines.append(
             f"AUDIT | recovered orphan events {report['recovered_orphans'][:8]} "
             "(spend journaled by the broker; CLI died before recording)"
+        )
+    if report.get("recovered_without_prediction"):
+        without = report["recovered_without_prediction"]
+        lines.append(
+            f"AUDIT | {len(without)} of them recovered without its prediction: the record "
+            "predates 1.2.0 or was a model-plan step; counted UNGATED above"
         )
     if report.get("mutations_pending"):
         pending = report["mutations_pending"]

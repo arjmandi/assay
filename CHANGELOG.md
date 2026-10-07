@@ -335,6 +335,30 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- Recovery keeps the prediction (#16, design note 1 section 6.5). The daemon
+  writes the parsed claims of an act and of each commit step, their admitted
+  verifier hashes included, into the mutation record at spend time
+  (`Mutation.claims`; a model-plan step's record carries its plan reasoning
+  and no claims, a reset's none). `assay start` with the daemon dead regrades
+  a record's claims against its stored response through the live path's
+  grader and journals the recovered event with `predict`, `predict_ok`,
+  `grade` and `declares`, under the note `recovered from broker mutation
+  journal`, gated by its fields, so the run stays CLEAN; before, the
+  recovered event was UNGATED and the run was invalid for scoring from then
+  on. A record without claims (written before this change, or by a
+  model-plan step) is recovered UNGATED as before, and `assay audit` says
+  why: `n of them recovered without its prediction: the record predates
+  1.2.0 or was a model-plan step; counted UNGATED above`
+  (`recovered_without_prediction` in `audit.json`). The independent checker
+  is unchanged: the ungated rule reads the fields.
+- The window rule on recovery (#16). The step's duration dies with the
+  process, so on recovery a claim with an `@within` window grades UNGRADABLE
+  with the actual `UNGRADABLE: recovered, step duration unknown` and the
+  event's `predict_ok` is null, its own outcome, never a silent pass or
+  miss. `predictions.grade_action_claims` is `grade_pending(run, claims,
+  prior, pending, elapsed_s=...)`, the one grader of the live path and of
+  recovery, with the duration a required keyword: the live path passes the
+  measured one, recovery passes None.
 - The daemon holds one `Run` for its life (#20). `serve` loads it strict
   once, every gated request handler receives it, `act`, `commit` and `reset`
   append through `run.append` and `run.record_mutation` with no re-read of
