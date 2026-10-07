@@ -44,15 +44,29 @@ uv pip install 'factorio-learning-environment==0.4.3' 'a2a-sdk<1' 'factorio-rcon
 # itself if the port is closed
 python -m fle cluster start -n 1
 
-# a run
+# a run: the operator's shell (the operator protocol, docs/ARCHITECTURE.md section 8.6)
 export ASSAY_BROKER_TIMEOUT=600   # slow box64 ops: client waits longer; the broker also survives a client hangup (kernel fix 2026-08-26)
 export PATH="$PWD/.venv/bin:$PATH"
 ASSAY=<repo>/bin/assay
 mkdir <run-dir> && cd <run-dir>            # one directory = one run
 "$ASSAY" start ironore \
     --adapter <repo>/bench/factorio/adapter.py:factory \
-    --registry <repo>/bench/factorio/registry_lab64.json
+    --registry <repo>/bench/factorio/registry_lab64.json \
+    --owner-token-file <tokens>/ironore.token   # outside the run directory and the agent's working set
+
+# the agent's session: in <run-dir>, the daemon already up, the same two exports, and first
+"$ASSAY" status
 ```
+
+The operator starts the run and holds the owner token: `start` writes it to
+the file (mode 0600) and prints the path, never the token. The agent never
+runs `start`, and the token never appears in its transcript. Ratifications,
+approvals and waivers are the operator's (`"$ASSAY" goal ratify N --token
+"$(cat <tokens>/ironore.token)"`, `approve` and `waive` the same way), and so
+is a resume: the same `start` command in the same directory keeps the token,
+and the agent begins again at `status`. The agent's shell needs
+`ASSAY_BROKER_TIMEOUT` as well (the client's wait) and an interpreter that
+satisfies `bin/assay`; the FLE virtualenv on PATH serves both.
 
 If FLE is not importable the adapter fails at `assay start` with a named error
 pointing back here. If no server is listening and autostart cannot bring one

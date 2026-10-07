@@ -94,10 +94,11 @@ Line by line:
 - Before the status, `start` prints the owner token once, on a line that
   begins `OWNER TOKEN |` and carries the token itself. Only the sha256 is
   kept in `.assay/owner.json`. It authorizes ratifications, approvals and
-  waivers. If the terminal running `start` belongs to the agent, pass
-  `--owner-token-file PATH` (or set `ASSAY_OWNER_TOKEN_FILE`) and the token
-  is written to that file with mode 0600, outside the run directory, and the
-  line says `OWNER TOKEN | written to PATH (mode 0600)` instead.
+  waivers. With `--owner-token-file PATH` (or `ASSAY_OWNER_TOKEN_FILE`) the
+  token is written to that file with mode 0600, outside the run directory,
+  and the line says `OWNER TOKEN | written to PATH (mode 0600)` instead.
+  Here one person plays both roles; an evaluated agent does not start the
+  run (chapter 7).
 - `act INC amount=1 --predict "change"` is one paid action. The daemon
   validates the name, the typed parameter, the budget and the claim before
   spending, applies the action, and grades the claim against what actually
@@ -354,17 +355,42 @@ its mode, origin, constitution paragraph and telemetry.
 
 ## 7. Run an agent on it
 
-The agent-facing manual is `CONSTITUTION.md`. The integration is one prompt
-with five parts: read `CONSTITUTION.md` completely, `cd` into one fresh run
-directory, run the `start` command with your adapter and registry, solve for
-the goal, and never touch the world except through `assay`. Every winning
-benchmark run used exactly that shape.
+The agent-facing manual is `CONSTITUTION.md`. The order is the operator
+protocol of `docs/ARCHITECTURE.md` section 8.6: the operator starts the run
+and holds the owner token, and the agent's session begins after that.
 
-One honest sentence. In every benchmark run so far the agent ran `start`
-itself and therefore held the owner token in its own terminal. "The agent
-proposes, the owner ratifies" was nominal in that setting. The
-operator-starts pattern is `start --owner-token-file PATH` from the
-operator's shell, after which the agent's prompt begins at `assay status`.
+1. The operator, in a shell the agent does not share, starts the run:
+
+   ```bash
+   mkdir <run-dir> && cd <run-dir>
+   assay start WORLD_ID --adapter <adapter.py:factory> --registry <registry.json> \
+       --owner-token-file <tokens>/WORLD_ID.token
+   ```
+
+   The token file lies outside the run directory (`start` refuses a path
+   inside it) and outside anything the agent's session reads, with mode
+   0600; the line printed is `OWNER TOKEN | written to PATH (mode 0600)`,
+   never the token. In a Claude Code session the hooks of section 8.4 (#11)
+   are installed at this point, with the token file and the policy file
+   among the refused paths.
+2. The agent's session starts in `<run-dir>`, with the daemon already up.
+   The integration is one prompt with four parts: read `CONSTITUTION.md`
+   completely, begin with `assay status` in the run directory, solve for the
+   goal, and never touch the world except through `assay`. The agent never
+   runs `start`, and the token never appears in its transcript.
+3. Ratifications, approvals and waivers are the operator's, from the
+   operator's shell: `assay goal ratify N --token "$(cat
+   <tokens>/WORLD_ID.token)"`, and `approve` and `waive` the same way
+   (chapter 6). A resume after an interruption is the operator's too: the
+   same `start` command in the same directory replays the journal and keeps
+   the token, and the agent begins again at `status`.
+
+The published benchmark runs were played before this order existed: the
+agent ran `start` itself and held the owner token in its own terminal, so
+"the agent proposes, the owner ratifies" was nominal there. The records say
+what they say; the protocols under `bench/` describe the operator-first
+order for the runs to come, and `tests/test_operator_start.py` runs the
+counter example in it.
 
 The channel pattern, worked. The Factorio M2 runs declared their channels
 first and claimed every action with a channel form. The irongear run declared
@@ -409,6 +435,117 @@ Frame worlds have no dict to walk, so their channels are extractor files:
 and run only in the sandbox against the observation view (`state`,
 `levels_completed`, `win_levels`, `available_actions`, `frames`). The 25
 ARC-AGI-3 runs declared up to sixteen such channels each.
+
+### A separate user for the daemon
+
+An option, not something the kernel implements. Normally the agent and the
+daemon share one uid, so nothing on disk is protected from the agent by
+permissions; the boundary is detection by the daemon, the hooks, and the
+operator keeping the token and the launch out of reach
+(`docs/ARCHITECTURE.md` section 8.1). The one real boundary is a dedicated
+user that owns `.assay/` and runs the daemon, with the agent in a group that
+reads the state and reaches the socket. The steps below are operator
+instructions, with `assay` as the group, `assayd` (`_assayd` on macOS) as the
+daemon's user and `agent` as the agent's user. They follow the code paths
+named in brackets; the suite does not run them.
+
+1. The user and the group, once per machine. Linux:
+
+   ```bash
+   sudo groupadd assay
+   sudo useradd --system --no-create-home --shell /usr/sbin/nologin --gid assay assayd
+   sudo usermod -aG assay agent      # the agent's user logs in again to pick the group up
+   sudo install -d -o assayd -g assay -m 2750 /opt/assay /opt/assay/anchors
+   sudo install -d -o assayd -g assay -m 2700 /opt/assay/tokens
+   ```
+
+   macOS (a role account: the name starts with an underscore, the uid lies
+   in 200 to 400):
+
+   ```bash
+   sudo dseditgroup -o create assay
+   sudo sysadminctl -addUser _assayd -fullName "ASSAY daemon" -UID 300 -shell /usr/bin/false -roleAccount
+   sudo dseditgroup -o edit -a _assayd -t user assay
+   sudo dseditgroup -o edit -a agent -t user assay
+   sudo install -d -o _assayd -g assay -m 2750 /opt/assay /opt/assay/anchors
+   sudo install -d -o _assayd -g assay -m 2700 /opt/assay/tokens
+   ```
+
+   The repository and the interpreter that serves the daemon must be
+   readable by the daemon's user.
+2. The run directory, once per run: group `assay`, setgid so everything
+   created inside carries the group, group-writable (the daemon creates
+   `.assay/` in it; the agent writes its verifier files and `model.py`
+   beside it), sticky so that no group member can rename or remove what
+   another created, `.assay/` included:
+
+   ```bash
+   sudo install -d -g assay -m 3770 <run-dir>
+   ```
+
+3. The start, as the daemon's user, from the run directory, with the anchors
+   and the token under `/opt/assay` (the anchor file is pinned in
+   `config.json`, so the agent's `audit` reads the same one):
+
+   ```bash
+   cd <run-dir>
+   sudo -u assayd env ASSAY_ANCHOR_DIR=/opt/assay/anchors assay start WORLD_ID \
+       --adapter <adapter.py:factory> --registry <registry.json> \
+       --owner-token-file /opt/assay/tokens/WORLD_ID.token
+   ```
+
+4. After the first start, the files the agent's commands write. `.assay/`
+   gets group write and the sticky bit, the `/tmp` arrangement: the agent's
+   commands can create their own files there (`channels.json`, the model fit
+   and plan, `audit.json`: `core.atomic_json` writes a temporary file beside
+   the target and renames it) and can neither delete nor rename over the
+   daemon's. The lock and the activity log, which every command appends to
+   (`core.run_lock`, `core.append_jsonl`), the proposals file, which the
+   agent's `propose` and the operator's `ratify` both append to, and
+   `NOTES.md`, the agent's file, are group-writable:
+
+   ```bash
+   cd <run-dir>
+   sudo -u assayd chmod 3770 .assay
+   sudo -u assayd touch .assay/activity.jsonl .assay/proposals.jsonl
+   sudo -u assayd chmod g+w .assay/run.lock .assay/activity.jsonl .assay/proposals.jsonl .assay/NOTES.md
+   ```
+
+5. After every start, a resume included, the two things a start rewrites.
+   The broker token, which the client sends with every request
+   (`broker.start_broker` writes it with mode 0600), becomes group-readable.
+   The socket, which the daemon binds with mode 0600 under a path that
+   carries its own uid (`core.RunPaths.socket`, `broker.serve`), gets the
+   group (it is born with the daemon's primary group, not the directory's)
+   and group write, and is linked from the path the agent's client computes
+   with the agent's uid; `assay doctor` prints each user's path on its
+   `socket path` line:
+
+   ```bash
+   cd <run-dir>
+   sudo -u assayd chmod g+r .assay/broker.token
+   daemon_socket=$(sudo -u assayd assay doctor | sed -n 's/.*socket path \([^ ]*\).*/\1/p')
+   agent_socket=$(sudo -u agent assay doctor | sed -n 's/.*socket path \([^ ]*\).*/\1/p')
+   sudo -u assayd chgrp assay "$daemon_socket" && sudo -u assayd chmod 660 "$daemon_socket"
+   sudo -u agent mkdir -p "$(dirname "$agent_socket")" && sudo -u agent ln -sfn "$daemon_socket" "$agent_socket"
+   ```
+
+6. The agent's session starts in `<run-dir>` as `agent`, at `assay status`.
+   The operator's commands (`goal ratify`, `approve`, `waive`, `module
+   install`, `stop`, the resume) run as the daemon's user, with the token
+   read from its file: `sudo -u assayd assay goal ratify N --token "$(sudo
+   -u assayd cat /opt/assay/tokens/WORLD_ID.token)"`.
+
+What it gives, and what it does not. The journal, the chain, the mutation
+log, the pinned registry and configuration, the owner hash, the module
+manifest and files, the verifier copies, the receipts and the anchors are
+then the daemon's alone: the agent reads them and cannot change them, even
+while the daemon is stopped. What the agent's commands write today stays the
+agent's to write: the activity log, the channel declarations, the proposals,
+the model fit and plan, and `audit.json` (rewritten by whoever runs `audit`,
+so under the sticky bit the operator audits after the run or on a copy). The
+owner operations move into the daemon with the design of section 7.2, and
+every write with #20; the arrangement gets stronger with each.
 
 ## 8. Modules
 

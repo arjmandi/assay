@@ -321,6 +321,17 @@ Left on the experiment branch, deliberately:
   line became a colon or a semicolon. Nothing graded, journaled or chained
   changes, except that the `actual` text of a channel delta or crossing
   claim in a new journal reads `0 -> 1` where it read the arrow (#30).
+- The benchmark protocols start from the operator's shell (#31, design note
+  3, section 8.6): `assay start ... --owner-token-file` with the file outside
+  the run directory and the agent's working set, then the agent's session in
+  the run directory, beginning at `assay status`; the token never enters the
+  agent's transcript, and ratifications, approvals and waivers are the
+  operator's. `CONSTITUTION.md` no longer tells the agent to run `start`:
+  the run is started by the operator, the agent begins with `status`, and a
+  directory that is not initialized is reported, not started. ONBOARDING
+  and GUIDE follow the same order, ONBOARDING gains the separate-user option
+  of section 8.1 with the steps for macOS and Linux, and
+  `tests/test_operator_start.py` runs the counter example in that order.
 
 ### Removed
 

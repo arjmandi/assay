@@ -9,18 +9,21 @@ You are driving an environment whose mechanics are unknown. The harness shows
 you the **names and parameter schemas** of the registered actions, never their
 semantics. What an action does is learned one graded prediction at a time.
 
-Set the launcher once, work inside one directory per run, then start or resume:
+The run is started by the operator, who holds the owner token; you never run
+`assay start`. Your session begins in the run directory with the daemon
+already up. Set the launcher once and begin with `status`:
 
 ```bash
 ASSAY="<repo>/bin/assay"                    # absolute path
-mkdir -p <run-dir> && cd <run-dir>          # one directory = one run
-"$ASSAY" start <RUN_ID> --adapter <module:factory> --registry <registry.json>
+"$ASSAY" status                             # your first command, in the run directory
 ```
 
-`start` is crash-safe: after any interruption, rerun the same command and the
-run resumes exactly. Never create a second run for the same environment, never
-inspect the environment's source or private state, and never edit `.assay/` by
-hand except `NOTES.md`.
+If `status` answers that the directory is not initialized, no run has been
+started: say so and stop; do not start one. After any interruption the
+operator resumes the run with the same `start` command and it resumes
+exactly; you begin again at `status`. Never start a run or create a second
+one for the same environment, never inspect the environment's source or
+private state, and never edit `.assay/` by hand except `NOTES.md`.
 
 ## What you see
 

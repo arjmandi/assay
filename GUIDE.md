@@ -197,12 +197,23 @@ used is worked through in `CONSTITUTION.md` (the Channels section) and in
 
 ## 5. Running an LLM agent on it
 
-The agent-facing manual is `CONSTITUTION.md` at the repo root. The whole
-integration is one prompt: tell the agent to (1) read CONSTITUTION.md
-completely, (2) `cd` into a fresh run directory, (3) run the `start` command
-with your adapter and registry, (4) solve for the goal, and (5) never touch
-the world except through `assay`. Every winning benchmark run used exactly
-that shape; see `bench/arcagi/PROTOCOL.md` for a real one.
+The agent-facing manual is `CONSTITUTION.md` at the repo root. The order is
+the operator protocol (`docs/ARCHITECTURE.md` section 8.6): you start the run
+and hold the owner token, and the agent's session begins after that.
+
+1. In your own shell: `mkdir <run-dir> && cd <run-dir>`, then
+   `assay start WORLD ... --owner-token-file <tokens>/WORLD.token`, a path
+   outside the run directory and outside anything the agent reads.
+2. Start the agent's session in `<run-dir>`, with the daemon already up. The
+   whole integration is one prompt: tell the agent to (1) read
+   CONSTITUTION.md completely, (2) begin with `assay status` in the run
+   directory, (3) solve for the goal, and (4) never touch the world except
+   through `assay`. The agent never runs `start` and never sees the token.
+3. Ratify, approve and waive from your shell with the token (section 6); a
+   resume is yours too, the same `start` command in the same directory.
+
+See `bench/arcagi/PROTOCOL.md` for a real one. The published benchmark runs
+were played before this order existed, with the agent running `start` itself.
 
 ## 6. Owner operations (your side of the run)
 
@@ -223,8 +234,9 @@ assay start WORLD ... --import assay_knowledge.json   # warm-start, demoted
 
 The owner token is printed once at `start` unless `--owner-token-file` (or
 `ASSAY_OWNER_TOKEN_FILE`) writes it to a file outside the run directory. In
-every benchmark run so far the agent ran `start` itself and therefore held the
-token; the file is the operator-starts pattern. Chain heads are anchored
+every published benchmark run the agent ran `start` itself and therefore held
+the token; the protocols now start from your shell with the file (section 5).
+Chain heads are anchored
 outside the run directory (`ASSAY_ANCHOR_DIR`, recorded in `config.json` at
 start, shown on the ANCHORS status line).
 
