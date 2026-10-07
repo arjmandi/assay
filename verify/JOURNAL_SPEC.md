@@ -43,7 +43,7 @@ Each line of `events.jsonl` is one JSON object. Fields, with their writer:
 | `id` | machine | 0-based event index; MUST equal the line's position (§5) |
 | `timestamp` | machine | ISO-8601 write time |
 | `action` | machine | the executed action's registered name; `START` for the opening observation; `RESET` is the built-in world-reset (§6) |
-| `data` | machine | the action's typed parameters as validated, or `null` |
+| `data` | machine | the action's typed parameters as validated, or `null`; any JSON object whose shape the registry's parameter schema defines, nested values included (the chain covers the raw line, so the shape of `data` never affects verification) |
 | `counts_action` | machine | `true` iff the event spent one unit of the action budget (`START` does not) |
 | `state` | adapter | the world's lifecycle state after the event; `WIN` is the goal-reached terminal (§7) |
 | `levels_completed` | adapter | host progress counter after the event (§7) |

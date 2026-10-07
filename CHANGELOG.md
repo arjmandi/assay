@@ -75,6 +75,10 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- The 1.2.0 design notes, sections 6 to 8 of `docs/ARCHITECTURE.md`: the run
+  model with typed records, the protocol with its error model and surfaces, and
+  the trust model; `verify/JOURNAL_SPEC.md` states that `data` may hold any JSON
+  object the registry schema defines (#33).
 - `assay version`: the harness version (`assay.__version__`, the one source
   `pyproject.toml` reads), the journal spec it writes (`assay-journal-v1`),
   the interpreter and its Python version. `assay doctor` prints the same
