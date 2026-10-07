@@ -26,7 +26,7 @@ from hypothesis import strategies as st
 from conftest import event_of
 
 from assay.core import AssayError, RunPaths
-from assay.integrity import CHAIN_SEED, compute_chain, ungated_events
+from assay.integrity import CHAIN_SEED, chain_over, ungated_events
 from assay.predictions import parse_claims
 from assay.registry import parse_registry_action, validate_registry
 
@@ -393,10 +393,11 @@ def journal(tmp_path_factory) -> RunPaths:
     return run_paths
 
 
-def kernel_chain(journal: RunPaths, rows: list[str]) -> tuple[int, str]:
-    """The kernel's chain over a journal file holding these rows."""
-    journal.events.write_text("".join(row + "\n" for row in rows))
-    return compute_chain(journal)
+def kernel_chain(rows: list[str]) -> tuple[int, str]:
+    """The kernel's chain over these raw journal rows (`integrity.chain_over`,
+    the rule the loader applies line by line and `verify_disk` over the
+    file): (last event id, head)."""
+    return sum(1 for row in rows if row.strip()) - 1, chain_over(rows)
 
 
 def test_both_implementations_seed_with_the_spec_string():
@@ -404,29 +405,30 @@ def test_both_implementations_seed_with_the_spec_string():
     assert assay_verify.CHAIN_SEED == SPEC_SEED
 
 
-def test_empty_journal_head_is_the_seed_hash(journal):
-    assert kernel_chain(journal, []) == (-1, spec_chain([]))
+def test_empty_journal_head_is_the_seed_hash():
+    assert kernel_chain([]) == (-1, spec_chain([]))
     assert assay_verify.compute_chain([]) == spec_chain([])
 
 
 @given(rows=st.lists(_line | _blank, max_size=12))
 def test_kernel_checker_and_spec_chains_agree(journal, rows):
     lines = [row for row in rows if row.strip()]  # blank lines are skipped
-    last_id, head = kernel_chain(journal, rows)
+    last_id, head = kernel_chain(rows)
     assert last_id == len(lines) - 1
     assert head == spec_chain(lines)
     assert head == assay_verify.compute_chain(lines)
+    journal.events.write_text("".join(row + "\n" for row in rows))
     assert assay_verify.read_lines(journal.events) == lines
 
 
-def _assert_heads_differ(journal: RunPaths, lines: list[str], mutated: list[str]) -> None:
+def _assert_heads_differ(lines: list[str], mutated: list[str]) -> None:
     assert spec_chain(mutated) != spec_chain(lines)
     assert assay_verify.compute_chain(mutated) != assay_verify.compute_chain(lines)
-    assert kernel_chain(journal, mutated)[1] != kernel_chain(journal, lines)[1]
+    assert kernel_chain(mutated)[1] != kernel_chain(lines)[1]
 
 
 @given(lines=st.lists(_line, min_size=1, max_size=12), data=st.data())
-def test_changing_one_character_changes_the_head(journal, lines, data):
+def test_changing_one_character_changes_the_head(lines, data):
     # UTF-8 is injective, so a changed character is a changed byte of the
     # line as stored; a flipped byte that still decodes is one of these.
     index = data.draw(st.integers(0, len(lines) - 1), label="line")
@@ -438,29 +440,29 @@ def test_changing_one_character_changes_the_head(journal, lines, data):
     )
     changed = line[:position] + replacement + line[position + 1 :]
     assume(changed.strip())  # a line blanked out is a line removed, below
-    _assert_heads_differ(journal, lines, [*lines[:index], changed, *lines[index + 1 :]])
+    _assert_heads_differ(lines, [*lines[:index], changed, *lines[index + 1 :]])
 
 
 @given(lines=st.lists(_line, min_size=1, max_size=12), data=st.data())
-def test_deleting_one_line_changes_the_head(journal, lines, data):
+def test_deleting_one_line_changes_the_head(lines, data):
     index = data.draw(st.integers(0, len(lines) - 1), label="line")
-    _assert_heads_differ(journal, lines, [*lines[:index], *lines[index + 1 :]])
+    _assert_heads_differ(lines, [*lines[:index], *lines[index + 1 :]])
 
 
 @given(lines=st.lists(_line, min_size=2, max_size=12, unique=True), data=st.data())
-def test_swapping_two_adjacent_lines_changes_the_head(journal, lines, data):
+def test_swapping_two_adjacent_lines_changes_the_head(lines, data):
     index = data.draw(st.integers(0, len(lines) - 2), label="first of the pair")
     mutated = list(lines)
     mutated[index], mutated[index + 1] = mutated[index + 1], mutated[index]
-    _assert_heads_differ(journal, lines, mutated)
+    _assert_heads_differ(lines, mutated)
 
 
 @given(lines=st.lists(_line, max_size=12), extra=_line)
-def test_appending_a_line_changes_the_head(journal, lines, extra):
-    _assert_heads_differ(journal, lines, [*lines, extra])
+def test_appending_a_line_changes_the_head(lines, extra):
+    _assert_heads_differ(lines, [*lines, extra])
     # and extends the chain by exactly the two-line rule
     head = hashlib.sha256((spec_chain(lines) + extra).encode()).hexdigest()
-    assert kernel_chain(journal, [*lines, extra]) == (len(lines), head)
+    assert kernel_chain([*lines, extra]) == (len(lines), head)
 
 
 # ---------------------------------------------------------- the ungated rule

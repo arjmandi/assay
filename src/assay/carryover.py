@@ -31,7 +31,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, append_jsonl, atomic_json
+from .core import AssayError, append_jsonl, atomic_json, read_json
 from .modules import hazards_path, load_hazards
 
 if TYPE_CHECKING:
@@ -152,8 +152,6 @@ def export_knowledge(run: Run, out: Path | None = None) -> Path:
             )
     model_entry = None
     if model_source(paths).exists():
-        from .core import read_json
-
         fit = read_json(fit_path(paths), None)
         model_entry = {
             "source": model_source(paths).read_text()[:_SOURCE_CAP],
@@ -295,8 +293,6 @@ def import_knowledge(run: Run, source: Path) -> dict[str, Any]:
 
 def foreign_lines(run: Run) -> list[str]:
     """The status FOREIGN block for an importing run."""
-    from .core import read_json
-
     paths = run.paths
     knowledge = read_json(paths.state / "imported" / "knowledge.json", None)
     if not isinstance(knowledge, dict):

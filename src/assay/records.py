@@ -31,7 +31,7 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping, Sequence
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 GAMBLE_KINDS = frozenset({"win", "level_up"})
 CHANNEL_KINDS = frozenset({"channel_eq", "channel_delta", "channel_cross"})
@@ -305,7 +305,7 @@ class Grade:
     invalid: bool = False
     ungradable: bool = False
     verifier: bool = False
-    identity_verdict: bool | str | None = None
+    identity_verdict: bool | Literal["invalid"] | None = None
     excluded_from_meter: bool = False
     machine: bool = False
     extra: dict[str, Any] = dataclasses.field(default_factory=dict)
@@ -321,8 +321,8 @@ class Grade:
         fields["bucket"] = _str(obj, record, "bucket")
         for key in _GRADE_FLAGS:
             fields[key] = _flag(obj, record, key)
-        verdict = _read(obj, record, "identity_verdict", "true, false or a string",
-                        lambda v: isinstance(v, (bool, str)), required=False, nullable=False)
+        verdict = _read(obj, record, "identity_verdict", 'true, false or the string "invalid"',
+                        lambda v: isinstance(v, bool) or v == "invalid", required=False, nullable=False)
         fields["identity_verdict"] = None if verdict is _MISSING else verdict
         return cls(**fields, extra=_extras(obj, _GRADE_KEYS))
 
@@ -336,7 +336,7 @@ class Grade:
         invalid: bool = False,
         ungradable: bool = False,
         verifier: bool = False,
-        identity_verdict: bool | str | None = None,
+        identity_verdict: bool | Literal["invalid"] | None = None,
         excluded_from_meter: bool = False,
     ) -> Grade:
         """The grade of one claim: the claim's fields, the verdict, the meter
@@ -426,8 +426,11 @@ class Event:
     `n_frames` belong to a frame world, `observation` to a dict world; the
     frame rows stay the hex strings the line carries and are decoded on
     demand by `core.frame_at`. `present` names the optional keys this event
-    carries, which is what `to_json` emits; `grade` reads as an empty tuple
-    and `declares` as an empty mapping when absent."""
+    carries, which is what `to_json` emits: every optional field given a value
+    is present whichever way the event was built, and an explicit null
+    (`predict: null` on a gate-off event) is present only through `updated`
+    or `from_json`; `grade` reads as an empty tuple and `declares` as an
+    empty mapping when absent."""
 
     id: int
     timestamp: str
@@ -453,12 +456,40 @@ class Event:
     present: frozenset[str] = frozenset()
     extra: dict[str, Any] = dataclasses.field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        # An optional field that carries a value is on the line, however the
+        # event was built: the constructor, `dataclasses.replace`, `updated`
+        # and `from_json` all agree. An explicit null (`predict: null` on a
+        # gate-off event) is reachable through `updated` and `from_json` only.
+        carried = frozenset(
+            key
+            for key, value in (
+                ("observation", self.observation),
+                ("frames", self.frames),
+                ("n_frames", self.n_frames),
+                ("predict", self.predict),
+                ("predict_ok", self.predict_ok),
+                ("mutation_id", self.mutation_id),
+            )
+            if value is not None
+        )
+        if self.grade:
+            carried |= {"grade"}
+        if self.declares:
+            carried |= {"declares"}
+        if self.gate_optional:
+            carried |= {"gate_optional"}
+        if self.gate_off:
+            carried |= {"gate_off"}
+        if not carried <= self.present:
+            object.__setattr__(self, "present", self.present | carried)
+
     @classmethod
     def from_json(cls, obj: Mapping[str, Any]) -> Event:
         if not isinstance(obj, Mapping):
             raise TypeError(f"event must be a JSON object, got {_type_name(obj)}")
         record = "event"
-        grade_raw = _opt_list(obj, record, "grade", nullable=True)
+        grade_raw = _opt_list(obj, record, "grade")
         return cls(
             id=_int(obj, record, "id"),
             timestamp=_str(obj, record, "timestamp"),

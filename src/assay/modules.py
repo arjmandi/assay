@@ -70,6 +70,7 @@ import shutil
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol
 
 from .core import (
@@ -110,7 +111,9 @@ class ModuleView:
 
     def __init__(self, run: Run) -> None:
         self.events: tuple[Event, ...] = tuple(run.events)
-        self.registry: Mapping[str, Any] | None = run.registry
+        self.registry: Mapping[str, Any] | None = (
+            MappingProxyType(run.registry) if run.registry is not None else None
+        )
         self.paths: RunPaths = run.paths
 
     def record(self, kind: str, **fields: Any) -> dict[str, Any]:

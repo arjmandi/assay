@@ -1,7 +1,7 @@
 """The run model's invariants (docs/ARCHITECTURE.md section 6.6) that the
 other tests do not already pin: no function below the entry points reads the
-journal (an AST walk over src/assay and src/assay_grid refuses `load_events(`
-outside run.py, core.py and analysis.py), the daemon writes event 0 before it
+journal (an AST walk over src/assay and src/assay_grid, with an allow-list
+naming each surviving reader and why), the daemon writes event 0 before it
 reports READY and the CLI never writes config.json after the spawn, and a
 journal the daemon wrote reads back through `Run.load` into records that
 re-serialize to the same lines."""
@@ -16,26 +16,78 @@ from conftest import FAKE_ADAPTER, run_cli, stop_run
 
 REPO = Path(__file__).resolve().parents[1]
 SOURCES = [REPO / "src" / "assay", REPO / "src" / "assay_grid"]
-ALLOWED = {"run.py", "core.py", "analysis.py"}
+# The readers of events.jsonl that may exist below the entry points, as
+# (file, function), each with its reason. Everything else reads the journal
+# through the run it is handed.
+ALLOWED_READERS = {
+    ("assay/run.py", "_load_journal"): "the loader: the one decode of the journal per process",
+    ("assay/run.py", "append"): "the one writer: it opens the file to append",
+    ("assay/run.py", "verify_disk"): "the check of the file against the held copies (section 8.3)",
+    ("assay/cli.py", "_doctor"): "doctor must read a broken run, so it counts raw lines",
+    ("assay/carryover.py", "_journal_digest"): "journal_sha256 is a published key of the knowledge file",
+}
 ACTIONS = [
     {"name": "INC", "params": {"amount": {"type": "int", "min": 1, "max": 2}}},
     {"name": "NOOP", "params": {}},
 ]
 
 
-def test_no_function_below_the_entry_points_reads_the_journal():
-    offenders = []
+def _reads_journal(node: ast.AST) -> str | None:
+    """Why this node reads the journal, or None: a call named `load_events`,
+    an attribute chain ending in `.events` on a paths receiver (`paths.events`,
+    `run.paths.events`, `self.paths.events`), or a `load_jsonl(...)` whose
+    argument mentions the events file."""
+    if isinstance(node, ast.Call):
+        callee = node.func
+        name = callee.id if isinstance(callee, ast.Name) else getattr(callee, "attr", None)
+        if name == "load_events":
+            return "load_events("
+        if name == "load_jsonl" and node.args and "events" in ast.unparse(node.args[0]):
+            return f"load_jsonl({ast.unparse(node.args[0])})"
+    if isinstance(node, ast.Attribute) and node.attr == "events":
+        receiver = node.value
+        if isinstance(receiver, ast.Name) and "paths" in receiver.id:
+            return ast.unparse(node)
+        if isinstance(receiver, ast.Attribute) and receiver.attr == "paths":
+            return ast.unparse(node)
+    return None
+
+
+def _journal_readers() -> list[tuple[str, str | None, int, str]]:
+    found: list[tuple[str, str | None, int, str]] = []
     for root in SOURCES:
         for path in sorted(root.glob("*.py")):
             tree = ast.parse(path.read_text())
-            for node in ast.walk(tree):
-                if not isinstance(node, ast.Call):
-                    continue
-                callee = node.func
-                name = callee.id if isinstance(callee, ast.Name) else getattr(callee, "attr", None)
-                if name == "load_events" and path.name not in ALLOWED:
-                    offenders.append(f"{root.name}/{path.name}:{node.lineno}")
+            # The enclosing function of every node, for the allow-list.
+            parents: dict[ast.AST, str | None] = {}
+
+            def walk(node: ast.AST, function: str | None) -> None:
+                if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                    function = node.name
+                parents[node] = function
+                for child in ast.iter_child_nodes(node):
+                    walk(child, function)
+
+            walk(tree, None)
+            label = f"{root.name}/{path.name}"
+            for node, function in parents.items():
+                why = _reads_journal(node)
+                if why is not None:
+                    found.append((label, function, getattr(node, "lineno", 0), why))
+    return found
+
+
+def test_no_function_below_the_entry_points_reads_the_journal():
+    readers = _journal_readers()
+    offenders = [
+        f"{label}:{line} in {function}: {why}"
+        for label, function, line, why in readers
+        if (label, function) not in ALLOWED_READERS
+    ]
     assert not offenders, offenders
+    # The allow-list names only readers that exist, so it cannot rot.
+    used = {(label, function) for label, function, _, _ in readers}
+    assert used == set(ALLOWED_READERS), set(ALLOWED_READERS) ^ used
 
 
 def _events(run: Path) -> list[dict]:

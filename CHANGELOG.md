@@ -318,9 +318,12 @@ Left on the experiment branch, deliberately:
   head and repaired by the next append, as before. The readers (`status`,
   `view`, `audit`, `channel list` and the rest) load lenient: `audit` reports
   as it did, and status names a contiguity problem or a diverged chain on an
-  INTEGRITY line instead of refusing. A manifest missing from a run pinned
-  before manifests existed is rebuilt at `assay start`, never from a status
-  call.
+  INTEGRITY line instead of refusing; a line that does not decode is a
+  finding the same way (the events before it are kept, the journal ends
+  there) where it was an internal error. A malformed `chain.json` reads as
+  diverged, and a chain counts as behind only by the one line a crash
+  leaves. A manifest missing from a run pinned before manifests existed is
+  rebuilt at `assay start`, never from a status call.
 - Model promotion counts only the transitions recorded after the current
   model hash was first replayed (#18). The admission event is stored as
   `admitted_at_event` in the fit record, read from the earliest

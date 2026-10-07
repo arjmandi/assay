@@ -27,7 +27,7 @@ from __future__ import annotations
 import hashlib
 import os
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -125,20 +125,16 @@ def _advance(head: str, line: str) -> str:
     return hashlib.sha256(head.encode() + line.encode()).hexdigest()
 
 
-def compute_chain(paths: RunPaths) -> tuple[int, str]:
-    """(last event id, head) recomputed from the whole journal; (-1, seed) when empty."""
+def chain_over(lines: Iterable[str]) -> str:
+    """The head over these raw journal lines, blank lines skipped; the seed's
+    hash over none. The run holds the head after every line it loads
+    (`run.heads`), so nothing below the entry points reads the journal to
+    recompute it; `verify_disk` is the one reader that does."""
     head = hashlib.sha256(CHAIN_SEED.encode()).hexdigest()
-    last = -1
-    try:
-        lines = paths.events.read_text().splitlines()
-    except FileNotFoundError:
-        return last, head
     for line in lines:
-        if not line.strip():
-            continue
-        head = _advance(head, line)
-        last += 1
-    return last, head
+        if line.strip():
+            head = _advance(head, line)
+    return head
 
 
 def redact(text: str | None, extra_names: Sequence[str] = ()) -> str | None:
@@ -206,21 +202,22 @@ def audit(run: Run) -> dict[str, Any]:
     paths = run.paths
     events = run.events
     problems: list[str] = []
+    malformed = run.integrity.malformed
+    if malformed is not None:
+        problems.append(f"journal: {malformed}")
     contiguous = run.integrity.contiguous
     if not contiguous:
         problems.append(f"contiguity: {run.integrity.problem}")
-    last_id, head = run.chain_event, run.chain_head
-    stored = run.stored_chain
-    chain_state = "absent"
-    if isinstance(stored, dict):
-        if int(stored.get("event_id", -2)) == last_id and stored.get("head") == head:
-            chain_state = "intact"
-        else:
-            chain_state = "DIVERGED"
-            problems.append(
-                f"chain: stored head at e{stored.get('event_id')} does not match "
-                f"the recomputed journal head at e{last_id}"
-            )
+    # The loader's finding, in the audit's words: a chain behind by a crash's
+    # one line is tolerated by a start and repaired by the next append, and
+    # reads DIVERGED here, as it always has, until then.
+    if run.integrity.chain == "absent":
+        chain_state = "absent"
+    elif run.integrity.chain == "intact":
+        chain_state = "intact"
+    else:
+        chain_state = "DIVERGED"
+        problems.append(run.integrity.chain_problem or "chain: stored head does not match")
     anchor_target = anchor_file(paths, run.config)
     anchors = load_jsonl(anchor_target) if anchor_target.exists() else []
     anchor_state = "none"
@@ -236,19 +233,10 @@ def audit(run: Run) -> dict[str, Any]:
         )
     if anchors:
         latest = anchors[-1]
-        replay_head = hashlib.sha256(CHAIN_SEED.encode()).hexdigest()
-        try:
-            lines = [
-                line for line in paths.events.read_text().splitlines() if line.strip()
-            ]
-        except FileNotFoundError:
-            lines = []
         target = int(latest["event_id"])
-        if target < len(lines):
-            for line in lines[: target + 1]:
-                replay_head = _advance(replay_head, line)
+        if target < len(run.heads):
             anchor_state = (
-                "intact" if replay_head == latest["head"] else "DIVERGED"
+                "intact" if run.heads[target] == latest["head"] else "DIVERGED"
             )
             if anchor_state == "DIVERGED":
                 problems.append(
@@ -289,7 +277,7 @@ def audit(run: Run) -> dict[str, Any]:
         "ungated_permitted_by": sorted(set(permitted_modes.values())),
         "recovered_orphans": recovered,
         "mutations_pending": pending,
-        "invalid_for_scoring": bool(ungated) or not contiguous
+        "invalid_for_scoring": bool(ungated) or not contiguous or malformed is not None
         or chain_state == "DIVERGED" or anchor_state == "DIVERGED",
         "problems": problems,
     }

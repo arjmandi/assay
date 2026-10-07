@@ -27,6 +27,7 @@ from .core import (
     append_jsonl,
     atomic_json,
     canonical_action,
+    load_jsonl,
     make_event,
     now_iso,
     parse_action,
@@ -170,8 +171,6 @@ def _enforce_registry_gates(
 ) -> list[str]:
     """All pre-spend teeth beyond schema/claims/affordance/budget. Returns
     module advisory lines."""
-    from .core import load_jsonl
-
     registry = require_registry(run)
     check_usd_budget(load_jsonl(run.paths.activity), registry)
     _notes_hard_stop(run)

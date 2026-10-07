@@ -104,9 +104,11 @@ def test_internal_error_is_one_line_with_a_saved_traceback(tmp_path):
     _prepare(run)
     try:
         assert _start(run, f"{FAKE_ADAPTER}:factory").returncode == 0
-        # A journal line that parses as JSON but is not an event.
-        with (run / ".assay" / "events.jsonl").open("a") as handle:
-            handle.write('{"id": 1}\n')
+        # A proposal record that parses as JSON but is not a proposal (a
+        # journal line of that shape is a finding since the run model, below,
+        # not a crash).
+        with (run / ".assay" / "proposals.jsonl").open("a") as handle:
+            handle.write('{"kind": "goal_proposed"}\n')
         status = run_cli(run, "status")
         assert status.returncode == 2
         assert status.stderr.startswith("ERROR | internal: KeyError")
@@ -114,6 +116,39 @@ def test_internal_error_is_one_line_with_a_saved_traceback(tmp_path):
         saved = run / ".assay" / "last_error.txt"
         assert saved.exists() and "Traceback" in saved.read_text()
         assert "Traceback" not in status.stderr
+    finally:
+        stop_run(run)
+
+
+def test_a_malformed_journal_line_is_a_finding_for_the_readers_and_refuses_a_start(tmp_path):
+    """A journal line that parses as JSON but is not an event: the readers
+    keep the events before it, treat the journal as ending there and name
+    the line (status on its INTEGRITY line, audit as a problem), and
+    `assay start` refuses to resume with CHAIN_DIVERGED and rewrites nothing."""
+    run = tmp_path / "malformed"
+    _prepare(run)
+    try:
+        assert _start(run, f"{FAKE_ADAPTER}:factory").returncode == 0
+        assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
+        journal = run / ".assay" / "events.jsonl"
+        with journal.open("a") as handle:
+            handle.write('{"id": 2}\n')
+        before = journal.read_text()
+        status = run_cli(run, "status")
+        assert status.returncode == 0, status.stderr
+        assert "STATUS | fake1 | event 1 |" in status.stdout
+        assert (
+            "INTEGRITY | line 3 malformed: missing key 'timestamp'; this run is INVALID FOR "
+            "SCORING and `assay start` refuses to resume it (CHAIN_DIVERGED)"
+        ) in status.stdout
+        audited = run_cli(run, "audit")
+        assert audited.returncode == 0, audited.stderr
+        assert "AUDIT | INVALID FOR SCORING | events 2 (paid 1)" in audited.stdout
+        assert "AUDIT | problem: journal: line 3 malformed: missing key 'timestamp'" in audited.stdout
+        resumed = _start(run, f"{FAKE_ADAPTER}:factory")
+        assert resumed.returncode == 2
+        assert resumed.stderr.startswith("ERROR | CHAIN_DIVERGED | line 3 malformed: missing key 'timestamp'")
+        assert journal.read_text() == before
     finally:
         stop_run(run)
 

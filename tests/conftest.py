@@ -125,6 +125,9 @@ def event_of(**overrides: Any) -> Any:
         "observation": {"counter": 0},
         **overrides,
     }
+    if "grade" in raw and raw["grade"] is None:
+        # No grade on the line: the journal never carries a null one.
+        del raw["grade"]
     if raw.get("grade") is not None:
         # A dict grade given with only the keys a test looks at gets the
         # journal's other required keys around them.
@@ -140,6 +143,23 @@ def event_of(**overrides: Any) -> Any:
         if "observation" not in overrides:
             raw.pop("observation", None)
     return Event.from_json(raw)
+
+
+def journal_head(paths: Any) -> str:
+    """The chain head over a journal file, by the rule of
+    verify/JOURNAL_SPEC.md section 4, kept here so the tests hold the kernel
+    to the spec and not to itself."""
+    import hashlib
+
+    head = hashlib.sha256(b"assay-chain-v1").hexdigest()
+    try:
+        lines = paths.events.read_text().splitlines()
+    except FileNotFoundError:
+        return head
+    for line in lines:
+        if line.strip():
+            head = hashlib.sha256(head.encode() + line.encode()).hexdigest()
+    return head
 
 
 def run_of(paths: Any, events: Sequence[Any] = (), registry: dict[str, Any] | None = None) -> Any:

@@ -71,6 +71,36 @@ def test_event_distinguishes_absent_from_null():
     assert bare.to_json()["predict"] is None and bare.to_json()["grade"] == []
     assert _line(Event.from_json(bare.to_json()).to_json()) == _line(bare.to_json())
     assert bare.predict is None and start == Event.from_json(start.to_json())
+    with pytest.raises(TypeError, match="grade must be a list"):
+        Event.from_json({**start.to_json(), "grade": None})
+
+
+def test_constructor_replace_and_updated_write_the_same_line():
+    """An optional field given a value is on the line whichever way the
+    event was built (the reviewer's break attempt: a constructed graded
+    event whose line read UNGATED)."""
+    import dataclasses
+
+    base = {key: value for key, value in event_of(id=3).to_json().items() if key != "observation"}
+    graded = Grade(kind="change", text="change", ok=True, actual="1 keys changed", bucket="world_model")
+    built = Event(**base, observation={"counter": 1}, predict="change", predict_ok=True,
+                  grade=(graded,), mutation_id=3, declares={"revised": "yes"}, gate_optional=True)
+    updated = (
+        Event(**base)
+        .updated(observation={"counter": 1}, predict="change", predict_ok=True, grade=(graded,),
+                 mutation_id=3, declares={"revised": "yes"}, gate_optional=True)
+    )
+    assert _line(built.to_json()) == _line(updated.to_json())
+    assert built.present == updated.present
+    assert built.ungated is False and Event.from_json(built.to_json()).ungated is False
+    replaced = dataclasses.replace(Event(**base), predict_ok=False, grade=(graded,))
+    assert replaced.to_json()["predict_ok"] is False and replaced.to_json()["grade"] == [graded.to_json()]
+    # An explicit null is not a value: the constructor leaves it off the line,
+    # `updated` puts it there.
+    assert "predict" not in Event(**base, predict=None).to_json()
+    assert Event(**base).updated(predict=None).to_json()["predict"] is None
+    # A line the constructor wrote reads back as the same object.
+    assert Event.from_json(built.to_json()) == built
 
 
 def test_event_refuses_a_wrong_type_and_names_the_key():
@@ -159,8 +189,12 @@ def test_grade_keeps_numbers_as_written():
                                 "actual": "", "bucket": "world_model", "channel": "x", "value": 2, "tol": 1.0})
     assert isinstance(tolerant.value, int) and isinstance(tolerant.tol, float)
     assert _line(tolerant.to_json()) == '{"actual":"","bucket":"world_model","channel":"x","kind":"channel_eq","ok":true,"text":"ch x = 2 +- 1","tol":1.0,"value":2}'
-    with pytest.raises(TypeError, match="identity_verdict"):
-        Grade.from_json({"kind": "verify", "text": "v", "ok": True, "actual": "", "bucket": "b", "identity_verdict": 3})
+    base = {"kind": "verify", "text": "v", "ok": True, "actual": "", "bucket": "b"}
+    for bad in (3, "maybe", None):
+        with pytest.raises(TypeError, match="identity_verdict"):
+            Grade.from_json({**base, "identity_verdict": bad})
+    assert Grade.from_json({**base, "identity_verdict": "invalid"}).identity_verdict == "invalid"
+    assert Grade.from_json({**base, "identity_verdict": False}).identity_verdict is False
 
 
 def test_act_receipt_keeps_null_predict_and_because():

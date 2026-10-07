@@ -1,8 +1,10 @@
 """The run model (docs/ARCHITECTURE.md section 6.3): `Run.load` reads once and
 never writes, `run.append` is the one writer and keeps the held head equal to
-the head over the file, a crash-behind chain is tolerated and repaired by the
-next append, a diverged chain or a contiguity problem refuses a strict load
-and is reported by a lenient one, and `verify_disk` sees an edit."""
+the head over the file, a chain behind by a crash's one line is tolerated and
+repaired by the next append, a diverged or malformed chain, a contiguity
+problem or a line that does not decode refuses a strict load and is reported
+by a lenient one, and `verify_disk` sees an edit, an in-place edit of the
+mutation log included."""
 
 from __future__ import annotations
 
@@ -11,10 +13,9 @@ from pathlib import Path
 
 import pytest
 
-from conftest import event_of
+from conftest import event_of, journal_head
 
 from assay.core import AssayError, RunPaths, atomic_json
-from assay.integrity import compute_chain
 from assay.run import CHAIN_BEHIND, CHAIN_DIVERGED, CHAIN_INTACT, Run, Tamper
 
 
@@ -45,13 +46,22 @@ def test_fresh_run_appends_with_held_ids_and_writes_the_chain(tmp_path):
     second = run.append(event_of(id=-1))
     assert (first.id, second.id) == (0, 1)
     assert [event["id"] for event in _events(paths)] == [0, 1]
-    assert run.chain_event == 1 and run.chain_head == compute_chain(paths)[1]
+    assert run.chain_event == 1 and run.chain_head == journal_head(paths)
+    assert run.heads[-1] == run.chain_head and len(run.heads) == 2
     assert json.loads((paths.state / "chain.json").read_text()) == {"event_id": 1, "head": run.chain_head}
     assert run.journal_bytes == paths.events.stat().st_size
     assert run.verify_disk() == []
     again = Run.load(paths, strict=True)
     assert again.events == run.events and again.chain_head == run.chain_head
     assert again.integrity.chain == CHAIN_INTACT and again.journal_bytes == run.journal_bytes
+    assert again.heads == run.heads
+    # The head after each line is the spec's chain over the file's prefix.
+    lines = paths.events.read_text().splitlines()
+    for index in range(len(lines)):
+        prefix = RunPaths(tmp_path / f"prefix{index}")
+        prefix.state.mkdir(parents=True)
+        prefix.events.write_text("\n".join(lines[: index + 1]) + "\n")
+        assert again.heads[index] == journal_head(prefix)
 
 
 def test_anchors_on_win_and_every_twenty_five(tmp_path, monkeypatch):
@@ -78,10 +88,56 @@ def test_a_crash_behind_chain_is_tolerated_and_repaired(tmp_path):
     (paths.state / "chain.json").write_text(behind)  # the daemon died after the line, before the chain
     loaded = Run.load(paths, strict=True)
     assert loaded.integrity.chain == CHAIN_BEHIND and loaded.integrity.refused is None
-    assert loaded.chain_head == compute_chain(paths)[1]
+    assert loaded.integrity.chain_problem == (
+        "chain: stored head at e0 does not match the recomputed journal head at e1"
+    )
+    assert loaded.chain_head == journal_head(paths)
     loaded.append(event_of(id=-1))
     assert json.loads((paths.state / "chain.json").read_text())["event_id"] == 2
     assert Run.load(paths, strict=False).integrity.chain == CHAIN_INTACT
+
+
+def test_a_chain_two_lines_behind_is_diverged(tmp_path):
+    """A crash leaves exactly one line without its chain; more than one is
+    not a crash's doing, whatever the prefix says."""
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1))
+    behind = (paths.state / "chain.json").read_text()
+    run.append(event_of(id=-1))
+    run.append(event_of(id=-1))
+    (paths.state / "chain.json").write_text(behind)
+    assert Run.load(paths, strict=False).integrity.chain == CHAIN_DIVERGED
+    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| chain: stored head at e0"):
+        Run.load(paths, strict=True)
+
+
+@pytest.mark.parametrize(
+    "stored, expected",
+    [
+        ("{}", "expected {event_id: int, head: str}, got event_id NoneType and head NoneType"),
+        ('{"event_id": "x", "head": "y"}', "got event_id str and head str"),
+        ("[1, 2]", "chain.json holds list, not an object"),
+        ('{"event_id": true, "head": "y"}', "got event_id bool and head str"),
+        ("not json", "chain.json is not valid JSON"),
+    ],
+)
+def test_a_malformed_chain_file_is_diverged_not_behind_or_absent(tmp_path, stored, expected):
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1))
+    (paths.state / "chain.json").write_text(stored)
+    lenient = Run.load(paths, strict=False)
+    assert lenient.integrity.chain == CHAIN_DIVERGED
+    assert lenient.integrity.chain_problem is not None and expected in lenient.integrity.chain_problem
+    assert lenient.stored_chain is None
+    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| chain: chain.json"):
+        Run.load(paths, strict=True)
+    from assay.integrity import audit
+
+    report = audit(lenient)
+    assert report["chain"] == "DIVERGED" and report["invalid_for_scoring"] is True
+    assert any(expected in problem for problem in report["problems"])
 
 
 def test_a_diverged_chain_refuses_strict_and_is_reported_lenient(tmp_path):
@@ -132,6 +188,25 @@ def test_verify_disk_names_what_changed(tmp_path):
     assert "registry.json" in [item.what for item in run.verify_disk()]
 
 
+def test_verify_disk_sees_a_same_length_edit_of_the_mutation_log(tmp_path):
+    from assay.records import Mutation
+
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.record_mutation(Mutation(mutation_id=1, action="INC", data={"amount": 1}, reasoning=None,
+                                 observation={"state": "NOT_FINISHED"}, timestamp="t"))
+    assert run.verify_disk() == []
+    assert run.mutations_bytes == paths.mutations.stat().st_size
+    reloaded = Run.load(paths, strict=False)
+    assert reloaded.mutations_digest == run.mutations_digest
+    text = paths.mutations.read_text()
+    paths.mutations.write_text(text.replace('"amount":1', '"amount":2'))  # the same length
+    assert paths.mutations.stat().st_size == run.mutations_bytes
+    found = run.verify_disk()
+    assert [item.what for item in found] == ["mutations.jsonl digest"]
+    assert found[0].expected == run.mutations_digest and found[0].found != found[0].expected
+
+
 def test_mutations_manifest_and_owner_hash_are_held(tmp_path):
     paths = _run_dir(tmp_path)
     from assay.core import append_jsonl
@@ -151,9 +226,30 @@ def test_mutations_manifest_and_owner_hash_are_held(tmp_path):
     assert run.verify_disk() == []
 
 
-def test_a_malformed_line_is_a_decoding_error_not_a_refusal(tmp_path):
+def test_a_malformed_line_is_a_finding_for_the_readers_and_a_refusal_for_a_start(tmp_path):
     paths = _run_dir(tmp_path)
-    with paths.events.open("a") as handle:
-        handle.write('{"id": 0}\n')
-    with pytest.raises(KeyError):
-        Run.load(paths, strict=False)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1))
+    run.append(event_of(id=-1))
+    good = paths.events.read_text()
+    for bad, reason in (
+        ('{"id": 2}\n', "line 3 malformed: missing key 'timestamp'"),
+        ('{"id": 2, "timestamp": 5, "action": "INC"}\n', "line 3 malformed: event.timestamp must be a string, got int"),
+        ("not json at all\n", "line 3 malformed: Expecting value"),
+    ):
+        paths.events.write_text(good + bad + good.splitlines()[0] + "\n")
+        lenient = Run.load(paths, strict=False)
+        assert lenient.integrity.malformed is not None and lenient.integrity.malformed.startswith(reason)
+        assert lenient.integrity.refused == lenient.integrity.malformed
+        # The events before the line are kept and the journal ends there.
+        assert [event.id for event in lenient.events] == [0, 1]
+        assert lenient.chain_head == run.chain_head and lenient.journal_bytes == len(good.encode())
+        assert lenient.integrity.chain == CHAIN_INTACT
+        with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| line 3 malformed"):
+            Run.load(paths, strict=True)
+        assert paths.events.read_text() == good + bad + good.splitlines()[0] + "\n"
+    from assay.integrity import audit
+
+    report = audit(Run.load(paths, strict=False))
+    assert report["events"] == 2 and report["invalid_for_scoring"] is True
+    assert report["problems"] == ["journal: line 3 malformed: Expecting value: line 1 column 1 (char 0)"]

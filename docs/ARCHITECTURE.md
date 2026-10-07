@@ -254,7 +254,7 @@ where anchors go, which interpreter serves the daemon.
   (`carryover.import_knowledge`).
 - **Anchors.** Chain heads are appended outside the run directory every 25
   events and on WIN, to `ASSAY_ANCHOR_DIR` or `~/.assay/anchors/<digest>.jsonl`
-  (`integrity.anchor_dir`, `integrity.extend_chain`). 1.2.0 records the anchor
+  (`integrity.anchor_dir`, `run.Run.append`). 1.2.0 records the anchor
   file in `config.json`.
 - **Interpreter.** The daemon runs `sys.executable` of the CLI that started it
   (`broker.start_broker`) and `.assay/python` records it. 1.2.0 honors
@@ -760,9 +760,11 @@ the owner operations into the daemon; `install_module` stays a CLI command until
 `core.load_events` and `core.append_event` are gone rather than kept: `analysis`
 builds the agent's namespace from the held records (the journal still reaches the agent
 as plain JSON objects), and the AST test still refuses `load_events(` outside `run.py`,
-`core.py` and `analysis.py`. A malformed journal line (a wrong type on a known key, a
-missing required key) is a decoding error on the internal path, not a refusal, until
-#13 gives it the `internal` kind.
+`core.py` and `analysis.py`, and refuses every other reader of `events.jsonl` below the
+entry points. A malformed journal line (a wrong type on a known key, a missing required
+key, no JSON) is an integrity finding for the readers and a `CHAIN_DIVERGED` refusal for
+a start; a malformed `chain.json` reads as diverged; a chain is behind only by the one
+line a crash leaves.
 
 ### 6.1 Why
 
@@ -843,7 +845,11 @@ the daemon alive.
   crash-behind chain is held as the recomputed head and written by the daemon's next
   `run.append`, as today. The readers (`audit`, `status`, `view` and the rest) load
   lenient: `audit` reports `run.integrity` as it reports today (the three pre-chain
-  published runs keep printing `chain absent`) and the INTEGRITY line shows it. Modules
+  published runs keep printing `chain absent`) and the INTEGRITY line shows it. A line
+  that does not decode (a wrong type on a known key, a missing required key, no JSON) is
+  a finding too: the lenient reader keeps the events before it and treats the journal as
+  ending there, status names the line on its INTEGRITY line and audit as a problem, and
+  the strict load refuses with `CHAIN_DIVERGED | line N malformed: ...`. Modules
   load once (section 6.4); the CLI loads them lazily, only for the commands that consult
   them. Every CLI command calls `Run.load` once at entry; the daemon calls it once in
   `serve`.
@@ -875,8 +881,11 @@ the daemon alive.
   `ObservationKind` protocol's display and after-record methods (`after_record`,
   `status_head_lines`, `result_lines`, `view_text`, `export_history`, `history_line`) take
   the run too, so the frame extra stops reloading the journal (`render.current_image`,
-  `views.export_history` do today). `core.load_events` stays for the checker-like readers
-  (`analysis.run_python`) and no function below the entry points calls it.
+  `views.export_history` do today). `core.load_events` is gone: `analysis.run_python`
+  builds the agent's namespace from the held records, and no function below the entry
+  points reads `events.jsonl`; the readers that survive (`doctor`, which must read a
+  broken run, and the knowledge file's published `journal_sha256`) are named, with their
+  reasons, in the allow-list of the AST test (`tests/test_run_model.py`).
 - The daemon holds one `Run` for its life; the request handlers of section 7.2 receive it.
   The id of the next event is the held count, never the line count on disk.
 - The manifest is reconstructed for a pre-manifest run only at `start`, never from a status

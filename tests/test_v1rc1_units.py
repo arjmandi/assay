@@ -7,12 +7,11 @@ import json
 
 import pytest
 
-from conftest import event_of, run_of
+from conftest import event_of, journal_head, run_of
 
 from assay.core import AssayError, RunPaths, atomic_json
 from assay.integrity import (
     audit,
-    compute_chain,
     redact,
     redact_mapping,
     ungated_events,
@@ -234,8 +233,7 @@ def test_anchor_written_on_win(tmp_path, monkeypatch):
     assert len(anchors) == 1
     entry = json.loads(anchors[0])
     assert entry["event_id"] == 0
-    _, head = compute_chain(paths)
-    assert entry["head"] == head
+    assert entry["head"] == journal_head(paths)
 
 
 # -------------------------------------------------------------------- hazard

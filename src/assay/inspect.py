@@ -9,7 +9,7 @@ import datetime as dt
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, canonical_action, load_jsonl
+from .core import AssayError, canonical_action, load_jsonl, read_json
 from .evidence import history_lines
 from .extras import kind_for
 from .records import Event, Receipt
@@ -378,7 +378,6 @@ def _registry_status_lines(run: Run, registry: Mapping[str, Any]) -> list[str]:
     from .aggregates import meter as aggregate_meter
     from .carryover import foreign_lines
     from .channels import channel_lines
-    from .core import read_json
     from .integrity import anchor_line
     from .model import batching_rights, fit_path, model_source
     from .modules import load_hazards, unlisted_lines

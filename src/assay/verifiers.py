@@ -37,7 +37,7 @@ from __future__ import annotations
 import hashlib
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
 from .sandbox import run_program
@@ -243,7 +243,7 @@ def grade_verifier_claim(
             verifier=True,
         )
     identity = run_verifier(paths, digest, before, before, timeout=timeout)
-    identity_verdict: bool | str = (
+    identity_verdict: bool | Literal["invalid"] = (
         bool(identity["ok"]) if identity["status"] == "ok" else "invalid"
     )
     entry["graded"] += 1
