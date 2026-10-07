@@ -63,8 +63,14 @@ def _load(path: Path):
 
 
 def test_every_adapter_exposes_the_factory_contract():
+    from assay.adapters import contract_problems
+
     for name, path in ADAPTERS.items():
         module = _load(path)  # heavy world clients are imported inside the sessions, never at module level
+        # The Adapter and Session protocols of assay.adapters, checked at
+        # runtime by attribute, since a Protocol with a property is not
+        # runtime-checkable; the inline checks below are the same contract.
+        assert contract_problems(module) == [], name
         factory = getattr(module, "factory", None)
         assert callable(factory), name
         parameters = list(inspect.signature(factory).parameters)

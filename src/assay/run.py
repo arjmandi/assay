@@ -32,7 +32,7 @@ import hashlib
 import json
 import os
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .core import (
     AssayError,
@@ -45,6 +45,9 @@ from .core import (
 )
 from .integrity import ANCHOR_EVERY, CHAIN_SEED, _advance, anchor_file, chain_path
 from .records import Event, Mutation
+
+if TYPE_CHECKING:
+    from .modules import Module
 
 CHAIN_INTACT = "intact"
 CHAIN_ABSENT = "absent"
@@ -108,7 +111,7 @@ class Run:
     mutations: list[Mutation] = dataclasses.field(default_factory=list)
     mutations_bytes: int = 0
     manifest: list[dict[str, Any]] = dataclasses.field(default_factory=list)
-    modules: list[tuple[Any, str]] | None = None
+    modules: list[tuple[Module, str]] | None = None
     owner_hash: str | None = None
     opened_at: float = dataclasses.field(default_factory=time.time)
     integrity: Integrity = dataclasses.field(default_factory=Integrity)

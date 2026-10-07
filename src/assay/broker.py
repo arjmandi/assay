@@ -27,6 +27,7 @@ from .core import (
     rows_to_grid,
 )
 from .sandbox import sandbox_mode
+from .adapters import Adapter, Session
 from .records import Event, Mutation, Receipt
 from .run import Run
 
@@ -134,7 +135,7 @@ def check_adapter_spec(spec: str, root: Path) -> None:
     raise AssayError(f"adapter {spec!r} failed to import: {reason}")
 
 
-def _import_factory(spec: str, root: Path) -> Any:
+def _import_factory(spec: str, root: Path) -> Adapter:
     module_name, attribute = split_adapter_spec(spec)
     candidate = Path(module_name)
     if not candidate.is_absolute():
@@ -153,10 +154,11 @@ def _import_factory(spec: str, root: Path) -> Any:
     factory = getattr(module, attribute, None)
     if not callable(factory):
         raise AssayError(f"adapter factory {spec!r} is not callable")
-    return factory
+    loaded: Adapter = factory
+    return loaded
 
 
-def _create_session(root: Path, config: Mapping[str, Any]) -> Any:
+def _create_session(root: Path, config: Mapping[str, Any]) -> Session:
     adapter = config.get("adapter")
     if not adapter:
         raise AssayError(
