@@ -200,10 +200,10 @@ where anchors go, which interpreter serves the daemon.
 - **Owner token.** Minted at start on registry runs (`agenda.mint_owner_token`),
   only its sha256 is stored in `.assay/owner.json`, printed once. It authorizes
   `assay goal ratify`, `assay approve` and `assay waive` (`agenda.require_owner`).
-  The agent proposes, the owner ratifies. In every benchmark protocol so far
-  the agent ran `start` itself and therefore held the token (`GUIDE.md`
-  section 5). 1.2.0 adds a token file option so an operator can keep it out of
-  the agent's terminal.
+  The agent proposes, the owner ratifies. In every published benchmark run
+  the agent ran `start` itself and therefore held the token; 1.2.0 adds the
+  token file option, and the protocols start from the operator's shell with
+  it (section 8.6, `GUIDE.md` section 5).
 - **Approvals.** `approval: true` actions are default-deny, each use needs a
   fresh one-shot grant that expires after 600 seconds
   (`agenda.grant_approval`, `agenda.consume_approval`). Banned inside batches.
@@ -260,8 +260,8 @@ across worlds. During the ARC-AGI-3 campaign the same file was named
 
 **Contract.** The kernel never reads or injects it. It is given to the agent by
 the launcher prompt (`GUIDE.md` section 5: read the constitution completely,
-work in one directory, run `start`, solve for the goal, touch the world only
-through `assay`). Each behavior module carries its own one-paragraph
+begin with `status` in the run directory the operator started, solve for the
+goal, touch the world only through `assay`). Each behavior module carries its own one-paragraph
 `CONSTITUTION` string in the same voice (`modules.py`), rendered by
 `assay modules` in 1.2.0.
 

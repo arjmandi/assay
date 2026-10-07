@@ -36,13 +36,36 @@ local cache (`~/.cache/assay/arcade`, override with `ASSAY_CACHE_DIR`);
 after that, runs are offline. Older local game caches are adopted
 automatically.
 
+Two shells, in this order (the operator protocol, `docs/ARCHITECTURE.md`
+section 8.6): the operator starts the run and holds the owner token, and the
+agent's session begins after that.
+
+The operator's shell:
+
 ```bash
 ASSAY=<repo>/bin/assay
 mkdir <run-dir> && cd <run-dir>            # one directory = one run
 "$ASSAY" start ft09 \
     --adapter <repo>/bench/arcagi/adapter.py:factory \
-    --registry <repo>/bench/arcagi/registry_200.json
+    --registry <repo>/bench/arcagi/registry_200.json \
+    --owner-token-file <tokens>/ft09.token  # outside the run directory and the agent's working set
 ```
+
+`start` prints `OWNER TOKEN | written to <tokens>/ft09.token (mode 0600)` and
+never the token. The agent's session then starts in `<run-dir>`, with the
+daemon already up and the same `ASSAY_PYTHON` exported, and its first command
+is
+
+```bash
+"$ASSAY" status
+```
+
+The agent never runs `start`, and the token never appears in its transcript.
+Ratifications, approvals and waivers are the operator's, from the operator's
+shell: `"$ASSAY" goal ratify N --token "$(cat <tokens>/ft09.token)"`, and
+`approve` and `waive` the same way. A resume after an interruption is the
+operator's too: the same `start` command in `<run-dir>` replays the journal
+and keeps the token, and the agent begins again at `status`.
 
 Registries: `registry_200.json` (cap 200), `registry_500.json` (cap 500),
 `registry_1500.json` (cap 1500, for games whose published reference cost

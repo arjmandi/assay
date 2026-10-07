@@ -14,9 +14,24 @@ and pack files. The kernel is untouched (`git diff --stat main -- src/` is empty
 
 ## Run
 
+The operator protocol (`docs/ARCHITECTURE.md` section 8.6): the operator
+starts the run and holds the owner token, and the agent's session begins
+after that. The operator's shell, one directory per run:
+
+    mkdir <run-dir> && cd <run-dir>
     assay start spam4k \
         --adapter <repo>/bench/oolong/adapter.py:factory \
-        --registry <repo>/bench/oolong/registry_40.json
+        --registry <repo>/bench/oolong/registry_40.json \
+        --owner-token-file <tokens>/spam4k.token   # outside the run directory and the agent's working set
+
+`start` writes the token to that file (mode 0600) and prints the path, never
+the token. The agent's session then starts in `<run-dir>` with the daemon
+already up: its first command is `assay status`, it never runs `start`, and
+the token never appears in its transcript. Ratifications, approvals and
+waivers are the operator's (`assay goal ratify N --token "$(cat
+<tokens>/spam4k.token)"`, `approve` and `waive` the same way), and so is a
+resume: the same `start` command in the same directory keeps the token, and
+the agent begins again at `status`.
 
 - `registry_40.json`: budget 40 actions, for small packs (≈≤5 questions).
 - `registry_200.json`: budget 200 actions, for ≈25-question packs (the 8K

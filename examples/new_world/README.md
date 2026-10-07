@@ -13,6 +13,11 @@ Run it:
     assay start vault1 --adapter <repo>/examples/new_world/adapter.py:factory \
         --registry <repo>/examples/new_world/registry.json
 
+That is one person at a terminal playing both roles; an evaluated agent does
+not start the run: the operator starts it with `--owner-token-file` to a path
+outside the run directory, and the agent's session begins at `assay status`
+(`ONBOARDING.md` chapter 7).
+
 ## The adapter, line by line
 
 - `factory(root, config)` is the entry point named on the command line.
