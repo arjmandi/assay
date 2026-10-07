@@ -7,17 +7,19 @@ meter to be constant pressure on click worlds)."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
+
+from assay.records import Event
 
 REGION_EDGE = 8
 
 
-def _regions(events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -> dict[str, Any] | None:
+def _regions(events: Sequence[Event], paid_indices: Sequence[int]) -> dict[str, Any] | None:
     last = events[-1]
-    if "frames" not in last or not last["frames"]:
+    if not last.frames:
         return None
-    rows = last["frames"][-1]
+    rows = last.frames[-1]
     height, width = len(rows), (len(rows[0]) if rows else 0)
     if not height or not width:
         return None
@@ -26,7 +28,7 @@ def _regions(events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -
     probed: set[tuple[int, int]] = set()
     point_used = False
     for index in paid_indices:
-        data = events[index].get("data") or {}
+        data = events[index].data or {}
         x, y = data.get("x"), data.get("y")
         if isinstance(x, int) and isinstance(y, int) and not isinstance(x, bool):
             point_used = True
@@ -45,7 +47,7 @@ def _regions(events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -
     return {"probed": len(probed), "total": total, "examples": examples}
 
 
-def coverage_gap(events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -> str | None:
+def coverage_gap(events: Sequence[Event], paid_indices: Sequence[int]) -> str | None:
     regions = _regions(events, paid_indices)
     if regions is None or regions["probed"] >= regions["total"]:
         return None
@@ -54,7 +56,7 @@ def coverage_gap(events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int
     return f"{unprobed}/{regions['total']} grid regions unprobed{tail}"
 
 
-def coverage_telemetry(events: Sequence[Mapping[str, Any]], paid_indices: Sequence[int]) -> dict[str, Any]:
+def coverage_telemetry(events: Sequence[Event], paid_indices: Sequence[int]) -> dict[str, Any]:
     regions = _regions(events, paid_indices)
     if regions is None:
         return {"regions_probed": 0, "regions_total": 0}

@@ -23,8 +23,10 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from conftest import event_of
+
 from assay.core import AssayError, RunPaths
-from assay.integrity import CHAIN_SEED, compute_chain, ungated_events
+from assay.integrity import CHAIN_SEED, chain_over, ungated_events
 from assay.predictions import parse_claims
 from assay.registry import parse_registry_action, validate_registry
 
@@ -248,13 +250,13 @@ def test_grammar_text_parses_one_claim_per_part(prediction):
             parse_claims(text)
         return
     claims = parse_claims(text)
-    assert [claim["kind"] for claim in claims] == [part.kind for part in parts]
+    assert [claim.kind for claim in claims] == [part.kind for part in parts]
     for claim, part in zip(claims, parts, strict=True):
-        assert claim["text"] == part.core
+        assert claim.text == part.core
         for key, value in part.fields.items():
-            assert claim[key] == value, key
-        assert claim.get("window_s") == part.window_s
-        assert "coerced" not in claim
+            assert getattr(claim, key) == value, key
+        assert claim.window_s == part.window_s
+        assert not claim.coerced and "coerced" not in claim.to_json()
 
 
 @given(parts=st.lists(aggregate_parts, min_size=1, max_size=3))
@@ -313,7 +315,7 @@ _free_text_body = st.text().filter(
 @given(opener=st.sampled_from(["the", "probably", "it", "door", "nothing"]), body=_free_text_body)
 def test_free_text_is_a_note_plus_a_coerced_change(opener, body):
     text = f"{opener} {body}"
-    assert parse_claims(text) == [
+    assert [claim.to_json() for claim in parse_claims(text)] == [
         {"kind": "note", "text": text.strip()},
         {"kind": "change", "text": "change (implied by free text)", "coerced": True},
     ]
@@ -343,11 +345,10 @@ def test_any_text_parses_or_is_refused_with_a_reason(text):
     assert text.strip()  # the empty prediction is always refused
     assert isinstance(claims, list) and claims
     for claim in claims:
-        assert isinstance(claim, dict)
-        assert claim["kind"] in CLAIM_KINDS
-        assert isinstance(claim["text"], str) and claim["text"]
+        assert claim.kind in CLAIM_KINDS
+        assert isinstance(claim.text, str) and claim.text
     # Whatever was said, the action commits to a mechanical claim.
-    assert any(claim["kind"] not in NOT_MECHANICAL for claim in claims)
+    assert any(claim.kind not in NOT_MECHANICAL for claim in claims)
 
 
 @pytest.mark.xfail(
@@ -392,10 +393,11 @@ def journal(tmp_path_factory) -> RunPaths:
     return run_paths
 
 
-def kernel_chain(journal: RunPaths, rows: list[str]) -> tuple[int, str]:
-    """The kernel's chain over a journal file holding these rows."""
-    journal.events.write_text("".join(row + "\n" for row in rows))
-    return compute_chain(journal)
+def kernel_chain(rows: list[str]) -> tuple[int, str]:
+    """The kernel's chain over these raw journal rows (`integrity.chain_over`,
+    the rule the loader applies line by line and `verify_disk` over the
+    file): (last event id, head)."""
+    return sum(1 for row in rows if row.strip()) - 1, chain_over(rows)
 
 
 def test_both_implementations_seed_with_the_spec_string():
@@ -403,29 +405,30 @@ def test_both_implementations_seed_with_the_spec_string():
     assert assay_verify.CHAIN_SEED == SPEC_SEED
 
 
-def test_empty_journal_head_is_the_seed_hash(journal):
-    assert kernel_chain(journal, []) == (-1, spec_chain([]))
+def test_empty_journal_head_is_the_seed_hash():
+    assert kernel_chain([]) == (-1, spec_chain([]))
     assert assay_verify.compute_chain([]) == spec_chain([])
 
 
 @given(rows=st.lists(_line | _blank, max_size=12))
 def test_kernel_checker_and_spec_chains_agree(journal, rows):
     lines = [row for row in rows if row.strip()]  # blank lines are skipped
-    last_id, head = kernel_chain(journal, rows)
+    last_id, head = kernel_chain(rows)
     assert last_id == len(lines) - 1
     assert head == spec_chain(lines)
     assert head == assay_verify.compute_chain(lines)
+    journal.events.write_text("".join(row + "\n" for row in rows))
     assert assay_verify.read_lines(journal.events) == lines
 
 
-def _assert_heads_differ(journal: RunPaths, lines: list[str], mutated: list[str]) -> None:
+def _assert_heads_differ(lines: list[str], mutated: list[str]) -> None:
     assert spec_chain(mutated) != spec_chain(lines)
     assert assay_verify.compute_chain(mutated) != assay_verify.compute_chain(lines)
-    assert kernel_chain(journal, mutated)[1] != kernel_chain(journal, lines)[1]
+    assert kernel_chain(mutated)[1] != kernel_chain(lines)[1]
 
 
 @given(lines=st.lists(_line, min_size=1, max_size=12), data=st.data())
-def test_changing_one_character_changes_the_head(journal, lines, data):
+def test_changing_one_character_changes_the_head(lines, data):
     # UTF-8 is injective, so a changed character is a changed byte of the
     # line as stored; a flipped byte that still decodes is one of these.
     index = data.draw(st.integers(0, len(lines) - 1), label="line")
@@ -437,29 +440,29 @@ def test_changing_one_character_changes_the_head(journal, lines, data):
     )
     changed = line[:position] + replacement + line[position + 1 :]
     assume(changed.strip())  # a line blanked out is a line removed, below
-    _assert_heads_differ(journal, lines, [*lines[:index], changed, *lines[index + 1 :]])
+    _assert_heads_differ(lines, [*lines[:index], changed, *lines[index + 1 :]])
 
 
 @given(lines=st.lists(_line, min_size=1, max_size=12), data=st.data())
-def test_deleting_one_line_changes_the_head(journal, lines, data):
+def test_deleting_one_line_changes_the_head(lines, data):
     index = data.draw(st.integers(0, len(lines) - 1), label="line")
-    _assert_heads_differ(journal, lines, [*lines[:index], *lines[index + 1 :]])
+    _assert_heads_differ(lines, [*lines[:index], *lines[index + 1 :]])
 
 
 @given(lines=st.lists(_line, min_size=2, max_size=12, unique=True), data=st.data())
-def test_swapping_two_adjacent_lines_changes_the_head(journal, lines, data):
+def test_swapping_two_adjacent_lines_changes_the_head(lines, data):
     index = data.draw(st.integers(0, len(lines) - 2), label="first of the pair")
     mutated = list(lines)
     mutated[index], mutated[index + 1] = mutated[index + 1], mutated[index]
-    _assert_heads_differ(journal, lines, mutated)
+    _assert_heads_differ(lines, mutated)
 
 
 @given(lines=st.lists(_line, max_size=12), extra=_line)
-def test_appending_a_line_changes_the_head(journal, lines, extra):
-    _assert_heads_differ(journal, lines, [*lines, extra])
+def test_appending_a_line_changes_the_head(lines, extra):
+    _assert_heads_differ(lines, [*lines, extra])
     # and extends the chain by exactly the two-line rule
     head = hashlib.sha256((spec_chain(lines) + extra).encode()).hexdigest()
-    assert kernel_chain(journal, [*lines, extra]) == (len(lines), head)
+    assert kernel_chain([*lines, extra]) == (len(lines), head)
 
 
 # ---------------------------------------------------------- the ungated rule
@@ -479,6 +482,33 @@ _event_shapes = st.fixed_dictionaries(
 journals = st.lists(_event_shapes, max_size=12).map(
     lambda shapes: [{"id": index, **shape} for index, shape in enumerate(shapes)]
 )
+
+
+def _kernel_events(events: list[dict[str, Any]]) -> list[Any]:
+    """The generated shapes as the kernel's typed events. The checker reads
+    the journal fields as JSON, so a generated shape may lack a key or carry a
+    null `counts_action`; the typed record carries every required key and a
+    boolean, so an absent or null `counts_action` becomes false, the value the
+    checker and the spec read it as, and a generated grade gets the journal's
+    required keys around the ones the rule looks at."""
+    kernel: list[Any] = []
+    for event in events:
+        fields: dict[str, Any] = {
+            "id": event["id"],
+            "action": event.get("action", "GO"),
+            "counts_action": bool(event.get("counts_action")),
+        }
+        for key in ("predict", "predict_ok"):
+            if key in event:
+                fields[key] = event[key]
+        if "grade" in event:
+            grade = event["grade"]
+            fields["grade"] = (
+                None if grade is None
+                else [{"text": "change", "actual": "", **item} for item in grade]
+            )
+        kernel.append(event_of(**fields))
+    return kernel
 
 
 def spec_ungated(events: list[dict[str, Any]]) -> list[int]:
@@ -502,7 +532,7 @@ def spec_ungated(events: list[dict[str, Any]]) -> list[int]:
 
 @given(events=journals)
 def test_kernel_and_checker_agree_on_ungated_events(events):
-    flagged = ungated_events(events)
+    flagged = ungated_events(_kernel_events(events))
     assert flagged == assay_verify.ungated_events(events)
     assert flagged == spec_ungated(events)
 
@@ -512,7 +542,7 @@ def test_an_injected_bare_paid_event_is_always_flagged(events, data):
     # Injecting a paid, claim-free action anywhere adds exactly its id, even
     # when the chain is recomputed around it (test_verify_checker's attack).
     position = data.draw(st.integers(0, len(events)), label="position")
-    before = ungated_events(events)
+    before = ungated_events(_kernel_events(events))
     bare = {"action": "GO", "counts_action": True, "note": "injected"}
     rewritten = [
         {**event, "id": index}
@@ -521,7 +551,7 @@ def test_an_injected_bare_paid_event_is_always_flagged(events, data):
     expected = sorted(
         {index if index < position else index + 1 for index in before} | {position}
     )
-    assert ungated_events(rewritten) == expected
+    assert ungated_events(_kernel_events(rewritten)) == expected
     assert assay_verify.ungated_events(rewritten) == expected
 
 

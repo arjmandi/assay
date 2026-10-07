@@ -136,8 +136,11 @@ def test_owner_install_is_the_sanctioned_channel(tmp_path):
 
 def test_run_without_a_manifest_reconstructs_it_from_the_registry(tmp_path):
     """A run started before 1.2.0 pinned files without a manifest. Its
-    registry names them, so the manifest is rebuilt from the pinned copies and
-    the module keeps running. Anything else in the directory stays unlisted."""
+    registry names them, so `assay start` rebuilds the manifest from the
+    pinned copies, once, and the module keeps running; a status call never
+    writes it (docs/ARCHITECTURE.md section 6.3), so until the next start the
+    pinned file is unlisted like any other. Anything else in the directory
+    stays unlisted."""
     run = tmp_path / "legacy"
     probe = _write_probe(tmp_path)
     _prepare(run, modules=[str(probe)])
@@ -145,6 +148,11 @@ def test_run_without_a_manifest_reconstructs_it_from_the_registry(tmp_path):
         assert _start(run).returncode == 0
         (run / ".assay" / "modules" / "manifest.json").unlink()
         (run / ".assay" / "modules" / "rogue.py").write_text(ROGUE)
+        status = run_cli(run, "status")
+        assert "probe.py (not in the manifest)" in status.stdout
+        assert not (run / ".assay" / "modules" / "manifest.json").exists()
+        assert run_cli(run, "stop").returncode == 0
+        assert _start(run).returncode == 0
         for _ in range(3):
             assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
         status = run_cli(run, "status")

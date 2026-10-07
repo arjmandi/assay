@@ -34,8 +34,7 @@ over them keeps byte-identical.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
-from typing import Any
+from .records import Event
 
 WORLD = "world"
 
@@ -50,10 +49,10 @@ def progress_label(win_levels: int) -> str:
     return "level" if int(win_levels) > 1 else "progress"
 
 
-def progress_text(event: Mapping[str, Any]) -> str:
+def progress_text(event: Event) -> str:
     """`level 3/6` on a game, `progress 1/1` on a single-unit world."""
-    total = int(event["win_levels"])
-    current = min(total, int(event["levels_completed"]) + 1)
+    total = int(event.win_levels)
+    current = min(total, int(event.levels_completed) + 1)
     return f"{progress_label(total)} {current}/{total}"
 
 

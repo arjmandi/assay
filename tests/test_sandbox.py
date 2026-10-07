@@ -22,9 +22,10 @@ from pathlib import Path
 
 import pytest
 
-from conftest import ASSAY_CLI, FAKE_ADAPTER, run_cli, stop_run
+from conftest import ASSAY_CLI, FAKE_ADAPTER, event_of, run_cli, run_of, stop_run
 from assay import sandbox
 from assay.channels import channel_value, declare_channel
+from assay.records import Claim, Grade
 from assay.sandbox import (
     BWRAP,
     FORCE_VARIABLE,
@@ -44,7 +45,7 @@ BEFORE = {
     "data": {"counter": 0, "lamp": "off"},
 }
 AFTER = {**BEFORE, "data": {"counter": 1, "lamp": "off"}}
-EVENT = {**BEFORE, "observation": BEFORE["data"]}
+EVENT = event_of(**{key: value for key, value in BEFORE.items() if key != "data"}, observation=BEFORE["data"])
 
 MODE = sandbox_mode()
 # The errno texts a refusal surfaces as: EPERM from sandbox-exec, ENOENT from a
@@ -148,18 +149,17 @@ def verify(before, after):
 JOURNAL_LINE = '{"id": 0, "action": "START"}'
 
 
-def _graded(paths, body: str) -> dict:
+def _graded(paths, body: str) -> Grade:
     source = paths.root / "check.py"
     source.write_text(body)
-    claim = {"kind": "verify", "text": "verify:check.py", "path": "check.py"}
-    admit_verifier(paths, claim)
+    claim = admit_verifier(paths, Claim(kind="verify", text="verify:check.py", path="check.py"))
     return grade_verifier_claim(paths, claim, BEFORE, AFTER)
 
 
-def _refused(graded: dict) -> str:
+def _refused(graded: Grade) -> str:
     """The grading is INVALID because the sandbox raised, and says which error."""
-    assert graded["invalid"] is True and graded["ok"] is False, graded
-    actual = graded["actual"]
+    assert graded.invalid is True and graded.ok is False, graded
+    actual = graded.actual
     assert actual.startswith("INVALID_CLAIM: verifier crashed"), actual
     assert any(error in actual for error in REFUSALS), actual
     return actual
@@ -228,8 +228,8 @@ def test_the_process_argument_keys_are_denied_by_name(paths):
     # deny after the unfiltered allow wins. The MIB route is the OS's own
     # same-uid policy and stays open (sandbox.py says so where the rule is).
     graded = _graded(paths, READS_PROCARGS_BY_NAME)
-    assert "invalid" not in graded, graded["actual"]
-    result = json.loads(graded["actual"])
+    assert graded.invalid is False, graded.actual
+    result = json.loads(graded.actual)
     # Darwin 25 answers the denied read with EPERM; another macOS answers
     # EINVAL (the runners did): either way the call fails and not one byte
     # of the parent's arguments or environment comes back.
@@ -241,22 +241,22 @@ def test_output_past_the_cap_is_refused_at_once(paths):
     started = time.monotonic()
     graded = _graded(paths, PRINTS_PAST_THE_CAP)
     elapsed = time.monotonic() - started
-    assert graded["invalid"] is True and graded["ok"] is False, graded
-    assert graded["actual"] == "INVALID_CLAIM: verifier produced more than 1 MB of output", graded
+    assert graded.invalid is True and graded.ok is False, graded
+    assert graded.actual == "INVALID_CLAIM: verifier produced more than 1 MB of output", graded
     assert elapsed < 2 * VERIFY_TIMEOUT_SECONDS  # killed at the cap, not at the wall clock
 
 
 @linux_only
 def test_allocating_past_the_limit_is_killed(paths):
     graded = _graded(paths, ALLOCATES.format(size=2 * sandbox.ADDRESS_SPACE_LIMIT))
-    assert graded["invalid"] is True and graded["ok"] is False, graded
-    assert "MemoryError" in graded["actual"], graded["actual"]
+    assert graded.invalid is True and graded.ok is False, graded
+    assert "MemoryError" in graded.actual, graded.actual
 
 
 def test_numpy_and_json_import_inside_the_sandbox(paths):
     graded = _graded(paths, NUMPY)
-    assert "invalid" not in graded, graded["actual"]
-    assert graded["ok"] is True and graded["actual"] == "[1]"
+    assert graded.invalid is False, graded.actual
+    assert graded.ok is True and graded.actual == "[1]"
 
 
 @jailed
@@ -265,8 +265,9 @@ def test_an_extractor_cannot_read_the_journal(paths):
     (paths.root / "peek.py").write_text(
         f"def extract(obs):\n    return open({str(paths.events)!r}).read()\n"
     )
-    declare_channel(paths, "peek", file="peek.py")
-    ok, value = channel_value(paths, "peek", EVENT)
+    run = run_of(paths)
+    declare_channel(run, "peek", file="peek.py")
+    ok, value = channel_value(run, "peek", EVENT)
     assert ok is False and value.startswith("extractor crashed"), value
     assert any(error in value for error in REFUSALS), value
 
@@ -280,8 +281,8 @@ def test_the_reading_verifier_passes_under_the_forced_fallback(paths, monkeypatc
         "process isolation only (forced by ASSAY_SANDBOX)"
     )
     graded = _graded(paths, READS_JOURNAL.format(events=str(paths.events)))
-    assert "invalid" not in graded, graded["actual"]
-    assert graded["ok"] is True and graded["actual"] == JOURNAL_LINE
+    assert graded.invalid is False, graded.actual
+    assert graded.ok is True and graded.actual == JOURNAL_LINE
 
 
 def test_run_program_copies_companions_and_rewrites_their_paths(tmp_path):

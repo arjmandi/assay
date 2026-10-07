@@ -515,7 +515,7 @@ def test_ungated_event_invalidates_run(tmp_path):
         # Forge an ungated paid event straight into the journal.
         events = _events(run)
         forged = dict(events[-1])
-        forged.update(id=len(events), predict=None, predict_ok=None, grade=None)
+        forged.update(id=len(events), predict=None, predict_ok=None, grade=[])
         forged.pop("declares", None)
         with (run / ".assay" / "events.jsonl").open("a") as handle:
             handle.write(json.dumps(forged, sort_keys=True) + "\n")

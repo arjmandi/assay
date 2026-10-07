@@ -58,9 +58,13 @@ import math
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .core import AssayError, RunPaths, read_json
+from .records import Event
+
+if TYPE_CHECKING:
+    from .run import Run
 
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,31}$")
 _TYPES = ("int", "float", "str")
@@ -269,7 +273,8 @@ def action_spec(
     """The canonical spec of one registered action (None for RESET/unknown)."""
     for item in registry.get("actions", ()):
         if item["name"] == name.upper():
-            return item
+            spec: Mapping[str, Any] = item
+            return spec
     return None
 
 
@@ -279,7 +284,8 @@ def hand_cap(registry: Mapping[str, Any] | None) -> int | None:
         return None
     batching = registry.get("batching")
     if batching is not None and "hand_cap" in batching:
-        return batching["hand_cap"]
+        cap = batching["hand_cap"]
+        return None if cap is None else int(cap)
     return DEFAULT_HAND_CAP
 
 
@@ -288,7 +294,8 @@ def notes_cap(registry: Mapping[str, Any] | None) -> int | None:
     if not registry:
         return None
     if "notes_cap" in registry:
-        return registry["notes_cap"]
+        cap = registry["notes_cap"]
+        return None if cap is None else int(cap)
     return DEFAULT_NOTES_CAP
 
 
@@ -344,7 +351,12 @@ def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
         values = schema["enum"]
         if not isinstance(values, list) or not values:
             raise AssayError(f"parameter {where} enum must be a non-empty list")
-        expected = {"int": int, "float": (int, float), "str": str}[kind]
+        expected_types: dict[str, type | tuple[type, ...]] = {
+            "int": int,
+            "float": (int, float),
+            "str": str,
+        }
+        expected = expected_types[kind]
         for value in values:
             if isinstance(value, bool) or not isinstance(value, expected):
                 raise AssayError(
@@ -361,9 +373,9 @@ def load_registry(paths: RunPaths) -> dict[str, Any] | None:
     return value if isinstance(value, dict) else None
 
 
-def require_registry(paths: RunPaths) -> dict[str, Any]:
+def require_registry(run: Run) -> dict[str, Any]:
     """The pinned registry, for anything that acts. Every run since 1.2.0 has one."""
-    registry = load_registry(paths)
+    registry = run.registry
     if registry is None:
         raise AssayError(
             "this run has no registry: runs without one are not supported since "
@@ -462,12 +474,12 @@ def check_registry_action(name: str, available: Sequence[Any]) -> None:
         )
 
 
-def spent_actions(events: Sequence[Mapping[str, Any]]) -> int:
-    return sum(bool(event.get("counts_action")) for event in events)
+def spent_actions(events: Sequence[Event]) -> int:
+    return sum(1 for event in events if event.counts_action)
 
 
 def check_budget(
-    events: Sequence[Mapping[str, Any]],
+    events: Sequence[Event],
     registry: Mapping[str, Any] | None,
     planned: int = 1,
 ) -> None:
@@ -582,9 +594,7 @@ def check_usd_budget(
         )
 
 
-def budget_line(
-    registry: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
-) -> str:
+def budget_line(registry: Mapping[str, Any], events: Sequence[Event]) -> str:
     spent = spent_actions(events)
     cap = (registry.get("budget") or {}).get("actions")
     if cap is None:

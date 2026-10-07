@@ -1,6 +1,7 @@
 """Behavior modules: declare -> enforce -> grade units.
 
-A module is constitution text + a trigger + a demand schema + a mode + telemetry:
+A module is constitution text + a trigger + a demand schema + a mode + telemetry,
+the `Module` protocol below:
 
     NAME: str                # unique, lowercase
     CONSTITUTION: str            # one paragraph of way-of-thinking text
@@ -10,6 +11,11 @@ A module is constitution text + a trigger + a demand schema + a mode + telemetry
     observe(view, event) -> None              # optional: learn from outcomes
     telemetry(view) -> dict                    # free counters
 
+`view` is a `ModuleView` over the run: the events (read-only, as `Event`
+records), the registry, the run paths for a module's own files, and the two
+kernel methods a module records through, `record(kind, **fields)` and
+`hazards()`. A module never writes a kernel file by path.
+
 The shipping ladder is telemetry first, teeth later: every built-in ships with
 MODE "advise", and a run that wants teeth sets `module_modes` in its registry,
 because no A/B has yet shown that blocking pays. Demands are always for
@@ -17,10 +23,10 @@ checkable structure (named, non-empty fields supplied via --declare or the
 destructive-gate flags), never for confidence. Module code is pack-tier trust:
 installed by the human at registration (`modules: [path.py]`) or by the owner
 mid-run (`assay module install PATH --token TOK`), never writable by the
-agent. The daemon loads the modules at every gated action, and the CLI
-process loads them as well: `assay start` (the pin), `assay status` (the
-advisories), `assay module list` and `assay module install` each import the
-module files. Installed files are pinned into `.assay/modules/` and listed in
+agent. The modules load once per run object from the held manifest, in the
+daemon for every gated action and in the CLI for `assay status` and
+`assay module list`; `assay start` loads the registered files once to pin
+them. Installed files are pinned into `.assay/modules/` and listed in
 `.assay/modules/manifest.json` with their sha256; a file in that directory
 that is not listed, or whose hash no longer matches, is never loaded and
 status says so. This is the sanctioned hot-add channel: the owner installs,
@@ -29,7 +35,9 @@ the install is journaled, nothing else in the directory counts.
 The manifest, not a directory glob, decides what loads: `_load_external` reads
 the manifest's listed files whose hash still matches and nothing else, so the
 run loads only what the registry or the owner installed, and a file the agent
-writes into the directory is not a module.
+writes into the directory is not a module. A run started before the manifest
+existed has it reconstructed from the registry's `modules` list once, at
+`assay start`, never from a status call.
 
 Built-ins (the standing nudge table plus the first structural module):
 
@@ -57,13 +65,13 @@ Built-ins (the standing nudge table plus the first structural module):
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import shutil
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any, Protocol
 
 from .core import (
     AssayError,
@@ -73,17 +81,52 @@ from .core import (
     import_path,
     read_json,
 )
+from .records import Event
+
+if TYPE_CHECKING:
+    from .run import Run
 
 _MODES = ("off", "advise", "block")
 
 
-@dataclasses.dataclass
-class JournalView:
-    """What a module may read: the journal, the registry, the run paths."""
+class Module(Protocol):
+    """The module contract. `observe(view, event)` is optional and is called
+    when the module defines it."""
 
-    paths: RunPaths
-    events: Sequence[Mapping[str, Any]]
-    registry: Mapping[str, Any] | None
+    NAME: str
+    CONSTITUTION: str
+    MODE: str
+
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None: ...
+    def demand(self, view: ModuleView, pending: Mapping[str, Any] | None) -> dict[str, str] | None: ...
+    def telemetry(self, view: ModuleView) -> dict[str, Any]: ...
+
+
+class ModuleView:
+    """What a module may read: the journal (read-only), the registry and the
+    run paths for its own files; and how it records: `record` persists a
+    module-owned record through the kernel, `hazards` reads the hazard tags."""
+
+    __slots__ = ("events", "registry", "paths")
+
+    def __init__(self, run: Run) -> None:
+        self.events: tuple[Event, ...] = tuple(run.events)
+        self.registry: Mapping[str, Any] | None = (
+            MappingProxyType(run.registry) if run.registry is not None else None
+        )
+        self.paths: RunPaths = run.paths
+
+    def record(self, kind: str, **fields: Any) -> dict[str, Any]:
+        """Persist one module-owned record: an activity record of this kind,
+        and for `hazard_tagged` the tag into `hazards.json` as well."""
+        if kind == "hazard_tagged":
+            tags = load_hazards(self.paths)
+            tags.append(dict(fields))
+            atomic_json(hazards_path(self.paths), tags)
+        return append_jsonl(self.paths.activity, {"kind": kind, **fields})
+
+    def hazards(self) -> list[dict[str, Any]]:
+        return load_hazards(self.paths)
 
 
 def hazards_path(paths: RunPaths) -> Path:
@@ -95,32 +138,30 @@ def load_hazards(paths: RunPaths) -> list[dict[str, Any]]:
     return value if isinstance(value, list) else []
 
 
-def _unit(view: JournalView) -> str:
+def _unit(view: ModuleView) -> str:
     """What this world calls a progress unit in prose."""
     from .words import unit_noun
 
-    return unit_noun(view.events[-1]["win_levels"]) if view.events else "unit"
+    return unit_noun(view.events[-1].win_levels) if view.events else "unit"
 
 
-def _level_action_count(events: Sequence[Mapping[str, Any]]) -> int:
+def _level_action_count(events: Sequence[Event]) -> int:
     if not events:
         return 0
-    completed = int(events[-1]["levels_completed"])
+    completed = events[-1].levels_completed
     count = 0
     for event in reversed(events):
-        if int(event["levels_completed"]) != completed:
+        if event.levels_completed != completed:
             break
-        if event.get("counts_action"):
+        if event.counts_action:
             count += 1
     return count
 
 
-def _recent_predictions(
-    events: Sequence[Mapping[str, Any]], window: int = 10
-) -> tuple[int, int]:
-    graded = [event for event in events if event.get("predict_ok") is not None]
+def _recent_predictions(events: Sequence[Event], window: int = 10) -> tuple[int, int]:
+    graded = [event for event in events if event.predict_ok is not None]
     recent = graded[-window:]
-    hits = sum(1 for event in recent if event["predict_ok"])
+    hits = sum(1 for event in recent if event.predict_ok)
     return hits, len(recent)
 
 
@@ -132,7 +173,7 @@ class _WallSpend:
     )
     MODE = "advise"
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         level_actions = _level_action_count(view.events)
         if level_actions >= 25:
             return (
@@ -142,10 +183,10 @@ class _WallSpend:
             )
         return None
 
-    def demand(self, view: JournalView, pending: Mapping[str, Any] | None) -> None:
+    def demand(self, view: ModuleView, pending: Mapping[str, Any] | None) -> None:
         return None
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
         return {"level_actions": _level_action_count(view.events)}
 
 
@@ -157,7 +198,7 @@ class _MissStreak:
     )
     MODE = "advise"
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         hits, total = _recent_predictions(view.events)
         misses = total - hits
         if misses >= 3:
@@ -167,10 +208,10 @@ class _MissStreak:
             )
         return None
 
-    def demand(self, view: JournalView, pending: Mapping[str, Any] | None) -> None:
+    def demand(self, view: ModuleView, pending: Mapping[str, Any] | None) -> None:
         return None
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
         hits, total = _recent_predictions(view.events)
         return {"recent_hits": hits, "recent_graded": total}
 
@@ -183,26 +224,26 @@ class _NullForensics:
     )
     MODE = "advise"
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
-        for event in reversed(list(view.events)):
-            if event.get("predict_ok") is None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
+        for event in reversed(view.events):
+            if event.predict_ok is None:
                 continue
-            if event["predict_ok"]:
+            if event.predict_ok:
                 return None
-            for item in event.get("grade") or ():
-                if item.get("kind") == "change" and not item.get("ok"):
+            for item in event.grade:
+                if item.kind == "change" and not item.ok:
                     return (
-                        f"e{event['id']} predicted change and observed nothing; "
+                        f"e{event.id} predicted change and observed nothing; "
                         "run `assay view` on it and read the raw observation before "
                         "closing that hypothesis"
                     )
             return None
         return None
 
-    def demand(self, view: JournalView, pending: Mapping[str, Any] | None) -> None:
+    def demand(self, view: ModuleView, pending: Mapping[str, Any] | None) -> None:
         return None
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
         return {}
 
 
@@ -214,7 +255,7 @@ class _ParkWithTest:
     )
     MODE = "advise"
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         if pending and pending.get("kind") == "reset":
             return (
                 "resetting: record in NOTES.md what would have to be true to "
@@ -222,10 +263,10 @@ class _ParkWithTest:
             )
         return None
 
-    def demand(self, view: JournalView, pending: Mapping[str, Any] | None) -> None:
+    def demand(self, view: ModuleView, pending: Mapping[str, Any] | None) -> None:
         return None
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
         return {}
 
 
@@ -237,15 +278,14 @@ class _Sharpness:
     )
     MODE = "advise"
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         graded = coerced = 0
         for event in view.events:
-            for item in event.get("grade") or ():
-                kind = str(item.get("kind", ""))
-                if kind == "note" or item.get("machine"):
+            for item in event.grade:
+                if item.kind == "note" or item.machine:
                     continue
                 graded += 1
-                if kind == "coerced":
+                if item.kind == "coerced":
                     coerced += 1
         if graded >= 20 and coerced * 2 > graded:
             return (
@@ -254,10 +294,10 @@ class _Sharpness:
             )
         return None
 
-    def demand(self, view: JournalView, pending: Mapping[str, Any] | None) -> None:
+    def demand(self, view: ModuleView, pending: Mapping[str, Any] | None) -> None:
         return None
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
         return {}
 
 
@@ -271,14 +311,14 @@ class _Hazard:
     )
     MODE = "advise"
 
-    def _tagged_classes(self, view: JournalView) -> dict[str, dict[str, Any]]:
+    def _tagged_classes(self, view: ModuleView) -> dict[str, dict[str, Any]]:
         return {
             str(tag["action_class"]): tag
-            for tag in load_hazards(view.paths)
+            for tag in view.hazards()
             if tag.get("active", True)
         }
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         demands = self.demand(view, pending)
         if demands:
             tag = self._tagged_classes(view).get(str((pending or {}).get("name")))
@@ -292,7 +332,7 @@ class _Hazard:
         return None
 
     def demand(
-        self, view: JournalView, pending: Mapping[str, Any] | None
+        self, view: ModuleView, pending: Mapping[str, Any] | None
     ) -> dict[str, str] | None:
         if not pending or pending.get("kind") not in {"act", "commit"}:
             return None
@@ -307,40 +347,33 @@ class _Hazard:
         }
         return missing or None
 
-    def observe(self, view: JournalView, event: Mapping[str, Any]) -> None:
-        if not event.get("counts_action"):
+    def observe(self, view: ModuleView, event: Event) -> None:
+        if not event.counts_action:
             return
         signature = None
-        if str(event.get("state")) == "GAME_OVER":
+        if str(event.state) == "GAME_OVER":
             signature = "entered_loss_state"
-        else:
-            level_before = event.get("level_before")
-            if level_before is not None and int(event["levels_completed"]) < int(
-                level_before
-            ):
-                signature = "milestone_dropped"
+        elif event.level_before is not None and event.levels_completed < event.level_before:
+            signature = "milestone_dropped"
         if signature is None:
             return
-        action_class = str(event["action"])
-        tags = load_hazards(view.paths)
+        action_class = str(event.action)
         if any(
             tag["action_class"] == action_class and tag["signature"] == signature
-            for tag in tags
+            for tag in view.hazards()
         ):
             return
-        tag = {
-            "action_class": action_class,
-            "signature": signature,
-            "evidence_event": int(event["id"]),
-            "origin": "observed",
-            "active": True,
-        }
-        tags.append(tag)
-        atomic_json(hazards_path(view.paths), tags)
-        append_jsonl(view.paths.activity, {"kind": "hazard_tagged", **tag})
+        view.record(
+            "hazard_tagged",
+            action_class=action_class,
+            signature=signature,
+            evidence_event=int(event.id),
+            origin="observed",
+            active=True,
+        )
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
-        tags = load_hazards(view.paths)
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
+        tags = view.hazards()
         return {"tags": len(tags), "imported": sum(1 for tag in tags if tag.get("origin") == "import")}
 
 
@@ -356,40 +389,39 @@ COVERAGE_SENTINELS = frozenset(
 )
 
 
-def _unit_indices(events: Sequence[Mapping[str, Any]]) -> list[int]:
+def _unit_indices(events: Sequence[Event]) -> list[int]:
     """Indices of the events on the current progress unit, in order (the
     same walk as _level_action_count)."""
     if not events:
         return []
-    completed = int(events[-1]["levels_completed"])
+    completed = events[-1].levels_completed
     indices: list[int] = []
     for index in range(len(events) - 1, -1, -1):
-        if int(events[index]["levels_completed"]) != completed:
+        if events[index].levels_completed != completed:
             break
         indices.append(index)
     return list(reversed(indices))
 
 
-def _event_changed(events: Sequence[Mapping[str, Any]], index: int) -> bool:
+def _event_changed(events: Sequence[Event], index: int) -> bool:
     """Did paid event `index` change the world? The graded change or noop
     outcome when one exists, else the settled observation compared with the
     previous event's (the last frame for frame worlds, the object for dict
     worlds). Progress always counts as change."""
     event = events[index]
-    level_before = event.get("level_before")
-    if level_before is not None and int(event["levels_completed"]) > int(level_before):
+    if event.level_advanced:
         return True
-    for item in event.get("grade") or ():
-        if item.get("kind") == "change":
-            return bool(item.get("ok"))
-        if item.get("kind") == "noop":
-            return not item.get("ok")
+    for item in event.grade:
+        if item.kind == "change":
+            return bool(item.ok)
+        if item.kind == "noop":
+            return not item.ok
     if index == 0:
         return False
     previous = events[index - 1]
-    if "frames" in event and "frames" in previous:
-        return event["frames"][-1] != previous["frames"][-1]
-    return event.get("observation") != previous.get("observation")
+    if event.frames is not None and previous.frames is not None:
+        return event.frames[-1] != previous.frames[-1]
+    return event.observation != previous.observation
 
 
 def _params_key(params: Any) -> tuple[tuple[str, str], ...]:
@@ -398,8 +430,8 @@ def _params_key(params: Any) -> tuple[tuple[str, str], ...]:
     return tuple(sorted((str(key), str(value)) for key, value in params.items()))
 
 
-def _move_of(event: Mapping[str, Any]) -> tuple[str, tuple[tuple[str, str], ...]]:
-    return str(event.get("action", "")).upper(), _params_key(event.get("data"))
+def _move_of(event: Event) -> tuple[str, tuple[tuple[str, str], ...]]:
+    return str(event.action).upper(), _params_key(event.data)
 
 
 def _pending_move(pending: Mapping[str, Any]) -> tuple[str, tuple[tuple[str, str], ...]]:
@@ -413,7 +445,7 @@ def _format_move(move: tuple[str, tuple[tuple[str, str], ...]]) -> str:
     return name
 
 
-def _advertised(events: Sequence[Mapping[str, Any]]) -> list[str]:
+def _advertised(events: Sequence[Event]) -> list[str]:
     """The names the last event advertises, as the registry spells them."""
     from .extras import kind_for
 
@@ -422,17 +454,17 @@ def _advertised(events: Sequence[Mapping[str, Any]]) -> list[str]:
     if kind is not None:
         names = [name.upper() for name in kind.advertised_names(last)]
     else:
-        names = [str(value).upper() for value in last.get("available_actions") or ()]
+        names = [str(value).upper() for value in last.available_actions]
     return sorted(set(names))
 
 
-def coverage_ledger(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def coverage_ledger(events: Sequence[Event]) -> dict[str, Any]:
     """The coverage facts for the current progress unit."""
     indices = _unit_indices(events)
-    paid = [index for index in indices if events[index].get("counts_action")]
+    paid = [index for index in indices if events[index].counts_action]
     plays: dict[str, list[int]] = {}
     for index in paid:
-        name = str(events[index].get("action", "")).upper()
+        name = str(events[index].action).upper()
         record = plays.setdefault(name, [0, 0])
         record[0] += 1
         if _event_changed(events, index):
@@ -447,11 +479,11 @@ def coverage_ledger(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     tail = paid[-COVERAGE_STALL_WINDOW:]
     stalled = (
         len(tail) == COVERAGE_STALL_WINDOW
-        and str(events[-1].get("state")) == "NOT_FINISHED"
+        and str(events[-1].state) == "NOT_FINISHED"
         and not any(_event_changed(events, index) for index in tail)
     )
     return {
-        "unit": int(events[-1]["levels_completed"]),
+        "unit": events[-1].levels_completed,
         "paid_on_unit": len(paid),
         "paid_indices": paid,
         "advertised": advertised,
@@ -461,7 +493,7 @@ def coverage_ledger(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _gap_phrase(events: Sequence[Mapping[str, Any]], ledger: Mapping[str, Any]) -> str:
+def _gap_phrase(events: Sequence[Event], ledger: Mapping[str, Any]) -> str:
     from .extras import kind_for
 
     parts: list[str] = []
@@ -508,12 +540,12 @@ class _CoverageAudit:
     )
     MODE = "advise"
 
-    def trigger(self, view: JournalView, pending: Mapping[str, Any] | None) -> str | None:
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         events = list(view.events)
         if len(events) < 2:
             return None
         ledger = coverage_ledger(events)
-        paid = [event for event in events if event.get("counts_action")]
+        paid = [event for event in events if event.counts_action]
         if pending and pending.get("kind") in ("act", "commit") and paid:
             move = _pending_move(pending)
             # The loop (the stronger condition) before the single re-issue, or
@@ -522,14 +554,14 @@ class _CoverageAudit:
             if (
                 len(tail) == COVERAGE_LOOP_MIN
                 and all(_move_of(event) == move for event in tail)
-                and all(event.get("predict_ok") is False for event in tail)
+                and all(event.predict_ok is False for event in tail)
             ):
                 return (
                     f"{_format_move(move)} has missed {COVERAGE_LOOP_MIN} times in a row, "
                     f"you are looping. Stop repeating it. {_gap_phrase(events, ledger)}"
                 )
             last = paid[-1]
-            if last.get("predict_ok") is False and _move_of(last) == move:
+            if last.predict_ok is False and _move_of(last) == move:
                 return (
                     f"re-issuing {_format_move(move)} unmodified, it just graded FALSE. "
                     f"Halt: revise the model or probe an unexercised rule. "
@@ -563,7 +595,7 @@ class _CoverageAudit:
         return None
 
     def demand(
-        self, view: JournalView, pending: Mapping[str, Any] | None
+        self, view: ModuleView, pending: Mapping[str, Any] | None
     ) -> dict[str, str] | None:
         if not pending:
             return None
@@ -577,10 +609,10 @@ class _CoverageAudit:
                 )
             }
         if pending.get("kind") in ("act", "commit"):
-            paid = [event for event in view.events if event.get("counts_action")]
+            paid = [event for event in view.events if event.counts_action]
             if (
                 paid
-                and paid[-1].get("predict_ok") is False
+                and paid[-1].predict_ok is False
                 and _move_of(paid[-1]) == _pending_move(pending)
                 and not str(declares.get("revised", "")).strip()
             ):
@@ -592,7 +624,7 @@ class _CoverageAudit:
                 }
         return None
 
-    def telemetry(self, view: JournalView) -> dict[str, Any]:
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
         events = list(view.events)
         if not events:
             return {}
@@ -613,7 +645,7 @@ class _CoverageAudit:
         return telemetry
 
 
-BUILTINS = (
+BUILTINS: tuple[Module, ...] = (
     _WallSpend(),
     _MissStreak(),
     _NullForensics(),
@@ -640,7 +672,7 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _module_object(module: Any, file: Path) -> Any:
+def _module_object(module: Any, file: Path) -> Module:
     candidate = getattr(module, "MODULE", module)
     for attr in _CONTRACT:
         if not hasattr(candidate, attr):
@@ -648,7 +680,8 @@ def _module_object(module: Any, file: Path) -> Any:
                 f"module {file.name} lacks {attr!r}; the module contract is "
                 "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()"
             )
-    return candidate
+    loaded: Module = candidate
+    return loaded
 
 
 def module_name_of(file: Path) -> str:
@@ -717,19 +750,20 @@ def pin_external_modules(paths: RunPaths, registry: Mapping[str, Any] | None) ->
     _write_manifest(paths, entries)
 
 
-def install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str, Any]:
+def install_module(run: Run, source: Path, token: str | None) -> dict[str, Any]:
     """Owner-authorized mid-run install: copy, check the contract, append to
     the manifest, journal `module_installed`. The sanctioned hot-add channel."""
     from .agenda import require_owner
 
-    require_owner(paths, token)
+    require_owner(run, token)
+    paths = run.paths
     if not source.is_file():
         raise AssayError(f"module file not found: {source}")
     if source.suffix != ".py":
         raise AssayError("a module is one Python file (.py)")
     target = modules_dir(paths)
     target.mkdir(parents=True, exist_ok=True)
-    entries = [entry for entry in load_manifest(paths) if entry.get("file") != source.name]
+    entries = [entry for entry in run.manifest if entry.get("file") != source.name]
     taken = {str(entry["name"]): str(entry["file"]) for entry in entries}
     pinned = target / source.name
     shutil.copy2(source, pinned)
@@ -749,15 +783,20 @@ def install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str
     }
     entries.append(record)
     _write_manifest(paths, entries)
+    run.manifest = entries
+    run.modules = None
     append_jsonl(paths.activity, {"kind": "module_installed", **record})
     return record
 
 
-def _reconstruct_manifest(paths: RunPaths) -> list[dict[str, Any]]:
+def reconstruct_manifest(paths: RunPaths) -> list[dict[str, Any]]:
     """A run started before the manifest existed: its pinned files are exactly
-    the registry's `modules` list by basename. Rebuild the manifest from those
-    files once, so such a run keeps its modules and anything else in the
-    directory is unlisted."""
+    the registry's `modules` list by basename. `assay start` rebuilds the
+    manifest from those files once, so such a run keeps its modules and
+    anything else in the directory is unlisted. A run with a manifest, or
+    with no pinned files, is left alone."""
+    if manifest_path(paths).exists() or not modules_dir(paths).is_dir():
+        return []
     registry = read_json(paths.registry, None)
     wanted = {
         Path(entry).name
@@ -791,15 +830,14 @@ def _reconstruct_manifest(paths: RunPaths) -> list[dict[str, Any]]:
     return entries
 
 
-def module_inventory(paths: RunPaths) -> dict[str, Any]:
+def module_inventory(run: Run) -> dict[str, Any]:
     """Listed and loadable files, and everything in the directory that is not:
-    unlisted files and listed files whose hash changed."""
-    target = modules_dir(paths)
+    unlisted files and listed files whose hash changed. Reads the held
+    manifest and the directory; writes nothing."""
+    target = modules_dir(run.paths)
     if not target.is_dir():
         return {"listed": [], "ignored": []}
-    entries = load_manifest(paths)
-    if not entries and not manifest_path(paths).exists():
-        entries = _reconstruct_manifest(paths)
+    entries = run.manifest
     listed: list[dict[str, Any]] = []
     ignored: list[str] = []
     by_file = {str(entry.get("file")): entry for entry in entries}
@@ -817,17 +855,17 @@ def module_inventory(paths: RunPaths) -> dict[str, Any]:
     return {"listed": listed, "ignored": ignored}
 
 
-def _load_external(paths: RunPaths) -> list[Any]:
-    loaded: list[Any] = []
-    for entry in module_inventory(paths)["listed"]:
+def _load_external(run: Run) -> list[Module]:
+    loaded: list[Module] = []
+    for entry in module_inventory(run)["listed"]:
         file = entry["path"]
         with import_path(file, "assay_module") as module:
             loaded.append(_module_object(module, file))
     return loaded
 
 
-def unlisted_lines(paths: RunPaths) -> list[str]:
-    ignored = module_inventory(paths)["ignored"]
+def unlisted_lines(run: Run) -> list[str]:
+    ignored = module_inventory(run)["ignored"]
     if not ignored:
         return []
     return [
@@ -836,33 +874,29 @@ def unlisted_lines(paths: RunPaths) -> list[str]:
     ]
 
 
-def active_modules(
-    paths: RunPaths, registry: Mapping[str, Any] | None
-) -> list[tuple[Any, str]]:
-    """(module, effective_mode) for every non-off module."""
-    modes = (registry or {}).get("module_modes") or {}
-    output: list[tuple[Any, str]] = []
-    for module in (*BUILTINS, *_load_external(paths)):
-        mode = str(modes.get(module.NAME, module.MODE))
-        if mode not in _MODES:
-            mode = module.MODE
-        if mode != "off":
-            output.append((module, mode))
-    return output
+def active_modules(run: Run) -> list[tuple[Module, str]]:
+    """(module, effective_mode) for every non-off module, loaded once per run
+    object from the held manifest."""
+    if run.modules is None:
+        modes = (run.registry or {}).get("module_modes") or {}
+        output: list[tuple[Module, str]] = []
+        for module in (*BUILTINS, *_load_external(run)):
+            mode = str(modes.get(module.NAME, module.MODE))
+            if mode not in _MODES:
+                mode = module.MODE
+            if mode != "off":
+                output.append((module, mode))
+        run.modules = output
+    return list(run.modules)
 
 
-def consult_modules(
-    paths: RunPaths,
-    registry: Mapping[str, Any] | None,
-    events: Sequence[Mapping[str, Any]],
-    pending: Mapping[str, Any] | None,
-) -> list[str]:
+def consult_modules(run: Run, pending: Mapping[str, Any] | None) -> list[str]:
     """Run every active module against a pending action. Block-mode unmet
     demands REFUSE (structural, satisfiable via --declare); advise-mode
     triggers return advisory lines."""
-    view = JournalView(paths=paths, events=events, registry=registry)
+    view = ModuleView(run)
     lines: list[str] = []
-    for module, mode in active_modules(paths, registry):
+    for module, mode in active_modules(run):
         demands = module.demand(view, pending)
         if demands and mode == "block":
             wanted = ", ".join(f"--declare {field}=..." for field in sorted(demands))
@@ -877,29 +911,20 @@ def consult_modules(
     return lines
 
 
-def observe_outcome(
-    paths: RunPaths,
-    registry: Mapping[str, Any] | None,
-    events: Sequence[Mapping[str, Any]],
-    event: Mapping[str, Any],
-) -> None:
+def observe_outcome(run: Run, event: Event) -> None:
     """Let modules learn from a graded outcome (hazard tagging etc.)."""
-    view = JournalView(paths=paths, events=events, registry=registry)
-    for module, _ in active_modules(paths, registry):
+    view = ModuleView(run)
+    for module, _ in active_modules(run):
         observe = getattr(module, "observe", None)
         if callable(observe):
             observe(view, event)
 
 
-def advisory_lines(
-    paths: RunPaths,
-    registry: Mapping[str, Any] | None,
-    events: Sequence[Mapping[str, Any]],
-) -> list[str]:
+def advisory_lines(run: Run) -> list[str]:
     """Status-time advisories (no pending action), the old nudge surface."""
-    view = JournalView(paths=paths, events=events, registry=registry)
+    view = ModuleView(run)
     lines: list[str] = []
-    for module, _ in active_modules(paths, registry):
+    for module, _ in active_modules(run):
         message = module.trigger(view, None)
         if message:
             lines.append(f"MODULE {module.NAME} | {message}")

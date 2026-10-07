@@ -14,7 +14,9 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Sequence
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -99,3 +101,75 @@ def paths(tmp_path: Path):
     run_paths = RunPaths(tmp_path)
     run_paths.state.mkdir(parents=True, exist_ok=True)
     return run_paths
+
+
+def event_of(**overrides: Any) -> Any:
+    """A valid dict-world event with every required key, for the unit tests:
+    the overrides replace the defaults, and an optional key given here is
+    present on the line. `grade` may be given as Grade records; `frames` as
+    rows, which makes a frame-world event."""
+    from assay.records import Event, Grade
+
+    raw: dict[str, Any] = {
+        "id": 1,
+        "timestamp": "2026-01-01T00:00:00+00:00",
+        "action": "INC",
+        "data": {"amount": 1},
+        "counts_action": True,
+        "state": "NOT_FINISHED",
+        "levels_completed": 0,
+        "level_before": 0,
+        "win_levels": 1,
+        "available_actions": ["INC", "NOOP"],
+        "note": "",
+        "observation": {"counter": 0},
+        **overrides,
+    }
+    if "grade" in raw and raw["grade"] is None:
+        # No grade on the line: the journal never carries a null one.
+        del raw["grade"]
+    if raw.get("grade") is not None:
+        # A dict grade given with only the keys a test looks at gets the
+        # journal's other required keys around them.
+        raw["grade"] = [
+            item.to_json()
+            if isinstance(item, Grade)
+            else {"text": str(item.get("kind", "")), "actual": "", "bucket": "world_model", **item}
+            for item in raw["grade"]
+        ]
+    if raw.get("frames") is not None:
+        raw["frames"] = [list(frame) for frame in raw["frames"]]
+        raw.setdefault("n_frames", len(raw["frames"]))
+        if "observation" not in overrides:
+            raw.pop("observation", None)
+    return Event.from_json(raw)
+
+
+def journal_head(paths: Any) -> str:
+    """The chain head over a journal file, by the rule of
+    verify/JOURNAL_SPEC.md section 4, kept here so the tests hold the kernel
+    to the spec and not to itself."""
+    import hashlib
+
+    head = hashlib.sha256(b"assay-chain-v1").hexdigest()
+    try:
+        lines = paths.events.read_text().splitlines()
+    except FileNotFoundError:
+        return head
+    for line in lines:
+        if line.strip():
+            head = hashlib.sha256(head.encode() + line.encode()).hexdigest()
+    return head
+
+
+def run_of(paths: Any, events: Sequence[Any] = (), registry: dict[str, Any] | None = None) -> Any:
+    """An in-memory run over these events, for the unit tests: nothing is
+    read from disk and the loader is not involved."""
+    from assay.run import Run
+
+    return Run(
+        paths=paths,
+        config={"game_id": "test", "mode": "local"},
+        registry=registry,
+        events=list(events),
+    )

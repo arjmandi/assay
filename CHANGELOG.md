@@ -75,6 +75,25 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- The typed records and the run model of design note 1 (#12). `records.py`
+  holds the frozen dataclasses `Event`, `Claim`, `Grade`, `Receipt` with
+  `ReceiptStep`, and `Mutation`: `from_json` validates the type of every
+  known key and carries unknown keys through `extra`, `to_json` emits exactly
+  the keys the spec names, and every one of the 66 published journals loads
+  and re-serializes to the same bytes (`tests/test_records.py`). `run.py`
+  holds the `Run`: `Run.load(paths, strict=...)` reads the configuration, the
+  registry, the journal, the chain, the mutation log, the manifest and the
+  owner hash once per process and never writes; `run.append` is the one
+  writer of the journal, advancing the held head with the exact line it wrote,
+  writing `chain.json` and anchoring when due; `run.verify_disk` names every
+  difference between the files and the held copies as a `Tamper` (the daemon
+  calls it from #20). Every function below the entry points takes the run.
+  The `Module` protocol and `ModuleView(run)` (read-only events, the
+  registry, the paths, `record` and `hazards`) replace `JournalView`; the
+  `Adapter` and `Session` protocols in `adapters.py` state the adapter
+  contract, and the conformance test checks every adapter against them.
+  `mypy --strict src/assay` is clean (36 errors before), and mypy joins the
+  dev extra; #27 puts it in CI.
 - The 1.2.0 design notes, sections 6 to 8 of `docs/ARCHITECTURE.md`: the run
   model with typed records, the protocol with its error model and surfaces, and
   the trust model; `verify/JOURNAL_SPEC.md` states that `data` may hold any JSON
@@ -280,6 +299,31 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- Event 0 is the daemon's (#12). On a fresh run `serve` takes the first
+  observation, writes the session's `public_info` into `config.json`, appends
+  `START` through `run.append` and runs the observation kind's after-record
+  work before it binds the socket and reports READY; `assay start` prints
+  status from the journal the daemon opened. The CLI writes `config.json`, the
+  registry copy, the owner file and the notes file before the spawn and never
+  writes `config.json` after.
+- The one-writer rule (#12). While a daemon lives only it appends to
+  `events.jsonl`, through `run.append`; the one append without a daemon is
+  `reconcile` at start. The id of the next event is the held count, never the
+  line count on disk, and the daemon writes its mutation records through the
+  run as well. Behavior modules persist through `view.record`, never by path.
+- The strict and lenient loads (#12). `assay start` and the daemon load the
+  run strict: a contiguity problem or a diverged chain refuses with
+  `CHAIN_DIVERGED | ...` and rewrites nothing, so the evidence of an edit
+  stays on disk; an absent or crash-behind chain is held as the recomputed
+  head and repaired by the next append, as before. The readers (`status`,
+  `view`, `audit`, `channel list` and the rest) load lenient: `audit` reports
+  as it did, and status names a contiguity problem or a diverged chain on an
+  INTEGRITY line instead of refusing; a line that does not decode is a
+  finding the same way (the events before it are kept, the journal ends
+  there) where it was an internal error. A malformed `chain.json` reads as
+  diverged, and a chain counts as behind only by the one line a crash
+  leaves. A manifest missing from a run pinned before manifests existed is
+  rebuilt at `assay start`, never from a status call.
 - Model promotion counts only the transitions recorded after the current
   model hash was first replayed (#18). The admission event is stored as
   `admitted_at_event` in the fit record, read from the earliest
@@ -376,6 +420,10 @@ Left on the experiment branch, deliberately:
 
 ### Removed
 
+- `core.load_events`, `core.append_event`, `integrity.extend_chain` and
+  `modules.JournalView` (#12): the run's held events, `run.append` and
+  `ModuleView` replace them, and an AST test refuses a journal reload below
+  the entry points (`tests/test_run_model.py`).
 - The legacy numbered-action path (O2): runs started without a registry,
   which spoke `ACTION1..7` and `ACTION6:x,y` with a 0 to 63 bound, had the
   CLI write their events, and admitted the grid claim forms. `assay start`

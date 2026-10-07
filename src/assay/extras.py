@@ -21,55 +21,49 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any, Protocol
+from typing import TYPE_CHECKING, Any, Protocol
 
-from .core import AssayError, RunPaths
+from .core import AssayError
+from .records import Claim, Event, Grade, Receipt
+
+if TYPE_CHECKING:
+    from .run import Run
 
 
 class ObservationKind(Protocol):
     """What an observation kind provides. `assay_grid.KIND` is the one
-    implementation; a second kind would implement the same names."""
+    implementation; a second kind would implement the same names. The display
+    and after-record methods take the run and never reload the journal."""
 
     name: str
 
-    def applies(self, event: Mapping[str, Any]) -> bool: ...
+    def applies(self, event: Event) -> bool: ...
 
     # Claims: extra patterns, their field extraction, their grader, the help.
     def claim_patterns(self) -> Sequence[tuple[str, re.Pattern[str]]]: ...
     def claim_fields(self, kind: str, match: re.Match[str]) -> dict[str, Any]: ...
     def claims_help(self) -> str: ...
     def grade_claims(
-        self,
-        claims: Sequence[Mapping[str, Any]],
-        prior_event: Mapping[str, Any],
-        event: Mapping[str, Any],
-    ) -> list[dict[str, Any]]: ...
+        self, claims: Sequence[Claim], prior_event: Event, event: Event
+    ) -> list[Grade]: ...
 
     # After every recorded event: render, dossier.
-    def after_record(
-        self, paths: RunPaths, event: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
-    ) -> None: ...
+    def after_record(self, run: Run, event: Event) -> None: ...
 
     # Display.
-    def status_head_lines(
-        self, paths: RunPaths, event: Mapping[str, Any], registry: Mapping[str, Any] | None
-    ) -> list[str]: ...
-    def result_lines(
-        self, paths: RunPaths, receipt: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
-    ) -> list[str]: ...
-    def view_text(
-        self, paths: RunPaths, events: Sequence[Mapping[str, Any]], index: int, flags: Mapping[str, Any]
-    ) -> str: ...
+    def status_head_lines(self, run: Run, event: Event) -> list[str]: ...
+    def result_lines(self, run: Run, receipt: Receipt) -> list[str]: ...
+    def view_text(self, run: Run, index: int, flags: Mapping[str, Any]) -> str: ...
     def history_line(
-        self, events: Sequence[Mapping[str, Any]], event: Mapping[str, Any], paid: int, mark: str
+        self, events: Sequence[Event], event: Event, paid: int, mark: str
     ) -> str: ...
-    def canonical_action(self, event: Mapping[str, Any]) -> str | None: ...
-    def advertised_names(self, event: Mapping[str, Any]) -> list[str]: ...
-    def python_namespace(self, events: Sequence[Mapping[str, Any]]) -> dict[str, Any]: ...
+    def canonical_action(self, event: Event) -> str | None: ...
+    def advertised_names(self, event: Event) -> list[str]: ...
+    def python_namespace(self, events: Sequence[Event]) -> dict[str, Any]: ...
 
     # CLI: the kernel declares the frame-only view flags (inert on a dict
     # run); the kind exports the grid history.
-    def export_history(self, paths: RunPaths, destination: Path) -> Path: ...
+    def export_history(self, run: Run, destination: Path) -> Path: ...
 
 
 _MISSING = (
@@ -87,10 +81,10 @@ def _grid_kind() -> ObservationKind:
     return KIND
 
 
-def kind_for(event: Mapping[str, Any] | None) -> ObservationKind | None:
+def kind_for(event: Event | None) -> ObservationKind | None:
     """The observation kind of one event, or None for the dict shape. Imports
     the extra lazily and only when an event actually has frames."""
-    if event is not None and "frames" in event:
+    if event is not None and event.frames is not None:
         return _grid_kind()
     return None
 
@@ -106,7 +100,7 @@ def all_kinds() -> list[ObservationKind]:
     return [KIND]
 
 
-def require_kind(event: Mapping[str, Any] | None, what: str) -> ObservationKind:
+def require_kind(event: Event | None, what: str) -> ObservationKind:
     kind = kind_for(event)
     if kind is None:
         raise AssayError(f"{what} applies to frame worlds; this run has dict observations")

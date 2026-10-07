@@ -7,15 +7,16 @@ import json
 
 import pytest
 
-from assay.core import AssayError, RunPaths, append_jsonl
+from conftest import event_of, journal_head, run_of
+
+from assay.core import AssayError, RunPaths, atomic_json
 from assay.integrity import (
     audit,
-    compute_chain,
-    extend_chain,
     redact,
     redact_mapping,
     ungated_events,
 )
+from assay.run import Run
 from assay.predictions import claim_bucket, parse_claims
 from assay.registry import (
     hand_cap,
@@ -102,17 +103,17 @@ def test_channel_claims_parse():
         "ch counter = 3; ch counter delta >= 1; ch temp crosses 5 from below; "
         "ch level delta sign +",
     )
-    kinds = [claim["kind"] for claim in claims]
+    kinds = [claim.kind for claim in claims]
     assert kinds == ["channel_eq", "channel_delta", "channel_cross", "channel_delta"]
-    assert claims[0]["value"] == 3
-    assert claims[1]["op"] == ">=" and claims[1]["value"] == 1
-    assert claims[2]["direction"] == "below"
-    assert claims[3]["op"] == "sign" and claims[3]["sign"] == "+"
+    assert claims[0].value == 3
+    assert claims[1].op == ">=" and claims[1].value == 1
+    assert claims[2].direction == "below"
+    assert claims[3].op == "sign" and claims[3].sign == "+"
 
 
 def test_channel_claim_tolerance_and_window():
     claims = parse_claims("ch price = 4.5 +- 0.2 @within 1.5s")
-    assert claims[0]["tol"] == 0.2 and claims[0]["window_s"] == 1.5
+    assert claims[0].tol == 0.2 and claims[0].window_s == 1.5
     with pytest.raises(AssayError):
         parse_claims("ch price = up down")  # malformed, not a note
 
@@ -132,9 +133,9 @@ def test_aggregate_additive_rule():
     claims = parse_claims(
         "noop; agg ch counter mean >= 1 over 3a horizon 5a on-fail revoke_batching",
     )
-    aggregate = next(claim for claim in claims if claim["kind"] == "aggregate")
-    assert aggregate["over"] == 3 and aggregate["horizon"] == 5
-    assert aggregate["on_fail"] == "revoke_batching"
+    aggregate = next(claim for claim in claims if claim.kind == "aggregate")
+    assert aggregate.over == 3 and aggregate.horizon == 5
+    assert aggregate.on_fail == "revoke_batching"
     with pytest.raises(AssayError):
         parse_claims("noop; agg ch c mean >= 1 over 3a horizon 500a on-fail advise")
 
@@ -164,6 +165,7 @@ def test_redact_secret_values(monkeypatch):
 def _fake_paths(tmp_path) -> RunPaths:
     paths = RunPaths(tmp_path)
     paths.state.mkdir(parents=True, exist_ok=True)
+    atomic_json(paths.config, {"game_id": "fake1", "mode": "local"})
     return paths
 
 
@@ -190,14 +192,13 @@ def _event(i: int, **overrides):
 def test_chain_extend_and_audit(tmp_path, monkeypatch):
     monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
     paths = _fake_paths(tmp_path / "run")
+    run = Run.load(paths, strict=True)
     for i in range(3):
-        append_jsonl(paths.events, _event(i, action="START" if i == 0 else "GO",
-                                          predict=None if i == 0 else "change",
-                                          predict_ok=None if i == 0 else True,
-                                          grade=None if i == 0 else _event(i)["grade"]))
-        line = paths.events.read_text().splitlines()[-1]
-        extend_chain(paths, line, i, win=False)
-    report = audit(paths)
+        run.append(event_of(**_event(i, action="START" if i == 0 else "GO",
+                                     predict=None if i == 0 else "change",
+                                     predict_ok=None if i == 0 else True,
+                                     grade=None if i == 0 else _event(i)["grade"])))
+    report = audit(run)
     assert report["chain"] == "intact"
     assert report["contiguous"] and not report["ungated"]
     assert not report["invalid_for_scoring"]
@@ -205,7 +206,7 @@ def test_chain_extend_and_audit(tmp_path, monkeypatch):
     lines = paths.events.read_text().splitlines()
     lines[1] = lines[1].replace('"GO"', '"XX"')
     paths.events.write_text("\n".join(lines) + "\n")
-    report = audit(paths)
+    report = audit(Run.load(paths, strict=False))
     assert report["chain"] == "DIVERGED"
     assert report["invalid_for_scoring"]
 
@@ -218,38 +219,36 @@ def test_ungated_definition(tmp_path):
         _event(2, predict=None, predict_ok=None, grade=None),      # UNGATED
         _event(3, action="RESET", predict=None, predict_ok=None, grade=None),
     ]
-    assert ungated_events(events) == [2]
+    assert ungated_events([event_of(**event) for event in events]) == [2]
 
 
 def test_anchor_written_on_win(tmp_path, monkeypatch):
     monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
     paths = _fake_paths(tmp_path / "run")
-    append_jsonl(paths.events, _event(0, state="WIN"))
-    line = paths.events.read_text().splitlines()[-1]
-    extend_chain(paths, line, 0, win=True)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(**_event(0, state="WIN")))
     from assay.integrity import anchor_file
 
-    anchors = anchor_file(paths).read_text().splitlines()
+    anchors = anchor_file(paths, run.config).read_text().splitlines()
     assert len(anchors) == 1
     entry = json.loads(anchors[0])
     assert entry["event_id"] == 0
-    _, head = compute_chain(paths)
-    assert entry["head"] == head
+    assert entry["head"] == journal_head(paths)
 
 
 # -------------------------------------------------------------------- hazard
 
 
 def test_hazard_tags_and_demands(tmp_path):
-    from assay.modules import JournalView, _Hazard
+    from assay.modules import ModuleView, _Hazard
 
     paths = _fake_paths(tmp_path / "run")
     hazard = _Hazard()
     events = [
-        _event(0, action="START", counts_action=False),
-        _event(1, action="BOMB", state="GAME_OVER"),
+        event_of(**_event(0, action="START", counts_action=False)),
+        event_of(**_event(1, action="BOMB", state="GAME_OVER")),
     ]
-    view = JournalView(paths=paths, events=events, registry={"actions": []})
+    view = ModuleView(run_of(paths, events, registry={"actions": []}))
     hazard.observe(view, events[1])
     tags = json.loads((paths.state / "hazards.json").read_text())
     assert tags[0]["action_class"] == "BOMB"
@@ -271,20 +270,20 @@ def test_batching_rights_reads_both_fit_record_forms(tmp_path):
     `admitted_at_event` and reads exactly as it always did (the published
     run directories hold such records); a record with one names the counted
     transitions."""
-    from assay.core import atomic_json
     from assay.model import batching_rights, fit_path
 
     paths = _fake_paths(tmp_path / "run")
+    run = run_of(paths)
     old = {"fit": 0.0, "graded": 0, "missed": 0, "recent_graded": 0, "promotion": False}
     atomic_json(fit_path(paths), old)
-    assert batching_rights(paths) == (
+    assert batching_rights(run) == (
         False,
         "replay-fit not promoted: graded 0, missed 0, recent 0 "
         "(needs missed=0, graded>=20, recent>=5)",
     )
     new = {**old, "graded": 20, "admitted_at_event": 20, "counted": 0, "counted_recent": 0}
     atomic_json(fit_path(paths), new)
-    assert batching_rights(paths) == (
+    assert batching_rights(run) == (
         False,
         "replay-fit not promoted: counted 0 since the admission at e20, missed 0, "
         "recent 0 (needs missed=0, counted>=20, recent>=5)",

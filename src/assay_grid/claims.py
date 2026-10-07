@@ -14,12 +14,13 @@ before the extra existed. The grade records it returns are unchanged.
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from typing import Any
 
 import numpy as np
 
 from assay.core import frame_at
+from assay.records import Claim, Event, Grade
 
 GRID_KINDS = ("cell", "move", "vanish", "region")
 
@@ -74,7 +75,7 @@ def claim_fields(kind: str, found: re.Match[str]) -> dict[str, Any]:
     raise ValueError(kind)
 
 
-def _flood(grid: np.ndarray, x: int, y: int) -> tuple[int, set[tuple[int, int]]]:
+def _flood(grid: np.ndarray[Any, Any], x: int, y: int) -> tuple[int, set[tuple[int, int]]]:
     color = int(grid[y, x])
     height, width = grid.shape
     stack = [(y, x)]
@@ -94,22 +95,20 @@ def _flood(grid: np.ndarray, x: int, y: int) -> tuple[int, set[tuple[int, int]]]
 
 
 def grade_claims(
-    claims: Sequence[Mapping[str, Any]],
-    before: np.ndarray,
-    event: Mapping[str, Any],
-) -> list[dict[str, Any]]:
-    """Grade each claim against the settled result; ok plus a short actual."""
+    claims: Sequence[Claim],
+    before: np.ndarray[Any, Any],
+    event: Event,
+) -> list[Grade]:
+    """Grade each claim against the settled result; ok plus a short actual.
+    The frame forms read their coordinates from the claim's `extra`."""
     after = frame_at(event)
     same_shape = before.shape == after.shape
     changed = int(np.count_nonzero(before != after)) if same_shape else None
-    level_before = event.get("level_before")
-    level_advanced = (
-        level_before is not None
-        and int(event["levels_completed"]) > int(level_before)
-    )
-    graded: list[dict[str, Any]] = []
+    level_advanced = event.level_advanced
+    graded: list[Grade] = []
     for claim in claims:
-        kind = claim["kind"]
+        kind = claim.kind
+        fields = claim.extra
         if kind == "note":
             continue
         ok = False
@@ -129,24 +128,24 @@ def grade_claims(
                 else f"{changed if same_shape else 'board'} changed"
             )
         elif kind == "win":
-            ok = str(event["state"]) == "WIN"
-            actual = f"state {event['state']}"
+            ok = str(event.state) == "WIN"
+            actual = f"state {event.state}"
         elif kind == "level_up":
             ok = level_advanced
             actual = (
-                f"level advanced to {int(event['levels_completed'])} completed"
+                f"level advanced to {int(event.levels_completed)} completed"
                 if level_advanced
                 else "level did not advance"
             )
         elif kind == "cell":
-            x, y = int(claim["x"]), int(claim["y"])
+            x, y = int(fields["x"]), int(fields["y"])
             if not (same_shape and 0 <= y < after.shape[0] and 0 <= x < after.shape[1]):
                 actual = "coordinates out of bounds"
             else:
-                ok = int(after[y, x]) == int(claim["value"])
+                ok = int(after[y, x]) == int(fields["value"])
                 actual = f"cell ({x},{y}) is {int(after[y, x]):x}"
         elif kind == "vanish":
-            x, y = int(claim["x"]), int(claim["y"])
+            x, y = int(fields["x"]), int(fields["y"])
             if not (same_shape and 0 <= y < before.shape[0] and 0 <= x < before.shape[1]):
                 actual = "coordinates out of bounds"
             else:
@@ -161,8 +160,8 @@ def grade_claims(
                     else f"{remaining}/{len(cells)} cells still color {color:x}"
                 )
         elif kind == "move":
-            x, y = int(claim["x"]), int(claim["y"])
-            dx, dy = int(claim["dx"]), int(claim["dy"])
+            x, y = int(fields["x"]), int(fields["y"])
+            dx, dy = int(fields["dx"]), int(fields["dy"])
             if not (same_shape and 0 <= y < before.shape[0] and 0 <= x < before.shape[1]):
                 actual = "coordinates out of bounds"
             else:
@@ -190,8 +189,8 @@ def grade_claims(
                     else:
                         actual = f"old cells still color {color:x} (copied, not moved)"
         elif kind == "region":
-            x0, x1 = int(claim["x0"]), int(claim["x1"])
-            y0, y1 = int(claim["y0"]), int(claim["y1"])
+            x0, x1 = int(fields["x0"]), int(fields["x1"])
+            y0, y1 = int(fields["y0"]), int(fields["y1"])
             if not same_shape:
                 actual = "board size changed"
             elif not changed:
@@ -208,5 +207,5 @@ def grade_claims(
                     if ok
                     else f"{len(outside)} changes outside, e.g. (x,y) {outside[0]}"
                 )
-        graded.append({**dict(claim), "ok": bool(ok), "actual": actual})
+        graded.append(Grade.of(claim, ok=bool(ok), actual=actual))
     return graded

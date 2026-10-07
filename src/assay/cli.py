@@ -8,7 +8,7 @@ import shutil
 import sys
 import traceback
 from pathlib import Path
-from typing import Any
+from typing import Any, NoReturn
 
 from . import JOURNAL_SPEC, __version__
 from .agenda import (
@@ -25,7 +25,6 @@ from .broker import (
     REMOTE_MODE,
     broker_gated,
     broker_matches_latest_event,
-    broker_observe,
     broker_ping,
     check_adapter_spec,
     find_daemon,
@@ -50,10 +49,11 @@ from .model import (
     solve_model,
 )
 from .modules import (
+    ModuleView,
     active_modules,
     install_module,
-    load_manifest,
     pin_external_modules,
+    reconstruct_manifest,
     unlisted_lines,
 )
 from .sandbox import (
@@ -66,23 +66,21 @@ from .sandbox import (
 from .core import (
     AssayError,
     RunPaths,
-    append_event,
     append_jsonl,
     atomic_json,
     command_status,
-    load_events,
     load_jsonl,
-    make_event,
     normalize_game_id,
     now_iso,
     read_json,
     require_run,
     run_lock,
 )
-from .extras import kind_for, require_kind
+from .extras import require_kind
 from .inspect import result_text, status_text, view_text
 from .predictions import claims_help
 from .registry import gate_mode, load_registry_file
+from .run import Run
 
 
 class Parser(argparse.ArgumentParser):
@@ -92,7 +90,7 @@ class Parser(argparse.ArgumentParser):
 
     lazy_epilog: Any = None
 
-    def error(self, message: str) -> None:
+    def error(self, message: str) -> NoReturn:
         raise AssayError(message)
 
     def format_help(self) -> str:
@@ -423,11 +421,9 @@ def _write_notes(paths: RunPaths, game_id: str) -> None:
     )
 
 
-def _remote_idle_seconds(paths: RunPaths, config: dict[str, Any]) -> float:
-    mutations = load_jsonl(paths.mutations)
-    timestamp = (
-        mutations[-1].get("timestamp") if mutations else config.get("created_at")
-    )
+def _remote_idle_seconds(run: Run) -> float:
+    mutations = run.mutations
+    timestamp = mutations[-1].timestamp if mutations else run.config.get("created_at")
     if not timestamp:
         return 0.0
     try:
@@ -481,6 +477,12 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 f"this resume uses {sys.executable}; the daemon inherits this one, so "
                 "set ASSAY_PYTHON to the original if the adapter's dependencies live there"
             )
+        # A run pinned before the manifest existed has it rebuilt once, here
+        # and never from a status call.
+        reconstruct_manifest(paths)
+        # Strict: a contiguity problem or a diverged chain refuses the resume
+        # with CHAIN_DIVERGED and rewrites nothing.
+        run = Run.load(paths, strict=True)
         # Orphan recovery (a spend the daemon journaled in mutations.jsonl
         # before anyone appended its event) runs here and only here, and only
         # once the daemon is confirmed dead or absent. While the daemon lives,
@@ -491,14 +493,14 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         owner = read_json(paths.broker, {})
         if owner.get("status") == "FINISHED":
             if find_daemon(paths) is None:
-                recovered = reconcile_mutations(paths)
+                recovered = reconcile_mutations(run)
             print(f"RESUMED | {requested} | completed run")
             if recovered:
                 print(f"JOURNAL | recovered {recovered} paid action(s) into timeline")
-            print(status_text(paths))
+            print(status_text(run))
             return
         if is_remote_config(existing):
-            idle = _remote_idle_seconds(paths, existing)
+            idle = _remote_idle_seconds(run)
             if idle >= 15 * 60:
                 raise AssayError(
                     "REMOTE_LEASE_EXPIRED | no live action was recorded for at least 15 minutes. The remote competition run is not recoverable; preserve this directory and use a fresh one"
@@ -507,11 +509,11 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 if find_daemon(paths) is None:
                     # Real spends against the remote world: journal them
                     # before refusing, so the record is complete.
-                    reconcile_mutations(paths)
+                    reconcile_mutations(run)
                 raise AssayError(
                     "the remote competition owner is unavailable and cannot be reconstructed; preserve this directory and use a fresh one"
                 )
-            if not broker_matches_latest_event(paths):
+            if not broker_matches_latest_event(run):
                 raise AssayError(
                     "REMOTE_STATE_DIVERGED | the live remote observation differs from the append-only timeline; stop using this run"
                 )
@@ -549,21 +551,21 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                             f"{result['reason']}; wait and rerun `assay start`"
                         )
                 # Confirmed dead or absent: safe to recover orphaned spends.
-                recovered = reconcile_mutations(paths)
+                recovered = reconcile_mutations(run)
                 paths.socket.unlink(missing_ok=True)
                 start_broker(paths)
                 restarted = True
-            if not broker_matches_latest_event(paths):
+            if not broker_matches_latest_event(run):
                 raise AssayError(
                     "LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the latest timeline event"
                 )
             verb = "RECOVERED" if restarted else "RESUMED"
             print(
-                f"{verb} | {requested} | local simulator | replayed {len(load_events(paths)) - 1} paid actions"
+                f"{verb} | {requested} | local simulator | replayed {len(run.events) - 1} paid actions"
             )
         if recovered:
             print(f"JOURNAL | recovered {recovered} paid action(s) into timeline")
-        print(status_text(paths))
+        print(status_text(run))
         return
 
     if registry_spec is None:
@@ -619,23 +621,13 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     try:
         if token_file is not None:
             _write_owner_token(token_file, owner_token)
+        _write_notes(paths, requested)
         # Module files are loaded once here to check their contract; a
         # refusal must leave no half-initialized run behind.
         pin_external_modules(paths, registry_spec)
-        start_broker(paths)
-        observation, public_info = broker_observe(paths)
-        config["public_info"] = public_info
-        atomic_json(paths.config, config)
-        event = append_event(
-            paths,
-            make_event(observation, "START", None, None, note="initial observation"),
-        )
-        _write_notes(paths, requested)
-        kind = kind_for(event)
-        if kind is not None:
-            kind.after_record(paths, event, [event])
+        run = Run.load(paths, strict=True)
         if getattr(args, "import_knowledge", None) is not None:
-            summary = import_knowledge(paths, args.import_knowledge)
+            summary = import_knowledge(run, args.import_knowledge)
             print(
                 f"IMPORTED | knowledge from source world {summary['source_game']} | "
                 f"{summary['verifiers']} verifier candidate(s) | hazards active "
@@ -643,6 +635,14 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
                 f"{summary['hazards_foreign_inactive']}) | everything FOREIGN, "
                 "demoted until re-earned (see status)"
             )
+        # Event 0 is the daemon's: it takes the first observation, writes
+        # public_info into config.json and appends START before it reports
+        # READY. This process wrote config.json, the registry copy, the owner
+        # file and the notes before the spawn and never writes config.json
+        # after it; the status below is read from the journal the daemon
+        # opened.
+        start_broker(paths)
+        run = Run.load(paths, strict=False)
     except Exception:
         stop_broker(paths)
         shutil.rmtree(paths.state, ignore_errors=True)
@@ -668,12 +668,12 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         print(
             f"STARTED | {requested} | local simulator | competition accounting | replay recovery enabled"
         )
-    if not anchor_status(paths)["writable"]:
+    if not anchor_status(paths, run.config)["writable"]:
         print(
-            f"WARNING | {anchor_line(paths)} | set ASSAY_ANCHOR_DIR to a writable "
+            f"WARNING | {anchor_line(paths, run.config)} | set ASSAY_ANCHOR_DIR to a writable "
             "directory before the first anchor is due"
         )
-    print(status_text(paths))
+    print(status_text(run))
     if gate_mode(registry_spec) == "optional":
         print(
             "USE | gate: optional; `assay act` runs with or without --predict "
@@ -741,7 +741,7 @@ def _doctor(paths: RunPaths) -> int:
     config = read_json(paths.config, None) if paths.config.exists() else None
     if not isinstance(config, dict):
         note("ok", f"no run in {paths.root} (`assay start` creates one)")
-        status = anchor_status(paths)
+        status = anchor_status(paths, None)
         note(
             "ok" if status["writable"] else "WARN",
             f"anchor directory {status['file'].parent} "
@@ -759,10 +759,10 @@ def _doctor(paths: RunPaths) -> int:
         if isinstance(recorded_python, str) and recorded_python != sys.executable:
             note("WARN", f"run started with {recorded_python}, this shell uses {sys.executable}")
         if config.get("registry"):
-            status = anchor_status(paths)
+            status = anchor_status(paths, config)
             note(
                 "ok" if status["writable"] and not status["failed"] else "WARN",
-                anchor_line(paths)[len("ANCHORS | "):],
+                anchor_line(paths, config)[len("ANCHORS | "):],
             )
         daemon = find_daemon(paths)
         descriptor = read_json(paths.broker, {})
@@ -887,214 +887,219 @@ def main() -> None:
             raise SystemExit(0)
 
         require_run(paths)
-        with (
-            run_lock(paths),
-            command_status(paths, args.command),
-        ):
-            if args.command == "status":
-                print(status_text(paths, history=args.history))
-            elif args.command == "view":
-                events = load_events(paths)
-                flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
-                print(view_text(paths, event_id=args.event, history=args.history, flags=flags))
-                export = args.export
-                if export:
-                    destination = export if export.is_absolute() else paths.root / export
-                    print(
-                        f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(paths, destination)}"
-                    )
-            elif args.command == "act":
-                # `assay act NAME pname=value ...`: the extra tokens are typed
-                # parameters; case is preserved (values may be case-sensitive).
-                # Daemon-side gate: enforcement where the session lives.
-                receipt = broker_gated(
-                    paths,
-                    {
-                        "op": "gated_act",
-                        "action_token": " ".join([args.action, *args.params]),
-                        "predict": args.predict,
-                        "because": args.because,
-                        "at_event": args.at_event,
-                        "declares": _parse_declares(args.declare),
-                    },
-                )
-                print(result_text(paths, receipt))
-            elif args.command == "commit":
-                if bool(args.plan) == bool(args.step):
-                    raise AssayError(
-                        "commit takes either @plan.json (from `assay model solve`) "
-                        'or one or more --step "NAME pname=value :: claims"'
-                    )
-                receipt = broker_gated(
-                    paths,
-                    {
-                        "op": "gated_commit",
-                        "plan": args.plan,
-                        "steps": args.step,
-                        "at_event": args.at_event,
-                        "declares": _parse_declares(args.declare),
-                    },
-                    steps=max(1, len(args.step)),
-                )
-                print(result_text(paths, receipt))
-            elif args.command == "reset":
-                receipt = broker_gated(
-                    paths,
-                    {
-                        "op": "gated_reset",
-                        "because": args.because,
-                        "at_event": args.at_event,
-                        "declares": _parse_declares(args.declare),
-                    },
-                )
-                print(result_text(paths, receipt))
-            elif args.command == "channel":
-                if args.channel_command == "declare":
-                    spec = declare_channel(
-                        paths, args.name, path=args.path, file=args.file
-                    )
-                    print(
-                        f"CHANNEL | declared {args.name} ({spec['form']}); claims "
-                        f'like `ch {args.name} = V` now parse and grade'
-                    )
-                else:
-                    from .channels import channel_lines
-
-                    declared = load_declared(paths)
-                    events = load_events(paths)
-                    if events:
-                        print("\n".join(channel_lines(paths, events[-1], fresh=args.read)))
-                    else:
-                        print("CHANNELS | " + " · ".join(known_channels(paths)))
-                    for name, spec in sorted(declared.items()):
-                        detail = spec.get("path") or spec.get("hash", "")[:12]
-                        print(f"  {name}: {spec['form']} {detail}")
-            elif args.command == "model":
-                if args.model_command == "init":
-                    print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
-                elif args.model_command == "replay":
-                    record = replay_model(paths)
-                    print("\n".join(fit_lines(record)))
-                else:
-                    result = solve_model(
-                        paths,
-                        args.to,
-                        seconds=args.seconds,
-                        max_nodes=args.max_nodes,
-                        max_depth=args.max_depth,
-                    )
-                    if result["actions"]:
-                        print(
-                            f"SOLVE | plan found | {len(result['actions'])} steps | "
-                            f"nodes {result['nodes']}"
-                        )
-                        print("ACTIONS | " + " -> ".join(result["actions"]))
-                        print(
-                            "PLAN | .assay/model_plan.json; execute with "
-                            "`assay commit @.assay/model_plan.json` (needs replay-fit "
-                            "promotion on the current journal)"
-                        )
-                    else:
-                        print(
-                            f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
-                            "actions() or next() are too narrow, or the goal needs "
-                            "something unmodeled"
-                        )
-            elif args.command == "module":
-                if args.module_command == "install":
-                    record = install_module(paths, args.path, args.token)
-                    print(
-                        f"MODULE | installed {record['name']} from {record['source']} "
-                        f"(sha256 {record['sha256'][:12]}) | journaled | active from the "
-                        "next action"
-                    )
-                else:
-                    registry = read_json(paths.registry, None)
-                    origins = {
-                        str(entry.get("name")): str(entry.get("origin"))
-                        for entry in load_manifest(paths)
-                    }
-                    from .modules import JournalView
-
-                    view = JournalView(paths=paths, events=load_events(paths), registry=registry)
-                    print("MODULES | active (name, mode, origin), constitution, telemetry")
-                    for item, mode in active_modules(paths, registry):
-                        print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
-                        print(f"    constitution: {item.CONSTITUTION}")
-                        try:
-                            telemetry = item.telemetry(view)
-                        except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
-                            telemetry = {"error": f"{type(error).__name__}: {error}"}
-                        print(f"    telemetry: {json.dumps(telemetry, sort_keys=True, default=str)}")
-                    for line in unlisted_lines(paths):
-                        print(line)
-            elif args.command == "goal":
-                if args.goal_command == "propose":
-                    record = propose_goal(paths, args.text, args.because)
-                    print(
-                        f"GOAL | proposal #{record['id']} journaled, awaiting owner "
-                        "ratification (`assay goal ratify ID --token ...`)"
-                    )
-                elif args.goal_command == "list":
-                    proposals = list_proposals(paths)
-                    if not proposals:
-                        print("GOAL | no proposals")
-                    for item in proposals:
-                        print(
-                            f"  #{item['id']} [{item['status']}] {item['text']}"
-                            + (f"; {item['because']}" if item.get("because") else "")
-                        )
-                else:
-                    proposal = ratify_goal(paths, args.id, args.token)
-                    print(
-                        f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
-                        "re-presents it as the standing goal"
-                    )
-            elif args.command == "export":
-                target = export_knowledge(paths, args.out)
-                print(f"EXPORTED | {target}; import with `assay start WORLD_ID --import {target.name}`")
-            elif args.command == "spend":
-                append_jsonl(
-                    paths.activity,
-                    {
-                        "kind": "spend_report",
-                        "id": args.report_id,
-                        "usd": args.usd,
-                        "tokens": args.tokens,
-                    },
-                )
-                from .registry import spend_reports
-
-                usd, tokens = spend_reports(load_jsonl(paths.activity))
-                print(f"SPEND | recorded | cumulative ${usd:.2f} | {tokens} tokens")
-            elif args.command == "audit":
-                print("\n".join(audit_lines(audit(paths))))
-            elif args.command == "approve":
-                grant_approval(paths, args.action, args.token)
-                print(
-                    f"APPROVED | one use of {args.action.upper()} granted "
-                    "(expires in 10 minutes, consumed on use)"
-                )
-            elif args.command == "waive":
-                grant_waiver(paths, args.action, args.token, args.because or "")
-                print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
-            elif args.command == "python":
-                if bool(args.source) == bool(args.file):
-                    raise AssayError(
-                        "provide exactly one Python source argument or --file"
-                    )
-                source = (
-                    args.source if args.source is not None else args.file.read_text()
-                )
-                run_python(paths, source)
-            else:
-                raise AssayError(f"unsupported command {args.command}")
+        with run_lock(paths):
+            # One load per command, lenient: the readers report what they
+            # find; only start and the daemon load strict.
+            run = Run.load(paths, strict=False)
+            with command_status(run, args.command) as command:
+                _dispatch(paths, run, command, args)
         raise SystemExit(0)
     except AssayError as error:
         print(f"ERROR | {error}", file=sys.stderr)
         raise SystemExit(2)
     except Exception as error:  # noqa: BLE001 - one error voice, traceback saved
         raise SystemExit(_report_internal_error(error))
+
+
+def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace) -> None:
+    """The offline commands over the loaded run, and the paid ones through the
+    daemon; a paid command reloads the run for its receipt, since the daemon
+    appended what the client does not hold."""
+    if args.command == "status":
+        print(status_text(run, history=args.history))
+    elif args.command == "view":
+        events = run.events
+        flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
+        print(view_text(run, event_id=args.event, history=args.history, flags=flags))
+        export = args.export
+        if export:
+            destination = export if export.is_absolute() else paths.root / export
+            print(
+                f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(run, destination)}"
+            )
+    elif args.command == "act":
+        # `assay act NAME pname=value ...`: the extra tokens are typed
+        # parameters; case is preserved (values may be case-sensitive).
+        # Daemon-side gate: enforcement where the session lives.
+        receipt = broker_gated(
+            paths,
+            {
+                "op": "gated_act",
+                "action_token": " ".join([args.action, *args.params]),
+                "predict": args.predict,
+                "because": args.because,
+                "at_event": args.at_event,
+                "declares": _parse_declares(args.declare),
+            },
+        )
+        command.run = run = Run.load(paths, strict=False)
+        print(result_text(run, receipt))
+    elif args.command == "commit":
+        if bool(args.plan) == bool(args.step):
+            raise AssayError(
+                "commit takes either @plan.json (from `assay model solve`) "
+                'or one or more --step "NAME pname=value :: claims"'
+            )
+        receipt = broker_gated(
+            paths,
+            {
+                "op": "gated_commit",
+                "plan": args.plan,
+                "steps": args.step,
+                "at_event": args.at_event,
+                "declares": _parse_declares(args.declare),
+            },
+            steps=max(1, len(args.step)),
+        )
+        command.run = run = Run.load(paths, strict=False)
+        print(result_text(run, receipt))
+    elif args.command == "reset":
+        receipt = broker_gated(
+            paths,
+            {
+                "op": "gated_reset",
+                "because": args.because,
+                "at_event": args.at_event,
+                "declares": _parse_declares(args.declare),
+            },
+        )
+        command.run = run = Run.load(paths, strict=False)
+        print(result_text(run, receipt))
+    elif args.command == "channel":
+        if args.channel_command == "declare":
+            spec = declare_channel(run, args.name, path=args.path, file=args.file)
+            print(
+                f"CHANNEL | declared {args.name} ({spec['form']}); claims "
+                f'like `ch {args.name} = V` now parse and grade'
+            )
+        else:
+            from .channels import channel_lines
+
+            declared = load_declared(paths)
+            events = run.events
+            if events:
+                print("\n".join(channel_lines(run, events[-1], fresh=args.read)))
+            else:
+                print("CHANNELS | " + " · ".join(known_channels(run)))
+            for name, spec in sorted(declared.items()):
+                detail = spec.get("path") or spec.get("hash", "")[:12]
+                print(f"  {name}: {spec['form']} {detail}")
+    elif args.command == "model":
+        if args.model_command == "init":
+            print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
+        elif args.model_command == "replay":
+            record = replay_model(run)
+            print("\n".join(fit_lines(record)))
+        else:
+            result = solve_model(
+                run,
+                args.to,
+                seconds=args.seconds,
+                max_nodes=args.max_nodes,
+                max_depth=args.max_depth,
+            )
+            if result["actions"]:
+                print(
+                    f"SOLVE | plan found | {len(result['actions'])} steps | "
+                    f"nodes {result['nodes']}"
+                )
+                print("ACTIONS | " + " -> ".join(result["actions"]))
+                print(
+                    "PLAN | .assay/model_plan.json; execute with "
+                    "`assay commit @.assay/model_plan.json` (needs replay-fit "
+                    "promotion on the current journal)"
+                )
+            else:
+                print(
+                    f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
+                    "actions() or next() are too narrow, or the goal needs "
+                    "something unmodeled"
+                )
+    elif args.command == "module":
+        if args.module_command == "install":
+            record = install_module(run, args.path, args.token)
+            print(
+                f"MODULE | installed {record['name']} from {record['source']} "
+                f"(sha256 {record['sha256'][:12]}) | journaled | active from the "
+                "next action"
+            )
+        else:
+            origins = {
+                str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest
+            }
+            view = ModuleView(run)
+            print("MODULES | active (name, mode, origin), constitution, telemetry")
+            for item, mode in active_modules(run):
+                print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
+                print(f"    constitution: {item.CONSTITUTION}")
+                try:
+                    telemetry = item.telemetry(view)
+                except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
+                    telemetry = {"error": f"{type(error).__name__}: {error}"}
+                print(f"    telemetry: {json.dumps(telemetry, sort_keys=True, default=str)}")
+            for line in unlisted_lines(run):
+                print(line)
+    elif args.command == "goal":
+        if args.goal_command == "propose":
+            record = propose_goal(run, args.text, args.because)
+            print(
+                f"GOAL | proposal #{record['id']} journaled, awaiting owner "
+                "ratification (`assay goal ratify ID --token ...`)"
+            )
+        elif args.goal_command == "list":
+            proposals = list_proposals(run)
+            if not proposals:
+                print("GOAL | no proposals")
+            for entry in proposals:
+                print(
+                    f"  #{entry['id']} [{entry['status']}] {entry['text']}"
+                    + (f"; {entry['because']}" if entry.get("because") else "")
+                )
+        else:
+            proposal = ratify_goal(run, args.id, args.token)
+            print(
+                f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
+                "re-presents it as the standing goal"
+            )
+    elif args.command == "export":
+        target = export_knowledge(run, args.out)
+        print(f"EXPORTED | {target}; import with `assay start WORLD_ID --import {target.name}`")
+    elif args.command == "spend":
+        append_jsonl(
+            paths.activity,
+            {
+                "kind": "spend_report",
+                "id": args.report_id,
+                "usd": args.usd,
+                "tokens": args.tokens,
+            },
+        )
+        from .registry import spend_reports
+
+        usd, tokens = spend_reports(load_jsonl(paths.activity))
+        print(f"SPEND | recorded | cumulative ${usd:.2f} | {tokens} tokens")
+    elif args.command == "audit":
+        print("\n".join(audit_lines(audit(run))))
+    elif args.command == "approve":
+        grant_approval(run, args.action, args.token)
+        print(
+            f"APPROVED | one use of {args.action.upper()} granted "
+            "(expires in 10 minutes, consumed on use)"
+        )
+    elif args.command == "waive":
+        grant_waiver(run, args.action, args.token, args.because or "")
+        print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
+    elif args.command == "python":
+        if bool(args.source) == bool(args.file):
+            raise AssayError(
+                "provide exactly one Python source argument or --file"
+            )
+        source = (
+            args.source if args.source is not None else args.file.read_text()
+        )
+        run_python(run, source)
+    else:
+        raise AssayError(f"unsupported command {args.command}")
 
 
 def _report_internal_error(error: BaseException) -> int:

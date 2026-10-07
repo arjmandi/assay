@@ -13,22 +13,26 @@ import sys
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .core import (
     AssayError,
     RunPaths,
-    append_event,
     append_jsonl,
     atomic_json,
-    load_events,
-    load_jsonl,
     make_event,
     normalize_observation,
+    now_iso,
     read_json,
     rows_to_grid,
 )
 from .sandbox import sandbox_mode
+from .adapters import Adapter, Session
+from .records import Event, Mutation, Receipt
+from .run import Run
+
+if TYPE_CHECKING:
+    from .live import Stepper
 
 
 LOCAL_MODE = "local"
@@ -131,7 +135,7 @@ def check_adapter_spec(spec: str, root: Path) -> None:
     raise AssayError(f"adapter {spec!r} failed to import: {reason}")
 
 
-def _import_factory(spec: str, root: Path) -> Any:
+def _import_factory(spec: str, root: Path) -> Adapter:
     module_name, attribute = split_adapter_spec(spec)
     candidate = Path(module_name)
     if not candidate.is_absolute():
@@ -150,10 +154,11 @@ def _import_factory(spec: str, root: Path) -> Any:
     factory = getattr(module, attribute, None)
     if not callable(factory):
         raise AssayError(f"adapter factory {spec!r} is not callable")
-    return factory
+    loaded: Adapter = factory
+    return loaded
 
 
-def _create_session(root: Path, config: Mapping[str, Any]) -> Any:
+def _create_session(root: Path, config: Mapping[str, Any]) -> Session:
     adapter = config.get("adapter")
     if not adapter:
         raise AssayError(
@@ -245,6 +250,8 @@ def _request(
     if not chunks:
         raise AssayError("empty response from environment owner")
     response = json.loads(b"".join(chunks).splitlines()[0])
+    if not isinstance(response, dict):
+        raise AssayError("malformed response from environment owner")
     if not response.get("ok"):
         raise AssayError(str(response.get("error", "environment owner error")))
     return response
@@ -276,13 +283,13 @@ def broker_observe(paths: RunPaths) -> tuple[dict[str, Any], dict[str, Any]]:
 
 
 def broker_step(
-    paths: RunPaths,
+    run: Run,
     action: str,
     data: dict[str, Any] | None,
     reasoning: Mapping[str, Any] | None = None,
 ) -> tuple[dict[str, Any], int, str | None]:
     response = _request(
-        paths,
+        run.paths,
         {"op": "step", "action": action, "data": data, "reasoning": reasoning},
         timeout=_client_timeout(30.0),
     )
@@ -295,59 +302,51 @@ def broker_step(
 
 def broker_gated(
     paths: RunPaths, payload: Mapping[str, Any], *, steps: int = 1
-) -> dict[str, Any]:
-    """Send one gated operation to the daemon; returns the receipt. The CLI is
-    a stateless display client on registry runs; enforcement happens where
-    the session and credentials live."""
+) -> Receipt:
+    """Send one gated operation to the daemon; returns the receipt, decoded
+    at the socket boundary. The CLI is a stateless display client on registry
+    runs; enforcement happens where the session and credentials live."""
     timeout = _client_timeout(60.0 + 30.0 * max(1, steps))
     response = _request(paths, payload, timeout=timeout)
     receipt = response.get("receipt")
     if not isinstance(receipt, dict):
         raise AssayError("environment owner returned no receipt")
-    return receipt
+    return Receipt.from_json(receipt)
 
 
-def broker_matches_latest_event(paths: RunPaths) -> bool:
-    events = load_events(paths)
-    if not events:
+def broker_matches_latest_event(run: Run) -> bool:
+    if not run.events:
         return True
-    observation, _ = broker_observe(paths)
-    return _encode_observation(observation) == _event_observation(events[-1])
+    observation, _ = broker_observe(run.paths)
+    return _encode_observation(observation) == _event_observation(run.events[-1])
 
 
-def reconcile_mutations(paths: RunPaths) -> int:
-    """Recover a paid step journaled by the broker before a CLI process died."""
-    events = load_events(paths)
-    known = {
-        int(event["mutation_id"])
-        for event in events
-        if event.get("mutation_id") is not None
-    }
+def reconcile_mutations(run: Run) -> int:
+    """Recover a paid step journaled by the broker before a CLI process died:
+    the one append outside a daemon, through the run's own writer."""
+    known = {event.mutation_id for event in run.events if event.mutation_id is not None}
     recovered = 0
-    for mutation in load_jsonl(paths.mutations):
-        mutation_id = int(mutation["mutation_id"])
-        if mutation_id in known:
+    for mutation in run.mutations:
+        if mutation.mutation_id in known:
             continue
-        previous = events[-1] if events else None
-        observation = _decode_observation(mutation["observation"])
+        previous = run.events[-1] if run.events else None
+        observation = _decode_observation(mutation.observation)
         event = make_event(
             observation,
-            mutation["action"],
-            mutation.get("data"),
+            mutation.action,
+            mutation.data,
             previous,
             note="recovered from broker mutation journal",
         )
-        event["mutation_id"] = mutation_id
-        appended = append_event(paths, event)
-        events.append(appended)
-        known.add(mutation_id)
+        run.append(event.updated(mutation_id=mutation.mutation_id))
+        known.add(mutation.mutation_id)
         recovered += 1
     if recovered:
         append_jsonl(
-            paths.activity,
+            run.paths.activity,
             {
                 "kind": "mutation_recovery",
-                "event": len(events) - 1,
+                "event": len(run.events) - 1,
                 "recovered": recovered,
             },
         )
@@ -494,21 +493,21 @@ def stop_broker(paths: RunPaths, wait: float = STOP_WAIT_SECONDS) -> dict[str, A
     }
 
 
-def _event_observation(event: Mapping[str, Any]) -> dict[str, Any]:
-    if "frames" not in event:
+def _event_observation(event: Event) -> dict[str, Any]:
+    if event.frames is None:
         return {
-            "state": str(event["state"]),
-            "levels_completed": int(event["levels_completed"]),
-            "win_levels": int(event["win_levels"]),
-            "available_actions": [str(value) for value in event["available_actions"]],
-            "data": event["observation"],
+            "state": str(event.state),
+            "levels_completed": int(event.levels_completed),
+            "win_levels": int(event.win_levels),
+            "available_actions": [str(value) for value in event.available_actions],
+            "data": event.observation,
         }
     return {
-        "state": str(event["state"]),
-        "levels_completed": int(event["levels_completed"]),
-        "win_levels": int(event["win_levels"]),
-        "available_actions": [int(value) for value in event["available_actions"]],
-        "frames": list(event["frames"]),
+        "state": str(event.state),
+        "levels_completed": int(event.levels_completed),
+        "win_levels": int(event.win_levels),
+        "available_actions": [int(value) for value in event.available_actions],
+        "frames": list(event.frames),
     }
 
 
@@ -531,34 +530,50 @@ def _competition_step(
     return observed, action == "RESET" or level_advanced
 
 
-def _replay_local_session(
-    session: Any, paths: RunPaths
-) -> tuple[list[dict[str, Any]], bool]:
+def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]:
     """Reconstruct an exact local session from the append-only paid-action journal."""
-    events = load_events(paths)
+    events = run.events
     current = _encode_observation(session.observation)
     if events and current != _event_observation(events[0]):
         raise AssayError(
             "LOCAL_REPLAY_DIVERGED | fresh simulator state differs from event 0; cached world or seed changed"
         )
-    mutations = load_jsonl(paths.mutations)
+    mutations = run.mutations
     fresh_level = True
     for mutation in mutations:
         observed, fresh_level = _competition_step(
             session,
-            str(mutation["action"]),
-            mutation.get("data"),
-            mutation.get("reasoning"),
+            str(mutation.action),
+            mutation.data,
+            mutation.reasoning,
             fresh_level=fresh_level,
         )
         actual = _encode_observation(observed)
-        expected = dict(mutation["observation"])
+        expected = dict(mutation.observation)
         if actual != expected:
             raise AssayError(
                 "LOCAL_REPLAY_DIVERGED | mutation "
-                f"{mutation.get('mutation_id')} no longer reproduces its recorded observation"
+                f"{mutation.mutation_id} no longer reproduces its recorded observation"
             )
     return mutations, fresh_level
+
+
+def _open_run(run: Run, session: Session) -> None:
+    """Event 0 is the daemon's (docs/ARCHITECTURE.md section 6.3): on a fresh
+    run, the first observation, the session's `public_info` into config.json,
+    START through the one writer, and the observation kind's after-record
+    work, all before the socket binds and READY is reported."""
+    from .extras import kind_for
+
+    public_info = json.loads(json.dumps(getattr(session, "public_info", {})))
+    run.config = {**run.config, "public_info": dict(public_info or {})}
+    atomic_json(run.paths.config, run.config)
+    event = run.append(
+        make_event(session.observation, "START", None, None, note="initial observation")
+    )
+    kind = kind_for(event)
+    if kind is not None:
+        kind.after_record(run, event)
 
 
 def serve(paths: RunPaths) -> None:
@@ -566,12 +581,19 @@ def serve(paths: RunPaths) -> None:
     if not isinstance(config, dict):
         return
     try:
+        # Strict: a contiguity problem or a diverged chain refuses the start
+        # with CHAIN_DIVERGED and rewrites nothing.
+        run = Run.load(paths, strict=True)
+        config = run.config
         session = _create_session(paths.root, config)
         if is_remote_config(config):
-            mutations = load_jsonl(paths.mutations)
+            mutations = run.mutations
             fresh_level = False
         else:
-            mutations, fresh_level = _replay_local_session(session, paths)
+            mutations, fresh_level = _replay_local_session(session, run)
+        if not run.events:
+            _open_run(run, session)
+            config = run.config
         token = (paths.state / "broker.token").read_text().strip()
         try:
             paths.socket.unlink()
@@ -637,15 +659,15 @@ def serve(paths: RunPaths) -> None:
         server.close()
         paths.socket.unlink(missing_ok=True)
 
-    sequence = max((int(item.get("mutation_id", 0)) for item in mutations), default=0)
+    sequence = max((mutation.mutation_id for mutation in mutations), default=0)
     # Daemon-side gate: on a registry run, enforcement lives HERE,
     # where the session and the credentials live. The bare `step` op is refused:
     # a client speaking this socket directly cannot bypass the gate invisibly.
-    gated = read_json(paths.registry, None) is not None
-    shared = {"sequence": sequence, "fresh_level": fresh_level}
+    gated = run.registry is not None
+    shared: dict[str, Any] = {"sequence": sequence, "fresh_level": fresh_level}
 
     def direct_stepper(
-        paths_arg: RunPaths,
+        run_arg: Run,
         action: str,
         data: dict[str, Any] | None,
         reasoning: Mapping[str, Any] | None,
@@ -659,27 +681,30 @@ def serve(paths: RunPaths) -> None:
                 )
         else:
             observed, shared["fresh_level"] = _competition_step(
-                session, action, data, reasoning, fresh_level=shared["fresh_level"]
+                session, action, data, reasoning, fresh_level=bool(shared["fresh_level"])
             )
         encoded = _encode_observation(observed)
-        shared["sequence"] += 1
-        append_jsonl(
-            paths.mutations,
-            {
-                "mutation_id": shared["sequence"],
-                "action": action,
-                "data": data,
-                "reasoning": reasoning,
-                "observation": encoded,
-            },
+        shared["sequence"] = int(shared["sequence"]) + 1
+        run_arg.record_mutation(
+            Mutation(
+                mutation_id=int(shared["sequence"]),
+                action=action,
+                data=data,
+                reasoning=None if reasoning is None else dict(reasoning),
+                observation=encoded,
+                timestamp=now_iso(),
+            )
         )
         warning: str | None = None
-        if encoded["state"] == "WIN" and callable(getattr(session, "finalize", None)):
+        finalize = getattr(session, "finalize", None)
+        if encoded["state"] == "WIN" and callable(finalize):
             try:
-                session.finalize()
+                finalize()
             except Exception as error:  # noqa: BLE001 - action is already journaled
                 warning = f"{type(error).__name__}: {error}"
-        return _decode_observation(encoded), shared["sequence"], warning
+        return _decode_observation(encoded), int(shared["sequence"]), warning
+
+    stepper: Stepper = direct_stepper
 
     while True:
         if lifecycle["stop"]:
@@ -701,9 +726,12 @@ def serve(paths: RunPaths) -> None:
                         break
                     raw += chunk
                 request = json.loads(raw.splitlines()[0])
+                if not isinstance(request, dict):
+                    raise AssayError("malformed request")
                 if not secrets.compare_digest(str(request.get("token", "")), token):
                     raise AssayError("invalid environment owner token")
                 operation = request.get("op")
+                response: dict[str, Any]
                 if operation == "ping":
                     response = {"ok": True, "pong": True}
                 elif operation == "observe":
@@ -724,43 +752,46 @@ def serve(paths: RunPaths) -> None:
                         reset_level,
                     )
 
+                    # One Run per request for now, loaded strict: correct
+                    # under the one-writer rule, not yet fast; #20 holds one
+                    # for the daemon's life and verifies the disk before it.
+                    current = Run.load(paths, strict=True)
                     if operation == "gated_act":
                         receipt = execute_action(
-                            paths,
+                            current,
                             str(request["action_token"]),
                             predict=str(request.get("predict") or ""),
                             because=request.get("because"),
                             at_event=request.get("at_event"),
                             declares=request.get("declares"),
-                            stepper=direct_stepper,
+                            stepper=stepper,
                         )
                     elif operation == "gated_commit":
                         if request.get("plan"):
                             receipt = execute_model_plan(
-                                paths,
+                                current,
                                 str(request["plan"]),
                                 at_event=request.get("at_event"),
-                                stepper=direct_stepper,
+                                stepper=stepper,
                             )
                         else:
                             receipt = execute_steps(
-                                paths,
+                                current,
                                 [str(item) for item in request.get("steps") or ()],
                                 at_event=request.get("at_event"),
                                 declares=request.get("declares"),
-                                stepper=direct_stepper,
+                                stepper=stepper,
                             )
                     else:
                         receipt = reset_level(
-                            paths,
+                            current,
                             because=request.get("because"),
                             at_event=request.get("at_event"),
                             declares=request.get("declares"),
-                            stepper=direct_stepper,
+                            stepper=stepper,
                         )
-                    events = load_events(paths)
-                    terminal = bool(events) and events[-1]["state"] == "WIN"
-                    response = {"ok": True, "receipt": receipt}
+                    terminal = bool(current.events) and current.events[-1].state == "WIN"
+                    response = {"ok": True, "receipt": receipt.to_json()}
                 elif operation == "step":
                     if gated:
                         raise AssayError(
@@ -785,10 +816,10 @@ def serve(paths: RunPaths) -> None:
                             request["action"],
                             request.get("data"),
                             request.get("reasoning"),
-                            fresh_level=shared["fresh_level"],
+                            fresh_level=bool(shared["fresh_level"]),
                         )
                     encoded = _encode_observation(observed)
-                    shared["sequence"] += 1
+                    shared["sequence"] = int(shared["sequence"]) + 1
                     append_jsonl(
                         paths.mutations,
                         {
@@ -805,9 +836,10 @@ def serve(paths: RunPaths) -> None:
                         "mutation_id": shared["sequence"],
                     }
                     terminal = encoded["state"] == "WIN"
-                    if terminal and callable(getattr(session, "finalize", None)):
+                    finalize = getattr(session, "finalize", None)
+                    if terminal and callable(finalize):
                         try:
-                            session.finalize()
+                            finalize()
                         except Exception as error:  # noqa: BLE001 - action is already journaled
                             response["finalization_warning"] = (
                                 f"{type(error).__name__}: {error}"

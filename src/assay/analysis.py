@@ -1,6 +1,8 @@
 """`assay python`: offline analysis over the journal with the history
 preloaded. The namespace is the dict world's here; an observation kind
-supplies its own (the frame world adds grids and perception helpers)."""
+supplies its own (the frame world adds grids and perception helpers). The
+agent's namespace carries the journal as plain JSON objects, the form the
+manual describes, built from the run's held records."""
 
 from __future__ import annotations
 
@@ -9,14 +11,18 @@ import heapq
 import json
 import math
 from collections import deque
-from collections.abc import Callable, Iterable
-from typing import Any
+from collections.abc import Callable, Iterable, Sequence
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .core import AssayError, RunPaths, canonical_action, load_events
+from .core import AssayError, canonical_action
 from .extras import kind_for
+from .records import Event
 from .textobs import delta_lines, key_delta
+
+if TYPE_CHECKING:
+    from .run import Run
 
 
 def show(value: Any) -> str:
@@ -34,7 +40,7 @@ def bfs(
     key: Callable[[Any], Any] = repr,
     max_nodes: int = 100_000,
 ) -> tuple[list[Any] | None, int]:
-    queue = deque([(start, ())])
+    queue: deque[tuple[Any, tuple[Any, ...]]] = deque([(start, ())])
     seen = {key(start)}
     nodes = 0
     while queue and nodes < max_nodes:
@@ -91,17 +97,17 @@ def astar(
     return None, nodes
 
 
-def _general_namespace(events: list[dict[str, Any]]) -> dict[str, Any]:
+def _general_namespace(events: Sequence[Event]) -> dict[str, Any]:
     """Offline namespace for dict-observation runs: no grid helpers."""
-    observations = [event["observation"] for event in events]
+    observations = [event.observation for event in events]
     transitions = [
         {
-            "event": int(event["id"]),
+            "event": event.id,
             "action": canonical_action(event),
             "before": observations[index - 1],
             "after": observations[index],
-            "state": event["state"],
-            "level": int(event["levels_completed"]) + 1,
+            "state": event.state,
+            "level": event.levels_completed + 1,
         }
         for index, event in enumerate(events)
         if index
@@ -112,7 +118,7 @@ def _general_namespace(events: list[dict[str, Any]]) -> dict[str, Any]:
         "observation": observations[-1],
         "previous": observations[-2] if len(observations) > 1 else None,
         "observations": observations,
-        "events": events,
+        "events": [event.to_json() for event in events],
         "transitions": transitions,
         "actions": [canonical_action(event) for event in events[1:]],
         "key_delta": key_delta,
@@ -122,16 +128,16 @@ def _general_namespace(events: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def namespace(paths: RunPaths) -> dict[str, Any]:
-    events = load_events(paths)
+def namespace(run: Run) -> dict[str, Any]:
+    events = run.events
     kind = kind_for(events[-1]) if events else None
     if kind is not None:
         return kind.python_namespace(events)
     return _general_namespace(events)
 
 
-def run_python(paths: RunPaths, source: str) -> Any:
-    scope = namespace(paths)
+def run_python(run: Run, source: str) -> Any:
+    scope = namespace(run)
     try:
         tree = ast.parse(source, mode="exec")
         if len(tree.body) == 1 and isinstance(tree.body[0], ast.Expr):

@@ -501,6 +501,7 @@ def _capture(process: subprocess.Popen[bytes], timeout: float) -> tuple[str | No
     and the program exits, within the wall clock. Returns (failure, stdout,
     stderr): failure is None, "timeout", or the stream that passed the cap;
     on a failure the program has been killed."""
+    assert process.stdout is not None and process.stderr is not None
     streams = {"stdout": process.stdout, "stderr": process.stderr}
     buffers = {"stdout": bytearray(), "stderr": bytearray()}
     deadline = time.monotonic() + timeout

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import pytest
 
+from conftest import event_of
+
 from assay.core import AssayError, parse_action
 from assay.registry import (
     check_budget,
@@ -132,7 +134,7 @@ def test_affordance_check_only_when_advertised():
 
 
 def _paid(n):
-    return [{"counts_action": True} for _ in range(n)]
+    return [event_of(id=index, counts_action=True) for index in range(n)]
 
 
 def test_budget_refusal_embeds_code_and_remaining():
