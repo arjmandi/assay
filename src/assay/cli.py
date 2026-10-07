@@ -131,6 +131,12 @@ def _parser() -> Parser:
         "`assay start` resumes the run later",
     )
 
+    commands.add_parser(
+        "doctor",
+        help="check the interpreter, dependencies, anchors, socket path, run "
+        "state, daemon, adapter and registry; works with or without a run here",
+    )
+
     status = commands.add_parser(
         "status",
         help="full picture: progress, image, actions, recent results, notes",
@@ -463,6 +469,13 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             raise AssayError(
                 f"this directory already owns a {existing_mode} run; mode cannot be changed in place"
             )
+        recorded_python = existing.get("python")
+        if isinstance(recorded_python, str) and recorded_python != sys.executable:
+            print(
+                f"WARNING | interpreter changed: the run started with {recorded_python}, "
+                f"this resume uses {sys.executable}; the daemon inherits this one, so "
+                "set ASSAY_PYTHON to the original if the adapter's dependencies live there"
+            )
         # Orphan recovery (a spend the daemon journaled in mutations.jsonl
         # before anyone appended its event) runs here and only here, and only
         # once the daemon is confirmed dead or absent. While the daemon lives,
@@ -580,6 +593,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         "registry": registry_spec is not None,
         "created_at": now_iso(),
         "harness": "assay",
+        "python": sys.executable,
     }
     config["binding_hash"] = binding_hash_of(config)
     if registry_spec is not None:
@@ -672,6 +686,97 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             'USE | open IMAGE first; every `assay act` needs --predict "<claims>" '
             "(`assay act --help` lists the claim forms)"
         )
+
+
+def _doctor(paths: RunPaths) -> int:
+    """Everything a new user hits in the first hour, checked in one place and
+    reported in one voice. Exit 2 when something FAILs, else 0."""
+    lines: list[tuple[str, str]] = []
+
+    def note(level: str, text: str) -> None:
+        lines.append((level, text))
+
+    version = ".".join(str(part) for part in sys.version_info[:3])
+    note("ok" if sys.version_info >= (3, 12) else "FAIL", f"python {version} at {sys.executable}")
+    pinned = os.getenv("ASSAY_PYTHON")
+    if pinned:
+        note("ok", f"ASSAY_PYTHON={pinned}")
+    for name, module, low, high in (("numpy", "numpy", 2, 3), ("pillow", "PIL", 10, 13)):
+        try:
+            loaded = __import__(module)
+            major = int(str(loaded.__version__).split(".")[0])
+            note("ok" if low <= major < high else "FAIL", f"{name} {loaded.__version__}")
+        except ImportError:
+            note("FAIL", f"{name} is not importable by {sys.executable}")
+    socket_path = str(paths.socket)
+    note(
+        "ok" if len(socket_path.encode()) <= 100 else "FAIL",
+        f"socket path {socket_path} ({len(socket_path.encode())} bytes, limit about 104)",
+    )
+    config = read_json(paths.config, None) if paths.config.exists() else None
+    if not isinstance(config, dict):
+        note("ok", f"no run in {paths.root} (`assay start` creates one)")
+        status = anchor_status(paths)
+        note(
+            "ok" if status["writable"] else "WARN",
+            f"anchor directory {status['file'].parent} "
+            f"{'writable' if status['writable'] else 'NOT WRITABLE (set ASSAY_ANCHOR_DIR)'}",
+        )
+    else:
+        events = load_jsonl(paths.events)
+        last = events[-1] if events else None
+        note(
+            "ok",
+            f"run {config.get('game_id')} | mode {config.get('mode')} | {len(events)} events"
+            + (f" | last e{last['id']} {last.get('state')}" if last else ""),
+        )
+        recorded_python = config.get("python")
+        if isinstance(recorded_python, str) and recorded_python != sys.executable:
+            note("WARN", f"run started with {recorded_python}, this shell uses {sys.executable}")
+        if config.get("registry"):
+            status = anchor_status(paths)
+            note(
+                "ok" if status["writable"] and not status["failed"] else "WARN",
+                anchor_line(paths)[len("ANCHORS | "):],
+            )
+        daemon = find_daemon(paths)
+        descriptor = read_json(paths.broker, {})
+        descriptor_status = descriptor.get("status") if isinstance(descriptor, dict) else None
+        if daemon is not None:
+            answering = broker_ping(paths)
+            note(
+                "ok" if answering else "WARN",
+                f"daemon pid {daemon.pid} alive, identified, "
+                f"{'answering' if answering else 'not answering (busy or hung)'}",
+            )
+        elif descriptor_status in {"FINISHED", "STOPPED"}:
+            note("ok", f"daemon not running (broker.json says {descriptor_status})")
+        else:
+            note("WARN", f"daemon not running (broker.json says {descriptor_status}); `assay start` resumes")
+        adapter = config.get("adapter")
+        if adapter:
+            try:
+                resolved = resolve_adapter_spec(str(adapter), paths.root)
+                check_adapter_spec(resolved, paths.root)
+                note("ok", f"adapter {resolved} imports")
+            except AssayError as error:
+                note("FAIL", f"adapter: {error}")
+        else:
+            note("WARN", "no adapter recorded (a numbered-action run)")
+        if paths.registry.exists():
+            try:
+                from .registry import validate_registry
+
+                spec = validate_registry(read_json(paths.registry))
+                note("ok", f"registry valid, {len(spec['actions'])} actions")
+            except AssayError as error:
+                note("FAIL", f"registry: {error}")
+    for level, text in lines:
+        print(f"DOCTOR | {level} | {text}")
+    failed = sum(1 for level, _ in lines if level == "FAIL")
+    warned = sum(1 for level, _ in lines if level == "WARN")
+    print(f"DOCTOR | {'FAIL' if failed else 'ok'} | {failed} failure(s), {warned} warning(s)")
+    return 2 if failed else 0
 
 
 def _discard_empty_state(paths: RunPaths) -> None:
@@ -773,6 +878,8 @@ def main() -> None:
                 _discard_empty_state(paths)
                 raise
             raise SystemExit(0)
+        if args.command == "doctor":
+            raise SystemExit(_doctor(paths))
         if args.command == "stop":
             if paths.state.is_dir():
                 with run_lock(paths):

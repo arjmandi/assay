@@ -68,6 +68,16 @@ Left on the experiment branch, deliberately:
   table (every world) and put the grid forms under a labelled "frame worlds
   only" section that says they are refused on registry runs.
 
+- `assay doctor`: Python version and path, numpy and pillow, the socket path
+  length, the run state, the anchor directory, the daemon (alive, identified,
+  answering), the adapter (resolved and dry-imported), the registry, and the
+  interpreter the run started with. Works with or without a run in the
+  directory. Exit 2 when something fails.
+- `ASSAY_PYTHON`: `bin/assay` runs that interpreter first, and refuses loudly
+  when it fails the dependency fingerprint instead of falling back. `assay
+  start` records `python` in `config.json` and a resume from a different
+  interpreter prints a warning that names both and `ASSAY_PYTHON`.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
@@ -123,6 +133,10 @@ Left on the experiment branch, deliberately:
   states the rule (TODO(owner: O7) on relaxing it). An exception that is not
   an `AssayError` prints one line, `ERROR | internal: <type>: <message>`, and
   saves the traceback to `.assay/last_error.txt` instead of dumping it.
+- Interpreter drift (ranked fix 7). The daemon runs `sys.executable` of the
+  CLI that started it and nothing read the recorded path. Now it is recorded
+  in `config.json`, checked on resume, pinned by `ASSAY_PYTHON` in the
+  launcher, and reported by `assay doctor`.
 
 ### Regression gates
 
