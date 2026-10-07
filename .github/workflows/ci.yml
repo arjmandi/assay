@@ -37,11 +37,11 @@ jobs:
           sudo apt-get install -y bubblewrap
           bwrap --version
           sysctl kernel.apparmor_restrict_unprivileged_userns
-      - name: The sandbox mode before the user-namespace setting
-        if: runner.os == 'Linux'
-        run: uv run --python ${{ matrix.python }} --with numpy python -c "from assay.sandbox import sandbox_mode, sandbox_text; print('sandbox |', sandbox_text(sandbox_mode()))"
-      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor,
-      # and bwrap needs one to build its mount namespace.
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor
+      # (the runner image reports 1), and bwrap needs one for its mount
+      # namespace: without the setting its probe fails with `bwrap: loopback:
+      # Failed RTM_NEWADDR: Operation not permitted` and the suite runs with
+      # the process limits alone.
       - name: unprivileged user namespaces, which bwrap needs
         if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0

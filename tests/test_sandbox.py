@@ -247,8 +247,8 @@ def test_limits_and_environment_inside():
         "import json, os, resource, sys\n"
         "names = ('RLIMIT_CPU', 'RLIMIT_FSIZE', 'RLIMIT_NPROC')\n"
         "limits = {name: resource.getrlimit(getattr(resource, name)) for name in names}\n"
-        "print(json.dumps({'limits': limits, 'isolated': sys.flags.isolated,"
-        " 'env': sorted(key for key in os.environ if not key.startswith('__'))}))\n"
+        "print(json.dumps({'limits': limits, 'isolated': sys.flags.isolated, 'cwd': os.getcwd(),"
+        " 'env': {key: value for key, value in os.environ.items() if not key.startswith('__')}}))\n"
     )
     outcome = run_program(program, {}, timeout=7.5)
     assert outcome["status"] == "ok", outcome
@@ -257,7 +257,13 @@ def test_limits_and_environment_inside():
     assert result["limits"]["RLIMIT_FSIZE"] == [1 << 20, 1 << 20]
     assert result["limits"]["RLIMIT_NPROC"] == [1, 1]
     assert result["isolated"] == 1
-    assert set(result["env"]) <= {"LC_CTYPE", *sandbox.THREAD_CAP}
+    # The environment is empty but for the thread cap, the locale coercion,
+    # and under bwrap the PWD its --chdir exports, which must be the scratch
+    # directory the program runs in.
+    extra = set(result["env"]) - {"LC_CTYPE", *sandbox.THREAD_CAP}
+    assert extra <= ({"PWD"} if MODE == BWRAP else set()), result["env"]
+    if "PWD" in result["env"]:
+        assert result["env"]["PWD"] == result["cwd"]
     big = run_program("open('big.bin', 'wb').write(b'x' * (2 << 20))\nprint('{}')", {}, timeout=10.0)
     assert big["status"] == "invalid" and "File too large" in big["reason"], big
 
