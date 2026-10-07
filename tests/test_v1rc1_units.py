@@ -4,7 +4,6 @@ redaction, the hash chain, and hazard demand logic."""
 from __future__ import annotations
 
 import json
-import os
 
 import pytest
 

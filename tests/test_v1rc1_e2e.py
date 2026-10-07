@@ -191,7 +191,7 @@ def test_model_tier_promotion_and_plan(tmp_path):
         long_batch = run_cli(
             run,
             "commit",
-            *sum((["--step", f"NOOP :: noop"] for _ in range(4)), []),
+            *sum((["--step", "NOOP :: noop"] for _ in range(4)), []),
         )
         assert long_batch.returncode == 2
         assert "batching law" in long_batch.stderr

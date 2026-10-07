@@ -21,7 +21,7 @@ grid = ["pillow>=10,<13"]
 arcagi = ["arc-agi", "pillow>=10,<13"]
 # Building or fetching an OOLONG corpus pack reads a parquet shard; the adapter itself needs nothing.
 oolong = ["pyarrow", "pandas"]
-dev = ["pytest", "hypothesis"]
+dev = ["pytest", "hypothesis", "ruff"]
 
 [project.scripts]
 assay = "assay.cli:main"
@@ -35,3 +35,12 @@ packages = ["assay", "assay_grid"]
 
 [tool.setuptools.dynamic]
 version = {attr = "assay.__version__"}
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+# ruff's default rule set (pyflakes and the pycodestyle errors), named so a
+# build with a different default cannot move the gate; `ruff check src tests`
+# must pass. Import order and line length are not enforced.
+select = ["E4", "E7", "E9", "F"]
