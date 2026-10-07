@@ -207,8 +207,9 @@ def redact_mapping(
 
 
 def ungated_events(events: Sequence[Mapping[str, Any]]) -> list[int]:
-    """Paid non-RESET events with no prediction and no grade: the
-    pre-registered bypass definition (evidence/bypass_audit.py)."""
+    """Paid non-RESET events with no prediction and no grade: the ungated-event
+    rule of verify/JOURNAL_SPEC.md section 6, the one the independent checker
+    (verify/assay_verify.py) applies over the same journal fields."""
     flagged: list[int] = []
     for event in events:
         if not event.get("counts_action") or event.get("action") == "RESET":

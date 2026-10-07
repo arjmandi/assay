@@ -135,8 +135,9 @@ def parse_claims(
     The core forms parse on every run. An observation kind's own forms (the
     frame world's `cell`, `move`, `vanish`, `region`) parse only when `kind`
     is given, which nothing in 1.2.0 does: such a claim is refused by name
-    before any spend, the rule every published journal was recorded under
-    (owner decision O1).
+    before any spend, the rule every published journal was recorded under.
+    Admitting them on frame worlds is a decision the owner has not made, so
+    no caller passes `kind`.
     """
     extra_patterns = list(kind.claim_patterns()) if kind is not None else []
     help_text = GENERAL_CLAIMS_HELP + (("\n" + kind.claims_help()) if kind is not None else "")

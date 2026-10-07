@@ -288,7 +288,9 @@ def execute_action(
     # bare acts (the instrument is removed). Either way the act is journaled
     # UNGATED and the audit keeps the run invalid for scoring.
     ungated = _ungated_act(registry, predict)
-    # No observation kind's own claim forms are admitted (owner decision O1).
+    # No observation kind's own claim forms are admitted: parse_claims runs
+    # without a kind, so a frame form is refused by name before any spend, the
+    # rule every published journal was recorded under.
     claims = [] if ungated else parse_claims(predict)
     check_channel_references(paths, claims)
     _admit_claims(paths, claims)

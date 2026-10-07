@@ -32,7 +32,8 @@ runs, and the general world model (`assay model`) was their model tier.
 
 The grid claim forms are recognized and refused by name before any spend,
 which is the rule every published journal was recorded under. Whether frame
-worlds should admit them is owner decision O1 and is not made here.
+worlds should admit them is a decision the owner has not made, and this extra
+does not make it.
 
 ## Extension points
 

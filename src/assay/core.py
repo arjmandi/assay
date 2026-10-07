@@ -95,10 +95,6 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
-# TODO(owner: O7): the rule is kept at [a-z0-9]{2,16} (one benchmark adapter
-# carries an alias table because of it). The review proposes
-# [a-z0-9][a-z0-9_-]{1,63}; old ids stay valid either way, and the socket and
-# anchor paths hash the directory, not the id. Relax here when decided.
 WORLD_ID_MAX = 64
 WORLD_ID_RULE = (
     f"a world id is any non-empty string up to {WORLD_ID_MAX} characters with no "

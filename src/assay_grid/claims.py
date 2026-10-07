@@ -3,7 +3,8 @@
 `cell`, `move`, `vanish` and `region` are coordinate claims over a grid, with
 x = column and y = row. The kernel recognizes them and refuses them by name
 before any spend, which is the rule every published journal was recorded
-under. Whether frame worlds should admit them is owner decision O1.
+under. Whether frame worlds should admit them is a decision the owner has not
+made; until then no caller passes a kind to the parser.
 
 `grade_claims` grades every plain claim of a frame event, the general forms
 included, by cell comparison of the settled frames, exactly as the kernel did
