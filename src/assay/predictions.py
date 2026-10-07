@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING, Any
 
 from .core import AssayError
-from .extras import ObservationKind, all_kinds, kind_for
+from .extras import ObservationKind, all_kinds, foreign_form, kind_for, refusal_text
 from .records import CHANNEL_KINDS, GAMBLE_KINDS, Claim, Event, Grade, claim_bucket
 from .textobs import changed_count
 
@@ -207,9 +207,10 @@ def parse_claims(
     The core forms parse on every run. An observation kind's own forms (the
     frame world's `cell`, `move`, `vanish`, `region`) parse only when `kind`
     is given, which nothing in 1.2.0 does: such a claim is refused by name
-    before any spend, the rule every published journal was recorded under.
-    Admitting them on frame worlds is a decision the owner has not made, so
-    no caller passes `kind`.
+    before any spend, the rule every published journal was recorded under,
+    from the kernel's own table of the forms (`extras.FRAME_FORMS`), so the
+    refusal imports neither the extra nor pillow. Admitting them on frame
+    worlds is a decision the owner has not made, so no caller passes `kind`.
     """
     extra_patterns = list(kind.claim_patterns()) if kind is not None else []
     help_text = GENERAL_CLAIMS_HELP + (("\n" + kind.claims_help()) if kind is not None else "")
@@ -248,15 +249,9 @@ def parse_claims(
                 matched = True
                 break
         if not matched:
-            for other in all_kinds():
-                if other is kind:
-                    continue
-                if any(pattern.match(part) for _, pattern in other.claim_patterns()):
-                    raise AssayError(
-                        f"claim {part!r} is a {other.name}-world form and this run does "
-                        f"not admit it (frame-world forms are not admitted in 1.2.0)\n"
-                        f"{help_text}"
-                    )
+            foreign = foreign_form(part, kind)
+            if foreign is not None:
+                raise AssayError(f"{refusal_text(foreign, part)}\n{help_text}")
             if _KEYWORD.match(part):
                 raise AssayError(f"malformed claim {part!r}\n{help_text}")
             claims.append(Claim(kind="note", text=part))

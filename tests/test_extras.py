@@ -9,6 +9,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from conftest import FAKE_ADAPTER, SRC_DIR, event_of, run_cli, stop_run
 
 GRID_ADAPTER = Path(__file__).resolve().parent / "grid_adapter.py"
@@ -97,3 +99,45 @@ def test_frame_run_loads_the_extra_and_the_perception_forwarders(tmp_path):
         assert KIND.advertised_names(event_of(available_actions=[1, 6], frames=[["0"]])) == ["ACTION1", "ACTION6"]
     finally:
         stop_run(run)
+
+
+_REFUSAL = (
+    "claim 'cell 1,1=5' is a frames-world form and this run does not admit it "
+    "(frame-world forms are not admitted in 1.2.0)"
+)
+# A finder that refuses the extra and pillow, for the probe that must refuse
+# a frame form without them.
+_BLOCKER = (
+    "import importlib.abc, sys\n"
+    "class Block(importlib.abc.MetaPathFinder):\n"
+    "    def find_spec(self, name, path=None, target=None):\n"
+    "        if name.split('.')[0] in ('PIL', 'assay_grid'):\n"
+    "            raise ImportError(name)\n"
+    "        return None\n"
+    "sys.meta_path.insert(0, Block())\n"
+)
+_PROBE = (
+    "import sys\n"
+    "from assay.core import AssayError\n"
+    "from assay.predictions import parse_claims\n"
+    "try:\n"
+    "    parse_claims('cell 1,1=5')\n"
+    "except AssayError as error:\n"
+    "    print(str(error).splitlines()[0])\n"
+    "print(sorted(name for name in sys.modules if name.startswith(('PIL', 'assay_grid'))))\n"
+)
+
+
+@pytest.mark.parametrize("installed", [True, False])
+def test_a_frame_form_is_refused_by_name_without_importing_the_extra(installed):
+    """The runtime form of the pin: `parse_claims` refuses a grid claim on a
+    dict run from the kernel's own table, so the refusal is the same with
+    the extra installed and with the extra and pillow unimportable, and the
+    extra is never loaded."""
+    probe = _PROBE if installed else _BLOCKER + _PROBE
+    completed = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True,
+        cwd=str(SRC_DIR), timeout=60,
+    )
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.splitlines() == [_REFUSAL, "[]"]
