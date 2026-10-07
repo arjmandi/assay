@@ -51,19 +51,22 @@ import json
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .core import (
     AssayError,
     RunPaths,
     append_jsonl,
     atomic_json,
-    load_events,
     load_jsonl,
     read_json,
 )
 from .channels import channel_value, load_declared
 from .sandbox import run_program
+from .records import Event
+
+if TYPE_CHECKING:
+    from .run import Run
 
 PROMOTION_MIN_GRADED = 20
 PROMOTION_MIN_RECENT = 5
@@ -237,7 +240,8 @@ def init_model(paths: RunPaths) -> Path:
     return target
 
 
-def _channel_specs_for_sandbox(paths: RunPaths, declared: list[str]) -> dict[str, Any]:
+def _channel_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
+    paths = run.paths
     known = load_declared(paths)
     specs: dict[str, Any] = {}
     for name in declared:
@@ -298,8 +302,9 @@ def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> di
     return result
 
 
-def _declared_channels(paths: RunPaths) -> list[str]:
+def _declared_channels(run: Run) -> list[str]:
     """Read CHANNELS from model.py without executing agent code in-process."""
+    paths = run.paths
     source = model_source(paths)
     if not source.exists():
         raise AssayError("no model.py in the run root; `assay model init` creates one")
@@ -319,18 +324,18 @@ def _declared_channels(paths: RunPaths) -> list[str]:
     return declared
 
 
-def _observation_view(event: Mapping[str, Any]) -> dict[str, Any]:
+def _observation_view(event: Event) -> dict[str, Any]:
     from .verifiers import observation_view
 
     return observation_view(event)
 
 
-def _admitted_at_event(paths: RunPaths, current_hash: str | None, head: int) -> int:
+def _admitted_at_event(run: Run, current_hash: str | None, head: int) -> int:
     """The journal event at which the current model hash was first replayed:
     the earliest `model_replay` activity record carrying the hash and its
     event, or the head of this replay when there is none. A record written
     before the admission rule carries no event and cannot place one."""
-    for record in load_jsonl(paths.activity):
+    for record in load_jsonl(run.paths.activity):
         if (
             record.get("kind") == "model_replay"
             and record.get("model_hash") == current_hash
@@ -340,25 +345,26 @@ def _admitted_at_event(paths: RunPaths, current_hash: str | None, head: int) -> 
     return head
 
 
-def replay_model(paths: RunPaths) -> dict[str, Any]:
+def replay_model(run: Run) -> dict[str, Any]:
     """Grade the model's declared channels over every recorded paid transition.
 
     The fit covers every transition; promotion counts only the transitions
     recorded after the current model hash was admitted (its first replay)."""
-    declared = _declared_channels(paths)
-    specs = _channel_specs_for_sandbox(paths, declared)
-    events = load_events(paths)
+    paths = run.paths
+    declared = _declared_channels(run)
+    specs = _channel_specs_for_sandbox(run, declared)
+    events = run.events
     transitions = []
     indices = []
     for index in range(1, len(events)):
         event = events[index]
-        if not event.get("counts_action"):
+        if not event.counts_action:
             continue
         transitions.append(
             {
                 "before": _observation_view(events[index - 1]),
-                "action": str(event["action"]),
-                "params": event.get("data"),
+                "action": str(event.action),
+                "params": event.data,
             }
         )
         indices.append(index)
@@ -387,7 +393,7 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
         predicted = outcome.get("predicted") or {}
         graded_this = False
         for name in declared:
-            ok, actual = channel_value(paths, name, events[index])
+            ok, actual = channel_value(run, name, events[index])
             if not ok:
                 per_channel[name]["unknown"] += 1
                 continue
@@ -398,7 +404,7 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
                 per_channel[name]["missed"] += 1
                 if first_mismatch is None:
                     first_mismatch = {
-                        "event": int(events[index]["id"]),
+                        "event": int(events[index].id),
                         "channel": name,
                         "predicted": predicted.get(name),
                         "actual": actual,
@@ -410,7 +416,7 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
     graded = held + missed
     fit = (held / graded) if graded else 0.0
     paid_indices = [
-        index for index in range(1, len(events)) if events[index].get("counts_action")
+        index for index in range(1, len(events)) if events[index].counts_action
     ]
     recent_cut = set(paid_indices[-max(1, len(paid_indices) // 4):] if paid_indices else [])
     recent_graded = sum(1 for index in graded_indices if index in recent_cut)
@@ -418,8 +424,8 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
     # this model hash (its first replay): the fit over every transition is
     # reported, the rights are earned on the ones the model had not seen.
     current_hash = model_hash(paths)
-    head = int(events[-1]["id"]) if events else -1
-    admitted_at_event = _admitted_at_event(paths, current_hash, head)
+    head = int(events[-1].id) if events else -1
+    admitted_at_event = _admitted_at_event(run, current_hash, head)
     counted_indices = [index for index in graded_indices if index > admitted_at_event]
     counted = len(counted_indices)
     counted_recent = sum(1 for index in counted_indices if index in recent_cut)
@@ -465,13 +471,14 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
     return record
 
 
-def batching_rights(paths: RunPaths) -> tuple[bool, str]:
+def batching_rights(run: Run) -> tuple[bool, str]:
     """(rights, reason). Rights = current model passed replay-fit on THIS
     journal (promotion counted on the transitions recorded after the model's
     admission), no ungated event exists, and no consequence revoked batching."""
     from .aggregates import batching_revoked
     from .integrity import first_ungated
 
+    paths = run.paths
     record = read_json(fit_path(paths), None)
     if not isinstance(record, dict):
         return False, "no replay-fit record (`assay model replay`)"
@@ -491,12 +498,12 @@ def batching_rights(paths: RunPaths) -> tuple[bool, str]:
         )
     if record.get("model_hash") != model_hash(paths):
         return False, "model.py changed since its replay-fit; rerun `assay model replay`"
-    events = load_events(paths)
-    if record.get("computed_at_event") != (int(events[-1]["id"]) if events else -1):
+    events = run.events
+    if record.get("computed_at_event") != (int(events[-1].id) if events else -1):
         return False, "the journal moved since the replay-fit; rerun `assay model replay`"
     if first_ungated(events) is not None:
         return False, "an ungated event exists; trust earned after it is demoted"
-    if batching_revoked(paths):
+    if batching_revoked(run):
         return False, "an aggregate consequence revoked batching rights for this run"
     return True, "replay-fit promotion holds"
 
@@ -515,22 +522,23 @@ def parse_goal_expression(text: str) -> dict[str, Any]:
 
 
 def solve_model(
-    paths: RunPaths,
+    run: Run,
     goal_text: str,
     *,
     seconds: float = SOLVE_DEFAULT_SECONDS,
     max_nodes: int = SOLVE_DEFAULT_NODES,
     max_depth: int = SOLVE_MAX_DEPTH,
 ) -> dict[str, Any]:
+    paths = run.paths
     goal = parse_goal_expression(goal_text)
-    declared = _declared_channels(paths)
+    declared = _declared_channels(run)
     if goal["channel"] not in declared:
         raise AssayError(
             f"solve goal channel {goal['channel']!r} is not in the model's declared "
             f"channels {declared}"
         )
-    specs = _channel_specs_for_sandbox(paths, declared)
-    events = load_events(paths)
+    specs = _channel_specs_for_sandbox(run, declared)
+    events = run.events
     if not events:
         raise AssayError("timeline is empty")
     payload = {
@@ -543,12 +551,14 @@ def solve_model(
     }
     result = _run_sandbox(paths, payload, timeout=seconds + 15.0)
     plan_steps = result.get("plan")
+    if plan_steps is not None and not isinstance(plan_steps, list):
+        raise AssayError("malformed model output: the plan is not a list")
     record = {
         "kind": "model-plan",
         "goal": goal,
         "nodes": int(result.get("nodes", 0)),
         "source": {
-            "event": int(events[-1]["id"]),
+            "event": int(events[-1].id),
             "model_hash": model_hash(paths),
         },
         "actions": [

@@ -5,15 +5,19 @@ advertised-action line, and the npz export."""
 from __future__ import annotations
 
 from collections import Counter
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from assay.core import AssayError, RunPaths, canonical_action, frame_at, load_events
-from assay.registry import budget_line, load_registry
+from assay.core import AssayError, canonical_action, frame_at
+from assay.records import Event, Receipt
+from assay.registry import budget_line
 from assay.words import progress_text
+
+if TYPE_CHECKING:
+    from assay.run import Run
 
 from .perception import (
     connected_components,
@@ -25,7 +29,7 @@ from .perception import (
 from .render import current_image, render_event
 
 
-def _bbox(mask: np.ndarray, margin: int = 1) -> tuple[int, int, int, int]:
+def _bbox(mask: np.ndarray[Any, Any], margin: int = 1) -> tuple[int, int, int, int]:
     cells = np.argwhere(mask)
     height, width = mask.shape
     if not len(cells):
@@ -37,7 +41,7 @@ def _bbox(mask: np.ndarray, margin: int = 1) -> tuple[int, int, int, int]:
     return top, bottom, left, right
 
 
-def _grid_text(grid: np.ndarray, bounds: tuple[int, int, int, int]) -> str:
+def _grid_text(grid: np.ndarray[Any, Any], bounds: tuple[int, int, int, int]) -> str:
     top, bottom, left, right = bounds
     rows = [f"     cols {left}..{right - 1}"]
     rows.extend(
@@ -49,7 +53,7 @@ def _grid_text(grid: np.ndarray, bounds: tuple[int, int, int, int]) -> str:
 
 
 def _masked_grid_text(
-    grid: np.ndarray, mask: np.ndarray, bounds: tuple[int, int, int, int]
+    grid: np.ndarray[Any, Any], mask: np.ndarray[Any, Any], bounds: tuple[int, int, int, int]
 ) -> str:
     top, bottom, left, right = bounds
     lines = [f"     cols {left}..{right - 1}"]
@@ -69,7 +73,7 @@ def _masked_grid_text(
     return "\n".join(lines)
 
 
-def _salient_components(grid: np.ndarray, limit: int = 12) -> list[dict[str, Any]]:
+def _salient_components(grid: np.ndarray[Any, Any], limit: int = 12) -> list[dict[str, Any]]:
     """Rank neutral click hypotheses without flooding the output with pixel noise."""
     components = connected_components(grid)
     counts = np.bincount(grid.ravel(), minlength=16)
@@ -119,7 +123,7 @@ def _salient_components(grid: np.ndarray, limit: int = 12) -> list[dict[str, Any
     return candidates[:limit]
 
 
-def _scene_summary(grid: np.ndarray) -> list[str]:
+def _scene_summary(grid: np.ndarray[Any, Any]) -> list[str]:
     counts = Counter(int(value) for value in grid.ravel())
     components = connected_components(grid)
     repeated = repeated_shapes(grid, min_size=2, limit=5)
@@ -146,36 +150,33 @@ def _scene_summary(grid: np.ndarray) -> list[str]:
     return lines
 
 
-def advertised_names(event: Mapping[str, Any]) -> list[str]:
+def advertised_names(event: Event) -> list[str]:
     """A frame world advertises bare action ids; registered names carry the
     ACTION prefix. The affordance check compares names, so render the ids."""
-    return [f"ACTION{int(value)}" for value in event.get("available_actions") or ()]
+    return [f"ACTION{int(value)}" for value in event.available_actions]
 
 
-def available_line(event: Mapping[str, Any]) -> str:
+def available_line(event: Event) -> str:
     # Bare action numbers: semantics are earned by acting, never assumed.
     return "ACTIONS | available: " + (
-        " · ".join(str(number) for number in event["available_actions"]) or "none"
+        " · ".join(str(number) for number in event.available_actions) or "none"
     ) + " · RESET (built-in)"
 
 
-def status_head_lines(
-    paths: RunPaths, event: Mapping[str, Any], registry: Mapping[str, Any] | None
-) -> list[str]:
-    images = render_event(paths, event)
+def status_head_lines(run: Run, event: Event) -> list[str]:
+    images = render_event(run.paths, event)
     return [f"IMAGE | {images[0]}", available_line(event)]
 
 
-def result_lines(
-    paths: RunPaths, receipt: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
-) -> list[str]:
+def result_lines(run: Run, receipt: Receipt) -> list[str]:
     """After a paid command on a frame world: the worded transition, a compact
     cell diff, the image, the available actions and the budget."""
+    events = run.events
     event = events[-1]
     lines: list[str] = []
-    end = receipt.get("end_event")
-    if end is not None and int(event["id"]) == int(end) and int(end) > 0:
-        previous = frame_at(events[int(end) - 1])
+    end = receipt.end_event
+    if event.id == end and end > 0:
+        previous = frame_at(events[end - 1])
         current = frame_at(event)
         story = transition_story(previous, current)
         lines.append("TRANSITION | last step, worded")
@@ -194,31 +195,31 @@ def result_lines(
                         _masked_grid_text(current, mask, box),
                     ]
                 )
-    lines.append(f"IMAGE | {current_image(paths)}")
+    lines.append(f"IMAGE | {current_image(run)}")
     lines.append(available_line(event))
-    registry = load_registry(paths)
+    registry = run.registry
     if registry:
         lines.append(budget_line(registry, events))
     return lines
 
 
 def inspect_text(
-    paths: RunPaths,
-    events: Sequence[Mapping[str, Any]],
+    run: Run,
     index: int,
     *,
     full: bool = False,
     frames: bool = False,
 ) -> str:
+    events = run.events
     event = events[index]
     grid = frame_at(event)
     previous = frame_at(events[index - 1]) if index else None
     lines = [
-        f"RUN | event {index} | {progress_text(event)} | paid actions {sum(bool(item.get('counts_action')) for item in events)} | state {event['state']}",
-        f"CAUSE | {canonical_action(event)} | frames {len(event['frames'])}",
+        f"RUN | event {index} | {progress_text(event)} | paid actions {sum(1 for item in events if item.counts_action)} | state {event.state}",
+        f"CAUSE | {canonical_action(event)} | frames {len(event.frames or ())}",
         available_line(event),
     ]
-    changed: np.ndarray | None = None
+    changed: np.ndarray[Any, Any] | None = None
     if previous is not None and previous.shape == grid.shape:
         changed = previous != grid
         bounds = (
@@ -256,7 +257,8 @@ def inspect_text(
 
     lines.extend(_scene_summary(grid))
 
-    if len(event["frames"]) > 1:
+    frame_count = len(event.frames or ())
+    if frame_count > 1:
         lines.append("ANIMATION | consecutive causal deltas")
         prior_frame = (
             previous
@@ -264,7 +266,7 @@ def inspect_text(
             else frame_at(event, 0)
         )
         animation_frames = [prior_frame] + [
-            frame_at(event, index) for index in range(len(event["frames"]))
+            frame_at(event, index) for index in range(frame_count)
         ]
         traces = motion_trace(animation_frames)
         for frame_index, trace in enumerate(traces):
@@ -280,7 +282,7 @@ def inspect_text(
                 for item in delta.get("color_changes", ())[:3]
             )
             lines.append(
-                f"  frame {frame_index + 1}/{len(event['frames'])}: {delta['changed_cells']} changed; {region}"
+                f"  frame {frame_index + 1}/{frame_count}: {delta['changed_cells']} changed; {region}"
                 + (f"; {changes}" if changes else "")
             )
             for moved in trace.get("moved", ())[:3]:
@@ -295,7 +297,7 @@ def inspect_text(
                     _grid_text(current, (0, current.shape[0], 0, current.shape[1]))
                 )
 
-    if 6 in event["available_actions"]:
+    if 6 in event.available_actions:
         candidates = _salient_components(grid)
         lines.append(
             "CLICK CANDIDATES | salience-ranked monochrome representatives; hypotheses only"
@@ -310,22 +312,17 @@ def inspect_text(
     return "\n".join(lines)
 
 
-def view_text(
-    paths: RunPaths,
-    events: Sequence[Mapping[str, Any]],
-    index: int,
-    flags: Mapping[str, Any],
-) -> str:
+def view_text(run: Run, index: int, flags: Mapping[str, Any]) -> str:
     """`assay view` on a frame world: image, inspect, frame images, an exact
     crop, history. The history line is appended by the caller."""
-    event = events[index]
+    event = run.events[index]
     grid = bool(flags.get("grid"))
     frames = bool(flags.get("frames"))
     crop = parse_crop(flags.get("crop"))
-    images = render_event(paths, event, all_frames=frames)
+    images = render_event(run.paths, event, all_frames=frames)
     lines = [
         f"IMAGE | {images[0]}",
-        inspect_text(paths, events, index, full=grid, frames=frames),
+        inspect_text(run, index, full=grid, frames=frames),
     ]
     if frames and len(images) > 1:
         lines.append("FRAME IMAGES | " + " ".join(str(path) for path in images[1:]))
@@ -361,7 +358,8 @@ def parse_crop(value: str | None) -> tuple[int, int, int, int] | None:
         ) from None
 
 
-def export_history(paths: RunPaths, destination: Path) -> Path:
+def export_history(run: Run, destination: Path) -> Path:
+    paths = run.paths
     if destination.suffix.lower() != ".npz":
         raise AssayError("observation export filename must end in .npz")
     try:
@@ -376,17 +374,17 @@ def export_history(paths: RunPaths, destination: Path) -> Path:
         pass
     else:
         raise AssayError("do not write analysis output inside .assay")
-    events = load_events(paths)
-    if events and "frames" not in events[-1]:
+    events = run.events
+    if events and events[-1].frames is None:
         raise AssayError(
             "this run has dict observations; there is no grid history to export"
         )
-    frames: list[np.ndarray] = []
+    frames: list[np.ndarray[Any, Any]] = []
     frame_events: list[int] = []
     for event in events:
-        for index in range(len(event["frames"])):
+        for index in range(len(event.frames or ())):
             frames.append(frame_at(event, index))
-            frame_events.append(int(event["id"]))
+            frame_events.append(event.id)
     destination.parent.mkdir(parents=True, exist_ok=True)
     np.savez_compressed(
         destination,
@@ -395,12 +393,12 @@ def export_history(paths: RunPaths, destination: Path) -> Path:
         settled=np.stack([frame_at(event) for event in events]),
         actions=np.asarray([canonical_action(event) for event in events]),
         levels=np.asarray(
-            [event["levels_completed"] for event in events], dtype=np.int16
+            [event.levels_completed for event in events], dtype=np.int16
         ),
-        states=np.asarray([event["state"] for event in events]),
+        states=np.asarray([event.state for event in events]),
         available=np.asarray(
             [
-                [number in event["available_actions"] for number in range(1, 8)]
+                [number in event.available_actions for number in range(1, 8)]
                 for event in events
             ],
             dtype=bool,

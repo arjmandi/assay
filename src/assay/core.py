@@ -15,9 +15,14 @@ import uuid
 from collections.abc import Iterator, Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
+
+from .records import Event
+
+if TYPE_CHECKING:
+    from .run import Run
 
 
 class AssayError(RuntimeError):
@@ -196,43 +201,52 @@ def run_lock(paths: RunPaths) -> Iterator[None]:
         yield
 
 
+@dataclasses.dataclass
+class CommandStatus:
+    """The run a command works on. A paid command replaces it with the run
+    reloaded after the daemon's receipt, so the activity record of the
+    command's end names the head the daemon left."""
+
+    run: Run
+
+
 @contextlib.contextmanager
-def command_status(paths: RunPaths, command: str) -> Iterator[None]:
+def command_status(run: Run, command: str) -> Iterator[CommandStatus]:
     started_monotonic = time.monotonic()
-    events = load_jsonl(paths.events)
+    current = CommandStatus(run)
     record = {
         "status": "RUNNING",
         "command": command,
-        "event": events[-1]["id"] if events else None,
+        "event": run.events[-1].id if run.events else None,
         "risk": "paid_live_action"
         if command in {"act", "commit", "reset"}
         else "offline",
         "started_at": now_iso(),
         "pid": os.getpid(),
     }
-    append_jsonl(paths.activity, {"kind": "command_start", **record})
+    append_jsonl(run.paths.activity, {"kind": "command_start", **record})
     try:
-        yield
+        yield current
     except Exception as error:
-        current = load_jsonl(paths.events)
+        events = current.run.events
         record.update(
             status="ERROR",
             finished_at=now_iso(),
             elapsed_seconds=time.monotonic() - started_monotonic,
-            event=current[-1]["id"] if current else record["event"],
+            event=events[-1].id if events else record["event"],
             error=str(error)[:500],
         )
-        append_jsonl(paths.activity, {"kind": "command_end", **record})
+        append_jsonl(run.paths.activity, {"kind": "command_end", **record})
         raise
     else:
-        current = load_jsonl(paths.events)
+        events = current.run.events
         record.update(
             status="FINISHED",
             finished_at=now_iso(),
             elapsed_seconds=time.monotonic() - started_monotonic,
-            event=current[-1]["id"] if current else record["event"],
+            event=events[-1].id if events else record["event"],
         )
-        append_jsonl(paths.activity, {"kind": "command_end", **record})
+        append_jsonl(run.paths.activity, {"kind": "command_end", **record})
 
 
 def require_run(paths: RunPaths) -> dict[str, Any]:
@@ -253,7 +267,7 @@ def grid_to_rows(grid: Any) -> list[str]:
     return ["".join(format(int(cell), "x") for cell in row) for row in array]
 
 
-def rows_to_grid(rows: Sequence[str]) -> np.ndarray:
+def rows_to_grid(rows: Sequence[str]) -> np.ndarray[Any, Any]:
     if not rows:
         raise AssayError("empty frame")
     width = len(rows[0])
@@ -281,9 +295,9 @@ def normalize_available(values: Any) -> list[int]:
     return sorted(output)
 
 
-def general_event(event: Mapping[str, Any]) -> bool:
+def general_event(event: Event) -> bool:
     """True for a dict-shaped (non-grid) observation event."""
-    return "frames" not in event
+    return event.frames is None
 
 
 def normalize_observation(response: Any) -> dict[str, Any]:
@@ -343,54 +357,39 @@ def make_event(
     response: Any,
     action: str,
     data: Mapping[str, Any] | None,
-    previous: Mapping[str, Any] | None,
+    previous: Event | None,
     note: str = "",
-) -> dict[str, Any]:
+) -> Event:
+    """The pending event of one observation: id -1 until `run.append` assigns
+    the held count, the observation under `observation` (a dict world) or
+    `frames` and `n_frames` (a frame world)."""
     observed = normalize_observation(response)
-    event = {
-        "id": -1,
-        "timestamp": now_iso(),
-        "action": action,
-        "data": dict(data) if data else None,
-        "note": note,
-        "state": observed["state"],
-        "levels_completed": observed["levels_completed"],
-        "level_before": None if previous is None else int(previous["levels_completed"]),
-        "win_levels": observed["win_levels"],
-        "available_actions": observed["available_actions"],
-        "counts_action": action != "START",
-    }
+    event = Event(
+        id=-1,
+        timestamp=now_iso(),
+        action=action,
+        data=dict(data) if data else None,
+        counts_action=action != "START",
+        state=str(observed["state"]),
+        levels_completed=int(observed["levels_completed"]),
+        level_before=None if previous is None else int(previous.levels_completed),
+        win_levels=int(observed["win_levels"]),
+        available_actions=list(observed["available_actions"]),
+        note=note,
+    )
     if "data" in observed:
-        event["observation"] = observed["data"]
-    else:
-        event["n_frames"] = len(observed["frames"])
-        event["frames"] = observed["frames"]
-    return event
+        return event.updated(observation=observed["data"])
+    frames = list(observed["frames"])
+    return event.updated(n_frames=len(frames), frames=frames)
 
 
-def load_events(paths: RunPaths) -> list[dict[str, Any]]:
-    events = load_jsonl(paths.events)
-    for index, event in enumerate(events):
-        if event.get("id") != index:
-            raise AssayError(
-                f"event timeline is not contiguous at line {index + 1}"
-            )
-    return events
+def frame_at(event: Event, frame: int = -1) -> np.ndarray[Any, Any]:
+    if event.frames is None:
+        raise AssayError("this event has dict observations; there is no frame to decode")
+    return rows_to_grid(event.frames[frame])
 
 
-def append_event(paths: RunPaths, event: Mapping[str, Any]) -> dict[str, Any]:
-    events = load_events(paths)
-    record = {**dict(event), "id": len(events)}
-    append_jsonl(paths.events, record)
-    # append_jsonl injects a timestamp first, then record's timestamp wins.
-    return record
-
-
-def frame_at(event: Mapping[str, Any], frame: int = -1) -> np.ndarray:
-    return rows_to_grid(event["frames"][frame])
-
-
-def canonical_action(event: Mapping[str, Any]) -> str:
+def canonical_action(event: Event) -> str:
     """One line for an event's action: the name, then `k=v` parameters in key
     order. An observation kind may render its own form (a frame world prints
     its point action as NAME:x,y, the form the published journals' receipts
@@ -402,11 +401,11 @@ def canonical_action(event: Mapping[str, Any]) -> str:
         rendered = kind.canonical_action(event)
         if rendered is not None:
             return rendered
-    data = event.get("data")
+    data = event.data
     if data:
         rendered = " ".join(f"{key}={data[key]}" for key in sorted(data))
-        return f"{event['action']} {rendered}"
-    return str(event["action"])
+        return f"{event.action} {rendered}"
+    return str(event.action)
 
 
 def parse_action(
@@ -416,35 +415,6 @@ def parse_action(
     from .registry import parse_registry_action
 
     return parse_registry_action(token, registry)
-
-
-def segment_start(events: Sequence[Mapping[str, Any]], index: int | None = None) -> int:
-    if not events:
-        return 0
-    cursor = len(events) - 1 if index is None else index
-    while cursor > 0:
-        event = events[cursor]
-        prior = events[cursor - 1]
-        if (
-            event["action"] == "RESET"
-            or event["levels_completed"] != prior["levels_completed"]
-        ):
-            return cursor
-        cursor -= 1
-    return 0
-
-
-def context_for(events: Sequence[Mapping[str, Any]], index: int) -> dict[str, Any]:
-    event = events[index]
-    return {
-        "event": index,
-        "level": int(event["levels_completed"]) + 1,
-        "levels_completed": int(event["levels_completed"]),
-        "win_levels": int(event["win_levels"]),
-        "environment_state": str(event["state"]),
-        "available_actions": tuple(event["available_actions"]),
-        "segment_start": segment_start(events, index),
-    }
 
 
 @contextlib.contextmanager

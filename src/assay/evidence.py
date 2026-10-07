@@ -5,41 +5,42 @@ changed. The dict form lives here; an observation kind renders its own form
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 
 from .core import canonical_action
 from .extras import kind_for
+from .records import Event
 from .textobs import changed_count
 
 
-def history_lines(events: Sequence[Mapping[str, object]], count: int = 8) -> list[str]:
+def history_lines(events: Sequence[Event], count: int = 8) -> list[str]:
     paid = 0
     paid_at: dict[int, int] = {}
     for event in events:
-        if event.get("counts_action"):
+        if event.counts_action:
             paid += 1
-        paid_at[int(event["id"])] = paid
+        paid_at[event.id] = paid
     lines: list[str] = []
     for event in events[-max(1, count) :]:
-        if event.get("predict_ok") is True:
+        if event.predict_ok is True:
             mark = " ✓"
-        elif event.get("predict_ok") is False:
+        elif event.predict_ok is False:
             mark = " ✗"
         else:
             mark = ""
         kind = kind_for(event)
         if kind is not None:
-            lines.append(kind.history_line(events, event, paid_at[int(event["id"])], mark))
+            lines.append(kind.history_line(events, event, paid_at[event.id], mark))
             continue
-        previous = events[int(event["id"]) - 1] if int(event["id"]) else None
+        previous = events[event.id - 1] if event.id else None
         changed = (
             "start"
-            if previous is None or "frames" in previous
-            else f"{changed_count(previous['observation'], event['observation'])} keys"
+            if previous is None or previous.frames is not None
+            else f"{changed_count(previous.observation, event.observation)} keys"
         )
         lines.append(
-            f"  e{int(event['id']):04d} a{paid_at[int(event['id'])]:04d} "
-            f"L{min(int(event['win_levels']), int(event['levels_completed']) + 1)} {canonical_action(event)}{mark} | {changed} | "
-            f"{event['state']}"
+            f"  e{event.id:04d} a{paid_at[event.id]:04d} "
+            f"L{min(event.win_levels, event.levels_completed + 1)} {canonical_action(event)}{mark} | {changed} | "
+            f"{event.state}"
         )
     return lines

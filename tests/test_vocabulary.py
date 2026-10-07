@@ -72,12 +72,14 @@ def test_kernel_prose_uses_world_and_progress_unit():
 
 
 def test_progress_words():
+    from conftest import event_of
+
     from assay.words import progress_text, unit_line_label, unit_noun
 
-    single = {"win_levels": 1, "levels_completed": 0}
-    several = {"win_levels": 6, "levels_completed": 2}
+    single = event_of(win_levels=1, levels_completed=0)
+    several = event_of(win_levels=6, levels_completed=2)
     assert progress_text(single) == "progress 1/1"
     assert progress_text(several) == "level 3/6"
-    assert progress_text({"win_levels": 6, "levels_completed": 6}) == "level 6/6"
+    assert progress_text(event_of(win_levels=6, levels_completed=6)) == "level 6/6"
     assert unit_noun(1) == "unit" and unit_noun(4) == "level"
     assert unit_line_label(1) == "PROGRESS" and unit_line_label(25) == "LEVEL"

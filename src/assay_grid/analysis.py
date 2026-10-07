@@ -5,13 +5,14 @@ analysis uses."""
 from __future__ import annotations
 
 from collections import deque
-from collections.abc import Callable, Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any
 
 import numpy as np
 
 from assay.analysis import astar, bfs, show
 from assay.core import canonical_action, frame_at
+from assay.records import Event
 
 from .perception import (
     connected_components,
@@ -23,11 +24,11 @@ from .perception import (
 )
 
 
-def crop(grid: np.ndarray, rows: tuple[int, int], cols: tuple[int, int]) -> np.ndarray:
+def crop(grid: np.ndarray[Any, Any], rows: tuple[int, int], cols: tuple[int, int]) -> np.ndarray[Any, Any]:
     return np.asarray(grid)[rows[0] : rows[1], cols[0] : cols[1]].copy()
 
 
-def sample(grid: np.ndarray, coordinates: Iterable[tuple[int, int]]) -> list[int]:
+def sample(grid: np.ndarray[Any, Any], coordinates: Iterable[tuple[int, int]]) -> list[int]:
     array = np.asarray(grid)
     return [int(array[row, column]) for row, column in coordinates]
 
@@ -45,7 +46,7 @@ def _neighbors(
 def shortest_path(
     start: tuple[int, int],
     goal: tuple[int, int],
-    passable: np.ndarray | Callable[[tuple[int, int]], bool],
+    passable: np.ndarray[Any, Any] | Callable[[tuple[int, int]], bool],
     *,
     diagonal: bool = False,
 ) -> list[tuple[int, int]] | None:
@@ -80,21 +81,21 @@ def shortest_path(
     return None
 
 
-def namespace(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def namespace(events: Sequence[Event]) -> dict[str, Any]:
     settled = [frame_at(event) for event in events]
     frames = [
-        [frame_at(event, index) for index in range(len(event["frames"]))]
+        [frame_at(event, index) for index in range(len(event.frames or ()))]
         for event in events
     ]
     transitions = [
         {
-            "event": int(event["id"]),
+            "event": event.id,
             "action": canonical_action(event),
             "before": settled[index - 1],
             "after": settled[index],
             "frames": frames[index],
-            "state": event["state"],
-            "level": int(event["levels_completed"]) + 1,
+            "state": event.state,
+            "level": event.levels_completed + 1,
         }
         for index, event in enumerate(events)
         if index
@@ -105,7 +106,7 @@ def namespace(events: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
         "previous": settled[-2] if len(settled) > 1 else None,
         "settled": settled,
         "frames": frames,
-        "events": list(events),
+        "events": [event.to_json() for event in events],
         "transitions": transitions,
         "actions": [canonical_action(event) for event in events[1:]],
         "show": show,

@@ -4,14 +4,18 @@ frame form of the history line. This is the one place pillow is imported.
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PIL import Image
 
-from assay.core import AssayError, RunPaths, canonical_action, frame_at, load_events
+from assay.core import AssayError, RunPaths, canonical_action, frame_at
+from assay.records import Event
+
+if TYPE_CHECKING:
+    from assay.run import Run
 
 # A stable, high-contrast rendering palette. The numeric grid remains ground truth.
 PALETTE = np.asarray(
@@ -42,7 +46,7 @@ def image_path(paths: RunPaths, event_id: int, frame_id: int | None = None) -> P
     return paths.state / "images" / f"event-{event_id:05d}-{suffix}.png"
 
 
-def render_grid(grid: np.ndarray, destination: Path, *, scale: int = 8) -> Path:
+def render_grid(grid: np.ndarray[Any, Any], destination: Path, *, scale: int = 8) -> Path:
     array = np.asarray(grid, dtype=np.int16)
     if array.ndim != 2 or (
         array.size and (int(array.min()) < 0 or int(array.max()) > 15)
@@ -57,41 +61,37 @@ def render_grid(grid: np.ndarray, destination: Path, *, scale: int = 8) -> Path:
     return destination.resolve()
 
 
-def render_event(
-    paths: RunPaths, event: Mapping[str, Any], *, all_frames: bool = False
-) -> list[Path]:
-    event_id = int(event["id"])
+def render_event(paths: RunPaths, event: Event, *, all_frames: bool = False) -> list[Path]:
+    event_id = event.id
     output = [render_grid(frame_at(event), image_path(paths, event_id))]
     if all_frames:
         output.extend(
             render_grid(frame_at(event, index), image_path(paths, event_id, index))
-            for index in range(len(event["frames"]))
+            for index in range(len(event.frames or ()))
         )
     return output
 
 
-def current_image(paths: RunPaths) -> Path:
-    events = load_events(paths)
+def current_image(run: Run) -> Path:
+    events = run.events
     if not events:
         raise AssayError("timeline is empty")
-    destination = image_path(paths, int(events[-1]["id"]))
+    destination = image_path(run.paths, events[-1].id)
     if not destination.exists():
-        render_event(paths, events[-1])
+        render_event(run.paths, events[-1])
     return destination.resolve()
 
 
-def history_line(
-    events: Sequence[Mapping[str, Any]], event: Mapping[str, Any], paid: int, mark: str
-) -> str:
+def history_line(events: Sequence[Event], event: Event, paid: int, mark: str) -> str:
     grid = frame_at(event)
-    previous = frame_at(events[int(event["id"]) - 1]) if int(event["id"]) else None
+    previous = frame_at(events[event.id - 1]) if event.id else None
     changed = (
         "start"
         if previous is None or previous.shape != grid.shape
         else f"{int(np.count_nonzero(previous != grid))} cells"
     )
     return (
-        f"  e{int(event['id']):04d} a{paid:04d} "
-        f"L{min(int(event['win_levels']), int(event['levels_completed']) + 1)} {canonical_action(event)}{mark} | {changed} | "
-        f"frames={len(event['frames'])} | {event['state']}"
+        f"  e{event.id:04d} a{paid:04d} "
+        f"L{min(event.win_levels, event.levels_completed + 1)} {canonical_action(event)}{mark} | {changed} | "
+        f"frames={len(event.frames or ())} | {event.state}"
     )

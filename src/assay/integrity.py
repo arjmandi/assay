@@ -3,11 +3,12 @@ and secrets redaction at the journal boundary.
 
 The chain makes the journal TAMPER-EVIDENT under stated conditions, not
 unforgeable, and says so out loud: head_0 = sha256("assay-chain-v1"),
-head_n = sha256(head_{n-1} || line_n). The daemon updates `.assay/chain.json` on
-every event append and anchors the head OUTSIDE the run directory
+head_n = sha256(head_{n-1} || line_n). The daemon advances the held head with
+every line `run.append` writes, updates `.assay/chain.json` after each append
+and anchors the head OUTSIDE the run directory
 (`~/.assay/anchors/<run-digest>.jsonl`, override with ASSAY_ANCHOR_DIR) every
-ANCHOR_EVERY events and on WIN. `assay audit` recomputes everything from the
-journal and reports:
+ANCHOR_EVERY events and on WIN (`run.Run.append`). `assay audit` recomputes
+everything from the journal and reports:
 
 - chain intact / diverged (and against the anchors),
 - event-id contiguity,
@@ -28,9 +29,13 @@ import os
 import time
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .core import RunPaths, append_jsonl, atomic_json, load_jsonl, read_json
+from .core import RunPaths, atomic_json, load_jsonl
+from .records import Event
+
+if TYPE_CHECKING:
+    from .run import Run
 
 ANCHOR_EVERY = 25
 CHAIN_SEED = "assay-chain-v1"
@@ -56,28 +61,27 @@ def environment_anchor_file(paths: RunPaths) -> Path:
     return anchor_dir() / f"{digest}.jsonl"
 
 
-def recorded_anchor_file(paths: RunPaths) -> Path | None:
+def recorded_anchor_file(config: Mapping[str, Any] | None) -> Path | None:
     """The anchor file pinned in config.json at start, or None for a run that
     predates the key."""
-    config = read_json(paths.config, None)
-    if isinstance(config, dict) and isinstance(config.get("anchor_file"), str):
+    if isinstance(config, Mapping) and isinstance(config.get("anchor_file"), str):
         return Path(config["anchor_file"])
     return None
 
 
-def anchor_file(paths: RunPaths) -> Path:
+def anchor_file(paths: RunPaths, config: Mapping[str, Any] | None) -> Path:
     """Where this run's chain heads go: the file recorded in config.json at
     start, so a later shell with a different ASSAY_ANCHOR_DIR still anchors and
     audits against the same file. Runs without the key use the environment."""
-    recorded = recorded_anchor_file(paths)
+    recorded = recorded_anchor_file(config)
     return recorded if recorded is not None else environment_anchor_file(paths)
 
 
-def anchor_status(paths: RunPaths) -> dict[str, Any]:
+def anchor_status(paths: RunPaths, config: Mapping[str, Any] | None) -> dict[str, Any]:
     """The anchor line's facts: file, count, last anchored event, the last
     failed write (if newer than the last anchor), and whether the directory
     can be written now."""
-    target = anchor_file(paths)
+    target = anchor_file(paths, config)
     anchors = load_jsonl(target) if target.exists() else []
     last_event = int(anchors[-1]["event_id"]) if anchors else None
     failed: str | None = None
@@ -102,8 +106,8 @@ def anchor_status(paths: RunPaths) -> dict[str, Any]:
     }
 
 
-def anchor_line(paths: RunPaths) -> str:
-    status = anchor_status(paths)
+def anchor_line(paths: RunPaths, config: Mapping[str, Any] | None) -> str:
+    status = anchor_status(paths, config)
     line = f"ANCHORS | {status['file']} | "
     line += (
         f"{status['count']} anchor(s), last e{status['last_event']}"
@@ -137,45 +141,6 @@ def compute_chain(paths: RunPaths) -> tuple[int, str]:
     return last, head
 
 
-def extend_chain(paths: RunPaths, appended_line: str, event_id: int, win: bool) -> None:
-    """Advance the stored chain by one appended journal line; anchor when due.
-
-    The daemon calls this immediately after each event append. If the stored
-    state is behind (older appends, recovery), it recomputes from the journal:
-    correctness over speed at this file size."""
-    state = read_json(chain_path(paths), None)
-    if (
-        isinstance(state, dict)
-        and int(state.get("event_id", -2)) == event_id - 1
-        and isinstance(state.get("head"), str)
-    ):
-        head = _advance(state["head"], appended_line)
-    else:
-        _, head = compute_chain(paths)
-    atomic_json(chain_path(paths), {"event_id": event_id, "head": head})
-    if win or (event_id > 0 and event_id % ANCHOR_EVERY == 0):
-        target = anchor_file(paths)
-        try:
-            target.parent.mkdir(parents=True, exist_ok=True)
-            append_jsonl(
-                target,
-                {"event_id": event_id, "head": head, "run": str(paths.root)},
-            )
-        except OSError as error:
-            # An unanchorable filesystem degrades to chain-only integrity. The
-            # spend is never failed over it, but the failure is journaled to
-            # activity and shown in status, never swallowed.
-            append_jsonl(
-                paths.activity,
-                {
-                    "kind": "anchor_failed",
-                    "event": event_id,
-                    "file": str(target),
-                    "error": f"{type(error).__name__}: {error}",
-                },
-            )
-
-
 def redact(text: str | None, extra_names: Sequence[str] = ()) -> str | None:
     """Replace secret env values with [REDACTED:<NAME>] before journaling."""
     if not text:
@@ -206,63 +171,45 @@ def redact_mapping(
     return _walk(dict(value))
 
 
-def ungated_events(events: Sequence[Mapping[str, Any]]) -> list[int]:
+def ungated_events(events: Sequence[Event]) -> list[int]:
     """Paid non-RESET events with no prediction and no grade: the ungated-event
     rule of verify/JOURNAL_SPEC.md section 6, the one the independent checker
     (verify/assay_verify.py) applies over the same journal fields."""
-    flagged: list[int] = []
-    for event in events:
-        if not event.get("counts_action") or event.get("action") == "RESET":
-            continue
-        gated = (
-            event.get("predict")
-            or event.get("predict_ok") is not None
-            or event.get("grade")
-        )
-        if not gated:
-            flagged.append(int(event["id"]))
-    return flagged
+    return [event.id for event in events if event.ungated]
 
 
-def first_ungated(events: Sequence[Mapping[str, Any]]) -> int | None:
+def first_ungated(events: Sequence[Event]) -> int | None:
     flagged = ungated_events(events)
     return flagged[0] if flagged else None
 
 
-_PERMIT_MARKERS = (("gate_optional", "optional"), ("gate_off", "off"))
-
-
-def ungated_permitted(events: Sequence[Mapping[str, Any]]) -> dict[int, str]:
+def ungated_permitted(events: Sequence[Event]) -> dict[int, str]:
     """The ungated events a control arm permitted, keyed by id, with the mode
     whose marker the event carries (`gate_optional` or `gate_off`). The mode
     permits exactly what it marks: an ungated event without a marker was not
     permitted, whatever the registry says. Such events stay ungated and the
     run stays invalid for scoring; they are only counted apart."""
-    by_id = {int(event["id"]): event for event in events if event.get("id") is not None}
     permitted: dict[int, str] = {}
-    for event_id in ungated_events(events):
-        event = by_id.get(event_id, {})
-        for marker, mode in _PERMIT_MARKERS:
-            if event.get(marker):
-                permitted[event_id] = mode
-                break
+    for event in events:
+        if not event.ungated:
+            continue
+        if event.gate_optional:
+            permitted[event.id] = "optional"
+        elif event.gate_off:
+            permitted[event.id] = "off"
     return permitted
 
 
-def audit(paths: RunPaths) -> dict[str, Any]:
+def audit(run: Run) -> dict[str, Any]:
     """Recompute integrity from the artifacts; write .assay/audit.json; return it."""
-    from .core import load_events
-
+    paths = run.paths
+    events = run.events
     problems: list[str] = []
-    try:
-        events = load_events(paths)  # raises on non-contiguous ids
-        contiguous = True
-    except Exception as error:  # noqa: BLE001 - the audit reports, never crashes
-        events = load_jsonl(paths.events)
-        contiguous = False
-        problems.append(f"contiguity: {error}")
-    last_id, head = compute_chain(paths)
-    stored = read_json(chain_path(paths), None)
+    contiguous = run.integrity.contiguous
+    if not contiguous:
+        problems.append(f"contiguity: {run.integrity.problem}")
+    last_id, head = run.chain_event, run.chain_head
+    stored = run.stored_chain
     chain_state = "absent"
     if isinstance(stored, dict):
         if int(stored.get("event_id", -2)) == last_id and stored.get("head") == head:
@@ -273,14 +220,14 @@ def audit(paths: RunPaths) -> dict[str, Any]:
                 f"chain: stored head at e{stored.get('event_id')} does not match "
                 f"the recomputed journal head at e{last_id}"
             )
-    anchor_target = anchor_file(paths)
+    anchor_target = anchor_file(paths, run.config)
     anchors = load_jsonl(anchor_target) if anchor_target.exists() else []
     anchor_state = "none"
-    recorded = recorded_anchor_file(paths)
+    recorded = recorded_anchor_file(run.config)
     anchor_env_mismatch = (
         recorded is not None and environment_anchor_file(paths) != recorded
     )
-    if anchor_env_mismatch:
+    if anchor_env_mismatch and recorded is not None:
         problems.append(
             f"anchor_env_mismatch: ASSAY_ANCHOR_DIR names {environment_anchor_file(paths).parent} "
             f"but this run anchors to {recorded.parent} (recorded at start); the "
@@ -314,25 +261,22 @@ def audit(paths: RunPaths) -> dict[str, Any]:
     # The control arms (gate: optional, gate: off) permit bare acts; they are
     # counted apart, with the mode that permitted them, and stay ungated.
     permitted_modes = ungated_permitted(events)
-    mutations = load_jsonl(paths.mutations)
-    journaled = {
-        int(event["mutation_id"]) for event in events if event.get("mutation_id") is not None
-    }
+    journaled = {event.mutation_id for event in events if event.mutation_id is not None}
     pending = [
-        int(item["mutation_id"])
-        for item in mutations
-        if item.get("mutation_id") is not None and int(item["mutation_id"]) not in journaled
+        mutation.mutation_id
+        for mutation in run.mutations
+        if mutation.mutation_id not in journaled
     ]
     recovered = [
-        int(event["id"])
+        event.id
         for event in events
-        if "recovered from broker mutation journal" in str(event.get("note") or "")
+        if "recovered from broker mutation journal" in str(event.note or "")
     ]
     report = {
         "computed_at": time.time(),
         "events": len(events),
-        "paid": sum(1 for event in events if event.get("counts_action")),
-        "mutations": len(mutations),
+        "paid": sum(1 for event in events if event.counts_action),
+        "mutations": len(run.mutations),
         "contiguous": contiguous,
         "chain": chain_state,
         "anchors": anchor_state,

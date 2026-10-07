@@ -27,11 +27,13 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
-from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, load_jsonl, read_json
+
+if TYPE_CHECKING:
+    from .run import Run
 
 APPROVAL_EXPIRY_SECONDS = 600.0
 
@@ -72,28 +74,26 @@ def mint_owner_token(paths: RunPaths) -> str:
     return token
 
 
-def require_owner(paths: RunPaths, token: str | None) -> None:
-    stored = read_json(owner_path(paths), None)
-    if not isinstance(stored, dict) or not stored.get("sha256"):
+def require_owner(run: Run, token: str | None) -> None:
+    """The owner token against the held hash."""
+    if not run.owner_hash:
         raise AssayError(
             "no owner token was minted for this run; owner operations are unavailable"
         )
-    if not token or hashlib.sha256(token.encode()).hexdigest() != stored["sha256"]:
+    if not token or hashlib.sha256(token.encode()).hexdigest() != run.owner_hash:
         raise AssayError(
             "owner authority required: pass --token <the token printed at start>. "
             "The agent proposes; the owner ratifies."
         )
 
 
-def standing_goal(
-    paths: RunPaths, registry: Mapping[str, Any] | None
-) -> dict[str, Any]:
+def standing_goal(run: Run) -> dict[str, Any]:
     """The goal presented in status: ratified revision > registry text > the
     built-in predicate description."""
-    ratified = read_json(goal_path(paths), None)
+    ratified = read_json(goal_path(run.paths), None)
     if isinstance(ratified, dict) and ratified.get("text"):
         return {"text": str(ratified["text"]), "source": "ratified"}
-    registered = ((registry or {}).get("goal") or {}).get("text")
+    registered = ((run.registry or {}).get("goal") or {}).get("text")
     if registered:
         return {"text": str(registered), "source": "registry"}
     return {
@@ -102,10 +102,10 @@ def standing_goal(
     }
 
 
-def propose_goal(paths: RunPaths, text: str, because: str | None) -> dict[str, Any]:
+def propose_goal(run: Run, text: str, because: str | None) -> dict[str, Any]:
     if not text or not text.strip():
         raise AssayError("a goal proposal needs non-empty text")
-    proposals = load_jsonl(proposals_path(paths))
+    proposals = load_jsonl(proposals_path(run.paths))
     record = {
         "kind": "goal_proposed",
         "id": len(proposals) + 1,
@@ -113,13 +113,13 @@ def propose_goal(paths: RunPaths, text: str, because: str | None) -> dict[str, A
         "because": (because or "").strip(),
         "status": "pending",
     }
-    append_jsonl(proposals_path(paths), record)
-    append_jsonl(paths.activity, record)
+    append_jsonl(proposals_path(run.paths), record)
+    append_jsonl(run.paths.activity, record)
     return record
 
 
-def list_proposals(paths: RunPaths) -> list[dict[str, Any]]:
-    proposals = load_jsonl(proposals_path(paths))
+def list_proposals(run: Run) -> list[dict[str, Any]]:
+    proposals = load_jsonl(proposals_path(run.paths))
     resolved: dict[int, str] = {}
     for record in proposals:
         if record.get("kind") == "goal_resolved":
@@ -134,43 +134,43 @@ def list_proposals(paths: RunPaths) -> list[dict[str, Any]]:
     return output
 
 
-def ratify_goal(paths: RunPaths, proposal_id: int, token: str | None) -> dict[str, Any]:
-    require_owner(paths, token)
-    proposals = {int(item["id"]): item for item in list_proposals(paths)}
+def ratify_goal(run: Run, proposal_id: int, token: str | None) -> dict[str, Any]:
+    require_owner(run, token)
+    proposals = {int(item["id"]): item for item in list_proposals(run)}
     proposal = proposals.get(int(proposal_id))
     if proposal is None:
         raise AssayError(f"no goal proposal with id {proposal_id}")
     if proposal["status"] != "pending":
         raise AssayError(f"proposal {proposal_id} is already {proposal['status']}")
     append_jsonl(
-        proposals_path(paths),
+        proposals_path(run.paths),
         {"kind": "goal_resolved", "id": int(proposal_id), "status": "ratified"},
     )
     atomic_json(
-        goal_path(paths),
+        goal_path(run.paths),
         {"text": proposal["text"], "ratified_from": int(proposal_id), "at": time.time()},
     )
     append_jsonl(
-        paths.activity,
+        run.paths.activity,
         {"kind": "goal_ratified", "id": int(proposal_id), "text": proposal["text"]},
     )
     return proposal
 
 
-def grant_approval(paths: RunPaths, action: str, token: str | None) -> None:
+def grant_approval(run: Run, action: str, token: str | None) -> None:
     """One-shot, expiring owner approval for an approval-flagged action."""
-    require_owner(paths, token)
-    state = read_json(approvals_path(paths), {})
+    require_owner(run, token)
+    state = read_json(approvals_path(run.paths), {})
     if not isinstance(state, dict):
         state = {}
     state[action.upper()] = {"granted_at": time.time(), "used": False}
-    atomic_json(approvals_path(paths), state)
-    append_jsonl(paths.activity, {"kind": "approval_granted", "action": action.upper()})
+    atomic_json(approvals_path(run.paths), state)
+    append_jsonl(run.paths.activity, {"kind": "approval_granted", "action": action.upper()})
 
 
-def consume_approval(paths: RunPaths, action: str) -> None:
+def consume_approval(run: Run, action: str) -> None:
     """Default-deny: refuse unless a fresh, unused approval exists; use it up."""
-    state = read_json(approvals_path(paths), {})
+    state = read_json(approvals_path(run.paths), {})
     entry = state.get(action.upper()) if isinstance(state, dict) else None
     if not isinstance(entry, dict) or entry.get("used"):
         raise AssayError(
@@ -185,49 +185,48 @@ def consume_approval(paths: RunPaths, action: str) -> None:
         )
     entry["used"] = True
     entry["used_at"] = time.time()
-    atomic_json(approvals_path(paths), state)
-    append_jsonl(paths.activity, {"kind": "approval_used", "action": action.upper()})
+    atomic_json(approvals_path(run.paths), state)
+    append_jsonl(run.paths.activity, {"kind": "approval_used", "action": action.upper()})
 
 
-def grant_waiver(paths: RunPaths, action: str, token: str | None, because: str) -> None:
+def grant_waiver(run: Run, action: str, token: str | None, because: str) -> None:
     """Owner waiver for a liveness rehearsal quota: explicit and journaled."""
-    require_owner(paths, token)
+    require_owner(run, token)
     if not because or not because.strip():
         raise AssayError("a liveness waiver needs --because <why it is safe now>")
-    state = read_json(waivers_path(paths), {})
+    state = read_json(waivers_path(run.paths), {})
     if not isinstance(state, dict):
         state = {}
     state[action.upper()] = {"at": time.time(), "because": because.strip()}
-    atomic_json(waivers_path(paths), state)
+    atomic_json(waivers_path(run.paths), state)
     append_jsonl(
-        paths.activity,
+        run.paths.activity,
         {"kind": "liveness_waived", "action": action.upper(), "because": because.strip()},
     )
 
 
-def has_waiver(paths: RunPaths, action: str) -> bool:
-    state = read_json(waivers_path(paths), {})
+def has_waiver(run: Run, action: str) -> bool:
+    state = read_json(waivers_path(run.paths), {})
     return isinstance(state, dict) and action.upper() in state
 
 
-def check_rehearsal(
-    paths: RunPaths, registry: Mapping[str, Any] | None, action: str
-) -> None:
+def check_rehearsal(run: Run, action: str) -> None:
     """Enforced liveness, minimal real form: a live actuator with a
     rehearsal quota refuses until an imported sim digest shows enough graded
     attempts under the SAME registry but a DIFFERENT binding, or the owner
     journals a waiver. Inert unless declared."""
     from .registry import action_spec
 
-    spec = action_spec(registry or {}, action) if registry else None
+    registry = run.registry
+    spec = action_spec(registry, action) if registry else None
     if not spec or spec.get("liveness") != "live" or not spec.get("rehearsal_quota"):
         return
-    if has_waiver(paths, action):
+    if has_waiver(run, action):
         return
     quota = int(spec["rehearsal_quota"])
-    imported = read_json(paths.state / "imported" / "knowledge.json", None)
+    imported = read_json(run.paths.state / "imported" / "knowledge.json", None)
     if isinstance(imported, dict):
-        own_config = read_json(paths.config, {})
+        own_config = run.config
         same_registry = imported.get("registry_hash") == own_config.get("registry_hash")
         different_binding = imported.get("binding_hash") not in (
             None,
@@ -248,9 +247,9 @@ def check_rehearsal(
     )
 
 
-def emergence_meter(paths: RunPaths) -> dict[str, int]:
+def emergence_meter(run: Run) -> dict[str, int]:
     """Free counters over agent-initiated acts no module demanded."""
-    activity = load_jsonl(paths.activity)
+    activity = load_jsonl(run.paths.activity)
     verifier_hashes = {
         record.get("hash")
         for record in activity
@@ -271,8 +270,8 @@ def emergence_meter(paths: RunPaths) -> dict[str, int]:
     }
 
 
-def emergence_line(paths: RunPaths) -> str:
-    meter = emergence_meter(paths)
+def emergence_line(run: Run) -> str:
+    meter = emergence_meter(run)
     return (
         f"EMERGENCE | self-authored verifiers {meter['verifiers']} | declared "
         f"channels {meter['channels']} | model replays {meter['model_replays']} | "
@@ -280,18 +279,15 @@ def emergence_line(paths: RunPaths) -> str:
     )
 
 
-def agenda_lines(
-    paths: RunPaths,
-    registry: Mapping[str, Any] | None,
-    events: Sequence[Mapping[str, Any]],
-) -> list[str]:
-    goal = standing_goal(paths, registry)
-    achieved = bool(events) and str(events[-1]["state"]) == "WIN"
+def agenda_lines(run: Run) -> list[str]:
+    goal = standing_goal(run)
+    events = run.events
+    achieved = bool(events) and str(events[-1].state) == "WIN"
     lines = [
         f"AGENDA | goal ({goal['source']}): {goal['text']} | "
         f"{'ACHIEVED' if achieved else 'not achieved'}"
     ]
-    pending = [item for item in list_proposals(paths) if item["status"] == "pending"]
+    pending = [item for item in list_proposals(run) if item["status"] == "pending"]
     if pending:
         newest = pending[-1]
         lines.append(

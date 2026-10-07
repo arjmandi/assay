@@ -180,7 +180,7 @@ class Run:
         return event
 
     def _anchor(self, event_id: int) -> None:
-        target = anchor_file(self.paths)
+        target = anchor_file(self.paths, self.config)
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             append_jsonl(

@@ -23,15 +23,20 @@ unless an agent opens one.
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Sequence
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 from .core import RunPaths, append_jsonl, atomic_json, read_json
+from .records import Claim, Event
+
+if TYPE_CHECKING:
+    from .run import Run
 
 MAX_OPEN = 4
 
 
-def _path(paths: RunPaths):
+def _path(paths: RunPaths) -> Path:
     return paths.state / "aggregates.json"
 
 
@@ -45,32 +50,30 @@ def load_state(paths: RunPaths) -> dict[str, Any]:
     return value
 
 
-def batching_revoked(paths: RunPaths) -> bool:
-    return bool(load_state(paths).get("batching_revoked"))
+def batching_revoked(run: Run) -> bool:
+    return bool(load_state(run.paths).get("batching_revoked"))
 
 
-def _paid_ids(events: Sequence[Mapping[str, Any]]) -> list[int]:
-    return [int(event["id"]) for event in events if event.get("counts_action")]
+def _paid_ids(events: Sequence[Event]) -> list[int]:
+    return [event.id for event in events if event.counts_action]
 
 
-def open_aggregates(
-    paths: RunPaths,
-    claims: Sequence[Mapping[str, Any]],
-    events: Sequence[Mapping[str, Any]],
-) -> list[str]:
+def open_aggregates(run: Run, claims: Sequence[Claim]) -> list[str]:
     """Register this action's aggregate claims as open; supersede duplicates.
 
     Returns display lines. live.py calls it after the graded event is recorded
     (the action's mechanical claims validated before the spend), so an
     aggregate opens at the paid event that carried it."""
-    aggregate_claims = [claim for claim in claims if claim.get("kind") == "aggregate"]
+    aggregate_claims = [claim for claim in claims if claim.kind == "aggregate"]
     if not aggregate_claims:
         return []
+    paths = run.paths
     state = load_state(paths)
     lines: list[str] = []
-    opened_at = _paid_ids(events)[-1] if _paid_ids(events) else 0
+    paid = _paid_ids(run.events)
+    opened_at = paid[-1] if paid else 0
     for claim in aggregate_claims:
-        key = (claim["channel"], claim["stat"])
+        key = (claim.channel, claim.stat)
         survivors = []
         for entry in state["open"]:
             if (entry["channel"], entry["stat"]) == key:
@@ -93,13 +96,13 @@ def open_aggregates(
             )
             continue
         entry = {
-            "channel": claim["channel"],
-            "stat": claim["stat"],
-            "op": claim["op"],
-            "value": claim["value"],
-            "over": int(claim["over"]),
-            "horizon": int(claim["horizon"]),
-            "on_fail": claim["on_fail"],
+            "channel": claim.channel,
+            "stat": claim.stat,
+            "op": claim.op,
+            "value": claim.value,
+            "over": int(claim.over or 0),
+            "horizon": int(claim.horizon or 0),
+            "on_fail": claim.on_fail,
             "opened_at_event": opened_at,
             "opened_ts": time.time(),
             "status": "open",
@@ -109,26 +112,26 @@ def open_aggregates(
             k: entry[k] for k in ("channel", "stat", "op", "value", "over", "horizon", "on_fail")
         }})
         lines.append(
-            f"AGGREGATE | open: {claim['stat']}(ch {claim['channel']}) {claim['op']} "
-            f"{claim['value']} over {claim['over']}a, resolves at horizon {claim['horizon']}a"
+            f"AGGREGATE | open: {claim.stat}(ch {claim.channel}) {claim.op} "
+            f"{claim.value} over {claim.over}a, resolves at horizon {claim.horizon}a"
         )
     atomic_json(_path(paths), state)
     return lines
 
 
-def resolve_due(
-    paths: RunPaths, events: Sequence[Mapping[str, Any]]
-) -> list[str]:
+def resolve_due(run: Run) -> list[str]:
     """Resolve every open aggregate whose horizon has passed. live.py calls it
     after each paid event is recorded, right after `open_aggregates`. A failed
     reading resolves as FAILED (rule 3), never skips."""
+    paths = run.paths
     state = load_state(paths)
     if not state["open"]:
         return []
     from .channels import channel_value
 
+    events = run.events
     paid = _paid_ids(events)
-    by_id = {int(event["id"]): event for event in events}
+    by_id = {event.id: event for event in events}
     lines: list[str] = []
     still_open: list[dict[str, Any]] = []
     for entry in state["open"]:
@@ -140,7 +143,7 @@ def resolve_due(
         readings: list[float] = []
         failure: str | None = None
         for pid in window:
-            ok, value = channel_value(paths, entry["channel"], by_id[pid])
+            ok, value = channel_value(run, entry["channel"], by_id[pid])
             if not ok or isinstance(value, bool) or not isinstance(value, (int, float)):
                 failure = f"reading at e{pid} not numeric/gradable: {value}"
                 break
@@ -191,8 +194,8 @@ def resolve_due(
     return lines
 
 
-def meter(paths: RunPaths) -> dict[str, int]:
-    state = load_state(paths)
+def meter(run: Run) -> dict[str, int]:
+    state = load_state(run.paths)
     resolved = state["resolved"]
     return {
         "open": len(state["open"]),

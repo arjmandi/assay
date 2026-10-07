@@ -64,7 +64,7 @@ def test_anchors_on_win_and_every_twenty_five(tmp_path, monkeypatch):
     run.append(event_of(id=-1, state="WIN"))
     from assay.integrity import anchor_file
 
-    written = [json.loads(line) for line in anchor_file(paths).read_text().splitlines()]
+    written = [json.loads(line) for line in anchor_file(paths, run.config).read_text().splitlines()]
     assert [entry["event_id"] for entry in written] == [25, 26]
     assert written[-1]["head"] == run.chain_head
 

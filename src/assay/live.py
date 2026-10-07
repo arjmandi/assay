@@ -3,7 +3,10 @@ claims, and reset with a reason. Every paid action is journaled by the broker
 before the response is recorded, so a crash between spend and record is
 recovered on the next start.
 
-The public seam (paid_step, record_event, write_receipt, head_events,
+Every function here takes the run (docs/ARCHITECTURE.md section 6.3): the
+journal is the held `run.events`, the one writer is `run.append`, and the
+small files beside the journal are read from `run.paths` on demand. The
+public seam (paid_step, record_event, write_receipt, head_events,
 level_advanced, validate_batch_tokens) is what an observation kind's own
 executor builds on (the frame world's solve-plan executor in assay_grid).
 """
@@ -11,9 +14,9 @@ executor builds on (the frame world's solve-plan executor in assay_grid).
 from __future__ import annotations
 
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .agenda import check_rehearsal, consume_approval
 from .aggregates import open_aggregates, resolve_due
@@ -21,22 +24,19 @@ from .broker import broker_step
 from .channels import channel_change_lines, check_channel_references
 from .core import (
     AssayError,
-    RunPaths,
-    append_event,
     append_jsonl,
     atomic_json,
     canonical_action,
-    load_events,
-    load_jsonl,
     make_event,
     now_iso,
     parse_action,
     read_json,
 )
 from .extras import kind_for
-from .integrity import extend_chain, redact, redact_mapping
+from .integrity import redact, redact_mapping
 from .modules import consult_modules, observe_outcome
 from .predictions import grade_action_claims, grade_lines, parse_claims
+from .records import Claim, Event, Grade, Receipt, ReceiptStep
 from .registry import (
     action_spec,
     check_budget,
@@ -50,18 +50,31 @@ from .registry import (
 from .verifiers import admit_verifier
 from .words import unit_noun
 
+if TYPE_CHECKING:
+    from .run import Run
 
-def write_receipt(paths: RunPaths, value: Mapping[str, Any]) -> dict[str, Any]:
-    record = {"timestamp": now_iso(), **dict(value)}
-    paths.receipts.mkdir(parents=True, exist_ok=True)
+# The daemon-side spend: (run, action, data, reasoning) -> (observation,
+# mutation id, finalization warning). `broker_step` is the client-side form.
+Stepper = Callable[
+    ["Run", str, "dict[str, Any] | None", "Mapping[str, Any] | None"],
+    "tuple[dict[str, Any], int, str | None]",
+]
+
+
+def write_receipt(run: Run, receipt: Receipt) -> Receipt:
+    """Stamp the receipt, write it to `.assay/receipts/` and the activity log."""
+    stamped = receipt.updated(timestamp=now_iso())
+    record = stamped.to_json()
+    run.paths.receipts.mkdir(parents=True, exist_ok=True)
     event = record.get("end_event", record.get("start_event", "none"))
-    atomic_json(paths.receipts / f"{time.time_ns()}-e{event}.json", record)
-    append_jsonl(paths.activity, {"kind": "receipt", **record})
-    return record
+    atomic_json(run.paths.receipts / f"{time.time_ns()}-e{event}.json", record)
+    append_jsonl(run.paths.activity, {"kind": "receipt", **record})
+    return stamped
 
 
-def _archive_notes(paths: RunPaths, completed_level: int) -> None:
+def _archive_notes(run: Run, completed_level: int) -> None:
     """Snapshot the live notes when a progress unit completes; the live file is kept."""
+    paths = run.paths
     if not paths.notes.exists():
         return
     archive = paths.state / "levels" / f"level-{completed_level}.md"
@@ -70,78 +83,72 @@ def _archive_notes(paths: RunPaths, completed_level: int) -> None:
         archive.write_text(paths.notes.read_text())
 
 
-def head_events(paths: RunPaths, at_event: int | None) -> list[dict[str, Any]]:
-    events = load_events(paths)
+def head_events(run: Run, at_event: int | None) -> list[Event]:
+    """The journal as it stands before a paid command, checked against the
+    caller's event guard; a snapshot, so a later append leaves it alone."""
+    events = run.events
     if not events:
         raise AssayError("timeline is empty")
-    if events[-1]["state"] == "WIN":
+    if events[-1].state == "WIN":
         raise AssayError("the goal is already reached; this run is complete")
-    if at_event is not None and at_event != int(events[-1]["id"]):
+    if at_event is not None and at_event != events[-1].id:
         raise AssayError(
-            f"event guard failed: requested {at_event}, current {events[-1]['id']}"
+            f"event guard failed: requested {at_event}, current {events[-1].id}"
         )
-    return events
+    return list(events)
 
 
 def paid_step(
-    paths: RunPaths,
+    run: Run,
     token: str,
     reasoning: Mapping[str, Any] | None = None,
     note: str = "",
     *,
-    registry: Mapping[str, Any],
-    stepper: Any = None,
-) -> tuple[dict[str, Any], dict[str, Any], str | None, float]:
-    prior = load_events(paths)[-1]
+    stepper: Stepper | None = None,
+) -> tuple[Event, Event, str | None, float]:
+    registry = require_registry(run)
+    prior = run.events[-1]
     name, data = parse_action(token, registry)
     if name == "RESET":
         raise AssayError("use `assay reset`; reset cannot hide inside a batch")
     kind = kind_for(prior)
     # A frame world advertises bare ids; the kind renders them as names.
-    advertised = (
-        kind.advertised_names(prior) if kind is not None else prior["available_actions"]
+    advertised: Sequence[Any] = (
+        kind.advertised_names(prior) if kind is not None else prior.available_actions
     )
     check_registry_action(name, advertised)
     secrets = tuple(registry.get("secrets") or ())
     reasoning = redact_mapping(reasoning, secrets)
     step = stepper or broker_step
     started = time.monotonic()
-    response, mutation_id, warning = step(paths, name, data, reasoning)
+    response, mutation_id, warning = step(run, name, data, reasoning)
     elapsed = time.monotonic() - started
     pending = make_event(response, name, data, prior, note=redact(note, secrets) or "")
-    pending["mutation_id"] = mutation_id
+    pending = pending.updated(mutation_id=mutation_id)
     return pending, prior, warning, elapsed
 
 
-def record_event(paths: RunPaths, pending: Mapping[str, Any]) -> dict[str, Any]:
-    event = append_event(paths, pending)
-    # The journal is chained: the exact appended line advances the
-    # daemon-held rolling hash (tamper-evidence).
-    try:
-        last_line = paths.events.read_text().splitlines()[-1]
-    except (FileNotFoundError, IndexError):
-        last_line = ""
-    if last_line:
-        extend_chain(
-            paths, last_line, int(event["id"]), win=str(event["state"]) == "WIN"
-        )
+def record_event(run: Run, pending: Event) -> Event:
+    """Append the event through the one writer (the chain and the anchors
+    follow inside it), then the kind's after-record work and the notes
+    archive on a completed progress unit."""
+    event = run.append(pending)
     kind = kind_for(event)
     if kind is not None:
-        kind.after_record(paths, event, load_events(paths))
-    level_before = event.get("level_before")
-    if level_before is not None and int(event["levels_completed"]) > int(level_before):
-        _archive_notes(paths, int(event["levels_completed"]))
+        kind.after_record(run, event)
+    if event.level_advanced:
+        _archive_notes(run, int(event.levels_completed))
     return event
 
 
-def _notes_hard_stop(paths: RunPaths, registry: Mapping[str, Any] | None) -> None:
+def _notes_hard_stop(run: Run) -> None:
     """The notes-cap block: past 2× the cap, paid actions refuse until trimmed.
     The advisory tier lives in status; this is the last resort."""
-    cap = notes_cap(registry)
+    cap = notes_cap(run.registry)
     if cap is None:
         return
     try:
-        size = len(paths.notes.read_text())
+        size = len(run.paths.notes.read_text())
     except FileNotFoundError:
         return
     if size > 2 * cap:
@@ -153,20 +160,21 @@ def _notes_hard_stop(paths: RunPaths, registry: Mapping[str, Any] | None) -> Non
 
 
 def _enforce_registry_gates(
-    paths: RunPaths,
-    registry: Mapping[str, Any] | None,
-    events: Sequence[Mapping[str, Any]],
+    run: Run,
     *,
     kind: str,
     tokens: Sequence[str],
-    claims_per_token: Sequence[Sequence[Mapping[str, Any]]],
+    claims_per_token: Sequence[Sequence[Claim]],
     declares: Mapping[str, str] | None,
     in_batch: bool,
 ) -> list[str]:
     """All pre-spend teeth beyond schema/claims/affordance/budget. Returns
     module advisory lines."""
-    check_usd_budget(load_jsonl(paths.activity), registry)
-    _notes_hard_stop(paths, registry)
+    from .core import load_jsonl
+
+    registry = require_registry(run)
+    check_usd_budget(load_jsonl(run.paths.activity), registry)
+    _notes_hard_stop(run)
     advisories: list[str] = []
     declares = dict(declares or {})
     for token, claims in zip(tokens, claims_per_token):
@@ -195,8 +203,8 @@ def _enforce_registry_gates(
                 raise AssayError(
                     f"{name} is approval-gated and cannot hide inside a batch"
                 )
-            consume_approval(paths, name)
-        check_rehearsal(paths, registry, name)
+            consume_approval(run, name)
+        check_rehearsal(run, name)
         pending = {
             "kind": kind,
             "name": name,
@@ -204,7 +212,7 @@ def _enforce_registry_gates(
             "claims": list(claims),
             "declares": declares,
         }
-        advisories.extend(consult_modules(paths, registry, events, pending))
+        advisories.extend(consult_modules(run, pending))
     # De-duplicate module lines a long batch would repeat.
     seen: set[str] = set()
     unique = []
@@ -215,26 +223,24 @@ def _enforce_registry_gates(
     return unique
 
 
-def _admit_claims(paths: RunPaths, claims: Sequence[dict[str, Any]]) -> None:
-    """Admit verifier claims (read, hash, store, journal) before any spend."""
-    for claim in claims:
-        if claim["kind"] == "verify":
-            admit_verifier(paths, claim)
+def _admit_claims(run: Run, claims: Sequence[Claim]) -> list[Claim]:
+    """Admit verifier claims (read, hash, store, journal) before any spend;
+    the admitted claims carry their verifier hashes."""
+    return [
+        admit_verifier(run.paths, claim) if claim.kind == "verify" else claim
+        for claim in claims
+    ]
 
 
 def _grade_summary(
-    graded: Sequence[Mapping[str, Any]],
+    graded: Sequence[Grade],
 ) -> tuple[bool, bool, bool | None]:
     """(missed, invalid_any, predict_ok-journal-value) for one graded action.
     UNGRADABLE outcomes (stale window, unreadable channel) count like invalid:
     their own meter, never a miss, and they halt a containing batch."""
-    invalid_any = any(
-        item.get("invalid") or item.get("ungradable") for item in graded
-    )
+    invalid_any = any(item.invalid or item.ungradable for item in graded)
     missed = any(
-        not item["ok"]
-        for item in graded
-        if not item.get("invalid") and not item.get("ungradable")
+        not item.ok for item in graded if not item.invalid and not item.ungradable
     )
     if missed:
         predict_ok: bool | None = False
@@ -245,11 +251,8 @@ def _grade_summary(
     return missed, invalid_any, predict_ok
 
 
-def level_advanced(event: Mapping[str, Any]) -> bool:
-    level_before = event.get("level_before")
-    return level_before is not None and int(event["levels_completed"]) > int(
-        level_before
-    )
+def level_advanced(event: Event) -> bool:
+    return event.level_advanced
 
 
 _UNGATED_MARKER = {"optional": "gate_optional", "off": "gate_off"}
@@ -272,18 +275,44 @@ def _ungated_act(registry: Mapping[str, Any] | None, predict: str | None) -> boo
     return mode == "optional" and bare
 
 
+def _graded_pending(
+    pending: Event,
+    *,
+    ungated: bool,
+    predict: str | None,
+    predict_ok: bool | None,
+    graded: Sequence[Grade],
+    marker: str | None,
+    declares: Mapping[str, str] | None,
+    secrets: Sequence[str],
+) -> Event:
+    """The pending event with its prediction fields on the line."""
+    pending = pending.updated(
+        predict=None if ungated else predict,
+        predict_ok=predict_ok,
+        grade=tuple(graded),
+    )
+    if ungated and marker is not None:
+        pending = pending.updated(**{marker: True})
+    if declares:
+        pending = pending.updated(
+            declares={key: redact(str(value), secrets) or "" for key, value in declares.items()}
+        )
+    return pending
+
+
 def execute_action(
-    paths: RunPaths,
+    run: Run,
     token: str,
     *,
     predict: str,
     because: str | None = None,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
-    stepper: Any = None,
-) -> dict[str, Any]:
-    registry = require_registry(paths)
-    events = head_events(paths, at_event)
+    stepper: Stepper | None = None,
+) -> Receipt:
+    registry = require_registry(run)
+    events = head_events(run, at_event)
     # The control arms: gate optional admits a bare act, gate off admits only
     # bare acts (the instrument is removed). Either way the act is journaled
     # UNGATED and the audit keeps the run invalid for scoring.
@@ -292,12 +321,10 @@ def execute_action(
     # without a kind, so a frame form is refused by name before any spend, the
     # rule every published journal was recorded under.
     claims = [] if ungated else parse_claims(predict)
-    check_channel_references(paths, claims)
-    _admit_claims(paths, claims)
+    check_channel_references(run, claims)
+    claims = _admit_claims(run, claims)
     advisories = _enforce_registry_gates(
-        paths,
-        registry,
-        events,
+        run,
         kind="act",
         tokens=[token],
         claims_per_token=[claims],
@@ -305,7 +332,7 @@ def execute_action(
         in_batch=False,
     )
     check_budget(events, registry, planned=1)
-    start_event = int(events[-1]["id"])
+    start_event = events[-1].id
     secrets = tuple(registry.get("secrets") or ())
     predict_journal = redact(predict, secrets) or ""
     because_journal = redact(because, secrets)
@@ -315,47 +342,47 @@ def execute_action(
     if declares:
         reasoning["declares"] = dict(declares)
     pending, prior, warning, elapsed = paid_step(
-        paths, token, reasoning, note=because or "", registry=registry, stepper=stepper
+        run, token, reasoning, note=because or "", stepper=stepper
     )
     graded = (
         [] if ungated
-        else grade_action_claims(paths, claims, prior, pending, elapsed_s=elapsed)
+        else grade_action_claims(run, claims, prior, pending, elapsed_s=elapsed)
     )
     missed, invalid_any, predict_ok = _grade_summary(graded)
     if ungated:
         predict_ok = None
     ok = not missed and not invalid_any
-    pending["predict"] = None if ungated else predict_journal
-    pending["predict_ok"] = predict_ok
-    pending["grade"] = graded
-    if ungated:
-        pending[_UNGATED_MARKER[gate_mode(registry)]] = True
-    if declares:
-        pending["declares"] = {
-            key: redact(str(value), secrets) for key, value in declares.items()
-        }
-    event = record_event(paths, pending)
-    all_events = load_events(paths)
-    observe_outcome(paths, registry, all_events, event)
+    pending = _graded_pending(
+        pending,
+        ungated=ungated,
+        predict=predict_journal,
+        predict_ok=predict_ok,
+        graded=graded,
+        marker=_UNGATED_MARKER.get(gate_mode(registry)),
+        declares=declares,
+        secrets=secrets,
+    )
+    event = record_event(run, pending)
+    observe_outcome(run, event)
     aggregate_lines: list[str] = []
-    aggregate_lines.extend(open_aggregates(paths, claims, all_events))
-    aggregate_lines.extend(resolve_due(paths, all_events))
+    aggregate_lines.extend(open_aggregates(run, claims))
+    aggregate_lines.extend(resolve_due(run))
     lines = grade_lines(graded)
-    if event["state"] == "WIN":
+    if event.state == "WIN":
         outcome, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
-    elif level_advanced(event):
+    elif event.level_advanced:
         outcome = "LEVEL_COMPLETE"
         detail = (
-            f"{unit_noun(event['win_levels'])} {int(event['level_before']) + 1} complete; "
-            f"notes archived; re-verify carried assumptions in the new {unit_noun(event['win_levels'])}"
+            f"{unit_noun(event.win_levels)} {int(event.level_before or 0) + 1} complete; "
+            f"notes archived; re-verify carried assumptions in the new {unit_noun(event.win_levels)}"
         )
         if not ok:
             detail += "; prediction also missed: treat the mechanics as unproven"
-    elif event["state"] == "GAME_OVER":
+    elif event.state == "GAME_OVER":
         outcome = "GAME_OVER"
         detail = (
             "environment reported GAME_OVER; `assay reset` restarts the current "
-            f"{unit_noun(event['win_levels'])}"
+            f"{unit_noun(event.win_levels)}"
         )
     elif ungated:
         outcome = "UNGATED"
@@ -375,28 +402,23 @@ def execute_action(
         outcome, detail = "PREDICTED", "result matched the prediction"
     if warning:
         detail += f"; scorecard finalization warning: {warning}"
-    receipt: dict[str, Any] = {
-        "kind": "act",
-        "outcome": outcome,
-        "detail": detail,
-        "start_event": start_event,
-        "end_event": int(event["id"]),
-        "level": min(
-            int(event["win_levels"]), int(event["levels_completed"]) + 1
-        ),
-        "action": canonical_action(event),
-        "predict": None if ungated else predict_journal,
-        "grade": lines,
-        "because": because_journal,
-    }
-    if advisories:
-        receipt["modules"] = advisories
-    if aggregate_lines:
-        receipt["aggregates"] = aggregate_lines
-    changed = channel_change_lines(paths, prior, event)
-    if changed:
-        receipt["channels"] = changed
-    return write_receipt(paths, receipt)
+    changed = channel_change_lines(run, prior, event)
+    receipt = Receipt(
+        kind="act",
+        outcome=outcome,
+        detail=detail,
+        start_event=start_event,
+        end_event=event.id,
+        level=min(event.win_levels, event.levels_completed + 1),
+        action=canonical_action(event),
+        predict=None if ungated else predict_journal,
+        grade=tuple(lines),
+        because=because_journal,
+        modules=tuple(advisories) if advisories else None,
+        aggregates=tuple(aggregate_lines) if aggregate_lines else None,
+        channels=tuple(changed) if changed else None,
+    )
+    return write_receipt(run, receipt)
 
 
 def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
@@ -413,7 +435,7 @@ def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
 
 
 def validate_batch_tokens(
-    tokens: Sequence[str], registry: Mapping[str, Any] | None = None
+    tokens: Sequence[str], registry: Mapping[str, Any]
 ) -> None:
     """Reject a bad token before any step spends an action."""
     for token in tokens:
@@ -423,21 +445,21 @@ def validate_batch_tokens(
 
 
 def execute_steps(
-    paths: RunPaths,
+    run: Run,
     raw_steps: Sequence[str],
     *,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
-    stepper: Any = None,
-) -> dict[str, Any]:
+    stepper: Stepper | None = None,
+) -> Receipt:
     if not raw_steps:
         raise AssayError("no steps supplied")
-    registry = require_registry(paths)
+    registry = require_registry(run)
     cap = hand_cap(registry)
     if cap is not None and len(raw_steps) > cap:
         from .model import batching_rights
 
-        _, reason = batching_rights(paths)
+        _, reason = batching_rights(run)
         raise AssayError(
             f"the batching law caps hand-written batches at {cap} steps "
             f"(got {len(raw_steps)}); longer batches belong to a replay-fit model "
@@ -445,8 +467,8 @@ def execute_steps(
         )
     mode = gate_mode(registry)
     bare_ok = mode in _UNGATED_MARKER
-    events = head_events(paths, at_event)
-    parsed: list[tuple[str, str, list[dict[str, Any]]]] = []
+    events = head_events(run, at_event)
+    parsed: list[tuple[str, str, list[Claim]]] = []
     for raw in raw_steps:
         token, predict = parse_step(raw, allow_bare=bare_ok)
         if mode == "off" and predict:
@@ -458,13 +480,13 @@ def execute_steps(
         claims = [] if bare_ok and not predict else parse_claims(predict)
         parsed.append((token, predict, claims))
     validate_batch_tokens([token for token, _, _ in parsed], registry)
-    for _, _, claims in parsed:
-        check_channel_references(paths, claims)
-        _admit_claims(paths, claims)
+    admitted: list[tuple[str, str, list[Claim]]] = []
+    for token, predict, claims in parsed:
+        check_channel_references(run, claims)
+        admitted.append((token, predict, _admit_claims(run, claims)))
+    parsed = admitted
     advisories = _enforce_registry_gates(
-        paths,
-        registry,
-        events,
+        run,
         kind="commit",
         tokens=[token for token, _, _ in parsed],
         claims_per_token=[claims for _, _, claims in parsed],
@@ -472,69 +494,70 @@ def execute_steps(
         in_batch=True,
     )
     check_budget(events, registry, planned=len(parsed))
-    start_event = int(events[-1]["id"])
+    start_event = events[-1].id
+    before = events[-1]
     secrets = tuple(registry.get("secrets") or ())
-    records: list[dict[str, Any]] = []
+    records: list[ReceiptStep] = []
     outcome = "PREDICTED"
     detail = f"all {len(parsed)} steps landed as predicted"
     last_warning: str | None = None
-    all_claims: list[dict[str, Any]] = []
+    all_claims: list[Claim] = []
     for index, (token, predict, claims) in enumerate(parsed):
         pending, prior, warning, elapsed = paid_step(
-            paths, token, {"predict": predict}, registry=registry, stepper=stepper
+            run, token, {"predict": predict}, stepper=stepper
         )
         last_warning = warning or last_warning
         ungated = bare_ok and not predict
         graded = (
             [] if ungated
-            else grade_action_claims(paths, claims, prior, pending, elapsed_s=elapsed)
+            else grade_action_claims(run, claims, prior, pending, elapsed_s=elapsed)
         )
         missed, invalid_any, predict_ok = _grade_summary(graded)
         if ungated:
             predict_ok = None
         ok = not missed and not invalid_any
         all_claims.extend(claims)
-        pending["predict"] = None if ungated else (redact(predict, secrets) or "")
-        pending["predict_ok"] = predict_ok
-        pending["grade"] = graded
-        if ungated:
-            pending[_UNGATED_MARKER[mode]] = True
-        if declares:
-            # The same record a single act carries: a declaration made for a
-            # batch is evidence on every step it covered.
-            pending["declares"] = {
-                key: redact(str(value), secrets) for key, value in declares.items()
-            }
-        event = record_event(paths, pending)
-        observe_outcome(paths, registry, load_events(paths), event)
+        # The same record a single act carries: a declaration made for a
+        # batch is evidence on every step it covered.
+        pending = _graded_pending(
+            pending,
+            ungated=ungated,
+            predict=redact(predict, secrets) or "",
+            predict_ok=predict_ok,
+            graded=graded,
+            marker=_UNGATED_MARKER.get(mode),
+            declares=declares,
+            secrets=secrets,
+        )
+        event = record_event(run, pending)
+        observe_outcome(run, event)
         failed = [line for line in grade_lines(graded) if line.startswith("✗")]
         invalid_lines = [line for line in grade_lines(graded) if line.startswith("!")]
-        record = {
-            "event": int(event["id"]),
-            "action": canonical_action(event),
-            "ok": ok,
-            "failed": failed,
-        }
-        if ungated:
-            record["ungated"] = True
-        if invalid_lines:
-            record["invalid"] = invalid_lines
-        records.append(record)
+        records.append(
+            ReceiptStep(
+                event=event.id,
+                action=canonical_action(event),
+                ok=ok,
+                failed=tuple(failed),
+                invalid=tuple(invalid_lines) if invalid_lines else None,
+                ungated=ungated,
+            )
+        )
         remaining = len(parsed) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
-        if event["state"] == "WIN":
+        if event.state == "WIN":
             outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
-        if level_advanced(event):
+        if event.level_advanced:
             outcome = "LEVEL_COMPLETE"
             detail = (
-                f"{unit_noun(event['win_levels'])} advanced after "
+                f"{unit_noun(event.win_levels)} advanced after "
                 f"{canonical_action(event)}{discarded}"
             )
             if not ok:
                 detail += "; prediction also missed: treat the mechanics as unproven"
             break
-        if event["state"] == "GAME_OVER":
+        if event.state == "GAME_OVER":
             outcome = "GAME_OVER"
             detail = (
                 f"environment reported GAME_OVER after {canonical_action(event)}"
@@ -554,43 +577,41 @@ def execute_steps(
             break
     if last_warning:
         detail += f"; scorecard finalization warning: {last_warning}"
-    final_events = load_events(paths)
+    final_events = run.events
     aggregate_lines: list[str] = []
-    aggregate_lines.extend(open_aggregates(paths, all_claims, final_events))
-    aggregate_lines.extend(resolve_due(paths, final_events))
-    receipt: dict[str, Any] = {
-        "kind": "commit",
-        "outcome": outcome,
-        "detail": detail,
-        "start_event": start_event,
-        "end_event": int(final_events[-1]["id"]),
-        "steps": records,
-    }
-    if advisories:
-        receipt["modules"] = advisories
-    if aggregate_lines:
-        receipt["aggregates"] = aggregate_lines
-    changed = channel_change_lines(paths, events[-1], final_events[-1])
-    if changed:
-        receipt["channels"] = changed
-    return write_receipt(paths, receipt)
+    aggregate_lines.extend(open_aggregates(run, all_claims))
+    aggregate_lines.extend(resolve_due(run))
+    changed = channel_change_lines(run, before, final_events[-1])
+    receipt = Receipt(
+        kind="commit",
+        outcome=outcome,
+        detail=detail,
+        start_event=start_event,
+        end_event=final_events[-1].id,
+        steps=tuple(records),
+        modules=tuple(advisories) if advisories else None,
+        aggregates=tuple(aggregate_lines) if aggregate_lines else None,
+        channels=tuple(changed) if changed else None,
+    )
+    return write_receipt(run, receipt)
 
 
 def execute_model_plan(
-    paths: RunPaths,
+    run: Run,
     reference: str,
     *,
     at_event: int | None = None,
-    stepper: Any = None,
-) -> dict[str, Any]:
+    stepper: Stepper | None = None,
+) -> Receipt:
     """Execute a model plan (registry runs): the ONLY way past the hand-batch
     cap. Rights are exactly replay-fit on THIS journal; every
     step carries machine-generated channel predictions, marked machine."""
     from .channels import channel_value
     from .model import batching_rights, model_hash, plan_path
 
-    registry = require_registry(paths)
-    events = head_events(paths, at_event)
+    paths = run.paths
+    registry = require_registry(run)
+    events = head_events(run, at_event)
     candidate = Path(reference[1:] if reference.startswith("@") else reference)
     path = candidate if candidate.is_absolute() else paths.root / candidate
     try:
@@ -605,13 +626,13 @@ def execute_model_plan(
         )
     if str(path.resolve()) != str(plan_path(paths).resolve()):
         raise AssayError("model plans execute from .assay/model_plan.json only")
-    rights, reason = batching_rights(paths)
+    rights, reason = batching_rights(run)
     if not rights:
         raise AssayError(f"model plan refused: {reason}")
     source = plan.get("source") or {}
     if source.get("model_hash") != model_hash(paths):
         raise AssayError("plan is stale (model.py changed); rerun `assay model solve`")
-    if int(source.get("event", -1)) != int(events[-1]["id"]):
+    if int(source.get("event", -1)) != events[-1].id:
         raise AssayError("plan is stale (the journal moved); rerun `assay model solve`")
     actions = [str(item) for item in plan.get("actions") or ()]
     predictions = plan.get("predictions") or ()
@@ -619,9 +640,7 @@ def execute_model_plan(
         raise AssayError("plan needs one prediction per action; rerun `assay model solve`")
     validate_batch_tokens(actions, registry)
     _enforce_registry_gates(
-        paths,
-        registry,
-        events,
+        run,
         kind="commit",
         tokens=actions,
         claims_per_token=[[] for _ in actions],
@@ -629,67 +648,65 @@ def execute_model_plan(
         in_batch=True,
     )
     check_budget(events, registry, planned=len(actions))
-    start_event = int(events[-1]["id"])
-    records: list[dict[str, Any]] = []
+    start_event = events[-1].id
+    records: list[ReceiptStep] = []
     outcome = "PREDICTED"
     detail = f"all {len(actions)} model-plan steps landed as predicted"
     last_warning: str | None = None
     for index, (token, expected) in enumerate(zip(actions, predictions)):
         pending, _, warning, _ = paid_step(
-            paths,
+            run,
             token,
             {"plan": "model", "plan_step": index},
-            registry=registry,
             stepper=stepper,
         )
         last_warning = warning or last_warning
-        graded: list[dict[str, Any]] = []
+        graded: list[Grade] = []
         ok = True
         problem = ""
         for name, predicted in (expected or {}).items():
-            got_ok, actual = channel_value(paths, str(name), pending)
+            got_ok, actual = channel_value(run, str(name), pending)
             held = bool(got_ok) and actual == predicted
             graded.append(
-                {
-                    "kind": "plan_step",
-                    "machine": True,
-                    "bucket": "world_model",
-                    "channel": str(name),
-                    "text": f"model: ch {name} = {predicted!r}",
-                    "ok": held,
-                    "actual": f"ch {name} = {actual!r}" if got_ok else f"UNGRADABLE: {actual}",
-                }
+                Grade(
+                    kind="plan_step",
+                    text=f"model: ch {name} = {predicted!r}",
+                    ok=held,
+                    actual=f"ch {name} = {actual!r}" if got_ok else f"UNGRADABLE: {actual}",
+                    bucket="world_model",
+                    channel=str(name),
+                    machine=True,
+                )
             )
             if not held:
                 ok = False
                 problem = f"ch {name}: predicted {predicted!r}, actual {actual!r}"
-        pending["predict_ok"] = ok
-        pending["grade"] = graded
-        event = record_event(paths, pending)
-        observe_outcome(paths, registry, load_events(paths), event)
+        pending = pending.updated(predict_ok=ok, grade=tuple(graded))
+        event = record_event(run, pending)
+        observe_outcome(run, event)
         records.append(
-            {
-                "event": int(event["id"]),
-                "action": canonical_action(event),
-                "ok": ok,
-                "machine": True,
-                "kind": "plan_step",
-                **({"problem": problem} if problem else {}),
-            }
+            ReceiptStep(
+                event=event.id,
+                action=canonical_action(event),
+                ok=ok,
+                machine=True,
+                kind="plan_step",
+                problem=problem or None,
+            )
         )
         remaining = len(actions) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
-        if event["state"] == "WIN":
+        if event.state == "WIN":
             outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
-        if level_advanced(event):
+        if event.level_advanced:
             outcome = "LEVEL_COMPLETE"
             detail = (
-                f"{unit_noun(event['win_levels'])} advanced after "
+                f"{unit_noun(event.win_levels)} advanced after "
                 f"{canonical_action(event)}{discarded}"
             )
             break
-        if event["state"] == "GAME_OVER":
+        if event.state == "GAME_OVER":
             outcome = "GAME_OVER"
             detail = f"environment reported GAME_OVER{discarded}"
             break
@@ -703,34 +720,32 @@ def execute_model_plan(
     if last_warning:
         detail += f"; scorecard finalization warning: {last_warning}"
     return write_receipt(
-        paths,
-        {
-            "kind": "commit",
-            "outcome": outcome,
-            "detail": detail,
-            "start_event": start_event,
-            "end_event": int(load_events(paths)[-1]["id"]),
-            "plan": "model",
-            "steps": records,
-        },
+        run,
+        Receipt(
+            kind="commit",
+            outcome=outcome,
+            detail=detail,
+            start_event=start_event,
+            end_event=run.events[-1].id,
+            plan="model",
+            steps=tuple(records),
+        ),
     )
 
 
 def reset_level(
-    paths: RunPaths,
+    run: Run,
     *,
     because: str | None = None,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
-    stepper: Any = None,
-) -> dict[str, Any]:
-    events = head_events(paths, at_event)
-    registry = require_registry(paths)
+    stepper: Stepper | None = None,
+) -> Receipt:
+    events = head_events(run, at_event)
+    registry = require_registry(run)
     declared = dict(declares or {})
     advisories = _enforce_registry_gates(
-        paths,
-        registry,
-        events,
+        run,
         kind="reset",
         tokens=[],
         claims_per_token=[],
@@ -742,9 +757,7 @@ def reset_level(
     # with the reset pending and its declarations explicitly.
     advisories.extend(
         consult_modules(
-            paths,
-            registry,
-            events,
+            run,
             {
                 "kind": "reset",
                 "name": "RESET",
@@ -757,39 +770,39 @@ def reset_level(
     check_budget(events, registry, planned=1)
     prior = events[-1]
     reason = because
-    if prior["state"] == "GAME_OVER":
+    if prior.state == "GAME_OVER":
         reason = reason or "environment reported GAME_OVER"
     elif not reason:
         raise AssayError(
             'reset needs --because "<why this state is worth abandoning>" '
             "(GAME_OVER excepted)"
         )
-    secrets = tuple((registry or {}).get("secrets") or ())
+    secrets = tuple(registry.get("secrets") or ())
     reason = redact(reason, secrets) or reason
     step = stepper or broker_step
-    response, mutation_id, warning = step(paths, "RESET", None, {"because": reason})
-    pending = make_event(response, "RESET", None, prior, note=reason)
-    pending["mutation_id"] = mutation_id
+    response, mutation_id, warning = step(run, "RESET", None, {"because": reason})
+    pending = make_event(response, "RESET", None, prior, note=reason).updated(
+        mutation_id=mutation_id
+    )
     if declared:
-        pending["declares"] = {
-            key: redact(str(value), secrets) for key, value in declared.items()
-        }
-    event = record_event(paths, pending)
-    observe_outcome(paths, registry, load_events(paths), event)
+        pending = pending.updated(
+            declares={key: redact(str(value), secrets) or "" for key, value in declared.items()}
+        )
+    event = record_event(run, pending)
+    observe_outcome(run, event)
     detail = (
-        f"current {unit_noun(prior['win_levels'])} rewound; completed "
-        f"{unit_noun(prior['win_levels'])}s and action history preserved"
+        f"current {unit_noun(prior.win_levels)} rewound; completed "
+        f"{unit_noun(prior.win_levels)}s and action history preserved"
     )
     if warning:
         detail += f"; scorecard finalization warning: {warning}"
-    receipt: dict[str, Any] = {
-        "kind": "reset",
-        "outcome": "RESET",
-        "detail": detail,
-        "start_event": int(prior["id"]),
-        "end_event": int(event["id"]),
-        "because": reason,
-    }
-    if advisories:
-        receipt["modules"] = list(dict.fromkeys(advisories))
-    return write_receipt(paths, receipt)
+    receipt = Receipt(
+        kind="reset",
+        outcome="RESET",
+        detail=detail,
+        start_event=prior.id,
+        end_event=event.id,
+        because=reason,
+        modules=tuple(dict.fromkeys(advisories)) if advisories else None,
+    )
+    return write_receipt(run, receipt)

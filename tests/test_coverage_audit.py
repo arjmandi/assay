@@ -10,7 +10,7 @@ import gzip
 import json
 from pathlib import Path
 
-from conftest import FAKE_ADAPTER, run_cli, stop_run
+from conftest import FAKE_ADAPTER, event_of, run_cli, run_of, stop_run
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "lf52_prefix.jsonl.gz"
 ACTIONS = [
@@ -22,6 +22,7 @@ ACTIONS = [
 
 def _event(index: int, action: str, *, data=None, observation=None, ok=None, level=0,
            counts=True, grade=None, available=("INC", "NOOP", "SET_LAMP", "BOMB")):
+    grade = [{"text": item["kind"], "actual": "", "bucket": "world_model", **item} for item in grade or []]
     return {
         "id": index,
         "action": action,
@@ -35,14 +36,22 @@ def _event(index: int, action: str, *, data=None, observation=None, ok=None, lev
         "observation": observation if observation is not None else {"counter": 0},
         "predict": None if ok is None else "x",
         "predict_ok": ok,
-        "grade": grade if grade is not None else [],
+        "grade": grade,
     }
 
 
-def _view(events):
-    from assay.modules import JournalView
+def _records(events):
+    """The synthetic journal as Event records (a dict given here overrides
+    the test defaults, so the fixture's full events pass through as they are)."""
+    return [event if not isinstance(event, dict) else event_of(**event) for event in events]
 
-    return JournalView(paths=None, events=events, registry={"actions": []})
+
+def _view(events):
+    from assay.core import RunPaths
+    from assay.modules import ModuleView
+
+    paths = RunPaths(Path("/nonexistent/assay-coverage-audit"))
+    return ModuleView(run_of(paths, _records(events), registry={"actions": []}))
 
 
 def _module():
@@ -58,17 +67,17 @@ def test_ledger_untried_dead_and_stall():
     # NOOP seven times, never productive (observation never changes).
     for index in range(1, 8):
         events.append(_event(index, "NOOP", ok=True, grade=[{"kind": "noop", "ok": True}]))
-    ledger = coverage_ledger(events)
+    ledger = coverage_ledger(_records(events))
     assert ledger["untried"] == ["BOMB", "INC", "SET_LAMP"]
     assert ledger["dead"] == ["NOOP"]
     assert ledger["stalled"] is False  # seven, the window is eight
     events.append(_event(8, "NOOP", ok=True, grade=[{"kind": "noop", "ok": True}]))
-    assert coverage_ledger(events)["stalled"] is True
+    assert coverage_ledger(_records(events))["stalled"] is True
     # A productive INC (the observation changed) breaks the stall and leaves
     # the dead list alone.
     events.append(_event(9, "INC", data={"amount": 1}, observation={"counter": 1}, ok=True,
                          grade=[{"kind": "change", "ok": True}]))
-    ledger = coverage_ledger(events)
+    ledger = coverage_ledger(_records(events))
     assert ledger["stalled"] is False and ledger["dead"] == ["NOOP"]
     assert ledger["untried"] == ["BOMB", "SET_LAMP"]
 
@@ -78,16 +87,16 @@ def test_change_signal_prefers_the_grade_then_the_observation():
 
     changed = _event(1, "INC", observation={"counter": 1})
     base = [_event(0, "START", counts=False), changed]
-    assert _event_changed(base, 1) is True  # observation differs from START's
+    assert _event_changed(_records(base), 1) is True  # observation differs from START's
     quiet = _event(1, "NOOP", observation={"counter": 0})
-    assert _event_changed([base[0], quiet], 1) is False
+    assert _event_changed(_records([base[0], quiet]), 1) is False
     # A graded noop that held says nothing changed, whatever the objects say.
     graded = _event(1, "NOOP", observation={"counter": 9}, ok=True, grade=[{"kind": "noop", "ok": True}])
-    assert _event_changed([base[0], graded], 1) is False
+    assert _event_changed(_records([base[0], graded]), 1) is False
     # Progress is always change.
     progressed = _event(1, "INC", level=1, observation={"counter": 0})
     progressed["level_before"] = 0
-    assert _event_changed([base[0], progressed], 1) is True
+    assert _event_changed(_records([base[0], progressed]), 1) is True
 
 
 def test_reissue_loop_and_conclusion_triggers_and_demands():

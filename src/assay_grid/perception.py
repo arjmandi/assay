@@ -10,11 +10,14 @@ from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
 from itertools import pairwise
 from math import gcd
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from assay.core import RunPaths, atomic_json, canonical_action, frame_at
+from assay.core import atomic_json, canonical_action, frame_at
+
+if TYPE_CHECKING:
+    from assay.run import Run
 
 
 def connected_components(
@@ -472,34 +475,32 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
     return story
 
 
-def build_scene_dossier(
-    paths: RunPaths,
-    events: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    """Cache a complete text/data scene read once per event."""
+def build_scene_dossier(run: Run) -> dict[str, Any]:
+    """Cache a complete text/data scene read once per event, over the run's
+    held journal."""
+    events = run.events
     tip = events[-1]
     settled = frame_at(tip)
     components = connected_components(settled, min_size=1)
     frames = []
     if len(events) > 1:
         frames.append(frame_at(events[-2]))
-    frames.extend(frame_at(tip, index) for index in range(int(tip["n_frames"])))
+    frames.extend(frame_at(tip, index) for index in range(len(tip.frames or ())))
     colors = Counter(int(value) for value in settled.reshape(-1))
     transition = motion_trace(frames)
-    prior_actions = events[-2].get("available_actions", []) if len(events) > 1 else []
+    prior_actions: list[Any] = list(events[-2].available_actions) if len(events) > 1 else []
+    available: list[Any] = list(tip.available_actions)
     record = {
         "version": 1,
-        "event": int(tip["id"]),
-        "level": int(tip["levels_completed"]),
-        "win_levels": int(tip["win_levels"]),
-        "state": tip["state"],
+        "event": tip.id,
+        "level": tip.levels_completed,
+        "win_levels": tip.win_levels,
+        "state": tip.state,
         "action": canonical_action(tip),
-        "available_actions": list(tip.get("available_actions", [])),
+        "available_actions": available,
         "action_set_delta": {
-            "added": sorted(set(tip.get("available_actions", [])) - set(prior_actions)),
-            "removed": sorted(
-                set(prior_actions) - set(tip.get("available_actions", []))
-            ),
+            "added": sorted(set(available) - set(prior_actions)),
+            "removed": sorted(set(prior_actions) - set(available)),
         },
         "scene": {
             "shape": list(settled.shape),
@@ -517,12 +518,12 @@ def build_scene_dossier(
             "lines": line_graph(settled),
         },
         "transition": {
-            "frame_count": int(tip["n_frames"]),
+            "frame_count": len(tip.frames or ()),
             "settled": frame_delta(frame_at(events[-2]), settled)
             if len(events) > 1
             else None,
             "frames": transition,
         },
     }
-    atomic_json(paths.dossier, record)
+    atomic_json(run.paths.dossier, record)
     return record

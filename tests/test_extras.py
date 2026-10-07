@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from conftest import FAKE_ADAPTER, SRC_DIR, run_cli, stop_run
+from conftest import FAKE_ADAPTER, SRC_DIR, event_of, run_cli, stop_run
 
 GRID_ADAPTER = Path(__file__).resolve().parent / "grid_adapter.py"
 ACTIONS = [
@@ -94,6 +94,6 @@ def test_frame_run_loads_the_extra_and_the_perception_forwarders(tmp_path):
         # for the affordance check.
         from assay_grid import KIND
 
-        assert KIND.advertised_names({"available_actions": [1, 6]}) == ["ACTION1", "ACTION6"]
+        assert KIND.advertised_names(event_of(available_actions=[1, 6], frames=[["0"]])) == ["ACTION1", "ACTION6"]
     finally:
         stop_run(run)

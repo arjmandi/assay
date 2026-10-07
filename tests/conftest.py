@@ -126,8 +126,13 @@ def event_of(**overrides: Any) -> Any:
         **overrides,
     }
     if raw.get("grade") is not None:
+        # A dict grade given with only the keys a test looks at gets the
+        # journal's other required keys around them.
         raw["grade"] = [
-            item.to_json() if isinstance(item, Grade) else item for item in raw["grade"]
+            item.to_json()
+            if isinstance(item, Grade)
+            else {"text": str(item.get("kind", "")), "actual": "", "bucket": "world_model", **item}
+            for item in raw["grade"]
         ]
     if raw.get("frames") is not None:
         raw["frames"] = [list(frame) for frame in raw["frames"]]

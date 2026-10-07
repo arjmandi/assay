@@ -2,22 +2,35 @@
 
 Every live action carries a prediction. Structured claims are graded against
 the settled result; free text is graded as "some visible change". On frame
-worlds, coordinates are x=column, y=row.
+worlds, coordinates are x=column, y=row. The parser returns `Claim` records
+and the graders return `Grade` records (`records.py`).
 """
 
 from __future__ import annotations
 
 import re
-from collections.abc import Mapping, Sequence
-from typing import Any
+from collections.abc import Sequence
+from typing import TYPE_CHECKING, Any
 
 from .core import AssayError
 from .extras import ObservationKind, all_kinds, kind_for
+from .records import CHANNEL_KINDS, GAMBLE_KINDS, Claim, Event, Grade, claim_bucket
 from .textobs import changed_count
 
-GAMBLE_KINDS = {"win", "level_up"}
-CHANNEL_KINDS = {"channel_eq", "channel_delta", "channel_cross"}
-_MILESTONE = {"goal", "level"}  # channel claims here gamble; the rest world-model
+if TYPE_CHECKING:
+    from .run import Run
+
+__all__ = [
+    "CHANNEL_KINDS",
+    "GAMBLE_KINDS",
+    "GENERAL_CLAIMS_HELP",
+    "claim_bucket",
+    "claims_help",
+    "grade_action_claims",
+    "grade_general_claims",
+    "grade_lines",
+    "parse_claims",
+]
 
 GENERAL_CLAIMS_HELP = """\
 PREDICTION CLAIMS | separate several with ";"
@@ -118,18 +131,77 @@ _KEYWORD = re.compile(
 )
 
 
-def claim_bucket(kind: str, channel: str | None = None) -> str:
-    """Claim taxonomy: goal/milestone claims gamble, the rest world-model."""
-    if kind in CHANNEL_KINDS:
-        return "gamble" if channel in _MILESTONE else "world_model"
-    if kind == "aggregate":
-        return "aggregate"
-    return "gamble" if kind in GAMBLE_KINDS else "world_model"
+def _numeric(value: Any, what: str, part: str) -> int | float:
+    if not isinstance(value, (int, float)) or isinstance(value, bool):
+        raise AssayError(f"{what} claims need a numeric value: {part!r}")
+    return value
+
+
+def _core_claim(name: str, part: str, found: re.Match[str], window_s: float | None) -> Claim:
+    """One core form from its match: the claim's fields follow the form."""
+    if name == "verify":
+        return Claim(kind=name, text=part, window_s=window_s, path=found.group(1))
+    if name == "channel_delta_sign":
+        return Claim(
+            kind="channel_delta",
+            text=part,
+            window_s=window_s,
+            channel=found.group(1).lower(),
+            op="sign",
+            sign=found.group(2),
+        )
+    if name == "channel_delta":
+        return Claim(
+            kind=name,
+            text=part,
+            window_s=window_s,
+            channel=found.group(1).lower(),
+            op=found.group(2),
+            value=_numeric(_parse_value(found.group(3)), "delta", part),
+        )
+    if name == "channel_cross":
+        return Claim(
+            kind=name,
+            text=part,
+            window_s=window_s,
+            channel=found.group(1).lower(),
+            value=_numeric(_parse_value(found.group(2)), "crosses", part),
+            direction=found.group(3).lower() if found.group(3) else None,
+        )
+    if name == "channel_eq":
+        return Claim(
+            kind=name,
+            text=part,
+            window_s=window_s,
+            channel=found.group(1).lower(),
+            value=_parse_value(found.group(2)),
+            tol=float(found.group(3)) if found.group(3) is not None else None,
+        )
+    if name == "aggregate":
+        claim = Claim(
+            kind=name,
+            text=part,
+            window_s=window_s,
+            channel=found.group(1).lower(),
+            stat=found.group(2).lower(),
+            op=found.group(3),
+            value=_numeric(_parse_value(found.group(4)), "aggregate", part),
+            over=int(found.group(5)),
+            horizon=int(found.group(6)),
+            on_fail=found.group(7).lower(),
+        )
+        assert claim.over is not None and claim.horizon is not None
+        if claim.over < 1 or claim.horizon < 1 or claim.horizon > 100:
+            raise AssayError(
+                "aggregate needs over >= 1a and 1a <= horizon <= 100a"
+            )
+        return claim
+    return Claim(kind=name, text=part, window_s=window_s)
 
 
 def parse_claims(
     text: str, *, kind: ObservationKind | None = None
-) -> list[dict[str, Any]]:
+) -> list[Claim]:
     """Parse a prediction string into claims; free text implies `change`.
 
     The core forms parse on every run. An observation kind's own forms (the
@@ -145,7 +217,7 @@ def parse_claims(
         raise AssayError(
             f"an empty prediction predicts nothing; say what you expect\n{help_text}"
         )
-    claims: list[dict[str, Any]] = []
+    claims: list[Claim] = []
     for raw in text.split(";"):
         part = raw.strip()
         if not part:
@@ -162,76 +234,17 @@ def parse_claims(
             found = pattern.match(part)
             if not found:
                 continue
-            claim: dict[str, Any] = {"kind": name, "text": part}
-            if window_s is not None:
-                claim["window_s"] = window_s
-            if name == "verify":
-                claim["path"] = found.group(1)
-            elif name == "channel_delta_sign":
-                claim.update(
-                    kind="channel_delta",
-                    channel=found.group(1).lower(),
-                    op="sign",
-                    sign=found.group(2),
-                )
-            elif name == "channel_delta":
-                claim.update(
-                    channel=found.group(1).lower(),
-                    op=found.group(2),
-                    value=_parse_value(found.group(3)),
-                )
-                if not isinstance(claim["value"], (int, float)) or isinstance(
-                    claim["value"], bool
-                ):
-                    raise AssayError(f"delta claims need a numeric value: {part!r}")
-            elif name == "channel_cross":
-                claim.update(
-                    channel=found.group(1).lower(),
-                    value=_parse_value(found.group(2)),
-                )
-                if not isinstance(claim["value"], (int, float)) or isinstance(
-                    claim["value"], bool
-                ):
-                    raise AssayError(f"crosses claims need a numeric value: {part!r}")
-                if found.group(3):
-                    claim["direction"] = found.group(3).lower()
-            elif name == "channel_eq":
-                claim.update(
-                    channel=found.group(1).lower(),
-                    value=_parse_value(found.group(2)),
-                )
-                if found.group(3) is not None:
-                    claim["tol"] = float(found.group(3))
-            elif name == "aggregate":
-                claim.update(
-                    channel=found.group(1).lower(),
-                    stat=found.group(2).lower(),
-                    op=found.group(3),
-                    value=_parse_value(found.group(4)),
-                    over=int(found.group(5)),
-                    horizon=int(found.group(6)),
-                    on_fail=found.group(7).lower(),
-                )
-                if not isinstance(claim["value"], (int, float)) or isinstance(
-                    claim["value"], bool
-                ):
-                    raise AssayError(f"aggregate claims need a numeric value: {part!r}")
-                if claim["over"] < 1 or claim["horizon"] < 1 or claim["horizon"] > 100:
-                    raise AssayError(
-                        "aggregate needs over >= 1a and 1a <= horizon <= 100a"
-                    )
-            claims.append(claim)
+            claims.append(_core_claim(name, part, found, window_s))
             matched = True
             break
-        if not matched:
+        if not matched and kind is not None:
             for name, pattern in extra_patterns:
                 found = pattern.match(part)
                 if not found:
                     continue
-                claim = {"kind": name, "text": part, **kind.claim_fields(name, found)}
-                if window_s is not None:
-                    claim["window_s"] = window_s
-                claims.append(claim)
+                claims.append(
+                    Claim(kind=name, text=part, window_s=window_s, extra=kind.claim_fields(name, found))
+                )
                 matched = True
                 break
         if not matched:
@@ -246,11 +259,11 @@ def parse_claims(
                     )
             if _KEYWORD.match(part):
                 raise AssayError(f"malformed claim {part!r}\n{help_text}")
-            claims.append({"kind": "note", "text": part})
+            claims.append(Claim(kind="note", text=part))
     mechanical = [
-        claim for claim in claims if claim["kind"] not in {"note", "aggregate"}
+        claim for claim in claims if claim.kind not in {"note", "aggregate"}
     ]
-    if any(claim["kind"] == "aggregate" for claim in claims) and not mechanical:
+    if any(claim.kind == "aggregate" for claim in claims) and not mechanical:
         # Statistical claims are additive, never substitutive.
         raise AssayError(
             "aggregate claims are additive: this action still needs a mechanical "
@@ -260,28 +273,24 @@ def parse_claims(
         # A prose prediction still commits to a visible effect. Coerced claims
         # are journaled as their own kind and excluded from the capability meter.
         claims.append(
-            {"kind": "change", "text": "change (implied by free text)", "coerced": True}
+            Claim(kind="change", text="change (implied by free text)", coerced=True)
         )
     return claims
 
 
 def grade_general_claims(
-    claims: Sequence[Mapping[str, Any]],
-    prior_event: Mapping[str, Any],
-    event: Mapping[str, Any],
-) -> list[dict[str, Any]]:
+    claims: Sequence[Claim],
+    prior_event: Event,
+    event: Event,
+) -> list[Grade]:
     """Grade the general claim forms against dict-shaped observations."""
-    before = prior_event.get("observation") or {}
-    after = event.get("observation") or {}
+    before = prior_event.observation or {}
+    after = event.observation or {}
     changed = changed_count(before, after)
-    level_before = event.get("level_before")
-    level_advanced = (
-        level_before is not None
-        and int(event["levels_completed"]) > int(level_before)
-    )
-    graded: list[dict[str, Any]] = []
+    level_advanced = event.level_advanced
+    graded: list[Grade] = []
     for claim in claims:
-        kind = claim["kind"]
+        kind = claim.kind
         if kind == "note":
             continue
         ok = False
@@ -301,39 +310,29 @@ def grade_general_claims(
             else:
                 actual = "level advanced" if level_advanced else "no observed change (0 keys)"
         elif kind == "win":
-            ok = str(event["state"]) == "WIN"
-            actual = f"state {event['state']}"
+            ok = str(event.state) == "WIN"
+            actual = f"state {event.state}"
         elif kind == "level_up":
             ok = level_advanced
             actual = (
-                f"level advanced to {int(event['levels_completed'])} completed"
+                f"level advanced to {int(event.levels_completed)} completed"
                 if level_advanced
                 else "level did not advance"
             )
         else:
             actual = "ungradable without a grid observation"
-        graded.append({**dict(claim), "ok": bool(ok), "actual": actual})
+        graded.append(Grade.of(claim, ok=bool(ok), actual=actual))
     return graded
 
 
-def _finalize_record(record: Mapping[str, Any]) -> dict[str, Any]:
-    """Attach the journaled claim kind and meter bucket."""
-    output = dict(record)
-    kind = str(output.get("kind", ""))
-    output["bucket"] = claim_bucket(kind, output.get("channel"))
-    if output.get("coerced"):
-        output["kind"] = "coerced"
-    return output
-
-
 def grade_action_claims(
-    paths: Any,
-    claims: Sequence[dict[str, Any]],
-    prior_event: Mapping[str, Any],
-    event: Mapping[str, Any],
+    run: Run,
+    claims: Sequence[Claim],
+    prior_event: Event,
+    event: Event,
     *,
     elapsed_s: float | None = None,
-) -> list[dict[str, Any]]:
+) -> list[Grade]:
     """Grade every claim of one paid action: the observation kind's grader or
     the general one, then channels, then verifiers.
 
@@ -345,31 +344,31 @@ def grade_action_claims(
     from .channels import grade_channel_claim
     from .verifiers import grade_verifier_claim, observation_view
 
-    graded: list[dict[str, Any]] = []
-    stale: list[dict[str, Any]] = []
-    timely: list[dict[str, Any]] = []
+    graded: list[Grade] = []
+    stale: list[Grade] = []
+    timely: list[Claim] = []
     for claim in claims:
-        if claim["kind"] in {"note", "aggregate"}:
+        if claim.kind in {"note", "aggregate"}:
             continue
-        window = claim.get("window_s")
+        window = claim.window_s
         if window is not None and elapsed_s is not None and elapsed_s > float(window):
             stale.append(
-                {
-                    **dict(claim),
-                    "ok": False,
-                    "ungradable": True,
-                    "actual": (
+                Grade.of(
+                    claim,
+                    ok=False,
+                    ungradable=True,
+                    actual=(
                         f"UNGRADABLE: settled after {elapsed_s:.2f}s, "
                         f"outside the declared {float(window):g}s window"
                     ),
-                }
+                )
             )
         else:
             timely.append(claim)
     plain = [
         claim
         for claim in timely
-        if claim["kind"] not in {"verify"} and claim["kind"] not in CHANNEL_KINDS
+        if claim.kind != "verify" and claim.kind not in CHANNEL_KINDS
     ]
     kind = kind_for(event)
     if kind is not None:
@@ -377,30 +376,30 @@ def grade_action_claims(
     else:
         graded.extend(grade_general_claims(plain, prior_event, event))
     graded.extend(
-        grade_channel_claim(paths, claim, prior_event, event)
+        grade_channel_claim(run, claim, prior_event, event)
         for claim in timely
-        if claim["kind"] in CHANNEL_KINDS
+        if claim.kind in CHANNEL_KINDS
     )
-    verify_claims = [claim for claim in timely if claim["kind"] == "verify"]
+    verify_claims = [claim for claim in timely if claim.kind == "verify"]
     if verify_claims:
         before_view = observation_view(prior_event)
         after_view = observation_view(event)
         graded.extend(
-            grade_verifier_claim(paths, claim, before_view, after_view)
+            grade_verifier_claim(run.paths, claim, before_view, after_view)
             for claim in verify_claims
         )
     graded.extend(stale)
-    return [_finalize_record(record) for record in graded]
+    return graded
 
 
-def grade_lines(graded: Sequence[Mapping[str, Any]]) -> list[str]:
+def grade_lines(graded: Sequence[Grade]) -> list[str]:
     lines: list[str] = []
     for item in graded:
-        if item.get("invalid") or item.get("ungradable"):
-            lines.append(f"! {item['text']} | {item['actual']}")
+        if item.invalid or item.ungradable:
+            lines.append(f"! {item.text} | {item.actual}")
             continue
         lines.append(
-            f"{'✓' if item['ok'] else '✗'} {item['text']}"
-            + ("" if item["ok"] else f" | {item['actual']}")
+            f"{'✓' if item.ok else '✗'} {item.text}"
+            + ("" if item.ok else f" | {item.actual}")
         )
     return lines

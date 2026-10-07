@@ -23,6 +23,8 @@ import pytest
 from hypothesis import assume, given, settings
 from hypothesis import strategies as st
 
+from conftest import event_of
+
 from assay.core import AssayError, RunPaths
 from assay.integrity import CHAIN_SEED, compute_chain, ungated_events
 from assay.predictions import parse_claims
@@ -248,13 +250,13 @@ def test_grammar_text_parses_one_claim_per_part(prediction):
             parse_claims(text)
         return
     claims = parse_claims(text)
-    assert [claim["kind"] for claim in claims] == [part.kind for part in parts]
+    assert [claim.kind for claim in claims] == [part.kind for part in parts]
     for claim, part in zip(claims, parts, strict=True):
-        assert claim["text"] == part.core
+        assert claim.text == part.core
         for key, value in part.fields.items():
-            assert claim[key] == value, key
-        assert claim.get("window_s") == part.window_s
-        assert "coerced" not in claim
+            assert getattr(claim, key) == value, key
+        assert claim.window_s == part.window_s
+        assert not claim.coerced and "coerced" not in claim.to_json()
 
 
 @given(parts=st.lists(aggregate_parts, min_size=1, max_size=3))
@@ -313,7 +315,7 @@ _free_text_body = st.text().filter(
 @given(opener=st.sampled_from(["the", "probably", "it", "door", "nothing"]), body=_free_text_body)
 def test_free_text_is_a_note_plus_a_coerced_change(opener, body):
     text = f"{opener} {body}"
-    assert parse_claims(text) == [
+    assert [claim.to_json() for claim in parse_claims(text)] == [
         {"kind": "note", "text": text.strip()},
         {"kind": "change", "text": "change (implied by free text)", "coerced": True},
     ]
@@ -343,11 +345,10 @@ def test_any_text_parses_or_is_refused_with_a_reason(text):
     assert text.strip()  # the empty prediction is always refused
     assert isinstance(claims, list) and claims
     for claim in claims:
-        assert isinstance(claim, dict)
-        assert claim["kind"] in CLAIM_KINDS
-        assert isinstance(claim["text"], str) and claim["text"]
+        assert claim.kind in CLAIM_KINDS
+        assert isinstance(claim.text, str) and claim.text
     # Whatever was said, the action commits to a mechanical claim.
-    assert any(claim["kind"] not in NOT_MECHANICAL for claim in claims)
+    assert any(claim.kind not in NOT_MECHANICAL for claim in claims)
 
 
 @pytest.mark.xfail(
@@ -481,6 +482,33 @@ journals = st.lists(_event_shapes, max_size=12).map(
 )
 
 
+def _kernel_events(events: list[dict[str, Any]]) -> list[Any]:
+    """The generated shapes as the kernel's typed events. The checker reads
+    the journal fields as JSON, so a generated shape may lack a key or carry a
+    null `counts_action`; the typed record carries every required key and a
+    boolean, so an absent or null `counts_action` becomes false, the value the
+    checker and the spec read it as, and a generated grade gets the journal's
+    required keys around the ones the rule looks at."""
+    kernel: list[Any] = []
+    for event in events:
+        fields: dict[str, Any] = {
+            "id": event["id"],
+            "action": event.get("action", "GO"),
+            "counts_action": bool(event.get("counts_action")),
+        }
+        for key in ("predict", "predict_ok"):
+            if key in event:
+                fields[key] = event[key]
+        if "grade" in event:
+            grade = event["grade"]
+            fields["grade"] = (
+                None if grade is None
+                else [{"text": "change", "actual": "", **item} for item in grade]
+            )
+        kernel.append(event_of(**fields))
+    return kernel
+
+
 def spec_ungated(events: list[dict[str, Any]]) -> list[int]:
     """JOURNAL_SPEC.md section 6: paid, not RESET, carrying none of predict,
     predict_ok, grade. Both implementations read "carries" as a non-null,
@@ -502,7 +530,7 @@ def spec_ungated(events: list[dict[str, Any]]) -> list[int]:
 
 @given(events=journals)
 def test_kernel_and_checker_agree_on_ungated_events(events):
-    flagged = ungated_events(events)
+    flagged = ungated_events(_kernel_events(events))
     assert flagged == assay_verify.ungated_events(events)
     assert flagged == spec_ungated(events)
 
@@ -512,7 +540,7 @@ def test_an_injected_bare_paid_event_is_always_flagged(events, data):
     # Injecting a paid, claim-free action anywhere adds exactly its id, even
     # when the chain is recomputed around it (test_verify_checker's attack).
     position = data.draw(st.integers(0, len(events)), label="position")
-    before = ungated_events(events)
+    before = ungated_events(_kernel_events(events))
     bare = {"action": "GO", "counts_action": True, "note": "injected"}
     rewritten = [
         {**event, "id": index}
@@ -521,7 +549,7 @@ def test_an_injected_bare_paid_event_is_always_flagged(events, data):
     expected = sorted(
         {index if index < position else index + 1 for index in before} | {position}
     )
-    assert ungated_events(rewritten) == expected
+    assert ungated_events(_kernel_events(rewritten)) == expected
     assert assay_verify.ungated_events(rewritten) == expected
 
 

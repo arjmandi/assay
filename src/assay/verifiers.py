@@ -41,6 +41,7 @@ from typing import Any
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
 from .sandbox import run_program
+from .records import Claim, Event, Grade
 
 VERIFY_TIMEOUT_SECONDS = 5.0
 VACUOUS_MIN_GRADED = 5
@@ -59,9 +60,10 @@ sys.stdout.write("\\n" + json.dumps({"ok": bool(ok), "actual": str(actual)}) + "
 """
 
 
-def admit_verifier(paths: RunPaths, claim: dict[str, Any]) -> None:
-    """Claim-time admission: read, hash, store, journal. Runs before any spend."""
-    reference = str(claim.get("path", ""))
+def admit_verifier(paths: RunPaths, claim: Claim) -> Claim:
+    """Claim-time admission: read, hash, store, journal. Runs before any spend;
+    returns the claim carrying its verifier hash."""
+    reference = str(claim.path or "")
     candidate = Path(reference)
     if candidate.is_absolute():
         raise AssayError(
@@ -83,11 +85,11 @@ def admit_verifier(paths: RunPaths, claim: dict[str, Any]) -> None:
     stored = paths.verifiers / f"{digest}.py"
     if not stored.exists():
         stored.write_bytes(body)
-    claim["verifier_hash"] = digest
     append_jsonl(
         paths.activity,
         {"kind": "verifier_admitted", "hash": digest, "source": reference},
     )
+    return claim.updated(verifier_hash=digest)
 
 
 def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
@@ -194,32 +196,31 @@ def never_failed_hashes(stats: Mapping[str, Any]) -> set[str]:
     }
 
 
-def observation_view(event: Mapping[str, Any]) -> dict[str, Any]:
+def observation_view(event: Event) -> dict[str, Any]:
     """The observation JSON object a verifier receives for one event."""
     view: dict[str, Any] = {
-        "state": str(event["state"]),
-        "levels_completed": int(event["levels_completed"]),
-        "win_levels": int(event["win_levels"]),
-        "available_actions": list(event["available_actions"]),
+        "state": str(event.state),
+        "levels_completed": int(event.levels_completed),
+        "win_levels": int(event.win_levels),
+        "available_actions": list(event.available_actions),
     }
-    if "frames" in event:
-        view["frames"] = event["frames"]
+    if event.frames is not None:
+        view["frames"] = event.frames
     else:
-        view["data"] = event["observation"]
+        view["data"] = event.observation
     return view
 
 
 def grade_verifier_claim(
     paths: RunPaths,
-    claim: Mapping[str, Any],
+    claim: Claim,
     before: Mapping[str, Any],
     after: Mapping[str, Any],
     timeout: float = VERIFY_TIMEOUT_SECONDS,
-) -> dict[str, Any]:
+) -> Grade:
     """Grade one verify claim, run the identity probe, update the counters.
     The vacuity flag follows the rule the run's stats file is under."""
-    digest = str(claim.get("verifier_hash", ""))
-    record: dict[str, Any] = {**dict(claim), "verifier": True}
+    digest = str(claim.verifier_hash or "")
     stats = load_stats(paths)
     rule = stats_rule(stats)
     if rule == RULE_IDENTITY:
@@ -234,26 +235,28 @@ def grade_verifier_claim(
     if result["status"] != "ok":
         entry["invalid"] += 1
         atomic_json(paths.verifier_stats, stats)
-        return {
-            **record,
-            "ok": False,
-            "invalid": True,
-            "actual": f"INVALID_CLAIM: {result['reason']}",
-        }
+        return Grade.of(
+            claim,
+            ok=False,
+            actual=f"INVALID_CLAIM: {result['reason']}",
+            invalid=True,
+            verifier=True,
+        )
     identity = run_verifier(paths, digest, before, before, timeout=timeout)
-    identity_verdict: Any = identity["ok"] if identity["status"] == "ok" else "invalid"
+    identity_verdict: bool | str = (
+        bool(identity["ok"]) if identity["status"] == "ok" else "invalid"
+    )
     entry["graded"] += 1
     entry["passed" if result["ok"] else "failed"] += 1
     if identity_verdict == result["ok"]:
         entry["identity_same_verdict"] += 1
     vacuous = is_vacuous(entry, rule)
     atomic_json(paths.verifier_stats, stats)
-    graded = {
-        **record,
-        "ok": bool(result["ok"]),
-        "actual": str(result["actual"]),
-        "identity_verdict": identity_verdict,
-    }
-    if vacuous and result["ok"]:
-        graded["excluded_from_meter"] = True
-    return graded
+    return Grade.of(
+        claim,
+        ok=bool(result["ok"]),
+        actual=str(result["actual"]),
+        verifier=True,
+        identity_verdict=identity_verdict,
+        excluded_from_meter=bool(vacuous and result["ok"]),
+    )

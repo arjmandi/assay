@@ -29,10 +29,13 @@ import re
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, RunPaths, append_jsonl, atomic_json, load_events, read_json
+from .core import AssayError, append_jsonl, atomic_json
 from .modules import hazards_path, load_hazards
+
+if TYPE_CHECKING:
+    from .run import Run
 
 KNOWLEDGE_FORMAT = 1
 _NOTES_CAP = 100_000
@@ -63,14 +66,14 @@ def binding_hash_of(config: Mapping[str, Any]) -> str:
     ).hexdigest()
 
 
-def _journal_digest(paths: RunPaths) -> dict[str, Any]:
-    events = load_events(paths)
+def _journal_digest(run: Run) -> dict[str, Any]:
+    events = run.events
     per_action: dict[str, dict[str, int]] = {}
     for event in events:
-        if not event.get("counts_action"):
+        if not event.counts_action:
             continue
         slot = per_action.setdefault(
-            str(event["action"]),
+            str(event.action),
             {
                 "attempts": 0,
                 "graded": 0,
@@ -82,34 +85,33 @@ def _journal_digest(paths: RunPaths) -> dict[str, Any]:
             },
         )
         slot["attempts"] += 1
-        for item in event.get("grade") or ():
-            kind = str(item.get("kind", ""))
-            if kind in {"note", "coerced"} or item.get("machine"):
+        for item in event.grade:
+            if item.kind in {"note", "coerced"} or item.machine:
                 continue
-            if item.get("invalid") or item.get("ungradable"):
+            if item.invalid or item.ungradable:
                 slot["invalid"] += 1
                 continue
             slot["graded"] += 1
-            bucket = str(item.get("bucket") or "world_model")
+            bucket = str(item.bucket or "world_model")
             if bucket == "gamble":
                 slot["gamble_graded"] += 1
-                if item.get("ok"):
+                if item.ok:
                     slot["gamble_held"] += 1
             elif bucket == "world_model":
                 slot["wm_graded"] += 1
-                if not item.get("ok"):
+                if not item.ok:
                     slot["wm_missed"] += 1
     try:
-        journal_sha = hashlib.sha256(paths.events.read_bytes()).hexdigest()
+        journal_sha: str | None = hashlib.sha256(run.paths.events.read_bytes()).hexdigest()
     except FileNotFoundError:
         journal_sha = None
     return {
         "per_action": per_action,
         "events": len(events),
-        "paid": sum(1 for event in events if event.get("counts_action")),
+        "paid": sum(1 for event in events if event.counts_action),
         "journal_sha256": journal_sha,
-        "final_state": str(events[-1]["state"]) if events else None,
-        "levels_completed": int(events[-1]["levels_completed"]) if events else 0,
+        "final_state": str(events[-1].state) if events else None,
+        "levels_completed": int(events[-1].levels_completed) if events else 0,
     }
 
 
@@ -126,14 +128,13 @@ def _verified_lines(notes: str) -> list[str]:
     return lines
 
 
-def export_knowledge(paths: RunPaths, out: Path | None = None) -> Path:
+def export_knowledge(run: Run, out: Path | None = None) -> Path:
     from .model import fit_path, model_source
     from .verifiers import load_stats
 
-    config = read_json(paths.config, None)
-    if not isinstance(config, dict):
-        raise AssayError("no run here to export")
-    registry = read_json(paths.registry, None)
+    paths = run.paths
+    config = run.config
+    registry = run.registry
     try:
         notes = paths.notes.read_text()[:_NOTES_CAP]
     except FileNotFoundError:
@@ -151,6 +152,8 @@ def export_knowledge(paths: RunPaths, out: Path | None = None) -> Path:
             )
     model_entry = None
     if model_source(paths).exists():
+        from .core import read_json
+
         fit = read_json(fit_path(paths), None)
         model_entry = {
             "source": model_source(paths).read_text()[:_SOURCE_CAP],
@@ -168,7 +171,7 @@ def export_knowledge(paths: RunPaths, out: Path | None = None) -> Path:
         "game_id": config.get("game_id"),
         "registry_hash": config.get("registry_hash") or registry_hash_of(registry),
         "binding_hash": config.get("binding_hash") or binding_hash_of(config),
-        "digest": _journal_digest(paths),
+        "digest": _journal_digest(run),
         "notes": notes,
         "verified_lines": _verified_lines(notes),
         "hazards": load_hazards(paths),
@@ -185,13 +188,13 @@ def export_knowledge(paths: RunPaths, out: Path | None = None) -> Path:
             "path": str(target),
             "sha256": hashlib.sha256(target.read_bytes()).hexdigest(),
             "verifiers": len(verifiers),
-            "hazards": len(knowledge["hazards"]),
+            "hazards": len(load_hazards(paths)),
         },
     )
     return target
 
 
-def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
+def import_knowledge(run: Run, source: Path) -> dict[str, Any]:
     """Import at run start. Everything lands FOREIGN; see the module docstring."""
     try:
         raw = source.read_text()
@@ -206,7 +209,8 @@ def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
         raise AssayError(
             f"unsupported knowledge format (this build reads {KNOWLEDGE_FORMAT})"
         )
-    config = read_json(paths.config, {})
+    paths = run.paths
+    config = run.config
     imported_dir = paths.state / "imported"
     imported_dir.mkdir(parents=True, exist_ok=True)
     atomic_json(imported_dir / "knowledge.json", knowledge)
@@ -271,6 +275,7 @@ def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
                 hazards_foreign += 1
         atomic_json(hazards_path(paths), tags)
 
+    verified = knowledge.get("verified_lines") or []
     summary = {
         "kind": "knowledge_import",
         "sha256": sha,
@@ -282,14 +287,17 @@ def import_knowledge(paths: RunPaths, source: Path) -> dict[str, Any]:
         "hazards_active": hazards_imported,
         "hazards_foreign_inactive": hazards_foreign,
         "model_source": bool(model_entry),
-        "verified_lines_demoted": len(knowledge.get("verified_lines") or []),
+        "verified_lines_demoted": len(verified) if isinstance(verified, list) else 0,
     }
     append_jsonl(paths.activity, summary)
     return summary
 
 
-def foreign_lines(paths: RunPaths) -> list[str]:
+def foreign_lines(run: Run) -> list[str]:
     """The status FOREIGN block for an importing run."""
+    from .core import read_json
+
+    paths = run.paths
     knowledge = read_json(paths.state / "imported" / "knowledge.json", None)
     if not isinstance(knowledge, dict):
         return []
