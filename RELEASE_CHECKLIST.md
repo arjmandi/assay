@@ -16,6 +16,35 @@ decisions and the tag; everything else can run on any checkout of
 - The nine `agent/issue-*` branches on origin are internal workflow residue
   with no reader. Delete them before the flip (owner decision O8):
   `git push origin --delete agent/issue-736 ...` for each.
+- The OOLONG length-ladder text (O3, decided): six files,
+  `bench/oolong/packs/corpus_synth{128k,1m,4m}.txt` and
+  `questions_synth{128k,1m,4m}.jsonl`, are out of the tree and must be out of
+  the history before the flip. They entered in one commit, 0b6e6b9 (2026-08-26,
+  on main before the branch point), so the release branch cannot lose them
+  without rewriting main's shared history: the whole repository is rewritten.
+  The procedure, proven on a scratch mirror on 2026-10-07 (49 commits rewritten
+  from 0b6e6b9 on, six refs moved: `main`, `release/1.1.0`, `exp/2026-10`,
+  `agent/issue-767`, `-768`, `-776`; `v1.0-rc1` and the seven older agent
+  branches unchanged), run in the repository itself by the owner:
+
+  ```bash
+  git filter-repo --invert-paths \
+    --path bench/oolong/packs/corpus_synth128k.txt --path bench/oolong/packs/corpus_synth1m.txt \
+    --path bench/oolong/packs/corpus_synth4m.txt --path bench/oolong/packs/questions_synth128k.jsonl \
+    --path bench/oolong/packs/questions_synth1m.jsonl --path bench/oolong/packs/questions_synth4m.jsonl \
+    --replace-refs delete-no-add --force
+  git remote add origin https://github.com/arjmandi/assay.git   # filter-repo strips it
+  git log --all -- 'bench/oolong/packs/corpus_*'                 # expect f39b47f (the smoke packs) alone
+  ```
+
+  Before: a clean working tree and clean agent worktrees (filter-repo resets
+  the checked-out one; the agent worktrees at `~/agents/assay/issue-*` are
+  realigned with `git reset --hard` in each or removed). After: do not `git
+  fetch` before the force-push, or the old `origin/*` refs bring the text
+  back. Then `git push --force origin main release/1.1.0` and the tags, and
+  delete the agent branches on origin (O8). The pre-rewrite objects stay on
+  GitHub until its support purges them. The old and new tips of every moved
+  ref are recorded in the archive's release log.
 
 ## 2. Must not ship
 
@@ -36,6 +65,9 @@ the pre-tag grep in section 3:
 - The fleet operations sections of `CLAUDE.md`, `docs/agent-journal/`, and
   the fleet deny rules of `.claude/settings.json`: gone on this branch.
 - Run state (`.assay/`), `.DS_Store`, build output: ignored by `.gitignore`.
+- `bench/oolong/packs/corpus_synth*.txt` and `questions_synth*.jsonl` (the
+  length-ladder dataset text, O3): out of the tree, out of the history by the
+  step in section 1.
 
 ## 3. Pre-tag greps (run on the release branch, expect nothing)
 
@@ -44,6 +76,8 @@ git ls-files | grep -E '^tools/|test_night_orchestrator|test_e3_prepare|registry
 git grep -I -n -E '/Users/|/home/' -- .            # machine paths: none
 git grep -n -i 'doctrine' -- src tests examples    # the old manual name: none in code
 git grep -n -i -E 'factorio|oolong|\barc\b|arc_agi|arcengine' -- src/assay   # world names in the kernel: none
+git ls-files | grep -E 'packs/(corpus|questions)_synth'                       # the length-ladder text: none
+git log --all -- 'bench/oolong/packs/corpus_synth*' 'bench/oolong/packs/questions_synth*'   # and none in history
 ```
 
 ## 4. Secrets scan over every branch
@@ -64,7 +98,7 @@ git grep -n -i 'arjmandi' release/1.1.0 -- . ':!LICENSE' ':!NOTICE'
 
 Expected: no key shapes, no secret assignments in history, zero machine paths
 on `release/1.1.0` and `main`, emails only inside `bench/oolong/packs`
-(upstream dataset text, owner decision O3), the owner's name only in
+(the smoke packs' upstream dataset text), the owner's name only in
 `pyproject.toml` (the authors field) and the README's license section.
 
 ## 5. Regression gates
@@ -86,7 +120,7 @@ the conservative default was implemented.
 |---|---|---|
 | O1 grid claim forms on frame registry runs | refused, as before | nothing (behavior preserved) |
 | O2 the legacy numbered-action path | moved to `assay_grid.legacy`, undocumented | nothing (deletion is for 1.2) |
-| O3 the OOLONG corpora | all packs still in the tree, terms stated in NOTICE | the repository size and the dataset text going public |
+| O3 the OOLONG corpora | decided: the smoke packs ship, the others fetch on first use, the tree is clean | the history rewrite (section 1), before the flip |
 | O4 the experiment tooling and the E1 files | left on `exp/2026-10` | nothing on the branch (the paper cites the archive) |
 | O5 the owner token | `--owner-token-file` plus the honest paragraph | nothing (the protocols are unchanged) |
 | O6 hot-load | the manifest, owner install | nothing |

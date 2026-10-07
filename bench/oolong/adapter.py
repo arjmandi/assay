@@ -13,8 +13,9 @@ CURRENT question, never the corpus body.
 
 Which pack loads: the ASSAY game id (`config["game_id"]`), overridable with
 ASSAY_OOLONG_PACK; the packs directory is ASSAY_OOLONG_PACKS or the adapter's
-own `packs/`. A pack is `corpus_{id}.txt` + `questions_{id}.jsonl` (+ manifest),
-built offline by `packs/build_pack.py`.
+own `packs/`. A pack is `corpus_{id}.txt` + `questions_{id}.jsonl` + a manifest.
+The smoke packs ship whole; the others ship as manifests and are rebuilt on
+first use by `packs/build_pack.py fetch <id>`.
 
 Two PAID actuators, both grounded in code (the referee grades EVIDENCE
 INTEGRITY, since a static corpus has no world-response to grade a prediction
@@ -133,11 +134,19 @@ class OolongSession:
 
         corpus_file = packs / f"corpus_{pack_id}.txt"
         questions_file = packs / f"questions_{pack_id}.jsonl"
+        manifest_file = packs / f"manifest_{pack_id}.json"
         if not corpus_file.is_file() or not questions_file.is_file():
+            builder = _HERE / "packs" / "build_pack.py"
+            remedy = (
+                f"its manifest is there, so `python {builder} fetch {pack_id}` rebuilds "
+                "it from the pinned dataset revision and verifies it"
+                if manifest_file.is_file()
+                else f"build one from a local shard with `python {builder} build ...` "
+                "(bench/oolong/PROTOCOL.md)"
+            )
             raise AssayError(
-                f"OOLONG pack {pack_id!r} not found in {packs} (need "
-                f"corpus_{pack_id}.txt + questions_{pack_id}.jsonl); build one with "
-                "bench/oolong/packs/build_pack.py"
+                f"OOLONG pack {pack_id!r} is not built in {packs} (need "
+                f"corpus_{pack_id}.txt and questions_{pack_id}.jsonl): {remedy}"
             )
 
         self.corpus = corpus_file.read_text()
@@ -163,7 +172,6 @@ class OolongSession:
         self._corpus_path.parent.mkdir(parents=True, exist_ok=True)
         self._corpus_path.write_text(self.corpus)
 
-        manifest_file = packs / f"manifest_{pack_id}.json"
         try:
             self._manifest = json.loads(manifest_file.read_text())
         except (FileNotFoundError, json.JSONDecodeError):

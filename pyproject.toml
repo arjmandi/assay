@@ -19,6 +19,8 @@ dependencies = [
 grid = ["pillow>=10,<13"]
 # The ARC-AGI-3 benchmark adapter needs the arc-agi client and the grid extra.
 arcagi = ["arc-agi", "pillow>=10,<13"]
+# Building or fetching an OOLONG corpus pack reads a parquet shard; the adapter itself needs nothing.
+oolong = ["pyarrow", "pandas"]
 dev = ["pytest"]
 
 [project.scripts]

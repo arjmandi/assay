@@ -21,18 +21,20 @@ repository and the terms it carries.
 
 2. OOLONG corpus packs
 
-   Files:    bench/oolong/packs/corpus_*.txt, questions_*.jsonl, manifest_*.json
-   Origin:   derived from the OOLONG dataset at the revision pinned in each
-             pack's manifest, by bench/oolong/packs/build_pack.py.
+   Files:    bench/oolong/packs/corpus_spam4k.txt, corpus_spam8k.txt,
+             questions_spam4k.jsonl, questions_spam8k.jsonl (the two smoke
+             packs), and manifest_*.json for every pack.
+   Origin:   derived from the OOLONG dataset (oolongbench/oolong-synth) at
+             the revision pinned in each pack's manifest, by
+             bench/oolong/packs/build_pack.py.
    Terms:    the dataset's own terms apply to the text (see the upstream
              dataset card named in the manifests). These files are not covered
              by the PolyForm license above.
 
-   TODO(owner: O3): whether the packs ship in the repository (14 MB of
-   upstream dataset text, with lines that look like personal data) or only
-   the two smoke packs (spam4k, spam8k) and the manifests, with the rest
-   fetched on first use through build_pack.py. The release review
-   recommends the latter. Nothing was removed pending that decision.
+   Only the two smoke packs ship. The length-ladder packs (synth128k,
+   synth1m, synth4m) are manifests here: their text is rebuilt on the user's
+   machine from the pinned revision with `build_pack.py fetch` and never
+   enters this repository. A manifest carries no dataset text.
 
 No other third-party source is vendored. Python dependencies (numpy, pillow,
 pytest, and the benchmark client libraries) are installed from their own

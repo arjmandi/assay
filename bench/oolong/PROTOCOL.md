@@ -36,26 +36,30 @@ copy:
     packs/questions_{id}.jsonl   one question per line; gold answer kept ASIDE
     packs/manifest_{id}.json     provenance + pins (see below)
 
-`{id}` is the pack id and must be a valid ASSAY game id (`[a-z0-9]{2,16}`).
+`{id}` is the pack id, `[a-z0-9]{2,16}`: it names files and is also the run's
+world id.
 `questions_{id}.jsonl` carries every field the scorer reads (`id`,
 `context_window_id`, `dataset`, `answer`, `answer_type`) plus `question`,
 `task_group`, `task`, `context_len`, `num_labels`. The gold `answer` lives here
-only — **never** in the corpus, the observation, or the journal.
+only — **never** in the corpus, the observation, or the journal. The manifest
+pins the dataset revision, the source shard, the `context_window_id` and the
+sha256 of both files, which is what `fetch` and `verify` check.
 
 The format does **not** depend on corpus length: the same three files describe a
 4K corpus and a 4M corpus. Long-corpus extraction (M2) changes only which
 shard/row is read, never the pack shape or the adapter.
 
-Build a pack offline (needs pyarrow; e.g. the M0 spike venv — the adapter itself
-never imports pyarrow):
+The two smoke packs ship whole: `spam4k` (5 questions, 4096-token corpus,
+10 115 chars) and `spam8k` (25 questions, 8192-token corpus, 19 709 chars). The
+length-ladder packs ship as manifests and are rebuilt on first use (README.md,
+Packs). The builder needs pyarrow and pandas (`pip install -e '.[oolong]'`);
+the adapter itself never imports either:
 
-    python bench/oolong/packs/build_pack.py \
+    python bench/oolong/packs/build_pack.py fetch synth128k      # rebuild from the pinned shard, verify
+    python bench/oolong/packs/build_pack.py verify synth128k     # check a built pack (stdlib)
+    python bench/oolong/packs/build_pack.py build \
         --parquet <local-shard.parquet> --packid spam4k \
-        --dataset spam --context-len 4096 --out bench/oolong/packs
-
-Shipped M1 packs (from the M0 cached validation shard): `spam4k` (5 questions,
-4096-token corpus, 10 115 chars) and `spam8k` (25 questions, 8192-token corpus,
-19 709 chars).
+        --dataset spam --context-len 4096                         # a new pack from a local shard
 
 ## Observation
 
@@ -137,8 +141,8 @@ unaffected.
     scorer.py             sealed-scoring wrapper over the vendored OOLONG scorer
     registry_40.json      BANK_FACT + SUBMIT rows, 40-action budget (small packs)
     registry_200.json     same rows, 200-action budget (~25-question packs)
-    packs/build_pack.py   offline extract-and-dedup pack builder (needs pyarrow)
-    packs/{corpus,questions,manifest}_{id}.*   the packs
+    packs/build_pack.py   fetch, verify and build packs (fetch and build need pyarrow and pandas)
+    packs/{corpus,questions,manifest}_{id}.*   the smoke packs whole, the others as manifests
     vendor/oolong_eval_helpers.py   upstream OOLONG scorer, verbatim (MIT)
     vendor/{LICENSE.oolong,PROVENANCE.md}
 

@@ -72,8 +72,8 @@ Left on the experiment branch, deliberately:
   `pyproject.toml` reads), the journal spec it writes (`assay-journal-v1`),
   the interpreter and its Python version. `assay doctor` prints the same
   first. `LICENSE` (PolyForm Noncommercial 1.0.0 with the required notice),
-  `NOTICE` (the vendored OOLONG scorer under MIT, the corpus packs under the
-  dataset's terms, TODO(owner: O3) on shipping them), and
+  `NOTICE` (the vendored OOLONG scorer under MIT, the two smoke packs under
+  the dataset's terms), and
   `RELEASE_CHECKLIST.md` (what must not ship, the pre-tag greps, the secrets
   scan over every branch, the gates with their commands, the owner decisions
   that gate the tag).
@@ -241,6 +241,21 @@ Left on the experiment branch, deliberately:
   `assay start` names its positional `world_id`. The ARC mapping (world id is
   the game id, a progress unit is a level, `GAME_OVER` is the engine's state)
   is stated once in `bench/arcagi/PROTOCOL.md`.
+
+### Removed
+
+- The OOLONG length-ladder packs (`synth128k`, `synth1m`, `synth4m`: 14 MB of
+  upstream dataset text, O3). Their manifests stay, now with the sha256 of the
+  questions file beside the corpus's, and `bench/oolong/packs/build_pack.py
+  fetch <id>` rebuilds any of them on first use from the pinned dataset
+  revision (ASSAY's cache, the Hugging Face hub cache, or one download) and
+  verifies the result against the manifest, deleting a mismatch. `verify`
+  checks a built pack with the standard library alone, and the adapter names
+  the fetch command when a pack with a manifest is not built. The `oolong`
+  extra installs pyarrow and pandas for the builder. The two smoke packs
+  (`spam4k`, `spam8k`) ship whole. The repository's history is rewritten to
+  drop the six files before publication (the procedure and its record are in
+  `RELEASE_CHECKLIST.md`, section 1).
 
 ### Known
 

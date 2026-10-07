@@ -17,6 +17,7 @@
   "gold_location": "questions jsonl only (sealed; never in corpus/observation)",
   "n_questions": 25,
   "packid": "synth128k",
+  "questions_sha256": "677d52c668c2708be49e1312a32a98d56205a2720be90e9f439724bf7ed9cc0c",
   "source_shard": "test-00004-of-00041.parquet",
   "split": "synth",
   "task_groups": [

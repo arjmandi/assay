@@ -16,6 +16,7 @@
   "gold_location": "questions jsonl only (sealed; never in corpus/observation)",
   "n_questions": 25,
   "packid": "spam8k",
+  "questions_sha256": "a9db2b51b79863feee31d0d0d240d7ac0e734e90b7e310a12b96b1de0f2ae065",
   "source_shard": "validation-00001-of-00009.parquet",
   "split": "synth",
   "task_groups": [
