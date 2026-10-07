@@ -28,8 +28,13 @@ decisions and the tag; everything else can run on any checkout of `main`.
 Present on `exp/2026-10`, absent from `main`, and kept that way by the
 pre-tag grep in section 3:
 
-- `tools/` entirely (the night orchestrator, job files, prompt templates,
-  ledgers, status files, STOP, dryrun): 40 plus absolute machine paths.
+- No machine path under `tools/` (the hygiene test enforces it tree-wide).
+  The night orchestrator that ran the paper's experiments, with its job
+  files, prompt templates, ledgers, status files, STOP and dryrun output,
+  carried 40 plus absolute paths and stays on the experiment tag. What ships
+  in its place is the evaluation runner `tools/eval/` (#22): relative paths
+  only, the world names in the job files under `bench/*/jobs/`, and its
+  state (runs, tokens, ledgers, STOP) in a directory outside the tree.
 - `tests/test_night_orchestrator.py`, `tests/test_e3_prepare.py`, the
   archived-run test of the old `tests/test_coverage_module.py`, and the
   absolute checker path that `tests/test_gate_optional.py` carried (replaced
@@ -49,8 +54,8 @@ pre-tag grep in section 3:
 ## 3. Pre-tag greps (run on `main`, expect nothing)
 
 ```bash
-git ls-files | grep -E '^tools/|test_night_orchestrator|test_e3_prepare|registry_e2_1500|agent-journal|CONSTITUTION-ungated'
-git grep -I -n -E '/Users/|/home/' -- .            # machine paths: none
+git ls-files | grep -E 'test_night_orchestrator|test_e3_prepare|registry_e2_1500|agent-journal|CONSTITUTION-ungated'
+git grep -I -n -E '/Users/|/home/' -- .            # machine paths: none (tools/ included; the runner's state lives outside the tree)
 git grep -n -i 'doctrine' -- src tests examples    # the old manual name: none in code
 git grep -n -i -E 'factorio|oolong|\barc\b|arc_agi|arcengine' -- src/assay   # world names in the kernel: none
 git grep -n -E $'\u2014|\u2192' -- src tests examples docs verify '*.md' ':!bench/*/RESULTS.md' ':!evidence'   # em dashes and arrows: none (tests/test_hygiene.py covers the whole tree)

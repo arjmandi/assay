@@ -1,0 +1,39 @@
+{
+  "name": "e1",
+  "description": "E1, gated versus ungated (assay-archive runs/E1_E2_PROTOCOL.md sections 4 and 12.2): does enforcing predict-before-act change how the agent plays, holding everything else fixed. Three games at two seeds, two arms, twelve runs, at most three players at a time, the queue in seed-major order (every arm of a world at seed 1 before the next world, the whole first seed before the second). A seed is a fresh run directory with the same registry; the ARC seed in config.json stays 0. The arms differ in exactly the registry's gate key, the manual and the prompt template; same adapter, same action descriptions, same caps, same model, same tool permissions. The gated arm's registries are the canonical bench/arcagi ones (gate defaults to required). The ungated arm lays {\"gate\": \"optional\"} over the same files; the runner writes the variant under <state>/registries/ before the start. The ungated manual did not ship (RELEASE_CHECKLIST.md section 2, owner decision O4): fetch it from the experiment tag into manuals/ before a live run, see jobs/README.md. The player command is the launcher form every E1 session ran with. The results of the runs that were played are in the archive's runs/E1_E2_RESULTS.md and the evidence pack evidence/e1.",
+  "adapter": "../adapter.py:factory",
+  "concurrency": 3,
+  "max_sessions": 3,
+  "max_hours": 4,
+  "player": {
+    "model": "claude-opus-5",
+    "command": [
+      "claude", "--model", "{model}", "-p", "{prompt}",
+      "--output-format", "json",
+      "--permission-mode", "acceptEdits",
+      "--allowedTools", "Bash", "Read", "Glob", "Grep", "Write(./**)", "Edit(./**)", "MultiEdit(./**)",
+      "--disallowedTools", "WebFetch", "WebSearch", "Agent", "Task", "NotebookEdit", "TodoWrite", "KillShell"
+    ]
+  },
+  "worlds": [
+    {"id": "ft09", "levels": 6, "budget": 200, "registry": "../registry_200.json"},
+    {"id": "tr87", "levels": 6, "budget": 1500, "registry": "../registry_1500.json"},
+    {"id": "cn04", "levels": 6, "budget": 1500, "registry": "../registry_1500.json"}
+  ],
+  "arms": [
+    {
+      "name": "gated",
+      "description": "gate required (the default of every registry under bench/arcagi), the shipped manual, the gated prompt template.",
+      "prompt": "../../../tools/eval/prompts/e1_player.md",
+      "constitution": "../../../CONSTITUTION.md"
+    },
+    {
+      "name": "ungated",
+      "description": "gate optional: an act without --predict is accepted, executed and journaled UNGATED, so the journals are invalid for scoring by design (a control arm). The manual is the strong ungated variant of E1 section 12.2 (sha256 61a5f21a6a619b40e32f63cbcec3b89262acd93a8e9ed9d049e5069c1e767e01), left on the experiment tag as exp-2026-10:bench/arcagi/CONSTITUTION-ungated.md and fetched into manuals/ by the operator.",
+      "prompt": "../../../tools/eval/prompts/e1_player_ungated.md",
+      "constitution": "manuals/CONSTITUTION-ungated.md",
+      "registry_overlay": {"gate": "optional"}
+    }
+  ],
+  "seeds": [1, 2]
+}

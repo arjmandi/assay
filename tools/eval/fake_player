@@ -1,0 +1,74 @@
+#!/usr/bin/env python3
+"""fake_player: a scripted stand-in for the LLM player, for the runner's tests.
+
+Reads the rendered prompt on stdin and runs, in order and in the current
+directory (the run directory the runner launched it in), every line of it
+that begins with `assay `, through the launcher the ASSAY environment
+variable names (the runner sets it to the launcher the operator's start
+used). Everything else in the prompt is prose and is ignored. At the end it
+prints one JSON report in the shape `claude -p --output-format json` prints
+(result, num_turns, total_cost_usd, usage, modelUsage), with a fixed cost per
+command, so the runner's accounting of tokens and dollars is exercised. The
+exit code is 0 when every command exited 0, else 1. Nothing here calls a
+model, and the only world it is ever pointed at is the counter example.
+"""
+
+from __future__ import annotations
+
+import json
+import os
+import shlex
+import subprocess
+import sys
+
+TOKENS_PER_COMMAND = {"input_tokens": 100, "output_tokens": 10}
+DOLLARS_PER_COMMAND = 0.01
+
+
+def main() -> int:
+    launcher = shlex.split(os.environ.get("ASSAY") or "assay")
+    script = [line.strip() for line in sys.stdin.read().splitlines()]
+    commands = [shlex.split(line)[1:] for line in script if line.startswith("assay ")]
+    transcript = []
+    failures = 0
+    for args in commands:
+        completed = subprocess.run([*launcher, *args], capture_output=True, text=True, timeout=180)
+        failures += completed.returncode != 0
+        transcript.append(
+            {
+                "command": ["assay", *args],
+                "exit_code": completed.returncode,
+                "stdout": completed.stdout[-2000:],
+                "stderr": completed.stderr[-2000:],
+            }
+        )
+    count = len(commands)
+    usage = {name: per_command * count for name, per_command in TOKENS_PER_COMMAND.items()}
+    usage.update({"cache_creation_input_tokens": 0, "cache_read_input_tokens": 0})
+    cost = round(DOLLARS_PER_COMMAND * count, 6)
+    report = {
+        "type": "result",
+        "subtype": "success" if failures == 0 else "error",
+        "is_error": failures != 0,
+        "result": "\n".join(
+            f"$ {' '.join(entry['command'])} (exit {entry['exit_code']})\n{entry['stdout']}"
+            for entry in transcript
+        ),
+        "num_turns": count,
+        "total_cost_usd": cost,
+        "usage": usage,
+        "modelUsage": {
+            "fake-player": {
+                "inputTokens": usage["input_tokens"],
+                "outputTokens": usage["output_tokens"],
+                "costUSD": cost,
+            }
+        },
+        "transcript": transcript,
+    }
+    print(json.dumps(report))
+    return 0 if failures == 0 else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
