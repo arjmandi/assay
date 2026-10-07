@@ -14,13 +14,13 @@ Changelog. Dates are UTC.
 
 The first source-available release, under the PolyForm Noncommercial License
 1.0.0 (`LICENSE`, `NOTICE`). The release branch is `release/1.1.0`, cut from
-main at 0373b5f.
+main at 4dc53e1.
 
 ### Which kernel the paper's campaigns ran on
 
 The ARC-AGI-3 campaign of 2026-08-22 to 08-25 ran on v1.0-rc1 (c4207c1,
 2026-08-22) with the agent manual then named `DOCTRINE.md`. Three later
-commits touched `src/assay` before the OOLONG final at 0373b5f: 566bcab
+commits touched `src/assay` before the OOLONG final at 4dc53e1: 566bcab
 (2026-08-25, the module field renamed from DOCTRINE to CONSTITUTION, after the
 ARC campaign), e4c669d (2026-08-26, the broker survives a client hangup, the
 client timeout became configurable through `ASSAY_BROKER_TIMEOUT`, the owner
@@ -34,10 +34,10 @@ prints them.
 
 ### Taken from the experiment branch (exp/2026-10)
 
-The release branch is cut from main (0373b5f). The experiment branch is not
+The release branch is cut from main (4dc53e1). The experiment branch is not
 merged. Two things were taken from it, by cherry-pick and by file copy:
 
-- The `gate` registry key (exp commit 1630e46): `gate: required|optional`,
+- The `gate` registry key (exp commit d94e536): `gate: required|optional`,
   default `required`. Under `optional` an `assay act` without `--predict` and a
   bare `--step "ACTION"` are accepted, executed, and journaled with `predict`
   null, `predict_ok` null, `grade` empty and the marker `gate_optional: true`.
@@ -46,7 +46,7 @@ merged. Two things were taken from it, by cherry-pick and by file copy:
   switch the E1 experiment ran on. It is not the default and not a scorable
   mode.
 - The coverage-audit module file `bench/arcagi/modules/coverage_audit.py`
-  (exp commits 76ae414 and a3233df, the second being the settled-frame
+  (exp commits aba2d5b and 45f595e, the second being the settled-frame
   comparison fix). It ships here as a loadable external module only. Its
   split into a world-neutral built-in plus a frame-world extra is a later
   entry in this changelog.
@@ -418,10 +418,10 @@ decisions were implemented (the second round, 2026-10-07):
   OOLONG, the twelve E1, the ten E2, the two E3 and the one G4), both from
   the archived run directories and from the published copies under
   `evidence/` (`evidence/verify_all.py`, which the suite also runs).
-- G4, the ft09 live regression on the release kernel at 82bfd5d: WIN 6 of 6
+- G4, the ft09 live regression on the release kernel at 3b7eb19: WIN 6 of 6
   in 80 paid actions, 80 of 80 predicted, under the bar of 113 (decision
   18), kernel audit CLEAN, checker CLEAN. Published as `evidence/g4`. The
-  commits after 82bfd5d change no journal field and no grading rule (the
+  commits after 3b7eb19 change no journal field and no grading rule (the
   replay diff above is the proof), so the gate stands for the tip.
 - G5, the clean machine: a fresh venv, `pip install -e '.[grid]'`, `assay
   doctor` clean, the README quickstart verbatim through the installed entry
