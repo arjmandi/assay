@@ -56,6 +56,13 @@ from .modules import (
     pin_external_modules,
     unlisted_lines,
 )
+from .sandbox import (
+    FORCE_VARIABLE,
+    PROCESS_ISOLATION_ONLY,
+    check_imports,
+    sandbox_mode,
+    sandbox_text,
+)
 from .core import (
     AssayError,
     RunPaths,
@@ -433,6 +440,12 @@ def _remote_idle_seconds(paths: RunPaths, config: dict[str, Any]) -> float:
 
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
+    forced_sandbox = os.getenv(FORCE_VARIABLE)
+    if forced_sandbox is not None and forced_sandbox != PROCESS_ISOLATION_ONLY:
+        raise AssayError(
+            f"{FORCE_VARIABLE} must be {PROCESS_ISOLATION_ONLY!r} (the forced fallback) "
+            f"or unset, got {forced_sandbox!r}"
+        )
     requested = normalize_game_id(args.game_id)
     registry_spec = load_registry_file(args.registry) if args.registry is not None else None
     existing = read_json(paths.config)
@@ -591,6 +604,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         "harness_version": __version__,
         "journal_spec": JOURNAL_SPEC,
         "python": sys.executable,
+        "sandbox": sandbox_mode(),
     }
     config["binding_hash"] = binding_hash_of(config)
     config["registry_hash"] = registry_hash_of(registry_spec)
@@ -710,6 +724,15 @@ def _doctor(paths: RunPaths) -> int:
                 "FAIL" if needed_by == "the kernel" else "WARN",
                 f"{name} is not importable by {sys.executable}; needed by {needed_by}",
             )
+    mode = sandbox_mode()
+    note("WARN" if mode == PROCESS_ISOLATION_ONLY else "ok", f"sandbox | {sandbox_text(mode)}")
+    importable, reason = check_imports(("numpy", "json"))
+    note(
+        "ok" if importable else "WARN",
+        "numpy and json import inside the sandbox"
+        if importable
+        else f"numpy and json do not import inside the sandbox: {reason}",
+    )
     socket_path = str(paths.socket)
     note(
         "ok" if len(socket_path.encode()) <= 100 else "FAIL",
@@ -755,6 +778,24 @@ def _doctor(paths: RunPaths) -> int:
             note("ok", f"daemon not running (broker.json says {descriptor_status})")
         else:
             note("WARN", f"daemon not running (broker.json says {descriptor_status}); `assay start` resumes")
+        # The mode recorded at the run's creation against the daemon's own
+        # (broker.json, written before READY) and this shell's, as for the
+        # interpreter: a difference is a run graded under another jail.
+        recorded_sandbox = config.get("sandbox")
+        live_sandbox = descriptor.get("sandbox") if isinstance(descriptor, dict) else None
+        if isinstance(recorded_sandbox, str):
+            if daemon is not None and isinstance(live_sandbox, str) and live_sandbox != recorded_sandbox:
+                note(
+                    "WARN",
+                    f"sandbox recorded at the run's creation is {recorded_sandbox}, "
+                    f"the daemon runs with {live_sandbox}",
+                )
+            if recorded_sandbox != mode:
+                note(
+                    "WARN",
+                    f"sandbox recorded at the run's creation is {recorded_sandbox}, "
+                    f"this shell decides {mode}",
+                )
         adapter = config.get("adapter")
         if adapter:
             try:

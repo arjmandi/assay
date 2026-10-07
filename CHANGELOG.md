@@ -245,6 +245,21 @@ Left on the experiment branch, deliberately:
   arrow in the source or the docs, no machine path, the old manual name gone
   from the code, over `git ls-files`), and the platform statement in
   `README.md`: macOS and Linux, Windows not supported (#30).
+- The sandbox (#19): one module, `src/assay/sandbox.py`, runs every piece of
+  agent code (verifiers, channel extractors, the world model) from a scratch
+  copy under `python -I` with an empty environment, CPU, file-size and
+  process limits and a wall clock, inside `sandbox-exec` on macOS (a
+  deny-default profile measured on Darwin 25, kept in one place with a
+  comment per entry) or `bwrap --unshare-net --unshare-pid` on Linux: no
+  network, no fork, no exec of anything but the interpreter, no path into
+  the run directory, no reading of other processes' arguments through
+  `sysctl`, and at most 1 MB of output on each stream. Tests prove each
+  refusal on the grading result and that a verifier importing numpy still
+  passes.
+- CI's Linux cells install bubblewrap and lift Ubuntu 24.04's AppArmor
+  restriction on unprivileged user namespaces
+  (`kernel.apparmor_restrict_unprivileged_userns=0`), so the suite runs under
+  bwrap for real, and every cell prints its sandbox mode (#19).
 
 ### Changed
 
@@ -332,6 +347,15 @@ Left on the experiment branch, deliberately:
   and GUIDE follow the same order, ONBOARDING gains the separate-user option
   of section 8.1 with the steps for macOS and Linux, and
   `tests/test_operator_start.py` runs the counter example in that order.
+
+- Agent code can no longer read the run directory, write outside its scratch
+  directory, open a socket or fork (#19). The memory limit (512 MB) is
+  Linux-only, since macOS refuses an address-space limit; where neither
+  sandbox tool exists `assay doctor` reports `sandbox | process isolation
+  only (no sandbox-exec or bwrap)`; `config.json` records the mode found at
+  the run's creation and `broker.json` the daemon's own, and `doctor` warns
+  when they differ. The channels test counts extractor runs through the
+  daemon's readings cache instead of a marker file the extractor wrote.
 
 ### Removed
 

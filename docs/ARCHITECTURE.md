@@ -35,10 +35,17 @@ Three trust classes decide where code may run:
 - **pack and module code** (adapters, behavior modules) is installed by the
   human, runs in the daemon, and is trusted like the kernel,
 - **agent-authored code** (verifiers, channel extractors, world models) is
-  untrusted and runs only in the verifier sandbox (`verifiers.run_verifier`,
-  `channels._run_extractor`, `model._run_sandbox`): `python3 -I`, an empty
-  environment, a scratch working directory, a CPU limit and a wall clock limit.
-  This is process isolation, not a network or filesystem jail.
+  untrusted and runs only in the sandbox (`sandbox.run_program`, behind
+  `verifiers.run_verifier`, `channels._run_extractor` and
+  `model._run_sandbox`): a scratch copy of the program, `python -I`, an empty
+  environment, CPU, file-size and process limits (no fork), a wall clock, and
+  the platform's jail, `sandbox-exec` on macOS or `bwrap` on Linux, which
+  denies the network and every path but the interpreter, its packages and the
+  scratch directory, the run directory included. The 512 MB memory limit is
+  Linux-only, since macOS refuses an address-space limit. Where neither tool
+  exists the limits alone apply, `assay doctor` says `sandbox | process
+  isolation only (no sandbox-exec or bwrap)`, and `config.json` records the
+  mode at start (section 8.5).
 
 The kernel law: **the kernel makes no LLM calls.** Every grade, refusal, meter
 and verdict is deterministic code over the journal. That is also what makes
@@ -435,7 +442,9 @@ relative to the run directory defining `def verify(before, after) ->
 (ok, actual)`. At claim time, before any spend, the file is read, sha256-hashed
 and copied to `.assay/verifiers/<hash>.py` (`verifiers.admit_verifier`, the hash
 is journaled on the claim as `verifier_hash`). At grading time the stored copy
-runs in the sandbox with both observation views on stdin and must emit one
+runs in the sandbox (section 8.5: a scratch copy under `sandbox-exec` on macOS
+or `bwrap` on Linux, no path into the run directory, no network, no fork, the
+memory limit Linux-only) with both observation views on stdin and must emit one
 JSON line `{"ok": bool, "actual": str}`. Crash, timeout (5 seconds CPU and
 wall) or malformed output grades as `INVALID_CLAIM`: not a miss, its own
 counter, `predict_ok` null, and it halts a containing batch. After each grading
@@ -1135,39 +1144,106 @@ write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for t
 ### 8.5 The sandbox (#19)
 
 One module, `src/assay/sandbox.py`, with one function `run_program(program, payload, *,
-timeout, companions=())` used by the verifier runner, the channel extractor and the model
-runner. The program and its companions (the extractor files and `model.py` for the model
-runner) are copied into a scratch directory, the payload's paths are rewritten to the
-copies, and the program runs from there as `python -I`
-(isolated: no `PYTHONPATH`, no user site, the current directory not on the path; not `-S`,
-which would drop site-packages and with them numpy, which verifiers may import), with an
-empty environment, the scratch directory as the working directory, `RLIMIT_CPU` (the
-timeout, rounded up), `RLIMIT_FSIZE` 1 MB, `RLIMIT_NPROC` 1 (the program cannot fork; a
-test proves a `subprocess` call fails), the wall-clock timeout, and on Linux `RLIMIT_AS`
-512 MB. macOS cannot set an address-space limit (`setrlimit` refuses it), so the memory
-limit is Linux-only, `doctor` and ONBOARDING say so, and the allocation test runs on Linux
-only. The payload goes in on stdin and one JSON line comes back on stdout, as today.
+timeout, companions=(), cpu_seconds=None)` used by the verifier runner, the channel
+extractor and the model runner. The program and its companions (the stored verifier or
+extractor, `model.py` and the extractor files of the model's declared channels) are copied
+into a fresh scratch directory, every payload string naming a companion is rewritten to
+the copy, and the program runs from there as `python -I` (isolated: no `PYTHONPATH`, no
+user site, the current directory not on the path; not `-S`, which would drop site-packages
+and with them numpy, which verifiers may import), with an empty environment, the scratch
+directory as the working directory, the payload on stdin and one JSON line back on stdout.
+Nothing the program receives names the run directory. The kernel reads at most 1 MB of
+stdout and 1 MB of stderr and kills the program past either; that, a crash, a timeout, no
+output or malformed output grades INVALID with the reason in the words each runner has
+always used (`verifier crashed (exit N): ...`, `extractor timed out after 5s`, `malformed
+model output: ...`).
 
-On macOS the process runs under `sandbox-exec` with a deny-default profile that allows:
-`process-exec*`, `file-read-metadata`, `sysctl-read`, `mach-lookup`; `file-read*` on the
-root directory as a literal (the dynamic loader aborts without it), the interpreter's
-prefix and base prefix, `/usr/lib`, `/usr/share`, `/System`, `/private/var/db/dyld`,
-`/dev/null`, `/dev/urandom` and the scratch directory, and nothing under the run
-directory, since every file the program needs was copied into scratch; `file-write*` on
-the scratch directory and `/dev/null`; and denies network.
-The list was measured on Darwin 25 with the kernel's interpreter and numpy and is
-OS-version dependent, so the module keeps it in one place with a comment per entry. On
-Linux the process runs under `bwrap --unshare-net --unshare-pid --die-with-parent` with
-the same read-only binds and a writable scratch. When neither tool is present the process
-runs with the limits alone, `assay doctor` prints `sandbox | process isolation only (no
-sandbox-exec or bwrap)`, and `config.json` records `sandbox` at start.
+The limits are set by a prelude inside the interpreter before any agent code (the sandbox
+tools create the process before the interpreter starts, and `bwrap` forks a helper that
+`RLIMIT_NPROC` 1 in a `preexec_fn` would block): `RLIMIT_CPU` at the timeout rounded up,
+or the caller's `cpu_seconds` (the model runner keeps its budget of `max(2, int(timeout))`
+under a wall clock of `timeout + 5`), the hard limit one second later and `SIGXCPU` handled
+in Python, so a runaway that leaves the handler in place ends with a message rather than a
+core dump (a program that resets the handler or calls `os.abort` can still die by a
+signal, and the wall clock is the backstop either way); `RLIMIT_FSIZE` 1 MB;
+`RLIMIT_NPROC` 1 (the program cannot fork; a test proves a `subprocess` call fails); on
+Linux `RLIMIT_AS` 512 MB and the BLAS thread cap (`OPENBLAS_NUM_THREADS=1` and its kin,
+set before any import, since on Linux `RLIMIT_NPROC` counts threads and OpenBLAS creates
+its pool at load). macOS cannot set an address-space limit (`setrlimit` refuses it), so
+the memory limit is Linux-only, `doctor` and ONBOARDING say so, and the allocation test
+runs on Linux only. The wall clock is the caller's timeout, enforced by the kernel process
+with `SIGKILL`.
+
+On macOS the process runs under `sandbox-exec` with a deny-default profile: `(deny
+default)`, `(deny network*)`, then the rules, each with a comment giving its measured
+reason, a later rule winning over an earlier one. `process-exec` on the interpreter
+(`sys.executable` as named and as resolved) and the executables under its prefix and base
+prefix, which the python.org framework needs, its `bin/python` being a stub that spawns
+`Resources/Python.app/Contents/MacOS/Python` in place; the program can exec nothing
+outside them, `/bin/sh` included. `file-read-metadata` and `sysctl-read` unfiltered (the interpreter's `os.uname`
+reads `kern.ostype` and its kin by MIB, which only an unfiltered rule admits), then a deny
+of `sysctl-read` for the process-argument keys (`kern.procargs`, `kern.procargs2`) by name,
+which closes the `sysctlbyname` route to the arguments and exec-time environment of any
+process of the daemon's uid, the daemon's included; the MIB form of that read bypasses the
+sandbox's sysctl filter in XNU (measured: under one profile `kern.boottime` by MIB is
+denied and `kern.procargs2` by MIB is not), so section 8.9 states what stays open.
+`file-read*` on the root directory as a
+literal (the dynamic loader aborts without it), the interpreter's prefix and base prefix
+as real paths, the package directories of the interpreter's module search path outside
+those prefixes (the `sys.path` entries that exist, carry a `site-packages` or
+`dist-packages` component and lie under neither prefix: `uv run` keeps numpy in its
+archive directory and a Homebrew interpreter keeps site-packages outside the framework
+prefix, and with the prefixes alone `import numpy` fails; a source tree an editable
+install puts on the path has no such component and is not admitted, so a run directory
+inside a checkout stays unreadable), `/usr/lib`, `/usr/share`, `/System`,
+`/private/var/db/dyld` where it exists, `/dev/null`, `/dev/urandom` and the scratch
+directory, and nothing under the run directory, since every file the program needs was
+copied into scratch; `file-write*` on the scratch directory and `/dev/null`. No
+`mach-lookup`: interpreter start and numpy do not need it, and with it a program reaches
+the pasteboard, launch services, the metadata and directory services. The rules were
+measured on Darwin 25 with the kernel's interpreter and numpy and are OS-version
+dependent, so the module keeps them in one place with a comment per rule.
+
+On Linux the process runs under `bwrap --unshare-net --unshare-pid --die-with-parent`
+(the sandboxed process dies with its wrapper, which the kernel kills on the wall clock)
+with read-only binds of the same places (the prefixes, the package directories, `/lib`,
+`/lib64`, `/usr/lib`, `/usr/lib64`, `/usr/share`, and `/etc/ld.so.cache` for the loader's
+library lookup; a symlinked place is recreated as the symlink), a fresh `/proc`, a minimal
+`/dev`, and the scratch directory bound writable as the working directory.
+
+The mode is decided once per process by `sandbox_mode()`: `sandbox-exec`, `bwrap` or
+`process-isolation-only`. On a platform with its tool, every allowed path is checked to
+exist first (an absent optional path is omitted from the profile; an absent root or
+prefix means the fallback with no probe), then a probe runs `python -I -c "import json"`
+under the profile once. A probe that exits by a signal (the loader aborting under a
+profile that no longer fits the OS), fails, hangs or cannot start settles the fallback for
+that process with the reason, so a profile that no longer fits costs each probing process
+one failure, never one per grading: the daemon probes once in its life, and so do `assay
+start` and each `assay doctor`. Where neither tool is present, or
+`ASSAY_SANDBOX=process-isolation-only` is set (the override the tests use; `assay start`
+refuses any other value before anything is written, on a fresh start and a resume alike),
+the process runs with the limits alone and `assay doctor` prints `sandbox | process
+isolation only (no sandbox-exec or bwrap)`, with the probe's failure or `forced by
+ASSAY_SANDBOX` in the parenthesis instead when that is the reason. On a stock Ubuntu 24.04
+the bwrap probe fails with `bwrap: loopback: Failed RTM_NEWADDR: Operation not permitted`
+until `kernel.apparmor_restrict_unprivileged_userns` is set to 0 or bwrap gets an AppArmor
+profile (ONBOARDING section 7).
+
+`config.json` records `sandbox`, the mode the creating process found at the run's
+creation; `broker.json` records `sandbox`, the daemon's own mode, decided before it
+reports READY and kept on its STOPPED and FINISHED records; `assay doctor` prints the mode
+of the shell it runs in and warns when the recorded one differs from the daemon's or from
+its own, as it does for the interpreter.
 
 Tests: a verifier that reads `events.jsonl` fails, one that writes the run directory
-fails, one that opens a socket fails, one that forks fails, one that allocates past the
-limit is killed (Linux), and the same verifier passes under the fallback with the doctor
-line saying so. The channels test that counts extractor calls through a marker file the
-extractor writes outside the run directory counts them through the daemon's readings
-cache instead.
+fails, one that opens a socket fails, one that forks fails, one that execs a shell fails,
+one that reads the daemon's arguments through `sysctl` fails (macOS), one that prints
+past the output cap fails with that reason, one that allocates past the limit is killed
+(Linux), and the same reading verifier passes under the forced fallback with the doctor
+line saying so; a verifier importing numpy passes; `doctor` prints the mode, `start`
+records it, the daemon records its own. The channels test that counted extractor calls
+through a marker file the extractor wrote outside the run directory counts them through
+the daemon's readings cache instead.
 
 ### 8.6 The operator protocol (#31)
 
@@ -1206,7 +1282,18 @@ the engine."
 ### 8.9 What is not claimed
 
 Tamper-proofness; isolation of agent code beyond the sandbox's stated limits, which
-differ by platform; any guarantee against an operator who controls the machine. The
+differ by platform; any guarantee against an operator who controls the machine. Inside the
+sandbox, `file-read-metadata` is unfiltered, so a program can learn the existence, size and
+modification time of any path (the journal's size, whether `~/.ssh/id_ed25519` exists),
+though not its content; `sysctl-read` still answers what every process may ask, the
+hostname, the OS version and the hardware keys among them; and the process-argument keys
+are denied by name only, since XNU's `kern.procargs2` handler does not consult the
+sandbox's sysctl filter for the MIB form of the read (measured, section 8.5), so a program
+under the daemon's uid can still read the daemon's arguments and exec-time environment, as
+any process of that uid can, and echo what the operator's shell exported into a verdict.
+The sandbox does not close that; the daemon under its own uid (8.1, the ONBOARDING section)
+does, and an operator who shares the uid should hand the adapter its secrets through files
+rather than the environment. The
 paper's AI-control sentence is qualified by the paragraph above at its next revision.
 
 ### 8.10 Tests

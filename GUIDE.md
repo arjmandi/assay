@@ -258,9 +258,13 @@ any ungated event marks the run invalid for scoring.
 ## 8. Honest limits (1.2.0)
 
 One adapter = one observer stream; turn-based synchronous worlds only;
-`observers`/`control` registry blocks are declared-but-inert; the verifier
-sandbox is subprocess isolation (empty env, CPU/wall limits), not a network or
-filesystem jail, and `assay python` runs in-process without one; containment,
+`observers`/`control` registry blocks are declared-but-inert; agent code
+(verifiers, extractors, the world model) runs under `sandbox-exec` on macOS or
+`bwrap` on Linux with no network, no fork, no path into the run directory, and
+CPU, file-size and wall-clock limits, the 512 MB memory limit being Linux-only;
+a machine with neither tool gets the process limits alone and `assay doctor`
+says `sandbox | process isolation only`; `assay python` runs in-process without
+any of it; containment,
 watchdog, and the wake scheduler are deployment-stage items that do not exist
 yet; macOS and Linux only. The gate is daemon-side on registry runs: a
 process that bypasses the CLI still cannot spend without its step being

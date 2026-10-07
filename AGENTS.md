@@ -13,7 +13,12 @@ uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/
 ```
 
 or `python3 -m venv .venv && .venv/bin/pip install -e '.[grid,dev]'` and then
-`.venv/bin/pytest tests/`. The suite drives the real CLI and the real daemon
+`.venv/bin/pytest tests/`. On Linux the sandbox tests need bubblewrap
+(`apt install bubblewrap`) and, on Ubuntu 24.04, `sudo sysctl -w
+kernel.apparmor_restrict_unprivileged_userns=0`, since AppArmor otherwise
+denies bwrap its user namespace; without them the suite runs with the
+process limits alone and `tests/test_doctor.py` counts the warning. The suite
+drives the real CLI and the real daemon
 with the adapters under `tests/`. It redirects `ASSAY_ANCHOR_DIR` and
 `XDG_CACHE_HOME` under the pytest temp root and stops every daemon it started
 when the session ends, so nothing lands under the home directory. Run the whole

@@ -28,6 +28,7 @@ from .core import (
     read_json,
     rows_to_grid,
 )
+from .sandbox import sandbox_mode
 
 
 LOCAL_MODE = "local"
@@ -581,12 +582,18 @@ def serve(paths: RunPaths) -> None:
         server.bind(str(paths.socket))
         paths.socket.chmod(0o600)
         server.listen(4)
+        # The daemon's own sandbox mode, decided (one probe) before it
+        # reports READY and recorded beside the pid, so the mode every grade
+        # of this life runs under is on disk and `assay doctor` can hold it
+        # against the one config.json recorded at the run's creation.
+        sandbox = sandbox_mode()
         atomic_json(
             paths.broker,
             {
                 "status": "READY",
                 "pid": os.getpid(),
                 "mode": config.get("mode", LOCAL_MODE),
+                "sandbox": sandbox,
                 "replayed_mutations": len(mutations),
                 "started_at": time.time(),
             },
@@ -623,6 +630,7 @@ def serve(paths: RunPaths) -> None:
                 "status": "STOPPED",
                 "pid": os.getpid(),
                 "mode": config.get("mode", LOCAL_MODE),
+                "sandbox": sandbox,
                 "stopped_at": time.time(),
             },
         )
@@ -826,6 +834,7 @@ def serve(paths: RunPaths) -> None:
                     "status": "FINISHED",
                     "pid": os.getpid(),
                     "mode": config.get("mode", LOCAL_MODE),
+                    "sandbox": sandbox,
                     "finished_at": time.time(),
                 },
             )

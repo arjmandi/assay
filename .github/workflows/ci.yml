@@ -27,6 +27,26 @@ jobs:
       # run inside the suite as tests/test_conformance.py and
       # tests/test_hygiene.py, over git ls-files, so a new file is covered
       # the day it is added.
+      # The sandbox on Linux is bubblewrap, which the runner image does not
+      # ship; without it the suite runs with the process limits alone and
+      # `assay doctor` warns, which tests/test_doctor.py counts.
+      - name: bubblewrap, so the Linux cells run under the sandbox
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          bwrap --version
+          sysctl kernel.apparmor_restrict_unprivileged_userns
+      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor
+      # (the runner image reports 1), and bwrap needs one for its mount
+      # namespace: without the setting its probe fails with `bwrap: loopback:
+      # Failed RTM_NEWADDR: Operation not permitted` and the suite runs with
+      # the process limits alone.
+      - name: unprivileged user namespaces, which bwrap needs
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+      - name: The sandbox mode
+        run: uv run --python ${{ matrix.python }} --with numpy python -c "from assay.sandbox import sandbox_mode, sandbox_text; print('sandbox |', sandbox_text(sandbox_mode()))"
       - name: The suite
         run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis pytest tests/ -q
       - name: ruff
