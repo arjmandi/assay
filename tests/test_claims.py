@@ -9,8 +9,8 @@ from conftest import event_of, run_of
 from assay.core import AssayError
 from assay.predictions import (
     claim_bucket,
-    grade_action_claims,
     grade_general_claims,
+    grade_pending,
     parse_claims,
 )
 from assay.records import Claim
@@ -115,7 +115,7 @@ def test_grade_general_win_and_level():
 def test_graded_records_carry_kind_and_bucket(paths):
     after = _event({"counter": 1, "lamp": "off"})
     claims = parse_claims("counter goes up somehow")  # coerced
-    graded = grade_action_claims(run_of(paths, [START, after]), claims, START, after)
+    graded = grade_pending(run_of(paths, [START, after]), claims, START, after, elapsed_s=0.0)
     assert len(graded) == 1
     record = graded[0]
     assert record.kind == "coerced"
@@ -126,8 +126,8 @@ def test_graded_records_carry_kind_and_bucket(paths):
 
 def test_graded_records_sharp_and_gamble(paths):
     won = _event({"counter": 3, "lamp": "off"}, state="WIN", levels=1)
-    graded = grade_action_claims(
-        run_of(paths, [START, won]), parse_claims("change; win"), START, won
+    graded = grade_pending(
+        run_of(paths, [START, won]), parse_claims("change; win"), START, won, elapsed_s=0.0
     )
     by_kind = {record.kind: record for record in graded}
     assert by_kind["change"].bucket == "world_model"
@@ -146,10 +146,29 @@ def test_graded_verify_record_flags(paths):
 
     claims = [admit_verifier(paths, parse_claims("verify:check.py")[0])]
     after = _event({"counter": 1, "lamp": "off"})
-    graded = grade_action_claims(run_of(paths, [START, after]), claims, START, after)
+    graded = grade_pending(run_of(paths, [START, after]), claims, START, after, elapsed_s=0.0)
     record = graded[0]
     assert record.kind == "verify"
     assert record.bucket == "world_model"
     assert record.verifier is True
     assert record.verifier_hash
     assert record.ok is True
+
+
+def test_a_windowed_claim_is_ungradable_without_a_measured_duration(paths):
+    """On recovery the step's duration died with the process (`elapsed_s`
+    None): every windowed claim is UNGRADABLE with the recovery actual, its
+    own outcome, while the claims without a window grade as usual. A
+    measured duration grades the claim inside its window and marks it late
+    outside."""
+    after = _event({"counter": 1, "lamp": "off"})
+    claims = parse_claims("change @within 2s; level+1")
+    run = run_of(paths, [START, after])
+    recovered = {grade.kind: grade for grade in grade_pending(run, claims, START, after, elapsed_s=None)}
+    assert recovered["change"].ungradable is True and recovered["change"].ok is False
+    assert recovered["change"].actual == "UNGRADABLE: recovered, step duration unknown"
+    assert recovered["level_up"].ungradable is False and recovered["level_up"].ok is False
+    timely = {grade.kind: grade for grade in grade_pending(run, claims, START, after, elapsed_s=0.5)}
+    assert timely["change"].ok is True and timely["change"].ungradable is False
+    late = {grade.kind: grade for grade in grade_pending(run, claims, START, after, elapsed_s=3.0)}
+    assert late["change"].actual == "UNGRADABLE: settled after 3.00s, outside the declared 2s window"

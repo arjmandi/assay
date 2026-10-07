@@ -161,4 +161,7 @@ the published head", which is why publishing heads matters.
 
 Informational (never part of the verdict): paid-action count, per-progress
 attribution of paid actions, final state and progress, and events recovered
-from the mutation journal after a writer crash.
+from the mutation journal after a writer crash. From harness 1.2.0 on a
+recovered event carries its prediction and grade like any other, so the rule
+of §6 reads it as gated; one recovered without them (a record older than
+1.2.0, or a model-plan step) is UNGATED by the same rule.
