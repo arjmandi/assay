@@ -32,8 +32,8 @@ stay valid unchanged):
       "modules": ["path.py", ...],    # behavior modules, pack-tier trust
       "module_modes": {"name": "off"|"advise"|"block"},
       "secrets": ["ENV_NAME", ...],   # env values redacted at the journal boundary
-      "observers": [...],             # DECLARED ONLY in 1.1.0 (journaled, inert)
-      "control": {...},               # DECLARED ONLY in 1.1.0: journaled and pinned,
+      "observers": [...],             # DECLARED ONLY in 1.2.0 (journaled, inert)
+      "control": {...},               # DECLARED ONLY in 1.2.0: journaled and pinned,
                                       # inert for the kernel; a world adapter may
                                       # read it from the pinned copy (a mode switch)
       "mode_note": "free text",       # optional, shown in status (data only)
@@ -249,7 +249,7 @@ def validate_registry(raw: Any) -> dict[str, Any]:
             value = raw[declared_only]
             if not isinstance(value, (list, Mapping)):
                 raise AssayError(f"{declared_only} must be a JSON array or object")
-            # 1.1.0: accepted and journaled, no runtime behavior (honest gap).
+            # 1.2.0: accepted and journaled, no runtime behavior (honest gap).
             output[declared_only] = json.loads(json.dumps(value))
     if "gate" in raw:
         if raw["gate"] not in _GATES:
@@ -356,18 +356,18 @@ def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
 
 def load_registry(paths: RunPaths) -> dict[str, Any] | None:
     """The registry pinned at `assay start`, or None when the directory has
-    none (a run started before 1.1.0 without one: readable, not resumable)."""
+    none (a run started before 1.2.0 without one: readable, not resumable)."""
     value = read_json(paths.registry, None)
     return value if isinstance(value, dict) else None
 
 
 def require_registry(paths: RunPaths) -> dict[str, Any]:
-    """The pinned registry, for anything that acts. Every run since 1.1.0 has one."""
+    """The pinned registry, for anything that acts. Every run since 1.2.0 has one."""
     registry = load_registry(paths)
     if registry is None:
         raise AssayError(
             "this run has no registry: runs without one are not supported since "
-            "1.1.0 (`assay start` takes --registry)"
+            "1.2.0 (`assay start` takes --registry)"
         )
     return registry
 

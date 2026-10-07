@@ -135,7 +135,7 @@ def test_owner_install_is_the_sanctioned_channel(tmp_path):
 
 
 def test_run_without_a_manifest_reconstructs_it_from_the_registry(tmp_path):
-    """A run started before 1.1.0 pinned files without a manifest. Its
+    """A run started before 1.2.0 pinned files without a manifest. Its
     registry names them, so the manifest is rebuilt from the pinned copies and
     the module keeps running. Anything else in the directory stays unlisted."""
     run = tmp_path / "legacy"

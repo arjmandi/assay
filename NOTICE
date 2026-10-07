@@ -43,7 +43,7 @@ repository and the terms it carries.
    License:  MIT, Copyright (c) 2026 Mohsen Arjmandi (verify/LICENSE), so
              that anyone can verify a journal without a license to the
              harness. They moved here from the retired assay-verify
-             repository in 1.1.0. The checker shares no code with src/assay
+             repository in 1.2.0. The checker shares no code with src/assay
              (tests/test_verify_independence.py).
 
 No other third-party source is vendored. Python dependencies (numpy, pillow,

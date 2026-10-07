@@ -16,7 +16,9 @@ base64 `SUBMIT`) or to the kernel's per-action discipline, by keeping the
 kernel unchanged and running the same de-hinted prompt against
 `bench/oolong/registry_200_batch.json` (`control.bank_mode: batch`, several
 spans per `BANK_FACT`, a plain-text `SUBMIT`). One session of claude-opus-5
-on `release/1.1.0` at d99c0a6, budget 200, cost bands fixed before launch.
+on commit 6ea56e4, the build the paper calls 1.1.0 (the checkout was
+d99c0a6, which has the same kernel and adapters), budget 200, cost bands
+fixed before launch.
 
 The pre-registered protocol is `E5_PROTOCOL.md` and the results write-up is
 `E5_RESULTS.md`, both archived with the paper materials.

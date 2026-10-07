@@ -133,7 +133,7 @@ def test_act_help_leads_with_the_general_table(tmp_path):
 
 
 def test_a_registry_is_required_and_a_run_without_one_is_not_resumed(tmp_path):
-    """Every run has a registry since 1.1.0: `assay start` demands --registry,
+    """Every run has a registry since 1.2.0: `assay start` demands --registry,
     and a directory that owns a pre-registry run is readable but not resumable."""
     run = tmp_path / "noreg"
     run.mkdir()

@@ -63,7 +63,7 @@ up, it names the `fle cluster start` command.
 The M2 runs were recorded when ASSAY world ids were `[a-z0-9]{2,16}`, so FLE's
 task keys could not be used verbatim. `TASK_ALIASES` in `adapter.py` is the
 whole mapping and stays as the published ids; `assay start ironore` runs FLE's
-`iron_ore_throughput`. (Since 1.1.0 a world id is any string up to 64
+`iron_ore_throughput`. (Since 1.2.0 a world id is any string up to 64
 characters without whitespace or path separators, so the aliases are a
 convenience, not a necessity.)
 

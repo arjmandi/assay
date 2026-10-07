@@ -1,9 +1,9 @@
 # ASSAY architecture: the component model
 
 This document is the source of truth for how an ASSAY run is put together. It is
-written from the code on the `release/1.1.0` branch and from the recorded runs
-of the three benchmark worlds, and it is the document the onboarding guide and
-the paper's architecture section are derived from, never the other way round.
+written from the code on `main` at 6ea56e4 and after, and from the recorded
+runs of the three benchmark worlds, and it is the document the onboarding guide
+and the paper's architecture section are derived from, never the other way round.
 References are to files and function names under `src/assay/` so they stay
 correct as line numbers move.
 
@@ -65,7 +65,7 @@ enforces it before anything is spent.
 the file (`registry.load_registry_file`, `registry.validate_registry`), copies
 the canonical form to `.assay/registry.json`, and records `registry_hash` in
 `config.json`. A later `start` with a different registry is refused
-(`cli._start`). Every run has one: `--registry` is required since 1.1.0, and
+(`cli._start`). Every run has one: `--registry` is required since 1.2.0, and
 a directory that owns a run started without one (before registries existed)
 can be inspected but not resumed.
 
@@ -90,7 +90,7 @@ that would cross the cap is refused whole.
 
 **Required.** `actions`, non-empty. Everything else is optional.
 
-**Optional.** All other keys. Two are declared-only in 1.1.0 and journaled
+**Optional.** All other keys. Two are declared-only in 1.2.0 and journaled
 without kernel behavior: `observers` and `control` (`registry.validate_registry`,
 honest gap). A world adapter may read `control` from the run's pinned copy
 as its own settings, pinned and hashed with the rest (the OOLONG adapter's
@@ -200,7 +200,7 @@ where anchors go, which interpreter serves the daemon.
   `assay goal ratify`, `assay approve` and `assay waive` (`agenda.require_owner`).
   The agent proposes, the owner ratifies. In every benchmark protocol so far
   the agent ran `start` itself and therefore held the token (`GUIDE.md`
-  section 5). 1.1.0 adds a token file option so an operator can keep it out of
+  section 5). 1.2.0 adds a token file option so an operator can keep it out of
   the agent's terminal.
 - **Approvals.** `approval: true` actions are default-deny, each use needs a
   fresh one-shot grant that expires after 600 seconds
@@ -226,10 +226,10 @@ where anchors go, which interpreter serves the daemon.
   (`carryover.import_knowledge`).
 - **Anchors.** Chain heads are appended outside the run directory every 25
   events and on WIN, to `ASSAY_ANCHOR_DIR` or `~/.assay/anchors/<digest>.jsonl`
-  (`integrity.anchor_dir`, `integrity.extend_chain`). 1.1.0 records the anchor
+  (`integrity.anchor_dir`, `integrity.extend_chain`). 1.2.0 records the anchor
   file in `config.json`.
 - **Interpreter.** The daemon runs `sys.executable` of the CLI that started it
-  (`broker.start_broker`) and `.assay/python` records it. 1.1.0 honors
+  (`broker.start_broker`) and `.assay/python` records it. 1.2.0 honors
   `ASSAY_PYTHON` in the launcher and warns on resume when the interpreter
   changed.
 - **Timeouts.** `ASSAY_BROKER_TIMEOUT` sets a floor on the client's socket wait
@@ -261,7 +261,7 @@ the launcher prompt (`GUIDE.md` section 5: read the constitution completely,
 work in one directory, run `start`, solve for the goal, touch the world only
 through `assay`). Each behavior module carries its own one-paragraph
 `CONSTITUTION` string in the same voice (`modules.py`), rendered by
-`assay modules` in 1.1.0.
+`assay modules` in 1.2.0.
 
 **Required.** For an LLM agent, the whole file. For a person at a terminal,
 nothing.
@@ -312,13 +312,13 @@ the event under `declares`.
 Six built-ins, all `MODE = "advise"`: `wall_spend`, `miss_streak`,
 `null_forensics`, `park_with_test`, `sharpness`, `hazard` (effect-signature
 tags: `entered_loss_state` and `milestone_dropped`, permanent for the run,
-exported as the distinguished carryover class). 1.1.0 adds the world-neutral
+exported as the distinguished carryover class). 1.2.0 adds the world-neutral
 `coverage_audit` built-in (untried and never-productive actions, stall, the
 re-issue halt, the loop halt, the conclusion gate keyed on declares).
 
 External modules: `modules: ["path.py"]` in the registry, copied into
 `.assay/modules/` at start (`modules.pin_external_modules`), loaded by
-`modules._load_external`. 1.1.0 pins them by manifest with a sha256 and adds an
+`modules._load_external`. 1.2.0 pins them by manifest with a sha256 and adds an
 owner-authorized install command, so the hot-add channel is sanctioned and
 journaled rather than a directory glob.
 
@@ -500,7 +500,7 @@ audit that recomputes integrity from the artifacts alone.
 - **Anchors.** Every 25 events and on WIN the head is appended to the anchor
   file outside the run (`integrity.ANCHOR_EVERY`, `integrity.anchor_file`). An
   unwritable anchor directory degrades to chain-only integrity today and is
-  made visible in 1.1.0.
+  made visible in 1.2.0.
 - **The audit**, `assay audit` (`integrity.audit`): contiguity, stored chain
   intact or DIVERGED or absent, anchors intact or DIVERGED or none, UNGATED
   events (paid, not `RESET`, carrying none of `predict`, `predict_ok`, `grade`),
@@ -533,7 +533,7 @@ aliases `progress`, `progress_total`, `status`.
 
 Frame worlds (observation is a grid) have a tier the dict worlds do not need:
 image rendering, a scene dossier, perception helpers and the grid claim
-forms. In 1.1.0 these live outside the kernel in the extra package `assay_grid` (`src/assay_grid/`,
+forms. In 1.2.0 these live outside the kernel in the extra package `assay_grid` (`src/assay_grid/`,
 same repository, same distribution), selected automatically by observation
 shape (`"frames" in event`, the test `core.general_event` makes), never by
 configuration: registries are pinned per run and the 25 published run
@@ -555,7 +555,7 @@ What stays in the kernel because the journal format has it: the frame encoding
 (`core.grid_to_rows`, `core.rows_to_grid`, the frame branch of
 `core.normalize_observation` and `core.make_event`, `core.frame_at`,
 `core.general_event`). numpy stays a kernel dependency for that encoding in
-1.1.0. `textobs.py` stays. The dict branch of `evidence.history_lines` stays.
+1.2.0. `textobs.py` stays. The dict branch of `evidence.history_lines` stays.
 The parser declares the frame-only `view` flags (`--grid`, `--frames`,
 `--crop`, `--export`) itself, inert on a dict run, so the command line surface
 is kernel-owned while the behavior is the extra's.
@@ -580,7 +580,7 @@ which is why no published journal contains one. Whether frame worlds should
 gain those forms is owner decision O1. The legacy numbered-action path (runs
 without a registry, `ACTION1..7` and `ACTION6:x,y` with the 0 to 63 bound,
 the status nudges) and the executable-rules tier that only ran there are
-deleted in 1.1.0 (O2).
+deleted in 1.2.0 (O2).
 
 ## 4. Per-world conformance
 
@@ -660,7 +660,7 @@ journals that verify against their heads:
 - the state-directory layout, including `.assay/levels/level-N.md`, and the
   `L<n>` prefix of the RECENT history lines.
 
-Display strings are not frozen. The vocabulary pass of 1.1.0 changed prose
+Display strings are not frozen. The vocabulary pass of 1.2.0 changed prose
 (game to world, board to state, level to progress unit where the world is
 not a game) and nothing above. `src/assay/words.py` carries the same list as
 its docstring, and `tests/test_vocabulary.py` enforces it.

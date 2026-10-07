@@ -243,7 +243,7 @@ the emergence meter (self-authored verifiers, channels, models, proposals —
 initiative the harness never demanded). `assay audit` is the integrity verdict:
 any ungated event marks the run invalid for scoring.
 
-## 8. Honest limits (1.1.0)
+## 8. Honest limits (1.2.0)
 
 One adapter = one observer stream; turn-based synchronous worlds only;
 `observers`/`control` registry blocks are declared-but-inert; the verifier

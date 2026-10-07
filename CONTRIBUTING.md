@@ -1,6 +1,6 @@
 # Contributing
 
-In 1.1.0 this repository takes issues only, not pull requests. ASSAY is
+In 1.2.0 this repository takes issues only, not pull requests. ASSAY is
 open source under the Apache License 2.0 (`LICENSE`), and it is not an
 open-contribution project yet.
 

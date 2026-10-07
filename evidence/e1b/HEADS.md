@@ -1,6 +1,6 @@
 # Published chain heads: the E1b evidence pack (the instrument removed)
 
-**The commitment:** these are the recomputed `assay-journal-v1` chain heads of the six E1b journals: three ARC-AGI-3 games, two seeds, played by claude-opus-5 on 2026-10-07 under the release build (`release/1.1.0` at a4e1d90) with the registry key `gate: off`, a manual that carries no prediction discipline and the ungated prompt template. The design is pre-registered in `E1B_PROTOCOL.md`. Whenever one of these run directories is shared with anyone, it must verify against its head here:
+**The commitment:** these are the recomputed `assay-journal-v1` chain heads of the six E1b journals: three ARC-AGI-3 games, two seeds, played by claude-opus-5 on 2026-10-07 under the release build, commit 6ea56e4, the build the paper calls 1.1.0 (the checkout was `release/1.1.0` at a4e1d90, renamed 063d3c4 by the history rewrite of that day, which is how `heads.json` still records it) with the registry key `gate: off`, a manual that carries no prediction discipline and the ungated prompt template. The design is pre-registered in `E1B_PROTOCOL.md`. Whenever one of these run directories is shared with anyone, it must verify against its head here:
 
 ```bash
 gunzip -k <run>/journal.jsonl.gz

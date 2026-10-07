@@ -3,18 +3,13 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
-## Next
-
-- The benchmark protocols rewritten so the operator runs `assay start` and
-  holds the owner token, which the agent then never sees (O5, scheduled). In
-  1.1.0 the option `--owner-token-file` ships and the protocols say the agent
-  ran `start` itself.
-
-## 1.1.0 (the date is set at the tag)
+## 1.2.0 (the date is set at the tag)
 
 The first open-source release, under the Apache License 2.0 (`LICENSE`,
-`NOTICE`). The release branch is `release/1.1.0`, cut from
-main at 4dc53e1.
+`NOTICE`), developed on `main` from commit 6ea56e4, the build the
+experiments of October 2026 ran on and the paper calls 1.1.0. There is no
+release branch: `main` is the integration branch, each issue lands as one
+pull request, and the tag is cut on `main`.
 
 ### Which kernel the paper's campaigns ran on
 
@@ -29,17 +24,18 @@ commits touched `src/assay` before the OOLONG final at 4dc53e1: 566bcab
 ARC campaign), e4c669d (2026-08-26, the broker survives a client hangup, the
 client timeout became configurable through `ASSAY_BROKER_TIMEOUT`, the owner
 token never leads with a dash), and 3143cfd (2026-08-26, a comment only).
-Factorio M2 and the OOLONG four-arm comparison ran on that kernel. The 1.1.0
+Factorio M2 and the OOLONG four-arm comparison ran on that kernel. The 1.2.0
 kernel is a refactor of it, verified by replaying the 25 published run
 directories unchanged (the G2 gate below). Run configurations recorded
-`"harness": "assay"` and no version until now: 1.1.0 writes
+`"harness": "assay"` and no version until now: 1.2.0 writes
 `harness_version` and `journal_spec` into `config.json`, and `assay version`
 prints them.
 
 ### Taken from the experiment branch (exp/2026-10)
 
-The release branch is cut from main (4dc53e1). The experiment branch is not
-merged. Two things were taken from it, by cherry-pick and by file copy:
+The release work started from main at 4dc53e1 and is `main` now (6ea56e4 and
+after). The experiment branch is not merged. Two things were taken from it, by
+cherry-pick and by file copy:
 
 - The `gate` registry key (exp commit d94e536): `gate: required|optional`,
   default `required`. Under `optional` an `assay act` without `--predict` and a
@@ -132,9 +128,9 @@ Left on the experiment branch, deliberately:
   archived run directories), the G4 pack, the live ft09 regression gate of
   this release (WIN 6 of 6 in 80 paid actions, CLEAN, head `cc65462f...`),
   the E1b pack (the prediction instrument removed, six journals that read
-  INVALID FOR SCORING by design), the Factorio 1.1.0 pack (ironplate and
-  circuit replayed on this release, and the hand-played smoke) and the E5 pack
-  (OOLONG 1M in batched bank mode on this release, 0.740 for 43.39 USD against
+  INVALID FOR SCORING by design), the `factorio-110` pack (ironplate and
+  circuit replayed on commit 6ea56e4, and the hand-played smoke) and the E5 pack
+  (OOLONG 1M in batched bank mode on the same build, 0.740 for 43.39 USD against
   48.76 in single mode, with the paid phase at seven and a half minutes of 76).
   `evidence/verify_all.py` checks all 66 journals against their heads with
   the standard library alone, and the suite runs it. The former assay-verify
@@ -161,7 +157,7 @@ Left on the experiment branch, deliberately:
   directory, and the path is printed instead of the token. The default is
   unchanged (printed once). In every benchmark protocol so far the agent ran
   `start` itself and therefore held the token; the documents say so. The
-  protocol rewrite is scheduled for the next release (O5, under Next).
+  protocol rewrite is issue #31 of this milestone (O5).
 
 - `assay act --help` and `assay commit --help` lead with the general claim
   table (every world) and put the grid forms under a labelled "frame worlds
@@ -229,7 +225,7 @@ Left on the experiment branch, deliberately:
   section (the coverage audit declarations), the coverage audit's demands
   under the gates, `budget_remaining` among the host channels and one line on
   `agg` claims. `GUIDE.md` and `README.md` updated for the extra, the install
-  paths, the owner operations, the 1.1.0 limits and the license. Stale
+  paths, the owner operations, the 1.2.0 limits and the license. Stale
   facts fixed: the Factorio README and PROTOCOL (M2 calibration, three of
   three won), the OOLONG README (M2 complete, the four-arm comparison), the
   channels, registry, inspect and modules docstrings, the pillow sentence.
@@ -239,6 +235,8 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- Version 1.2.0 replaces 1.1.0 (#28): no 1.1.0 was released; the build it
+  named is commit 6ea56e4.
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds
   perception, the grid claim forms and grader, rendering (the one pillow
   import), the frame halves of status, result, inspect, view and export, and
@@ -265,7 +263,7 @@ Left on the experiment branch, deliberately:
   aliases stay as the published ids.
 - `parse_claims(text, kind=None)` replaces `parse_claims(text, general=...)`.
   The core forms parse on every run; an observation kind's forms parse only
-  when the kind is given, which nothing does in 1.1.0 (owner decision O1), and
+  when the kind is given, which nothing does in 1.2.0 (owner decision O1), and
   are refused by name otherwise. Test-only API change.
 - `live.py` exposes its seam under public names (`paid_step`,
   `record_event`, `write_receipt`, `head_events`, `level_advanced`,
@@ -310,9 +308,10 @@ Left on the experiment branch, deliberately:
   checks a built pack with the standard library alone, and the adapter names
   the fetch command when a pack with a manifest is not built. The `oolong`
   extra installs pyarrow and pandas for the builder. The two smoke packs
-  (`spam4k`, `spam8k`) ship whole. The repository's history is rewritten to
-  drop the six files before publication (the procedure and its record are in
-  `RELEASE_CHECKLIST.md`, section 1).
+  (`spam4k`, `spam8k`) ship whole. The repository's history was rewritten on
+  2026-10-07 to drop the six files (the record is in the archive's release
+  log; the greps that keep the text out are in `RELEASE_CHECKLIST.md`,
+  section 3).
 
 ### Known
 
@@ -408,8 +407,8 @@ Left on the experiment branch, deliberately:
 
 Recorded per commit in `paper/v4/RELEASE-1.1.0-LOG.md` of the archive, with
 the scripts under `paper/v4/release-gates/` there and the commands in
-`RELEASE_CHECKLIST.md`. Final results on the branch tip, after the owner's
-decisions were implemented (the second round, 2026-10-07):
+`RELEASE_CHECKLIST.md`. Final results on the tip of the release work, after
+the owner's decisions were implemented (the second round, 2026-10-07):
 
 - G1, the suite: 158 passed (the 74 of main, two of them with one keyword
   and one expected message changed, plus 84 new, two legacy tests removed),

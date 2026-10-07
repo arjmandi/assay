@@ -29,7 +29,7 @@ def test_pyproject_names_the_package_and_its_entry_point():
 def test_version_has_one_source():
     import assay
 
-    assert assay.__version__ == "1.1.0"
+    assert assay.__version__ == "1.2.0"
     # The launcher's inline metadata agrees with the kernel's floor.
     inline = (REPO / "src" / "assay_cli.py").read_text()
     assert 'requires-python = ">=3.12"' in inline

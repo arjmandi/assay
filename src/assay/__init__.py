@@ -9,7 +9,7 @@ that wrote `from assay import connected_components` keep working.
 
 from dataclasses import dataclass
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 JOURNAL_SPEC = "assay-journal-v1"
 
 

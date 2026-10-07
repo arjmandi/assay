@@ -12,7 +12,7 @@ A channel is a pair (observer, extractor). Three sources:
   graded in-kernel (pure data lookup over the dict observation). The
   extractor-file form is agent-authored code and runs ONLY in the verifier
   sandbox (`python3 -I`, empty env, rlimits): `def extract(obs) -> value`.
-- Adapter-declared (pack) channels do not exist in 1.1.0: three worlds run on
+- Adapter-declared (pack) channels do not exist in 1.2.0: three worlds run on
   the host channels and the agent-declared ones alone.
 
 Readings. Status shows every channel's current value on a registry run

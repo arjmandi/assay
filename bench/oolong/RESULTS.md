@@ -145,7 +145,7 @@ drawing conclusions: (a) the counting collapse and the 114-minute churn may be
 flaw in the referee idea — a candidate for redesign; (b) every cell is n=1, so the
 within-band ordering is directional, not precise.
 
-Update 2026-10-07 (E5, `evidence/e5`): the 1M run was repeated on release 1.1.0
+Update 2026-10-07 (E5, `evidence/e5`): the 1M run was repeated on commit 6ea56e4
 with the actuators batched (several spans per BANK_FACT, a plain-text SUBMIT,
 `registry_200_batch.json`), same de-hinted framing, cost bands fixed before
 launch. Same 0.740, 43.39 USD against 48.76, 76 minutes against 114. The journal

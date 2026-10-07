@@ -4,7 +4,7 @@ An open, world-agnostic standard for auditable agent runs, and a standalone
 checker that needs no harness and no trust in the operator. Both are MIT
 (`LICENSE` in this directory), so anyone can verify a journal without a
 license to the harness. They moved here from the retired `assay-verify`
-repository in 1.1.0; that repository is archived with a pointer to this
+repository in 1.2.0; that repository is archived with a pointer to this
 directory.
 
 An ASSAY journal records an agent run as an append-only sequence of events

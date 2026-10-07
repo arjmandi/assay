@@ -70,15 +70,17 @@ mkdir demo && cd demo
 
 ## Status
 
-1.1.0, the first open-source release. The ARC-AGI-3 campaign of
+1.2.0, the first open-source release. The ARC-AGI-3 campaign of
 2026-08-21 to 08-23 ran on the kernel published as v1.0-rc1, and the Factorio
-and OOLONG runs on that kernel plus two small fixes. 1.1.0 is a refactor of it, verified by replaying
-the 25 published run directories unchanged (`CHANGELOG.md`).
+and OOLONG runs on that kernel plus two small fixes. The 1.2.0 kernel is a
+refactor of it, verified by replaying the 25 published run directories
+unchanged; the experiments of October 2026 ran on commit 6ea56e4 of it
+(`CHANGELOG.md`).
 
 ## License
 
 ASSAY is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`). In
-1.1.0 the repository takes issues only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
+1.2.0 the repository takes issues only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
 (`NOTICE`). The journal standard, the independent checker and the published
 journals are in `verify/` and `evidence/` under MIT (`verify/LICENSE`), so
 anyone can verify a journal without a license to the harness. They moved here

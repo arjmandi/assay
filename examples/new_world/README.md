@@ -56,7 +56,7 @@ shape is visible. Delete what you do not need.
 | `modules` | paths to external behavior module files, pinned at start with a manifest |
 | `module_modes` | `off`, `advise` or `block` per module, built-ins included |
 | `secrets` | environment variable names whose values are redacted from every journal line |
-| `observers`, `control` | accepted and journaled, no behavior in 1.1.0 (an honest gap) |
+| `observers`, `control` | accepted and journaled, no behavior in 1.2.0 (an honest gap) |
 | `mode_note` | free text shown in status as data |
 | `gate` | `required` is the rule and the default. `optional` and `off` are the control-arm modes whose runs the audit marks invalid for scoring |
 

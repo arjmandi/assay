@@ -1,12 +1,16 @@
 # Evidence pack №9: Factorio (FLE) on the release build
 
 The ninth evidence pack under the `assay-journal-v1` standard: the two
-Factorio Learning Environment lab tasks replayed on the 1.1.0 kernel
-(`ironplate` and `circuit`, action cap 64, claude-opus-5, one session each),
-and the hand-played six-action smoke that ran on the same build before any
-model spend. They reproduce the August wins of `../factorio` under the same
-registry (`bench/factorio/registry_lab64.json`, whose hash the runs carry) and
-the same strategy hints, with the outcome bands fixed before launch.
+Factorio Learning Environment lab tasks replayed on commit 6ea56e4, the build
+the paper calls 1.1.0 (`ironplate` and `circuit`, action cap 64,
+claude-opus-5, one session each), and the hand-played six-action smoke that
+ran on the same build before any model spend. They reproduce the August wins
+of `../factorio` under the same registry (`bench/factorio/registry_lab64.json`,
+whose hash the runs carry) and the same strategy hints, with the outcome bands
+fixed before launch. The sessions' checkout was d99c0a6, which has the same
+kernel and adapters as 6ea56e4. The pack keeps the name `factorio-110`, from
+the version the build was then called, because the paper and `heads.json`
+cite it.
 
 ## Contents
 
