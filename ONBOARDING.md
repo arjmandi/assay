@@ -562,8 +562,11 @@ while the daemon is stopped. What the agent's commands write today stays the
 agent's to write: the activity log, the channel declarations, the proposals,
 the model fit and plan, and `audit.json` (rewritten by whoever runs `audit`,
 so under the sticky bit the operator audits after the run or on a copy). The
-owner operations move into the daemon with the design of section 7.2, and
-every write with #20; the arrangement gets stronger with each.
+owner operations move into the daemon with the design of section 7.2; since
+#20 the daemon holds the run in memory and checks those files against what it
+holds before every paid action, refusing on a difference with
+`TAMPER_DETECTED` and saying so on the status INTEGRITY line while it lives;
+the arrangement gets stronger with each.
 
 ### Many runs at once: the evaluation runner
 
@@ -627,9 +630,11 @@ Expose the object as `MODULE` in the file.
 
 Installing one. At start, list the file under `modules` in the registry and
 it is copied into `.assay/modules/` with a manifest entry (name, file,
-source, sha256, origin). Mid-run, the owner runs `assay module install PATH
---token TOK`, which checks the contract, refuses a NAME that clashes with a
-built-in, adds the manifest entry and journals `module_installed`. Only
+source, sha256, origin). Mid-run, with the daemon running, the owner runs
+`assay module install PATH --token TOK`: the daemon checks the token, the
+contract and the NAME (a clash with a built-in is refused), adds the manifest
+entry, journals `module_installed` and loads the module for the next action;
+with the daemon stopped the command refuses and names `assay start`. Only
 listed files whose hash still matches are loaded. A file written into
 `.assay/modules/` by hand, or a pinned file edited afterwards, is ignored and
 named in status: `MODULES | 1 file(s) in .assay/modules ignored ...`.

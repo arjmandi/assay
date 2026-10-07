@@ -5,6 +5,7 @@ import importlib
 import importlib.util
 import json
 import os
+import re
 import secrets
 import signal
 import socket
@@ -13,7 +14,7 @@ import sys
 import time
 from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from .core import (
     AssayError,
@@ -30,9 +31,6 @@ from .sandbox import sandbox_mode
 from .adapters import Adapter, Session
 from .records import Event, Mutation, Receipt
 from .run import Run
-
-if TYPE_CHECKING:
-    from .live import Stepper
 
 
 LOCAL_MODE = "local"
@@ -214,7 +212,12 @@ def _request(
     paths: RunPaths, payload: Mapping[str, Any], timeout: float = 10.0
 ) -> dict[str, Any]:
     descriptor = read_json(paths.broker)
-    config = read_json(paths.config, {})
+    try:
+        config = read_json(paths.config, {})
+    except AssayError:
+        # The read serves the hint below and nothing else: a configuration
+        # the client cannot parse is the daemon's to refuse (section 8.3).
+        config = {}
     local = isinstance(config, dict) and not is_remote_config(config)
     recovery = (
         "run `assay start WORLD_ID` to replay the journal and resume"
@@ -312,6 +315,53 @@ def broker_gated(
     if not isinstance(receipt, dict):
         raise AssayError("environment owner returned no receipt")
     return Receipt.from_json(receipt)
+
+
+@dataclasses.dataclass(frozen=True)
+class DaemonState:
+    """What a live daemon holds, read through `ping`: the chain event and
+    head of the run in its memory, and the differences it refused a paid
+    action over (section 8.3), or None while nothing changed under it. A
+    fresh load from disk must agree with the first two at every quiescent
+    point."""
+
+    chain_event: int
+    chain_head: str
+    tampered: str | None
+
+
+def broker_state(paths: RunPaths) -> DaemonState:
+    response = _request(paths, {"op": "ping"}, timeout=_ping_timeout())
+    tampered = response.get("tampered")
+    return DaemonState(
+        chain_event=int(response["chain_event"]),
+        chain_head=str(response["chain_head"]),
+        tampered=None if tampered is None else str(tampered),
+    )
+
+
+def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str, Any]:
+    """`assay module install` as the daemon operation it is (section 6.4):
+    the daemon checks the owner token against the hash it holds, pins the
+    file, updates the manifest it holds and loads the module. Without a live
+    daemon (none in the process table) the command refuses, since a manifest
+    written behind the daemon's back would be a difference it refuses to
+    adopt; a daemon inside a step is waited for like any paid command."""
+    if find_daemon(paths) is None:
+        raise AssayError(
+            "module install is a daemon operation and this run's environment owner "
+            "is not running; resume it with `assay start WORLD_ID`, then install again"
+        )
+    # `token` on the wire is the daemon's own; the owner's rides apart.
+    response = _request(
+        paths,
+        {"op": "install_module", "path": str(source.resolve()), "owner_token": token},
+        timeout=_client_timeout(60.0),
+    )
+    record = response.get("record")
+    if not isinstance(record, dict):
+        raise AssayError("environment owner returned no install record")
+    return record
 
 
 def broker_matches_latest_event(run: Run) -> bool:
@@ -576,24 +626,227 @@ def _open_run(run: Run, session: Session) -> None:
         kind.after_record(run, event)
 
 
+def _short(value: str) -> str:
+    """A difference as the refusal line shows it: every 64-hex digest cut to
+    twelve characters. The activity record keeps every value whole."""
+    return re.sub(r"[0-9a-f]{64}", lambda match: match.group(0)[:12], value)
+
+
+def _tamper_message(detail: str) -> str:
+    return (
+        f"TAMPER_DETECTED | {detail}: the run's files changed under the daemon, "
+        "which keeps the record it holds and refuses every paid action until it "
+        "is stopped and the record is examined (`assay audit`)"
+    )
+
+
+class _Daemon:
+    """What the daemon holds for its life and the operations over it: the one
+    run (docs/ARCHITECTURE.md section 6.3), the world session, the local
+    replay's flag for a freshly entered progress unit, and the refusal once a
+    file changed under it (section 8.3), held as what differed, or None."""
+
+    def __init__(self, paths: RunPaths, run: Run, session: Session, *, fresh_level: bool) -> None:
+        self.paths = paths
+        self.run = run
+        self.session = session
+        self.fresh_level = fresh_level
+        self.tampered: str | None = None
+
+    def refuse_if_tampered(self) -> None:
+        if self.tampered is not None:
+            raise AssayError(_tamper_message(self.tampered))
+
+    def verify_before_spend(self) -> None:
+        """The files on disk against the held copies, before every paid
+        action. A difference refuses this action and every later one, is
+        recorded once in the activity log with every difference whole, and
+        changes nothing the daemon holds: it never adopts the disk state and
+        never appends to a changed file."""
+        self.refuse_if_tampered()
+        found = self.run.verify_disk()
+        if not found:
+            return
+        detail = "; ".join(
+            f"{item.what} (held {_short(item.expected)}, on disk {_short(item.found)})"
+            for item in found
+        )
+        append_jsonl(
+            self.paths.activity,
+            {
+                "kind": "tamper_detected",
+                "event": self.run.chain_event,
+                "head": self.run.chain_head,
+                "differences": [dataclasses.asdict(item) for item in found],
+            },
+        )
+        self.tampered = detail
+        raise AssayError(_tamper_message(detail))
+
+    def spend(
+        self,
+        run: Run,
+        action: str,
+        data: dict[str, Any] | None,
+        reasoning: Mapping[str, Any] | None,
+    ) -> tuple[dict[str, Any], int, str | None]:
+        """The daemon-side `Stepper`: the disk verified, the world stepped,
+        the mutation recorded through the run with the next id of the held
+        log, all before the reply; no socket hop."""
+        if run is not self.run:
+            raise AssayError("the daemon spends only on the run it holds")
+        self.verify_before_spend()
+        if is_remote_config(run.config):
+            observed = self.session.step(action, data, reasoning)
+            if observed is None:
+                raise AssayError(
+                    "REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE | the competition server returned no observation. This remote run cannot be reconstructed; preserve its artifacts and use a fresh directory for another run"
+                )
+        else:
+            observed, self.fresh_level = _competition_step(
+                self.session, action, data, reasoning, fresh_level=self.fresh_level
+            )
+        encoded = _encode_observation(observed)
+        mutation_id = (run.mutations[-1].mutation_id if run.mutations else 0) + 1
+        run.record_mutation(
+            Mutation(
+                mutation_id=mutation_id,
+                action=action,
+                data=data,
+                reasoning=None if reasoning is None else dict(reasoning),
+                observation=encoded,
+                timestamp=now_iso(),
+            )
+        )
+        warning: str | None = None
+        finalize = getattr(self.session, "finalize", None)
+        if encoded["state"] == "WIN" and callable(finalize):
+            try:
+                finalize()
+            except Exception as error:  # noqa: BLE001 - action is already journaled
+                warning = f"{type(error).__name__}: {error}"
+        return _decode_observation(encoded), mutation_id, warning
+
+    def handle(self, request: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
+        """One authenticated request to its reply, and whether the run ended
+        with it."""
+        operation = request.get("op")
+        run = self.run
+        if operation == "ping":
+            # Liveness, and the held state for whoever compares the disk
+            # with the daemon's view (`broker_state`).
+            return {
+                "ok": True,
+                "pong": True,
+                "chain_event": run.chain_event,
+                "chain_head": run.chain_head,
+                "tampered": self.tampered,
+            }, False
+        if operation == "observe":
+            return {
+                "ok": True,
+                "observation": _encode_observation(self.session.observation),
+                "public_info": getattr(self.session, "public_info", {}),
+            }, False
+        if operation in {"gated_act", "gated_commit", "gated_reset"}:
+            # A tampered daemon refuses before any pre-spend work; the
+            # verification itself runs in the stepper, before the world step
+            # of every act, commit step, model-plan step and reset.
+            self.refuse_if_tampered()
+            from .live import execute_action, execute_model_plan, execute_steps, reset_level
+
+            if operation == "gated_act":
+                receipt = execute_action(
+                    run,
+                    str(request["action_token"]),
+                    predict=str(request.get("predict") or ""),
+                    because=request.get("because"),
+                    at_event=request.get("at_event"),
+                    declares=request.get("declares"),
+                    stepper=self.spend,
+                )
+            elif operation == "gated_commit":
+                if request.get("plan"):
+                    receipt = execute_model_plan(
+                        run,
+                        str(request["plan"]),
+                        at_event=request.get("at_event"),
+                        stepper=self.spend,
+                    )
+                else:
+                    receipt = execute_steps(
+                        run,
+                        [str(item) for item in request.get("steps") or ()],
+                        at_event=request.get("at_event"),
+                        declares=request.get("declares"),
+                        stepper=self.spend,
+                    )
+            else:
+                receipt = reset_level(
+                    run,
+                    because=request.get("because"),
+                    at_event=request.get("at_event"),
+                    declares=request.get("declares"),
+                    stepper=self.spend,
+                )
+            terminal = bool(run.events) and run.events[-1].state == "WIN"
+            return {"ok": True, "receipt": receipt.to_json()}, terminal
+        if operation == "install_module":
+            # The owner's install, against the held hash (section 6.4): the
+            # file pinned, the held manifest updated and written,
+            # `module_installed` recorded, and the held set reloaded so the
+            # module runs from the next action. Refused once a file changed
+            # under the daemon, so the install never rewrites a changed
+            # manifest.
+            self.refuse_if_tampered()
+            from .modules import active_modules, install_module
+
+            owner = request.get("owner_token")
+            record = install_module(
+                run,
+                Path(str(request.get("path") or "")),
+                None if owner is None else str(owner),
+            )
+            active_modules(run)
+            return {"ok": True, "record": record}, False
+        if operation == "step":
+            # Every run the daemon serves has a registry, so the bare step is
+            # always a gate bypass; #24 retires the operation.
+            raise AssayError(
+                "UNGATED_STEP_REFUSED | this registry run is daemon-gated: "
+                "paid actions go through `assay act/commit/reset` (which "
+                "carry graded predictions); a bare step is a gate bypass "
+                "and is refused"
+            )
+        raise AssayError(f"unknown broker operation {operation!r}")
+
+
 def serve(paths: RunPaths) -> None:
     config = read_json(paths.config)
     if not isinstance(config, dict):
         return
     try:
         # Strict: a contiguity problem or a diverged chain refuses the start
-        # with CHAIN_DIVERGED and rewrites nothing.
+        # with CHAIN_DIVERGED and rewrites nothing. This is the one load of
+        # the daemon's life: the run is held from here on, appended and
+        # chained in memory, and checked against the disk before every
+        # paid action (docs/ARCHITECTURE.md sections 6.3 and 8.3).
         run = Run.load(paths, strict=True)
         config = run.config
         session = _create_session(paths.root, config)
         if is_remote_config(config):
-            mutations = run.mutations
             fresh_level = False
         else:
-            mutations, fresh_level = _replay_local_session(session, run)
+            _, fresh_level = _replay_local_session(session, run)
         if not run.events:
             _open_run(run, session)
             config = run.config
+        # The modules load once, here, from the manifest the run holds; the
+        # consults and the outcome observations use the held objects.
+        from .modules import active_modules
+
+        active_modules(run)
+        daemon = _Daemon(paths, run, session, fresh_level=fresh_level)
         token = (paths.state / "broker.token").read_text().strip()
         try:
             paths.socket.unlink()
@@ -616,7 +869,7 @@ def serve(paths: RunPaths) -> None:
                 "pid": os.getpid(),
                 "mode": config.get("mode", LOCAL_MODE),
                 "sandbox": sandbox,
-                "replayed_mutations": len(mutations),
+                "replayed_mutations": len(run.mutations),
                 "started_at": time.time(),
             },
         )
@@ -659,53 +912,6 @@ def serve(paths: RunPaths) -> None:
         server.close()
         paths.socket.unlink(missing_ok=True)
 
-    sequence = max((mutation.mutation_id for mutation in mutations), default=0)
-    # Daemon-side gate: on a registry run, enforcement lives HERE,
-    # where the session and the credentials live. The bare `step` op is refused:
-    # a client speaking this socket directly cannot bypass the gate invisibly.
-    gated = run.registry is not None
-    shared: dict[str, Any] = {"sequence": sequence, "fresh_level": fresh_level}
-
-    def direct_stepper(
-        run_arg: Run,
-        action: str,
-        data: dict[str, Any] | None,
-        reasoning: Mapping[str, Any] | None,
-    ) -> tuple[dict[str, Any], int, str | None]:
-        """In-daemon spend: journal-before-respond preserved, no socket hop."""
-        if is_remote_config(config):
-            observed = session.step(action, data, reasoning)
-            if observed is None:
-                raise AssayError(
-                    "REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE | the competition server returned no observation. This remote run cannot be reconstructed; preserve its artifacts and use a fresh directory for another run"
-                )
-        else:
-            observed, shared["fresh_level"] = _competition_step(
-                session, action, data, reasoning, fresh_level=bool(shared["fresh_level"])
-            )
-        encoded = _encode_observation(observed)
-        shared["sequence"] = int(shared["sequence"]) + 1
-        run_arg.record_mutation(
-            Mutation(
-                mutation_id=int(shared["sequence"]),
-                action=action,
-                data=data,
-                reasoning=None if reasoning is None else dict(reasoning),
-                observation=encoded,
-                timestamp=now_iso(),
-            )
-        )
-        warning: str | None = None
-        finalize = getattr(session, "finalize", None)
-        if encoded["state"] == "WIN" and callable(finalize):
-            try:
-                finalize()
-            except Exception as error:  # noqa: BLE001 - action is already journaled
-                warning = f"{type(error).__name__}: {error}"
-        return _decode_observation(encoded), int(shared["sequence"]), warning
-
-    stepper: Stepper = direct_stepper
-
     while True:
         if lifecycle["stop"]:
             _stopped()
@@ -730,122 +936,7 @@ def serve(paths: RunPaths) -> None:
                     raise AssayError("malformed request")
                 if not secrets.compare_digest(str(request.get("token", "")), token):
                     raise AssayError("invalid environment owner token")
-                operation = request.get("op")
-                response: dict[str, Any]
-                if operation == "ping":
-                    response = {"ok": True, "pong": True}
-                elif operation == "observe":
-                    response = {
-                        "ok": True,
-                        "observation": _encode_observation(session.observation),
-                        "public_info": getattr(session, "public_info", {}),
-                    }
-                elif operation in {"gated_act", "gated_commit", "gated_reset"}:
-                    if not gated:
-                        raise AssayError(
-                            "this run has no registry; gated operations need one"
-                        )
-                    from .live import (
-                        execute_action,
-                        execute_model_plan,
-                        execute_steps,
-                        reset_level,
-                    )
-
-                    # One Run per request for now, loaded strict: correct
-                    # under the one-writer rule, not yet fast; #20 holds one
-                    # for the daemon's life and verifies the disk before it.
-                    current = Run.load(paths, strict=True)
-                    if operation == "gated_act":
-                        receipt = execute_action(
-                            current,
-                            str(request["action_token"]),
-                            predict=str(request.get("predict") or ""),
-                            because=request.get("because"),
-                            at_event=request.get("at_event"),
-                            declares=request.get("declares"),
-                            stepper=stepper,
-                        )
-                    elif operation == "gated_commit":
-                        if request.get("plan"):
-                            receipt = execute_model_plan(
-                                current,
-                                str(request["plan"]),
-                                at_event=request.get("at_event"),
-                                stepper=stepper,
-                            )
-                        else:
-                            receipt = execute_steps(
-                                current,
-                                [str(item) for item in request.get("steps") or ()],
-                                at_event=request.get("at_event"),
-                                declares=request.get("declares"),
-                                stepper=stepper,
-                            )
-                    else:
-                        receipt = reset_level(
-                            current,
-                            because=request.get("because"),
-                            at_event=request.get("at_event"),
-                            declares=request.get("declares"),
-                            stepper=stepper,
-                        )
-                    terminal = bool(current.events) and current.events[-1].state == "WIN"
-                    response = {"ok": True, "receipt": receipt.to_json()}
-                elif operation == "step":
-                    if gated:
-                        raise AssayError(
-                            "UNGATED_STEP_REFUSED | this registry run is daemon-gated: "
-                            "paid actions go through `assay act/commit/reset` (which "
-                            "carry graded predictions); a bare step is a gate bypass "
-                            "and is refused"
-                        )
-                    if is_remote_config(config):
-                        observed = session.step(
-                            request["action"],
-                            request.get("data"),
-                            request.get("reasoning"),
-                        )
-                        if observed is None:
-                            raise AssayError(
-                                "REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE | the competition server returned no observation. This remote run cannot be reconstructed; preserve its artifacts and use a fresh directory for another run"
-                            )
-                    else:
-                        observed, shared["fresh_level"] = _competition_step(
-                            session,
-                            request["action"],
-                            request.get("data"),
-                            request.get("reasoning"),
-                            fresh_level=bool(shared["fresh_level"]),
-                        )
-                    encoded = _encode_observation(observed)
-                    shared["sequence"] = int(shared["sequence"]) + 1
-                    append_jsonl(
-                        paths.mutations,
-                        {
-                            "mutation_id": shared["sequence"],
-                            "action": request["action"],
-                            "data": request.get("data"),
-                            "reasoning": request.get("reasoning"),
-                            "observation": encoded,
-                        },
-                    )
-                    response = {
-                        "ok": True,
-                        "observation": encoded,
-                        "mutation_id": shared["sequence"],
-                    }
-                    terminal = encoded["state"] == "WIN"
-                    finalize = getattr(session, "finalize", None)
-                    if terminal and callable(finalize):
-                        try:
-                            finalize()
-                        except Exception as error:  # noqa: BLE001 - action is already journaled
-                            response["finalization_warning"] = (
-                                f"{type(error).__name__}: {error}"
-                            )
-                else:
-                    raise AssayError(f"unknown broker operation {operation!r}")
+                response, terminal = daemon.handle(request)
             except Exception as error:  # noqa: BLE001 - isolate arbitrary adapter failures
                 response = {"ok": False, "error": f"{type(error).__name__}: {error}"}
             try:

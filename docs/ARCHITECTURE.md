@@ -30,7 +30,13 @@ it (`core.RunPaths`). Two processes touch that state:
   is the only writer of `events.jsonl`, `chain.json`, `mutations.jsonl` and the
   anchor file: every paid action is executed here, behind the gate, appended
   through `run.append` and journaled before the reply leaves the socket. The
-  daemon is the only process that spends.
+  daemon is the only process that spends. It holds that one run for its life
+  (#20): the modules load once from the manifest it holds, every request
+  handler receives the held run, each append advances the chain in memory and
+  writes `chain.json`, the next mutation id is one past the held log's, and
+  before every paid action it verifies the files on disk against the copies
+  it holds (`run.verify_disk`, section 8.3), refusing with `TAMPER_DETECTED`
+  on a difference, for that action and every later one until it is stopped.
 - the **CLI**, `assay.cli.main`, a stateless display client on registry runs. At
   `start` it writes `config.json`, the registry copy, the owner file and the
   notes file before it spawns the daemon, and never writes `config.json` after.
@@ -357,12 +363,17 @@ External modules: `modules: ["path.py"]` in the registry, copied into
 `modules._load_external` from the manifest the run holds. 1.2.0 pins them by
 manifest with a sha256 and adds an owner-authorized install command, so the
 hot-add channel is sanctioned and journaled rather than a directory glob. The
-modules load once per run object (`modules.active_modules`): in the daemon
-once per gated request until #20 holds one run for its life, in the CLI once
-per command that consults them. A run pinned before the manifest existed has
-it rebuilt from the registry's `modules` list at `assay start`
-(`modules.reconstruct_manifest`), never from a status call: the loader never
-writes.
+install is a daemon operation (`install_module`, section 6.4, #20): the daemon
+checks the owner token against the hash it holds, pins the file, checks the
+contract and the name, updates the manifest it holds, journals
+`module_installed` and reloads its module set, so the module runs from the
+next action; without a live daemon `assay module install` refuses and names
+`assay start`. The modules load once per process (`modules.active_modules`):
+in the daemon at `serve`, from the manifest it holds, for its life; in the
+CLI lazily, once per command that consults them (`status`, `module list`). A
+run pinned before the manifest existed has it rebuilt from the registry's
+`modules` list at `assay start` (`modules.reconstruct_manifest`), never from
+a status call: the loader never writes.
 
 **Required.** Nothing. A registry with no `modules` key runs the built-ins at
 their default modes.
@@ -752,11 +763,13 @@ which is #13's), the run of 6.3 (`run.py`: `Run.load` strict and lenient, `run.a
 `run.record_mutation`), the signature change of 6.3 across the kernel and the frame
 extra, event 0 written by the daemon, the `Module`, `ModuleView` and `Adapter` protocols
 of 6.4, and the tests of 6.6 (the 66-journal round trip, the AST walk, the daemon's
-journal read back). Three things 6.3 and 6.4 describe wait for the pull requests they
-name: the daemon builds one `Run` per gated request, loaded strict, and loads once at
-`serve` for event 0 and the replay, until #20 holds one run for its life and calls
-`verify_disk` before every paid action; approvals and waivers stay files until #24 moves
-the owner operations into the daemon; `install_module` stays a CLI command until #24.
+journal read back). What #20 landed: the daemon holds one `Run` for its life, loaded
+strict at `serve`, and every request handler receives it; it calls `verify_disk` before
+every paid action and refuses on a difference with `TAMPER_DETECTED`, holding a flag that
+refuses every later paid action until it is stopped (the sealing record in the anchor
+file and audit's reading of it are #10's); the modules load once at `serve`;
+`install_module` is the daemon operation of 6.4. One thing 6.3 describes still waits:
+approvals and waivers stay files until #24 moves the owner operations into the daemon.
 `core.load_events` and `core.append_event` are gone rather than kept: `analysis`
 builds the agent's namespace from the held records (the journal still reaches the agent
 as plain JSON objects), and the AST test still refuses `load_events(` outside `run.py`,
@@ -865,11 +878,20 @@ the daemon alive.
   owner file and the notes file before it spawns the daemon and never writes `config.json`
   after. The one append outside a daemon is `reconcile` at start with no daemon alive
   (section 6.5).
-- `run.verify_disk()`: recomputes the head over the whole `events.jsonl` and compares it
-  and the file length to the held values; compares the mutation log, `registry.json`,
-  `config.json` and the manifest file to the held copies the same way. Any difference is a
-  `Tamper(what, expected, found)`. The daemon calls it before every paid action (section
-  8.3); `assay audit` reports the same comparison against `chain.json`. Measured cost on
+- `run.verify_disk()`: recomputes the head over the whole `events.jsonl` (over the raw
+  bytes, never decoded: `integrity.chain_over_bytes`, the same rule) and compares it and
+  the file length to the held values; compares the mutation log, `registry.json`,
+  `config.json`, `chain.json` (against the stored record the last append wrote: a replaced
+  head or a deleted file is a difference, not something the next append repairs),
+  `owner.json` (against the held hash, until #10 moves the owner operations into the
+  daemon) and the manifest file to the held copies the same way. Any difference is a
+  `Tamper(what, expected, found)`, and a file that cannot be read or parsed is one too,
+  with `found` reading `unreadable: ...`. The daemon calls it before every paid action
+  (section 8.3; from its stepper, before the world step of every act, commit step,
+  model-plan step and reset, so a batch is checked before each of its steps); `assay
+  audit` reports the same comparison against `chain.json`. Measured on the thousand-event
+  test of 6.6: about a millisecond per paid action over the 443 KB journal it leaves.
+  Measured cost on
   the published journals: the largest ARC journal (1172 events, 5.9 MB) hashes as a chain
   in 5 ms and the largest journal of all (32 MB) in 32 ms; with the mutation log of the
   same size, budget 70 ms per paid action worst case, against a world step that takes
@@ -887,9 +909,13 @@ the daemon alive.
   broken run, and the knowledge file's published `journal_sha256`) are named, with their
   reasons, in the allow-list of the AST test (`tests/test_run_model.py`).
 - The daemon holds one `Run` for its life; the request handlers of section 7.2 receive it.
-  The id of the next event is the held count, never the line count on disk.
+  The id of the next event is the held count, never the line count on disk, and the next
+  mutation id is one past the held log's last. `ping` answers with the held chain event
+  and head and what the daemon refused over, if anything (`broker.broker_state`, a
+  `DaemonState` record); a fresh load from disk must match the head at every quiescent
+  point.
 - The manifest is reconstructed for a pre-manifest run only at `start`, never from a status
-  call (today `unlisted_lines` can write it).
+  call.
 
 ### 6.4 Modules and adapters under the run model
 
@@ -904,10 +930,11 @@ the daemon alive.
   `hazards()` reads the file. `JournalView` is removed; `pending` keeps its shape.
 - Modules load once per process from the held manifest: the daemon at `serve`, the CLI
   lazily for status.
-- `assay module install` becomes the daemon operation `install_module` (section 7.2): the
+- `assay module install` is the daemon operation `install_module` (section 7.2, #20): the
   daemon checks the owner token against the held hash, copies the file, checks the contract
   and the name, updates the held manifest and writes it, records `module_installed` in the
-  activity log, loads the module. While the daemon lives the manifest on disk is a record,
+  activity log, loads the module; without a live daemon the command refuses and names
+  `assay start`. While the daemon lives the manifest on disk is a record,
   not the source of truth. At the next start, `Run.load` admits a manifest entry only if
   the registry's `modules` list names its source or a `module_installed` activity record
   carries its hash; an entry without either is ignored and reported on the MODULES line
@@ -939,14 +966,15 @@ the daemon alive.
    `verify_disk` is the test.
 3. `Run.load` over a journal the daemon wrote yields records that re-serialize to the same
    lines; a test writes a thousand events through the daemon and checks that status, audit
-   and view agree between the daemon's view and a fresh load.
+   and view agree between the daemon's view and a fresh load (`tests/test_daemon_run.py`).
 4. No function below the entry points reads `events.jsonl`: an AST test over `src/assay`
    and `src/assay_grid` refuses `load_events(` outside `run.py`, `core.py` and
    `analysis.py`.
 5. Every published journal under `evidence/` loads through `Event.from_json` and
    re-serializes identically (a test over the 66 journals).
 6. Two clients racing on one socket produce a contiguous journal (the daemon is
-   single-threaded and the CLI holds the run lock; the test pins it).
+   single-threaded and the CLI holds the run lock; the test pins it with two clients that
+   speak the socket directly, without the lock).
 7. The replay gate passes unchanged.
 
 ### 6.7 What changes for the agent and the operator
@@ -1148,9 +1176,18 @@ security, and the note says so.
 
 ### 8.3 What the daemon verifies before every spend
 
+Status: #20 landed the verification, the `TAMPER_DETECTED` refusal, the `tamper_detected`
+activity record, the refusal of every later paid action and of an install, and the
+status line; the sealing record and audit's reading of a sealed anchor are #10's.
+
 Before every paid action the daemon calls `run.verify_disk()` (section 6.3): the journal's
-length and recomputed head, the mutation log, `registry.json`, `config.json` and the
-manifest against the held copies. On a difference it refuses the action with
+length and recomputed head, the mutation log, `registry.json`, `config.json`, `chain.json`,
+`owner.json` and the manifest against the held copies, an unreadable file counting as a
+difference. While it refuses, `install_module` is refused too (the install would rewrite
+a changed manifest), `ping` carries what differed, and `assay status` prints `INTEGRITY |
+the daemon refused a paid action: <what differed>; ...` from it, since a registry,
+configuration, chain, owner, mutation-log or manifest edit leaves no trace in the journal
+the readers load. On a difference it refuses the action with
 `TAMPER_DETECTED` (kind invalid, exit 5), appends an activity record `tamper_detected`
 with what differed, appends a sealing record to the anchor file, `{"event_id":
 <held count - 1>, "head": <held head>, "seal": "tamper_detected"}`, keeps its held head

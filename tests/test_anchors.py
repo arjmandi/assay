@@ -99,10 +99,16 @@ def test_run_without_the_key_uses_the_environment(tmp_path, monkeypatch):
     _prepare(run)
     try:
         assert _start(run).returncode == 0
-        # A run recorded before the key existed.
+        # A run recorded before the key existed: its config is edited with
+        # the daemon stopped, since the daemon refuses a config.json changed
+        # under it (docs/ARCHITECTURE.md section 8.3), and the resume loads
+        # the config as a daemon serving such a run would.
+        assert run_cli(run, "stop").returncode == 0
         config = _config(run)
         config.pop("anchor_file")
         (run / ".assay" / "config.json").write_text(json.dumps(config, sort_keys=True))
+        resumed = _start(run)
+        assert resumed.returncode == 0, resumed.stderr
         _win(run)
         status = run_cli(run, "status")
         assert f"ANCHORS | {anchors}" in status.stdout and "1 anchor(s)" in status.stdout
