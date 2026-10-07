@@ -5,6 +5,7 @@ import datetime as dt
 import os
 import shutil
 import sys
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -24,8 +25,10 @@ from .broker import (
     broker_matches_latest_event,
     broker_observe,
     broker_ping,
+    check_adapter_spec,
     find_daemon,
     is_remote_config,
+    resolve_adapter_spec,
     reconcile_mutations,
     start_broker,
     stop_broker,
@@ -556,17 +559,24 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             "hand?); run `assay stop` here first, then start again"
         )
     token_file = _owner_token_file(paths, args)
-    paths.root.mkdir(parents=True, exist_ok=True)
     mode = str(args.mode or os.getenv("ASSAY_MODE", LOCAL_MODE)).lower()
     if mode not in {LOCAL_MODE, REMOTE_MODE}:
         raise AssayError(
             f"ASSAY_MODE must be {LOCAL_MODE!r} or {REMOTE_MODE!r}, got {mode!r}"
         )
+    adapter_spec: str | None = None
+    if args.adapter:
+        # Validated before anything is spawned or written: the file must exist
+        # (run directory first, then the working directory) and the module
+        # must import in this interpreter, the one that will serve the daemon.
+        adapter_spec = resolve_adapter_spec(str(args.adapter), paths.root)
+        check_adapter_spec(adapter_spec, paths.root)
+    paths.root.mkdir(parents=True, exist_ok=True)
     config: dict[str, Any] = {
         "game_id": requested,
         "seed": args.seed,
         "mode": mode,
-        "adapter": args.adapter,
+        "adapter": adapter_spec,
         "registry": registry_spec is not None,
         "created_at": now_iso(),
         "harness": "assay",
@@ -754,6 +764,7 @@ def main() -> None:
     try:
         args = _parser().parse_args()
         paths = RunPaths(Path(args.run_dir).resolve())
+        os.environ["ASSAY_RUN_DIR"] = str(paths.root)
         if args.command == "start":
             try:
                 with run_lock(paths):
@@ -1026,3 +1037,26 @@ def main() -> None:
     except AssayError as error:
         print(f"ERROR | {error}", file=sys.stderr)
         raise SystemExit(2)
+    except Exception as error:  # noqa: BLE001 - one error voice, traceback saved
+        raise SystemExit(_report_internal_error(error))
+
+
+def _report_internal_error(error: BaseException) -> int:
+    """Anything that is not an AssayError is a bug or a corrupt file. Print one
+    line in the usual voice and save the traceback where the user can find it,
+    instead of a bare Python traceback with no pointer."""
+    saved = "no run directory here, so the traceback was not saved"
+    try:
+        run_dir = Path(os.environ.get("ASSAY_RUN_DIR") or ".").resolve()
+        state = run_dir / ".assay"
+        if state.is_dir():
+            target = state / "last_error.txt"
+            target.write_text(traceback.format_exc())
+            saved = f"traceback in {target}"
+    except OSError:
+        pass
+    print(
+        f"ERROR | internal: {type(error).__name__}: {str(error)[:300]} ({saved})",
+        file=sys.stderr,
+    )
+    return 2

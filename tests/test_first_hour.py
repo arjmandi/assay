@@ -1,0 +1,120 @@
+"""The errors a new user meets in the first hour, each answered before anything
+is spawned or written: a mistyped adapter, a missing dependency, a bad world
+id, a crash with no pointer, and a help page that leads with the general claim
+table."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+
+from conftest import FAKE_ADAPTER, run_cli, stop_run
+
+REPO = Path(__file__).resolve().parents[1]
+ACTIONS = [
+    {"name": "INC", "params": {"amount": {"type": "int", "min": 1, "max": 2}}},
+    {"name": "NOOP", "params": {}},
+]
+
+
+def _prepare(run: Path) -> Path:
+    run.mkdir()
+    registry = run / "reg.json"
+    registry.write_text(json.dumps({"actions": ACTIONS, "budget": {"actions": 20}}))
+    return registry
+
+
+def _start(run: Path, adapter: str):
+    return run_cli(run, "start", "fake1", "--adapter", adapter, "--registry", str(run / "reg.json"))
+
+
+def test_missing_adapter_file_is_refused_before_spawn(tmp_path):
+    run = tmp_path / "nofile"
+    _prepare(run)
+    refused = _start(run, "nowhere/world.py:factory")
+    assert refused.returncode == 2
+    assert "adapter file not found: nowhere/world.py" in refused.stderr
+    assert "looked in" in refused.stderr and str(run) in refused.stderr
+    assert not (run / ".assay").exists()
+
+
+def test_unimportable_module_and_missing_factory_are_named(tmp_path):
+    run = tmp_path / "nomodule"
+    _prepare(run)
+    refused = _start(run, "no_such_assay_world:factory")
+    assert refused.returncode == 2
+    assert "not importable" in refused.stderr and "no_such_assay_world" in refused.stderr
+    assert not (run / ".assay").exists()
+    refused = _start(run, f"{FAKE_ADAPTER}:no_such_factory")
+    assert refused.returncode == 2
+    assert "no callable 'no_such_factory'" in refused.stderr
+    assert not (run / ".assay").exists()
+
+
+def test_relative_adapter_path_is_resolved_and_recorded(tmp_path):
+    """The README quickstart shape: the adapter path relative to the working
+    directory while the run directory is elsewhere."""
+    run = tmp_path / "relative"
+    _prepare(run)
+    import subprocess
+    import sys
+
+    from conftest import ASSAY_CLI
+
+    try:
+        started = subprocess.run(
+            [sys.executable, str(ASSAY_CLI), "--run-dir", str(run), "start", "fake1",
+             "--adapter", "examples/counter_world.py:factory",
+             "--registry", str(run / "reg.json")],
+            cwd=str(REPO), capture_output=True, text=True, timeout=120,
+        )
+        assert started.returncode == 0, started.stderr
+        config = json.loads((run / ".assay" / "config.json").read_text())
+        assert config["adapter"] == f"{(REPO / 'examples' / 'counter_world.py').resolve()}:factory"
+        assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
+    finally:
+        stop_run(run)
+
+
+def test_world_id_error_names_the_rule(tmp_path):
+    run = tmp_path / "worldid"
+    _prepare(run)
+    refused = run_cli(run, "start", "my-world", "--adapter", f"{FAKE_ADAPTER}:factory",
+                      "--registry", str(run / "reg.json"))
+    assert refused.returncode == 2
+    assert "invalid world id 'my-world'" in refused.stderr
+    assert "2 to 16 characters of a-z and 0-9" in refused.stderr
+    assert not (run / ".assay").exists()
+
+
+def test_internal_error_is_one_line_with_a_saved_traceback(tmp_path):
+    run = tmp_path / "crash"
+    _prepare(run)
+    try:
+        assert _start(run, f"{FAKE_ADAPTER}:factory").returncode == 0
+        # A journal line that parses as JSON but is not an event.
+        with (run / ".assay" / "events.jsonl").open("a") as handle:
+            handle.write('{"id": 1}\n')
+        status = run_cli(run, "status")
+        assert status.returncode == 2
+        assert status.stderr.startswith("ERROR | internal: KeyError")
+        assert "traceback in" in status.stderr
+        saved = run / ".assay" / "last_error.txt"
+        assert saved.exists() and "Traceback" in saved.read_text()
+        assert "Traceback" not in status.stderr
+    finally:
+        stop_run(run)
+
+
+def test_act_help_leads_with_the_general_table(tmp_path):
+    helped = run_cli(tmp_path, "act", "--help")
+    assert helped.returncode == 0, helped.stderr
+    text = helped.stdout
+    general = text.index("PREDICTION CLAIMS")
+    frame = text.index("FRAME WORLDS ONLY")
+    assert general < frame
+    assert "ch NAME delta OP V" in text and "crosses" in text
+    assert text.index("cell X,Y=V") > frame
+    assert "ACTION6" not in text
+    committed = run_cli(tmp_path, "commit", "--help")
+    assert "FRAME WORLDS ONLY" in committed.stdout

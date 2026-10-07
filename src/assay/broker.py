@@ -38,10 +38,90 @@ def is_remote_config(config: Mapping[str, Any]) -> bool:
     return str(config.get("mode", LOCAL_MODE)).lower() == REMOTE_MODE
 
 
-def _import_factory(spec: str, root: Path) -> Any:
+def split_adapter_spec(spec: str) -> tuple[str, str]:
     module_name, separator, attribute = spec.rpartition(":")
-    if not separator:
-        raise AssayError("adapter must be module:factory or /path/file.py:factory")
+    if not separator or not module_name or not attribute:
+        raise AssayError(
+            f"adapter spec {spec!r} must be module:factory or /path/file.py:factory"
+        )
+    return module_name, attribute
+
+
+def resolve_adapter_spec(spec: str, root: Path, cwd: Path | None = None) -> str:
+    """Resolve an adapter spec to its canonical form before anything is
+    spawned: a file spec becomes absolute (looked up against the run directory
+    first, then the caller's working directory), a module spec stays a module
+    spec. Refuses, with the places searched, when the file is nowhere."""
+    module_name, attribute = split_adapter_spec(spec)
+    candidate = Path(module_name)
+    if candidate.suffix != ".py":
+        return spec
+    searched: list[Path] = []
+    for base in ([None] if candidate.is_absolute() else [root, cwd or Path.cwd()]):
+        where = candidate if base is None else base / candidate
+        searched.append(where)
+        if where.is_file():
+            return f"{where.resolve()}:{attribute}"
+    looked = " and ".join(str(item.parent.resolve()) for item in searched) or str(candidate)
+    raise AssayError(
+        f"adapter file not found: {module_name} (looked in {looked}); pass the "
+        "file's path, absolute or relative to the run directory, as "
+        "/path/file.py:factory"
+    )
+
+
+_DRY_IMPORT = """\
+import importlib, importlib.util, sys
+spec, root = sys.argv[1], sys.argv[2]
+module_name, _, attribute = spec.rpartition(":")
+if module_name.endswith(".py"):
+    info = importlib.util.spec_from_file_location("_assay_adapter_check", module_name)
+    module = importlib.util.module_from_spec(info)
+    sys.modules[info.name] = module
+    info.loader.exec_module(module)
+else:
+    module = importlib.import_module(module_name)
+factory = getattr(module, attribute, None)
+if not callable(factory):
+    raise SystemExit(f"no callable {attribute!r} in {module_name}")
+"""
+
+
+def check_adapter_spec(spec: str, root: Path) -> None:
+    """Import the adapter once in a throwaway subprocess of the interpreter
+    that will serve the daemon, so a missing dependency, a syntax error or a
+    missing factory is a plain refusal here, not a daemon that never comes up
+    and a pointer to broker.log."""
+    module_name, attribute = split_adapter_spec(spec)
+    try:
+        completed = subprocess.run(
+            [sys.executable, "-c", _DRY_IMPORT, spec, str(root)],
+            capture_output=True,
+            text=True,
+            cwd=str(root) if root.is_dir() else None,
+            timeout=60.0,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        raise AssayError(
+            f"importing adapter {spec!r} did not finish within 60s; an adapter "
+            "module must be importable without starting the world"
+        ) from None
+    if completed.returncode == 0:
+        return
+    tail = (completed.stderr or completed.stdout).strip().splitlines()
+    reason = tail[-1][:300] if tail else f"exit {completed.returncode}"
+    if "ModuleNotFoundError" in reason or "No module named" in reason:
+        raise AssayError(
+            f"adapter {spec!r} is not importable by {sys.executable}: {reason}. "
+            "Install the adapter's dependencies into that interpreter (or point "
+            "ASSAY_PYTHON at one that has them), or pass /path/file.py:factory"
+        )
+    raise AssayError(f"adapter {spec!r} failed to import: {reason}")
+
+
+def _import_factory(spec: str, root: Path) -> Any:
+    module_name, attribute = split_adapter_spec(spec)
     candidate = Path(module_name)
     if not candidate.is_absolute():
         candidate = root / candidate

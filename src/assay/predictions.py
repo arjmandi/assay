@@ -1,8 +1,8 @@
 """A tiny prediction vocabulary the runtime grades automatically.
 
 Every live action carries a prediction. Structured claims are graded against
-the settled result; free text is graded as "some visible change". Coordinates
-are x=column, y=row — the same convention as ACTION6.
+the settled result; free text is graded as "some visible change". On frame
+worlds, coordinates are x=column, y=row.
 """
 
 from __future__ import annotations
@@ -21,28 +21,11 @@ GAMBLE_KINDS = {"win", "level_up"}
 CHANNEL_KINDS = {"channel_eq", "channel_delta", "channel_cross"}
 _MILESTONE = {"goal", "level"}  # channel claims here gamble; the rest world-model
 
-CLAIMS_HELP = """\
-PREDICTION CLAIMS | separate several with ";" | x=column y=row (like ACTION6)
-  noop                 nothing visible changes
-  change               something visible changes (free text means this too)
-  cell X,Y=V           cell at column X, row Y becomes hex color V
-  move X,Y DX,DY       the object covering X,Y shifts by (DX,DY) and vacates its old cells
-  vanish X,Y           every cell of the object covering X,Y stops being its color
-  region X0:X1,Y0:Y1   all changes fall inside this half-open box, and something changes
-  level+1              this action completes the level
-  win                  this action wins the game
-  verify:PATH.py       run your verifier file: def verify(before, after) -> (ok, actual)
-  ch NAME = V [± TOL]  a registered channel reads V (goal/level built in;
-                       `assay channel declare` registers more; delta/crosses forms exist)
-Free text that is not a claim is kept as commentary. Example:
-  --predict "door opens; cell 12,5=0; region 10:14,3:8"
-"""
-
 GENERAL_CLAIMS_HELP = """\
 PREDICTION CLAIMS | separate several with ";"
   noop                 no observed change
   change               the observation changes (free text means this too)
-  level+1              this action completes the current level/stage
+  level+1              this action completes the current progress unit
   win                  this action reaches the goal state
   verify:PATH.py       run your verifier file: def verify(before, after) -> (ok, actual)
   ch NAME = V [± TOL]  a registered channel reads V after this action
@@ -54,6 +37,19 @@ Channels: `goal` and `level` are built in; declare your own with `assay channel 
 Free text that is not a claim is kept as commentary. Example:
   --predict "ch counter delta = 1; verify:checks/counter.py"
 """
+
+FRAME_CLAIMS_HELP = """\
+FRAME WORLDS ONLY (grid observations) | x=column y=row | refused on registry runs
+  cell X,Y=V           cell at column X, row Y becomes hex color V
+  move X,Y DX,DY       the object covering X,Y shifts by (DX,DY) and vacates its old cells
+  vanish X,Y           every cell of the object covering X,Y stops being its color
+  region X0:X1,Y0:Y1   all changes fall inside this half-open box, and something changes
+Example:
+  --predict "door opens; cell 12,5=0; region 10:14,3:8"
+"""
+
+# The full help: the general table first (every world), the frame section after.
+CLAIMS_HELP = GENERAL_CLAIMS_HELP + "\n" + FRAME_CLAIMS_HELP
 
 _WINDOW = re.compile(r"^(.*\S)\s+@within\s+(\d+(?:\.\d+)?)s$", re.IGNORECASE)
 _VALUE = r"(-?\d+(?:\.\d+)?|true|false|\"[^\"]*\"|'[^']*'|[A-Za-z_][A-Za-z0-9_]*)"

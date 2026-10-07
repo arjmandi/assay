@@ -107,10 +107,21 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+# TODO(owner: O7): the rule is kept at [a-z0-9]{2,16} (the Factorio adapter
+# needs its alias table because of it). The review proposes
+# [a-z0-9][a-z0-9_-]{1,63}; old ids stay valid either way, and the socket and
+# anchor paths hash the directory, not the id. Relax here when decided.
+WORLD_ID_RULE = r"[a-z0-9]{2,16}"
+
+
 def normalize_game_id(value: str) -> str:
     game_id = value.strip().lower()
-    if not re.fullmatch(r"[a-z0-9]{2,16}", game_id):
-        raise AssayError(f"invalid game id {value!r}")
+    if not re.fullmatch(WORLD_ID_RULE, game_id):
+        raise AssayError(
+            f"invalid world id {value!r}: a world id is 2 to 16 characters of a-z "
+            "and 0-9 (upper case is lowered). It labels this run; a benchmark "
+            "adapter may read it to pick the instance to load"
+        )
     return game_id
 
 

@@ -64,6 +64,10 @@ Left on the experiment branch, deliberately:
   TODO(owner: O5): whether the benchmark protocols are rewritten so the
   operator runs `start`, or this option plus an honest paragraph is enough.
 
+- `assay act --help` and `assay commit --help` lead with the general claim
+  table (every world) and put the grid forms under a labelled "frame worlds
+  only" section that says they are refused on registry runs.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
@@ -110,6 +114,15 @@ Left on the experiment branch, deliberately:
   their modules. TODO(owner: O6): the alternative (keep the glob, call the
   channel unguarded in the paper) is a one-line revert in
   `modules._load_external`.
+- First-hour errors (ranked fix 6). The adapter spec is resolved and
+  dry-imported in a subprocess of the serving interpreter before the daemon is
+  spawned or anything is written: a missing file names the directories
+  searched (run directory, then working directory), an unimportable module
+  names the interpreter and the remedy, a missing factory is named. A file
+  spec is recorded in `config.json` as an absolute path. The world id error
+  states the rule (TODO(owner: O7) on relaxing it). An exception that is not
+  an `AssayError` prints one line, `ERROR | internal: <type>: <message>`, and
+  saves the traceback to `.assay/last_error.txt` instead of dumping it.
 
 ### Regression gates
 
