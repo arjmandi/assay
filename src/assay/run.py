@@ -44,7 +44,7 @@ from .core import (
     read_json,
     require_run,
 )
-from .integrity import ANCHOR_EVERY, _advance, anchor_file, chain_over, chain_path
+from .integrity import ANCHOR_EVERY, _advance, anchor_file, chain_over, chain_over_bytes, chain_path
 from .records import Event, Mutation
 
 if TYPE_CHECKING:
@@ -150,10 +150,7 @@ class Run:
         if strict and journal.integrity.refused is not None:
             raise _refusal(journal.integrity.refused)
         mutations, mutations_bytes, mutations_hash = _load_mutations(paths)
-        owner = read_json(paths.state / "owner.json", None)
-        owner_hash = (
-            str(owner["sha256"]) if isinstance(owner, dict) and owner.get("sha256") else None
-        )
+        owner_hash = _owner_hash_of(read_json(paths.state / "owner.json", None))
         return cls(
             paths=paths,
             config=config,
@@ -225,45 +222,110 @@ class Run:
         self.mutations_bytes += len(written)
         self.mutations_hash.update(written)
 
-    # -- verification (section 8.3; the daemon wires it in #20) ---------------------
+    # -- verification (section 8.3; the daemon calls it before every spend) ---------
 
     def verify_disk(self) -> list[Tamper]:
         """Every difference between the files and the held copies: the
-        journal's length and recomputed head, the mutation log's length and
-        digest, the registry, the configuration and the module manifest."""
+        journal's length and recomputed head (over the raw bytes, never
+        decoded), the mutation log's length and digest, `chain.json` against
+        the stored record, the registry, the configuration, `owner.json`
+        against the held hash, and the module manifest. A file that cannot
+        be read or parsed is a difference too, reported as `unreadable`."""
         found: list[Tamper] = []
-        try:
-            journal = self.paths.events.read_bytes()
-        except FileNotFoundError:
-            journal = b""
-        head = chain_over(journal.decode().splitlines())
-        if len(journal) != self.journal_bytes:
-            found.append(Tamper("events.jsonl length", str(self.journal_bytes), str(len(journal))))
-        if head != self.chain_head:
-            found.append(Tamper("events.jsonl head", self.chain_head, head))
-        try:
-            mutations = self.paths.mutations.read_bytes()
-        except FileNotFoundError:
-            mutations = b""
-        if len(mutations) != self.mutations_bytes:
-            found.append(Tamper("mutations.jsonl length", str(self.mutations_bytes), str(len(mutations))))
-        digest = hashlib.sha256(mutations).hexdigest()
-        if digest != self.mutations_digest:
-            found.append(Tamper("mutations.jsonl digest", self.mutations_digest, digest))
+        journal = _read_bytes(self.paths.events)
+        if isinstance(journal, Exception):
+            found.append(Tamper("events.jsonl", self.chain_head, f"unreadable: {journal}"))
+        else:
+            if len(journal) != self.journal_bytes:
+                found.append(Tamper("events.jsonl length", str(self.journal_bytes), str(len(journal))))
+            head = chain_over_bytes(journal)
+            if head != self.chain_head:
+                found.append(Tamper("events.jsonl head", self.chain_head, head))
+        mutations = _read_bytes(self.paths.mutations)
+        if isinstance(mutations, Exception):
+            found.append(Tamper("mutations.jsonl", self.mutations_digest, f"unreadable: {mutations}"))
+        else:
+            if len(mutations) != self.mutations_bytes:
+                found.append(
+                    Tamper("mutations.jsonl length", str(self.mutations_bytes), str(len(mutations)))
+                )
+            digest = hashlib.sha256(mutations).hexdigest()
+            if digest != self.mutations_digest:
+                found.append(Tamper("mutations.jsonl digest", self.mutations_digest, digest))
         for what, held, path in (
             ("registry.json", self.registry, self.paths.registry),
             ("config.json", self.config, self.paths.config),
         ):
             expected = "absent" if held is None else _digest(held)
-            actual = _file_digest(path)
+            stored = _read_json(path)
+            if isinstance(stored, Exception):
+                found.append(Tamper(what, expected, f"unreadable: {stored}"))
+                continue
+            actual = "absent" if stored is None else _digest(stored)
             if actual != expected:
                 found.append(Tamper(what, expected, actual))
+        # The chain file the next append would rewrite from the held head:
+        # a replaced head or a deleted file is a difference, not a repair.
+        chain = _read_json(chain_path(self.paths))
+        if isinstance(chain, Exception):
+            found.append(Tamper("chain.json", _chain_text(self.stored_chain), f"unreadable: {chain}"))
+        elif chain != self.stored_chain:
+            found.append(Tamper("chain.json", _chain_text(self.stored_chain), _chain_text(chain)))
+        # The owner hash, until #10 moves the owner operations into the daemon.
+        owner = _read_json(self.paths.state / "owner.json")
+        expected_owner = self.owner_hash or "absent"
+        if isinstance(owner, Exception):
+            found.append(Tamper("owner.json", expected_owner, f"unreadable: {owner}"))
+        else:
+            actual_owner = _owner_hash_of(owner) or "absent"
+            if actual_owner != expected_owner:
+                found.append(Tamper("owner.json", expected_owner, actual_owner))
         from .modules import load_manifest
 
-        manifest = load_manifest(self.paths)
-        if manifest != self.manifest:
-            found.append(Tamper("modules/manifest.json", _digest(self.manifest), _digest(manifest)))
+        try:
+            manifest = load_manifest(self.paths)
+        except (OSError, AssayError) as error:
+            found.append(Tamper("modules/manifest.json", _digest(self.manifest), f"unreadable: {error}"))
+        else:
+            if manifest != self.manifest:
+                found.append(Tamper("modules/manifest.json", _digest(self.manifest), _digest(manifest)))
         return found
+
+
+def _read_bytes(path: Any) -> bytes | Exception:
+    """The file's bytes, empty when absent, or the error that kept it from
+    being read."""
+    try:
+        return bytes(path.read_bytes())
+    except FileNotFoundError:
+        return b""
+    except OSError as error:
+        return error
+
+
+def _read_json(path: Any) -> Any:
+    """The file's JSON value, None when absent, or the error that kept it
+    from being read or parsed."""
+    try:
+        return read_json(path, None)
+    except (OSError, AssayError) as error:
+        return error
+
+
+def _owner_hash_of(value: Any) -> str | None:
+    if isinstance(value, dict) and value.get("sha256"):
+        return str(value["sha256"])
+    return None
+
+
+def _chain_text(value: Any) -> str:
+    """A chain record for a difference line: `e<id> <head>` when well formed,
+    `absent` when there is none, else the digest of whatever is there."""
+    if value is None:
+        return "absent"
+    if isinstance(value, dict) and isinstance(value.get("event_id"), int) and isinstance(value.get("head"), str):
+        return f"e{value['event_id']} {value['head']}"
+    return _digest(value)
 
 
 def _append_line(path: Any, line: str) -> None:
@@ -316,8 +378,9 @@ def _stored_chain(paths: RunPaths) -> tuple[dict[str, Any] | None, str | None]:
 def _load_journal(paths: RunPaths, *, strict: bool) -> _Journal:
     """Every line into an Event, the head after each line, the file's length,
     the integrity findings, and `chain.json` as stored. A line that does not
-    decode is a finding: the lenient reader keeps the events before it and
-    treats the journal as ending there; the strict one refuses."""
+    decode (as JSON, as a record, or as UTF-8) is a finding: the lenient
+    reader keeps the events before it and treats the journal as ending
+    there; the strict one refuses."""
     try:
         data = paths.events.read_bytes()
     except FileNotFoundError:
@@ -331,10 +394,18 @@ def _load_journal(paths: RunPaths, *, strict: bool) -> _Journal:
     problem: str | None = None
     malformed: str | None = None
     size = 0
-    for number, raw in enumerate(data.decode().splitlines(keepends=True), 1):
-        line = raw.rstrip("\r\n")
+    for number, raw in enumerate(data.splitlines(keepends=True), 1):
+        try:
+            line = raw.decode().rstrip("\r\n")
+        except UnicodeDecodeError as error:
+            # A byte that is not UTF-8 is a malformed line like any other:
+            # the readers report it, the strict load refuses.
+            malformed = f"line {number} malformed: {error}"
+            if strict:
+                raise _refusal(malformed) from error
+            break
         if not line.strip():
-            size += len(raw.encode())
+            size += len(raw)
             continue
         try:
             event = Event.from_json(json.loads(line))
@@ -354,7 +425,7 @@ def _load_journal(paths: RunPaths, *, strict: bool) -> _Journal:
             prefix_head = head
         events.append(event)
         heads.append(head)
-        size += len(raw.encode())
+        size += len(raw)
     last_id = len(events) - 1
     chain = CHAIN_ABSENT
     chain_problem: str | None = None

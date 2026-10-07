@@ -94,6 +94,29 @@ Left on the experiment branch, deliberately:
   contract, and the conformance test checks every adapter against them.
   `mypy --strict src/assay` is clean (36 errors before), and mypy joins the
   dev extra; #27 puts it in CI.
+- The tamper refusal and the daemon-side module install (#20). Before every
+  paid action (an act, each step of a commit or a model plan, a reset) the
+  daemon verifies the files on disk against the copies it holds: the
+  journal's length and recomputed head (hashed as raw bytes), the mutation
+  log, `registry.json`, `config.json`, `chain.json`, `owner.json` and the
+  module manifest, a file that cannot be read or parsed counting as a
+  difference. On a difference it refuses with `TAMPER_DETECTED | <what
+  differed> (held ..., on disk ...)`, appends a `tamper_detected` activity
+  record carrying every difference, keeps what it holds, appends nothing to
+  the changed file, and refuses every later paid action and every install
+  the same way until it is stopped; `ping` carries what differed and `assay
+  status` prints it as `INTEGRITY | the daemon refused a paid action: ...`
+  while the daemon lives; the offline readers keep answering and `assay
+  stop` works. A journal byte that is not UTF-8 is a malformed line for the
+  readers and `CHAIN_DIVERGED | line N malformed: ...` for a start, never an
+  internal error. The sealing record in the anchor file and audit's reading
+  of it are #10's. `assay module install PATH --token
+  TOK` is the daemon operation `install_module`: the daemon checks the token
+  against the hash it holds, pins the file, updates the manifest it holds,
+  journals `module_installed` and loads the module, which speaks on the next
+  action; without a live daemon (none in the process table) the command
+  refuses and names `assay start`. `broker.broker_state` reads the daemon's
+  held chain event, head and refusal as a `DaemonState` record.
 - The 1.2.0 design notes, sections 6 to 8 of `docs/ARCHITECTURE.md`: the run
   model with typed records, the protocol with its error model and surfaces, and
   the trust model; `verify/JOURNAL_SPEC.md` states that `data` may hold any JSON
@@ -312,6 +335,16 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- The daemon holds one `Run` for its life (#20). `serve` loads it strict
+  once, every gated request handler receives it, `act`, `commit` and `reset`
+  append through `run.append` and `run.record_mutation` with no re-read of
+  the journal, the next mutation id is one past the held log's, and the
+  modules load once at `serve` from the manifest the run holds (the CLI
+  keeps loading them lazily for `status` and `module list`). Measured on the
+  thousand-event test: a thousand steps through the daemon in about two
+  seconds, `verify_disk` at about a millisecond per paid action over the
+  443 KB journal they leave. Nothing printed by the offline commands changes;
+  G2 proves it.
 - Event 0 is the daemon's (#12). On a fresh run `serve` takes the first
   observation, writes the session's `public_info` into `config.json`, appends
   `START` through `run.append` and runs the observation kind's after-record

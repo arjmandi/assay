@@ -22,11 +22,12 @@ because no A/B has yet shown that blocking pays. Demands are always for
 checkable structure (named, non-empty fields supplied via --declare or the
 destructive-gate flags), never for confidence. Module code is pack-tier trust:
 installed by the human at registration (`modules: [path.py]`) or by the owner
-mid-run (`assay module install PATH --token TOK`), never writable by the
-agent. The modules load once per run object from the held manifest, in the
-daemon for every gated action and in the CLI for `assay status` and
-`assay module list`; `assay start` loads the registered files once to pin
-them. Installed files are pinned into `.assay/modules/` and listed in
+mid-run (`assay module install PATH --token TOK`, the daemon operation
+`install_module`), never writable by the agent. The modules load once per
+process from the held manifest: in the daemon at `serve`, held for its life
+and reloaded when the owner installs one; in the CLI lazily, for `assay
+status` and `assay module list`; `assay start` loads the registered files
+once to pin them. Installed files are pinned into `.assay/modules/` and listed in
 `.assay/modules/manifest.json` with their sha256; a file in that directory
 that is not listed, or whose hash no longer matches, is never loaded and
 status says so. This is the sanctioned hot-add channel: the owner installs,
@@ -751,8 +752,11 @@ def pin_external_modules(paths: RunPaths, registry: Mapping[str, Any] | None) ->
 
 
 def install_module(run: Run, source: Path, token: str | None) -> dict[str, Any]:
-    """Owner-authorized mid-run install: copy, check the contract, append to
-    the manifest, journal `module_installed`. The sanctioned hot-add channel."""
+    """Owner-authorized mid-run install, run by the daemon on the run it
+    holds: the token against the held hash, copy, check the contract, append
+    to the held manifest and write it, journal `module_installed`, and drop
+    the held module set so the next `active_modules` reloads it. The
+    sanctioned hot-add channel."""
     from .agenda import require_owner
 
     require_owner(run, token)

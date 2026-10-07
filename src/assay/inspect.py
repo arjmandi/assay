@@ -368,7 +368,28 @@ def _integrity_lines(run: Run, events: Sequence[Event]) -> list[str]:
             f"INTEGRITY | {refused}; this run is INVALID FOR SCORING and `assay start` "
             "refuses to resume it (CHAIN_DIVERGED)"
         )
+    lines.extend(_daemon_refusal_lines(run))
     return lines
+
+
+def _daemon_refusal_lines(run: Run) -> list[str]:
+    """The standing refusal of a live daemon that found a file changed under
+    it (docs/ARCHITECTURE.md section 8.3): a registry, configuration, chain,
+    owner, mutation-log or manifest edit leaves no trace in the journal the
+    readers load, so the line comes from the daemon's held state. No line
+    without a daemon, or while it is inside a step; the audit's part is #10's."""
+    from .broker import broker_state
+
+    try:
+        state = broker_state(run.paths)
+    except (AssayError, KeyError):
+        return []
+    if state.tampered is None:
+        return []
+    return [
+        f"INTEGRITY | the daemon refused a paid action: {state.tampered}; it refuses "
+        "every paid action until it is stopped and the record is examined (`assay audit`)"
+    ]
 
 
 def _registry_status_lines(run: Run, registry: Mapping[str, Any]) -> list[str]:

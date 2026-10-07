@@ -137,6 +137,19 @@ def chain_over(lines: Iterable[str]) -> str:
     return head
 
 
+def chain_over_bytes(data: bytes) -> str:
+    """The same head over a journal's raw bytes, for `verify_disk`: the lines
+    split as the loader splits them (a newline, a carriage return, or both),
+    blank lines skipped, each hashed as the bytes it is. The file is never
+    decoded, which halves the cost over the largest journals, and a byte that
+    is not UTF-8 changes the head like any other edit."""
+    head = hashlib.sha256(CHAIN_SEED.encode()).hexdigest()
+    for line in data.splitlines():
+        if line.strip():
+            head = hashlib.sha256(head.encode() + line).hexdigest()
+    return head
+
+
 def redact(text: str | None, extra_names: Sequence[str] = ()) -> str | None:
     """Replace secret env values with [REDACTED:<NAME>] before journaling."""
     if not text:

@@ -24,6 +24,7 @@ from .broker import (
     LOCAL_MODE,
     REMOTE_MODE,
     broker_gated,
+    broker_install_module,
     broker_matches_latest_event,
     broker_ping,
     check_adapter_spec,
@@ -51,7 +52,6 @@ from .model import (
 from .modules import (
     ModuleView,
     active_modules,
-    install_module,
     pin_external_modules,
     reconstruct_manifest,
     unlisted_lines,
@@ -1017,7 +1017,9 @@ def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace)
                 )
     elif args.command == "module":
         if args.module_command == "install":
-            record = install_module(run, args.path, args.token)
+            # The owner's install runs in the daemon, against the hash and
+            # the manifest it holds; it refuses without a live daemon.
+            record = broker_install_module(paths, args.path, args.token)
             print(
                 f"MODULE | installed {record['name']} from {record['source']} "
                 f"(sha256 {record['sha256'][:12]}) | journaled | active from the "

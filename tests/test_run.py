@@ -253,3 +253,46 @@ def test_a_malformed_line_is_a_finding_for_the_readers_and_a_refusal_for_a_start
     report = audit(Run.load(paths, strict=False))
     assert report["events"] == 2 and report["invalid_for_scoring"] is True
     assert report["problems"] == ["journal: line 3 malformed: Expecting value: line 1 column 1 (char 0)"]
+
+
+def test_a_byte_that_is_not_utf8_is_a_malformed_line(tmp_path):
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    run.append(event_of(id=-1))
+    with paths.events.open("ab") as handle:
+        handle.write(b"\xff\n")
+    lenient = Run.load(paths, strict=False)
+    assert len(lenient.events) == 2
+    assert lenient.integrity.malformed == (
+        "line 3 malformed: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"
+    )
+    assert lenient.integrity.refused == lenient.integrity.malformed
+    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| line 3 malformed: 'utf-8' codec"):
+        Run.load(paths, strict=True)
+    assert run.verify_disk()[0].what == "events.jsonl length"
+
+
+def test_verify_disk_sees_the_chain_file_the_owner_file_and_an_unreadable_file(tmp_path):
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    assert run.verify_disk() == []
+    head = run.chain_head
+    atomic_json(paths.state / "chain.json", {"event_id": 0, "head": "0" * 64})
+    assert run.verify_disk() == [Tamper("chain.json", f"e0 {head}", "e0 " + "0" * 64)]
+    (paths.state / "chain.json").unlink()
+    assert run.verify_disk() == [Tamper("chain.json", f"e0 {head}", "absent")]
+    atomic_json(paths.state / "chain.json", {"event_id": 0, "head": head})
+    assert run.verify_disk() == []
+    atomic_json(paths.state / "owner.json", {"sha256": "f" * 64})
+    assert run.verify_disk() == [Tamper("owner.json", "absent", "f" * 64)]
+    (paths.state / "owner.json").unlink()
+    paths.config.write_bytes(b"{not json")
+    found = run.verify_disk()
+    assert [item.what for item in found] == ["config.json"]
+    assert found[0].found.startswith("unreadable: corrupt JSON in ")
+    paths.events.write_bytes(paths.events.read_bytes() + b"\xff\n")
+    assert [item.what for item in run.verify_disk()] == [
+        "events.jsonl length", "events.jsonl head", "config.json",
+    ]

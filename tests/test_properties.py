@@ -26,7 +26,7 @@ from hypothesis import strategies as st
 from conftest import event_of
 
 from assay.core import AssayError, RunPaths
-from assay.integrity import CHAIN_SEED, chain_over, ungated_events
+from assay.integrity import CHAIN_SEED, chain_over, chain_over_bytes, ungated_events
 from assay.predictions import parse_claims
 from assay.registry import parse_registry_action, validate_registry
 
@@ -419,6 +419,8 @@ def test_kernel_checker_and_spec_chains_agree(journal, rows):
     assert head == assay_verify.compute_chain(lines)
     journal.events.write_text("".join(row + "\n" for row in rows))
     assert assay_verify.read_lines(journal.events) == lines
+    # `verify_disk` hashes the file's bytes without decoding them: the same head.
+    assert chain_over_bytes(journal.events.read_bytes()) == head
 
 
 def _assert_heads_differ(lines: list[str], mutated: list[str]) -> None:
