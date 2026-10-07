@@ -259,25 +259,18 @@ def test_status_lines_follow_the_rule_of_the_stats_file(paths):
     ]
     # The same counters in a file recorded under the never-failed rule: both
     # flagged by the old line, both excluded, no advisory. The replay gate
-    # holds that line byte for byte against the campaign kernel.
+    # holds that line against the campaign kernel byte for byte, through the
+    # vocabulary map's one entry for it (the colon where the em dash was).
     atomic_json(paths.verifier_stats, counters)
     lines = _claim_meter_lines(paths, events)
-    assert lines[0] == (
+    assert lines == [
         "CLAIMS | world-model misses 0/0 | gamble misses 0/0 | "
-        "sharpness 2/2 (100%) | invalid 0"
-    )
-    assert [line.split(" failed 0 ")[0] for line in lines[1:]] == [
-        f"VACUOUS | verifier {vacuous[:12]} graded 5",
-        f"VACUOUS | verifier {held[:12]} graded 5",
+        "sharpness 2/2 (100%) | invalid 0",
+        f"VACUOUS | verifier {vacuous[:12]} graded 5 failed 0: a verifier that "
+        "never fails proves nothing; its passes are excluded from the meter",
+        f"VACUOUS | verifier {held[:12]} graded 5 failed 0: a verifier that "
+        "never fails proves nothing; its passes are excluded from the meter",
     ]
-    assert all(
-        line.endswith(
-            "a verifier that never fails proves nothing; its passes are excluded "
-            "from the meter"
-        )
-        for line in lines[1:]
-    )
-    assert len(lines) == 3
 
 
 def test_run_verifier_rejects_missing_store(paths):
