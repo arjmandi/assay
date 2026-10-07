@@ -218,6 +218,14 @@ def _parser() -> Parser:
         "--because", help="why the current board is worth abandoning (required unless GAME_OVER)"
     )
     reset.add_argument("--at", type=int, dest="at_event")
+    reset.add_argument(
+        "--declare",
+        action="append",
+        default=[],
+        metavar='"field=value"',
+        help="structural declaration a module demanded for this reset "
+        '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
+    )
 
     python = commands.add_parser(
         "python",
@@ -979,6 +987,7 @@ def main() -> None:
                             "op": "gated_reset",
                             "because": args.because,
                             "at_event": args.at_event,
+                            "declares": _parse_declares(args.declare),
                         },
                     )
                 else:
@@ -986,6 +995,7 @@ def main() -> None:
                         paths,
                         because=args.because,
                         at_event=args.at_event,
+                        declares=_parse_declares(args.declare),
                     )
                 print(result_text(paths, receipt))
             elif args.command == "channel":

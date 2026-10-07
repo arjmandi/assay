@@ -478,6 +478,12 @@ def execute_steps(
         pending["grade"] = graded
         if ungated:
             pending["gate_optional"] = True
+        if declares:
+            # The same record a single act carries: a declaration made for a
+            # batch is evidence on every step it covered.
+            pending["declares"] = {
+                key: redact(str(value), secrets) for key, value in declares.items()
+            }
         event = _record(paths, pending)
         observe_outcome(paths, registry, load_events(paths), event)
         failed = [line for line in grade_lines(graded) if line.startswith("✗")]
@@ -860,10 +866,12 @@ def reset_level(
     *,
     because: str | None = None,
     at_event: int | None = None,
+    declares: Mapping[str, str] | None = None,
     stepper: Any = None,
 ) -> dict[str, Any]:
     events = _head_events(paths, at_event)
     registry = load_registry(paths)
+    declared = dict(declares or {})
     advisories = _enforce_registry_gates(
         paths,
         registry,
@@ -871,18 +879,25 @@ def reset_level(
         kind="reset",
         tokens=[],
         claims_per_token=[],
-        declares=None,
+        declares=declared,
         in_batch=False,
     )
     if registry is not None:
-        # Reset itself is never destructive-flagged, but modules may advise
-        # (park-with-test); consult with a reset pending explicitly.
+        # Reset itself is never destructive-flagged, but modules may advise or
+        # demand (park-with-test, a conclusion expressed as a reset); consult
+        # with the reset pending and its declarations explicitly.
         advisories.extend(
             consult_modules(
                 paths,
                 registry,
                 events,
-                {"kind": "reset", "name": "RESET", "params": None, "claims": [], "declares": {}},
+                {
+                    "kind": "reset",
+                    "name": "RESET",
+                    "params": None,
+                    "claims": [],
+                    "declares": declared,
+                },
             )
         )
     check_budget(events, registry, planned=1)
@@ -901,6 +916,10 @@ def reset_level(
     response, mutation_id, warning = step(paths, "RESET", None, {"because": reason})
     pending = make_event(response, "RESET", None, prior, note=reason)
     pending["mutation_id"] = mutation_id
+    if declared:
+        pending["declares"] = {
+            key: redact(str(value), secrets) for key, value in declared.items()
+        }
     event = _record(paths, pending)
     observe_outcome(paths, registry, load_events(paths), event)
     detail = "current board rewound; completed levels and action history preserved"

@@ -78,6 +78,10 @@ Left on the experiment branch, deliberately:
   start` records `python` in `config.json` and a resume from a different
   interpreter prints a warning that names both and `ASSAY_PYTHON`.
 
+- `assay reset --declare "field=value"`: a reset can carry declarations, so a
+  module demand can key on a reset (a conclusion expressed as giving up on the
+  current state) and the declaration is journaled on the RESET event.
+
 ### Fixed
 
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
@@ -137,6 +141,11 @@ Left on the experiment branch, deliberately:
   CLI that started it and nothing read the recorded path. Now it is recorded
   in `config.json`, checked on resume, pinned by `ASSAY_PYTHON` in the
   launcher, and reported by `assay doctor`.
+- Declares on commit steps (ranked fix 8). `assay commit --declare` reached
+  the modules but was never written to the step events, while `assay act
+  --declare` was. Every step of a batch now carries the declaration, redacted
+  like the single-act form. Declaration counts over the historical journals
+  are therefore lower bounds for batches.
 
 ### Regression gates
 

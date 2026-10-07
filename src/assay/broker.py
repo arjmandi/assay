@@ -720,6 +720,7 @@ def serve(paths: RunPaths) -> None:
                             paths,
                             because=request.get("because"),
                             at_event=request.get("at_event"),
+                            declares=request.get("declares"),
                             stepper=direct_stepper,
                         )
                     events = load_events(paths)
