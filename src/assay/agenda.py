@@ -97,7 +97,7 @@ def standing_goal(
     if registered:
         return {"text": str(registered), "source": "registry"}
     return {
-        "text": "reach the environment's WIN state (all levels complete)",
+        "text": "reach the environment's WIN state (every progress unit complete)",
         "source": "host",
     }
 

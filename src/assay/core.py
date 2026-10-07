@@ -236,7 +236,7 @@ def require_run(paths: RunPaths) -> dict[str, Any]:
     config = read_json(paths.config)
     if not isinstance(config, dict):
         raise AssayError(
-            f"{paths.root} is not initialized; run `assay start GAME_ID`"
+            f"{paths.root} is not initialized; run `assay start WORLD_ID`"
         )
     return config
 

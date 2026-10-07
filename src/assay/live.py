@@ -48,6 +48,7 @@ from .registry import (
     notes_cap,
 )
 from .verifiers import admit_verifier
+from .words import unit_noun
 
 
 def write_receipt(paths: RunPaths, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -60,7 +61,7 @@ def write_receipt(paths: RunPaths, value: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _archive_notes(paths: RunPaths, completed_level: int) -> None:
-    """Snapshot the live notes when a level completes; the live file is kept."""
+    """Snapshot the live notes when a progress unit completes; the live file is kept."""
     if not paths.notes.exists():
         return
     archive = paths.state / "levels" / f"level-{completed_level}.md"
@@ -74,7 +75,7 @@ def head_events(paths: RunPaths, at_event: int | None) -> list[dict[str, Any]]:
     if not events:
         raise AssayError("timeline is empty")
     if events[-1]["state"] == "WIN":
-        raise AssayError("the game is already complete")
+        raise AssayError("the goal is already reached; this run is complete")
     if at_event is not None and at_event != int(events[-1]["id"]):
         raise AssayError(
             f"event guard failed: requested {at_event}, current {events[-1]['id']}"
@@ -150,7 +151,7 @@ def _notes_hard_stop(paths: RunPaths, registry: Mapping[str, Any] | None) -> Non
         raise AssayError(
             f"NOTES.md is {size} chars — more than twice the {cap}-char cap. One "
             "page is the contract: archive detail elsewhere and trim before the "
-            "next paid action (overflow is auto-archived at level completions)"
+            "next paid action (overflow is auto-archived when a progress unit completes)"
         )
 
 
@@ -354,18 +355,21 @@ def execute_action(
         aggregate_lines.extend(resolve_due(paths, all_events))
     lines = grade_lines(graded)
     if event["state"] == "WIN":
-        outcome, detail = "GAME_COMPLETE", "the game is complete"
+        outcome, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
     elif level_advanced(event):
         outcome = "LEVEL_COMPLETE"
         detail = (
-            f"level {int(event['level_before']) + 1} complete; notes archived — "
-            "re-verify carried assumptions on the new board"
+            f"{unit_noun(event['win_levels'])} {int(event['level_before']) + 1} complete; "
+            f"notes archived — re-verify carried assumptions in the new {unit_noun(event['win_levels'])}"
         )
         if not ok:
             detail += "; prediction also missed — treat the mechanics as unproven"
     elif event["state"] == "GAME_OVER":
         outcome = "GAME_OVER"
-        detail = "environment reported GAME_OVER; `assay reset` restarts the level"
+        detail = (
+            "environment reported GAME_OVER; `assay reset` restarts the current "
+            f"{unit_noun(event['win_levels'])}"
+        )
     elif ungated:
         outcome = "UNGATED"
         detail = (
@@ -537,11 +541,14 @@ def execute_steps(
         remaining = len(parsed) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
         if event["state"] == "WIN":
-            outcome, detail = "GAME_COMPLETE", f"the game is complete{discarded}"
+            outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
         if level_advanced(event):
             outcome = "LEVEL_COMPLETE"
-            detail = f"level advanced after {canonical_action(event)}{discarded}"
+            detail = (
+                f"{unit_noun(event['win_levels'])} advanced after "
+                f"{canonical_action(event)}{discarded}"
+            )
             if not ok:
                 detail += "; prediction also missed — treat the mechanics as unproven"
             break
@@ -698,11 +705,14 @@ def execute_model_plan(
         remaining = len(actions) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
         if event["state"] == "WIN":
-            outcome, detail = "GAME_COMPLETE", f"the game is complete{discarded}"
+            outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
         if level_advanced(event):
             outcome = "LEVEL_COMPLETE"
-            detail = f"level advanced after {canonical_action(event)}{discarded}"
+            detail = (
+                f"{unit_noun(event['win_levels'])} advanced after "
+                f"{canonical_action(event)}{discarded}"
+            )
             break
         if event["state"] == "GAME_OVER":
             outcome = "GAME_OVER"
@@ -777,7 +787,7 @@ def reset_level(
         reason = reason or "environment reported GAME_OVER"
     elif not reason:
         raise AssayError(
-            'reset needs --because "<why this board is worth abandoning>" '
+            'reset needs --because "<why this state is worth abandoning>" '
             "(GAME_OVER excepted)"
         )
     secrets = tuple((registry or {}).get("secrets") or ())
@@ -792,7 +802,10 @@ def reset_level(
         }
     event = record_event(paths, pending)
     observe_outcome(paths, registry, load_events(paths), event)
-    detail = "current board rewound; completed levels and action history preserved"
+    detail = (
+        f"current {unit_noun(prior['win_levels'])} rewound; completed "
+        f"{unit_noun(prior['win_levels'])}s and action history preserved"
+    )
     if warning:
         detail += f"; scorecard finalization warning: {warning}"
     receipt: dict[str, Any] = {

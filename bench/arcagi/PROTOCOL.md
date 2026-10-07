@@ -3,6 +3,17 @@
 This folder is the ARC-AGI-3 benchmark harness for ASSAY: the world adapter,
 the pre-registered action registries, and the results record (`RESULTS.md`).
 
+## Vocabulary: how the general harness maps onto ARC-AGI-3
+
+ASSAY's prose says world and progress unit. For this benchmark the mapping is
+one to one: the world id is the ARC game id (`ft09`, `lf52`), a progress unit
+is an ARC level (so status shows `level n/m` and the receipts say "level"),
+`levels_completed` and `win_levels` are the level counters the engine reports,
+`WIN` is the engine's win state, and `GAME_OVER` is the engine's game-over
+state, which `assay reset` recovers from without a reason. The journal field
+names are the historical ones from this benchmark and are fixed by the public
+journal spec (assay-verify, `JOURNAL_SPEC.md` section 7).
+
 ## Running a game
 
 Requirements beyond the core harness: the `arc-agi` client library must be

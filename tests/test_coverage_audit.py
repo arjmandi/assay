@@ -135,7 +135,7 @@ def test_status_meter_and_stall_phrase():
     for index in range(1, 4):
         events.append(_event(index, "NOOP", ok=True, grade=[{"kind": "noop", "ok": True}]))
     line = module.trigger(_view(events), None)
-    assert line == "coverage level 1: untried [BOMB, INC, SET_LAMP], no-op-only [none]."
+    assert line == "coverage unit 1: untried [BOMB, INC, SET_LAMP], no-op-only [none]."
     for index in range(4, 9):
         events.append(_event(index, "NOOP", ok=True, grade=[{"kind": "noop", "ok": True}]))
     line = module.trigger(_view(events), None)
@@ -184,7 +184,7 @@ def test_block_mode_end_to_end(tmp_path):
         for _ in range(3):
             assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
         status = run_cli(run, "status")
-        assert "MODULE coverage_audit | coverage level 1: untried [BOMB, INC, SET_LAMP]" in status.stdout
+        assert "MODULE coverage_audit | coverage unit 1: untried [BOMB, INC, SET_LAMP]" in status.stdout
         missed = run_cli(run, "act", "NOOP", "--predict", "change")
         assert "OUTCOME | SURPRISE" in missed.stdout
         before = len((run / ".assay" / "events.jsonl").read_text().splitlines())
@@ -223,4 +223,4 @@ def test_reissue_halts_on_the_lf52_prefix():
     assert "it just graded FALSE" in line
     assert "grid regions unprobed" in line
     assert set(module.demand(_view(prefix), pending)) == {"revised"}
-    assert module.trigger(_view(prefix), None).startswith("coverage level ")
+    assert module.trigger(_view(prefix), None).startswith("coverage level ")  # lf52 has ten levels

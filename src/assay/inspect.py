@@ -27,6 +27,7 @@ from .registry import (
     spend_reports,
 )
 from .textobs import delta_lines, pretty_lines
+from .words import progress_text, unit_line_label, unit_noun
 
 
 def _general_actions_line(
@@ -151,8 +152,9 @@ def _demotion_banner(paths: RunPaths, event: Mapping[str, Any]) -> list[str]:
         return []
     if paths.notes.stat().st_mtime <= archive.stat().st_mtime:
         return [
-            f"NOTES | unchanged since level {completed} ended — earlier Verified claims "
-            "are only Assumed on this level until re-tested"
+            f"NOTES | unchanged since {unit_noun(event['win_levels'])} {completed} ended — "
+            f"earlier Verified claims are only Assumed on this {unit_noun(event['win_levels'])} "
+            "until re-tested"
         ]
     return []
 
@@ -220,9 +222,7 @@ def result_text(paths: RunPaths, receipt: Mapping[str, Any]) -> str:
             lines.append(f"      {step['problem']}")
     paid = sum(bool(item.get("counts_action")) for item in events)
     lines.append(
-        f"EVENT | e{int(event['id'])} | level "
-        f"{min(int(event['win_levels']), int(event['levels_completed']) + 1)}"
-        f"/{event['win_levels']} | paid actions {paid} | {event['state']}"
+        f"EVENT | e{int(event['id'])} | {progress_text(event)} | paid actions {paid} | {event['state']}"
     )
     kind = kind_for(event)
     if kind is not None:
@@ -256,7 +256,7 @@ def _general_inspect_text(
     """Inspect one dict-observation event: KEY DELTA plus pretty JSON."""
     event = events[index]
     lines = [
-        f"RUN | event {index} | level {min(int(event['win_levels']), int(event['levels_completed']) + 1)}/{event['win_levels']} | paid actions {sum(bool(item.get('counts_action')) for item in events)} | state {event['state']}",
+        f"RUN | event {index} | {progress_text(event)} | paid actions {sum(bool(item.get('counts_action')) for item in events)} | state {event['state']}",
         f"CAUSE | {canonical_action(event)}",
         _general_actions_line(event, load_registry(paths)),
     ]
@@ -311,7 +311,7 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
         else "no graded predictions yet"
     )
     lines = [
-        f"STATUS | {game_id} | event {event['id']} | level {min(int(event['win_levels']), int(event['levels_completed']) + 1)}/{event['win_levels']} | paid actions {paid} | {event['state']}",
+        f"STATUS | {game_id} | event {event['id']} | {progress_text(event)} | paid actions {paid} | {event['state']}",
         _mode_line(paths),
     ]
     if kind is None:
@@ -337,7 +337,8 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
         lines.extend(_registry_status_lines(paths, registry, events))
     lines.extend(
         [
-            f"LEVEL | {level_actions} paid actions this level | {prediction_summary}",
+            f"{unit_line_label(event['win_levels'])} | {level_actions} paid actions this "
+            f"{unit_noun(event['win_levels'])} | {prediction_summary}",
             *_claim_meter_lines(paths, events),
             *(kind.status_lines(paths, event, events) if kind is not None else ()),
         ]

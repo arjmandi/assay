@@ -1,6 +1,6 @@
 """Registry-driven general actions with a hard action budget.
 
-A run started with `assay start GAME --registry file.json --adapter mod:factory`
+A run started with `assay start WORLD_ID --registry file.json --adapter mod:factory`
 replaces the fixed RESET/ACTION1-7 vocabulary with registered action names and
 typed parameter schemas. Semantics are never part of the registry — the agent
 learns them by acting. Without a registry nothing in this module runs and the

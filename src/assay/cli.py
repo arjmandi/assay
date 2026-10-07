@@ -104,7 +104,7 @@ def _parser() -> Parser:
     start = commands.add_parser(
         "start", help="start or resume the one persistent run"
     )
-    start.add_argument("game_id")
+    start.add_argument("game_id", metavar="world_id", help="a label for this run, 2 to 16 characters of a-z and 0-9; a benchmark adapter may read it to pick the instance")
     start.add_argument("--seed", type=int, default=0, help=argparse.SUPPRESS)
     start.add_argument(
         "--adapter",
@@ -225,10 +225,10 @@ def _parser() -> Parser:
     )
 
     reset = commands.add_parser(
-        "reset", help="pay one action to rewind only the current level"
+        "reset", help="pay one action to rewind the current progress unit"
     )
     reset.add_argument(
-        "--because", help="why the current board is worth abandoning (required unless GAME_OVER)"
+        "--because", help="why the current state is worth abandoning (required unless GAME_OVER)"
     )
     reset.add_argument("--at", type=int, dest="at_event")
     reset.add_argument(
@@ -260,7 +260,7 @@ def _parser() -> Parser:
         "replay", help="check rules.py against every recorded transition"
     )
     solve = subcommands.add_parser(
-        "solve", help="A* search rules.py for a level plan with per-step predictions"
+        "solve", help="A* search rules.py for a plan to the next progress unit, with per-step predictions"
     )
     solve.add_argument("--seconds", type=float, default=15.0)
     solve.add_argument("--max-nodes", type=int, default=250_000)
@@ -638,7 +638,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         if getattr(args, "import_knowledge", None) is not None:
             summary = import_knowledge(paths, args.import_knowledge)
             print(
-                f"IMPORTED | knowledge from {summary['source_game']} | "
+                f"IMPORTED | knowledge from source world {summary['source_game']} | "
                 f"{summary['verifiers']} verifier candidate(s) | hazards active "
                 f"{summary['hazards_active']} (foreign-inactive "
                 f"{summary['hazards_foreign_inactive']}) | everything FOREIGN, "
@@ -1046,7 +1046,7 @@ def main() -> None:
                     )
             elif args.command == "export":
                 target = export_knowledge(paths, args.out)
-                print(f"EXPORTED | {target} — import with `assay start GAME --import {target.name}`")
+                print(f"EXPORTED | {target} — import with `assay start WORLD_ID --import {target.name}`")
             elif args.command == "spend":
                 append_jsonl(
                     paths.activity,

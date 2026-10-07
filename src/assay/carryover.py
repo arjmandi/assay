@@ -301,7 +301,7 @@ def foreign_lines(paths: RunPaths) -> list[str]:
         return []
     digest = knowledge.get("digest") or {}
     lines = [
-        f"FOREIGN | imported knowledge from {knowledge.get('game_id')} "
+        f"FOREIGN | imported knowledge from world {knowledge.get('game_id')} "
         f"({digest.get('paid')} paid actions, final {digest.get('final_state')}) — "
         "everything below is demoted until re-earned here"
     ]

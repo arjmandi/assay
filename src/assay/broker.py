@@ -211,7 +211,7 @@ def _request(
     config = read_json(paths.config, {})
     local = isinstance(config, dict) and not is_remote_config(config)
     recovery = (
-        "run `assay start GAME_ID` to replay the journal and resume"
+        "run `assay start WORLD_ID` to replay the journal and resume"
         if local
         else "a remote competition run cannot be reconstructed"
     )
@@ -502,7 +502,7 @@ def _competition_step(
     *,
     fresh_level: bool,
 ) -> tuple[Any, bool]:
-    """Apply one paid action while preventing a local opener reset from rewinding the game."""
+    """Apply one paid action while preventing a local opener reset from rewinding the world."""
     before = _encode_observation(session.observation)
     if action == "RESET" and fresh_level:
         observed = session.observation
@@ -521,7 +521,7 @@ def _replay_local_session(
     current = _encode_observation(session.observation)
     if events and current != _event_observation(events[0]):
         raise AssayError(
-            "LOCAL_REPLAY_DIVERGED | fresh simulator state differs from event 0; cached game or seed changed"
+            "LOCAL_REPLAY_DIVERGED | fresh simulator state differs from event 0; cached world or seed changed"
         )
     mutations = load_jsonl(paths.mutations)
     fresh_level = True

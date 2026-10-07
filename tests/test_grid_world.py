@@ -80,7 +80,8 @@ def test_frame_world_end_to_end(tmp_path):
         components = run_cli(run, "python", "len(connected_components(grid))")
         assert components.returncode == 0 and components.stdout.strip().isdigit()
         status = run_cli(run, "status")
-        assert "IMAGE |" in status.stdout and "LEVEL |" in status.stdout
+        assert "IMAGE |" in status.stdout and "PROGRESS |" in status.stdout
+        assert "STATUS | grid1 | event 4 | progress 1/1 |" in status.stdout
         # Finish the level: five more moves reach the right edge.
         for _ in range(4):
             assert run_cli(run, "act", "ACTION1", "--predict", "change").returncode == 0

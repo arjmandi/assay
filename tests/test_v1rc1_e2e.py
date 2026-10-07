@@ -296,7 +296,7 @@ def test_destructive_gate_and_hazard_carryover(tmp_path):
         assert started2.returncode == 0, started2.stderr
         assert "IMPORTED |" in started2.stdout and "hazards active 1" in started2.stdout
         status2 = run_cli(run2, "status")
-        assert "FOREIGN | imported knowledge from fake1" in status2.stdout
+        assert "FOREIGN | imported knowledge from world fake1" in status2.stdout
         assert "PRIOR-NOTES" in status2.stdout
         assert (run2 / ".assay" / "PRIOR-NOTES.md").exists()
         # The imported demand fires BEFORE the hazard does (block mode) — and

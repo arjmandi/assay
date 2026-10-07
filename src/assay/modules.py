@@ -29,7 +29,7 @@ or the owner installed); switching back is a one-line change in _load_external.
 
 Built-ins (the standing nudge table plus the first structural module):
 
-- wall_spend    — spend escalation on one level (the spend-judgment tier)
+- wall_spend    — spend escalation on one progress unit (the spend-judgment tier)
 - miss_streak   — repeated prediction misses mean the notes story is wrong
 - null_forensics— a predicted-change/observed-nothing verdict flags the raw
                   observation for inspection before the hypothesis is closed
@@ -91,6 +91,13 @@ def load_hazards(paths: RunPaths) -> list[dict[str, Any]]:
     return value if isinstance(value, list) else []
 
 
+def _unit(view: JournalView) -> str:
+    """What this world calls a progress unit in prose."""
+    from .words import unit_noun
+
+    return unit_noun(view.events[-1]["win_levels"]) if view.events else "unit"
+
+
 def _level_action_count(events: Sequence[Mapping[str, Any]]) -> int:
     if not events:
         return 0
@@ -116,8 +123,8 @@ def _recent_predictions(
 class _WallSpend:
     NAME = "wall_spend"
     CONSTITUTION = (
-        "Spending long on one level without progress means manual probing has "
-        "stopped paying; model the mechanics offline before spending more."
+        "Spending long on one progress unit without progress means manual probing "
+        "has stopped paying; model the mechanics offline before spending more."
     )
     MODE = "advise"
 
@@ -127,7 +134,7 @@ class _WallSpend:
             # Registry runs own the general model tier.
             if level_actions >= 25:
                 return (
-                    f"{level_actions} paid actions on this level — stop manual "
+                    f"{level_actions} paid actions on this {_unit(view)} — stop manual "
                     "probing; model the mechanics offline (`assay python`, or the "
                     "`assay model` tier: replay-verified models earn batching rights)"
                 )
@@ -140,7 +147,7 @@ class _WallSpend:
             return kind.wall_spend_advice(level_actions)
         if level_actions >= 25:
             return (
-                f"{level_actions} paid actions on this level — stop manual "
+                f"{level_actions} paid actions on this {_unit(view)} — stop manual "
                 "probing; re-read your notes, kill dead assumptions, and model the "
                 "mechanics offline with `assay python` before spending more"
             )
@@ -213,7 +220,7 @@ class _NullForensics:
 class _ParkWithTest:
     NAME = "park_with_test"
     CONSTITUTION = (
-        "Abandoning a board is only safe if the notes carry a test that would "
+        "Abandoning a state is only safe if the notes carry a test that would "
         "re-open the abandoned line; park hypotheses with their test."
     )
     MODE = "advise"
@@ -222,7 +229,7 @@ class _ParkWithTest:
         if pending and pending.get("kind") == "reset":
             return (
                 "resetting — record in NOTES.md what would have to be true to "
-                "revisit this board (park the line WITH its test)"
+                "revisit this state (park the line WITH its test)"
             )
         return None
 
@@ -555,14 +562,14 @@ class _CoverageAudit:
                 else ""
             )
             return (
-                f"coverage level {ledger['unit'] + 1}: "
+                f"coverage {_unit(view)} {ledger['unit'] + 1}: "
                 f"untried [{', '.join(ledger['untried']) or 'none'}], "
                 f"no-op-only [{', '.join(ledger['dead']) or 'none'}].{note}"
             )
         if pending.get("kind") == "reset" and ledger["stalled"]:
             return (
                 f"resetting under a stall. {_gap_phrase(events, ledger)} Probe these "
-                "before treating the unit as impossible."
+                f"before treating the {_unit(view)} as impossible."
             )
         return None
 

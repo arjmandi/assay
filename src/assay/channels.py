@@ -4,9 +4,9 @@ A channel is a pair (observer, extractor). Three sources:
 
 - HOST channels, always present: `goal` (boolean — the environment's win
   state; the one channel an agent-invented proxy can never replace), `level`
-  (levels completed — the milestone channel), and `budget_remaining` (paid
-  actions left under the registered cap after the event; ungradable when no
-  cap is registered).
+  (the host progress count, `levels_completed`, the milestone channel), and
+  `budget_remaining` (paid actions left under the registered cap after the
+  event; ungradable when no cap is registered).
 - AGENT-DECLARED channels (`assay channel declare NAME --path a.b.c` or
   `--file extractor.py`): journaled at declaration. The dotted-path form is
   graded in-kernel (pure data lookup over the dict observation). The

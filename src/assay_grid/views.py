@@ -13,6 +13,7 @@ import numpy as np
 
 from assay.core import AssayError, RunPaths, canonical_action, frame_at, load_events, read_json
 from assay.registry import budget_line, load_registry
+from assay.words import progress_text
 
 from .legacy import available_line
 from .perception import (
@@ -256,7 +257,7 @@ def inspect_text(
     grid = frame_at(event)
     previous = frame_at(events[index - 1]) if index else None
     lines = [
-        f"RUN | event {index} | level {min(int(event['win_levels']), int(event['levels_completed']) + 1)}/{event['win_levels']} | paid actions {sum(bool(item.get('counts_action')) for item in events)} | state {event['state']}",
+        f"RUN | event {index} | {progress_text(event)} | paid actions {sum(bool(item.get('counts_action')) for item in events)} | state {event['state']}",
         f"CAUSE | {canonical_action(event)} | frames {len(event['frames'])}",
         available_line(event),
     ]

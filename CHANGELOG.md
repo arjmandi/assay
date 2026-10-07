@@ -149,6 +149,20 @@ Left on the experiment branch, deliberately:
   `validate_batch_tokens`) so an observation kind's executor builds on it
   without importing private functions.
 
+- Vocabulary (A8.3). The kernel's prose says world, not game, state, not
+  board, and progress unit, not level, unless the world really is a game with
+  levels: a world whose `win_levels` is 1 shows `progress 1/1` and "this
+  unit" in status, receipts and module texts, a world with several units
+  shows `level n/m` and "this level" exactly as before, so the published game
+  runs render byte-identically. `src/assay/words.py` holds the display words
+  and, in its docstring, the allowlist of what is frozen (journal fields,
+  state values, claim syntax, grade `actual` texts, host channel names, the
+  `game_id` keys, activity kinds, receipt outcome tokens, the state-directory
+  layout). A test walks every string literal in the kernel against it.
+  `assay start` names its positional `world_id`. The ARC mapping (world id is
+  the game id, a progress unit is a level, `GAME_OVER` is the engine's state)
+  is stated once in `bench/arcagi/PROTOCOL.md`.
+
 ### Known
 
 - The TRANSITION story in `assay view` and after a paid action on a frame

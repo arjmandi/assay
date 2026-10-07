@@ -15,7 +15,7 @@ Three rules govern aggregate claims and this module implements exactly them:
    miss-equivalent weight in the aggregate meter.
 
 Aggregates live in their own meter bucket; they never enter the world-model or
-gamble miss rates. Honest scope note: this machinery has no tenant on grid games —
+gamble miss rates. Honest scope note: this machinery has no tenant on frame worlds —
 it ships because the deployment-hardening order includes it, and it is inert
 unless an agent opens one.
 """
