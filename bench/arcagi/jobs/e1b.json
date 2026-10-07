@@ -1,0 +1,33 @@
+{
+  "name": "e1b",
+  "description": "E1b, the instrument removed (assay-archive runs/E1B_PROTOCOL.md section 2): the capability cost of the prediction discipline itself. The same three games at the same caps and two seeds as E1, one arm, six runs, at most three players at a time, the queue in seed-major order (ft09, tr87, cn04 at seed 1, then seed 2). The arm differs from a gated run in exactly the registry key gate: off, the manual, the ungated prompt template, and the kernel's own consequences of the key (the USE line, the UNGATED receipts, the neutral GATE line, the audit's INVALID FOR SCORING verdict); same adapter, same action descriptions, same caps, same model, same tool permissions. The registries are the canonical bench/arcagi ones with {\"gate\": \"off\"} laid over them by the runner. The manual is the E1b one, which did not ship: see jobs/README.md. The results of the six runs that were played are in the archive's runs/E1B_RESULTS.md and the evidence pack evidence/e1b.",
+  "adapter": "../adapter.py:factory",
+  "concurrency": 3,
+  "max_sessions": 3,
+  "max_hours": 4,
+  "player": {
+    "model": "claude-opus-5",
+    "command": [
+      "claude", "--model", "{model}", "-p", "{prompt}",
+      "--output-format", "json",
+      "--permission-mode", "acceptEdits",
+      "--allowedTools", "Bash", "Read", "Glob", "Grep", "Write(./**)", "Edit(./**)", "MultiEdit(./**)",
+      "--disallowedTools", "WebFetch", "WebSearch", "Agent", "Task", "NotebookEdit", "TodoWrite", "KillShell"
+    ]
+  },
+  "worlds": [
+    {"id": "ft09", "levels": 6, "budget": 200, "registry": "../registry_200.json"},
+    {"id": "tr87", "levels": 6, "budget": 1500, "registry": "../registry_1500.json"},
+    {"id": "cn04", "levels": 6, "budget": 1500, "registry": "../registry_1500.json"}
+  ],
+  "arms": [
+    {
+      "name": "off",
+      "description": "gate off: --predict is refused free on act and on every batch step, nothing is graded, every paid action is journaled UNGATED with the marker gate_off, and the audit keeps the run INVALID FOR SCORING (a control arm, never scorable). The manual is CONSTITUTION-e1b-off.md (sha256 2ef4b38321503f6b81e95551cd0dc84bd26c27a52fa74ea6b6af6daac17aef99): the strong E1 ungated manual minus the one sentence about --predict and the sentence about the CLAIMS line (E1B_PROTOCOL.md section 5).",
+      "prompt": "../../../tools/eval/prompts/e1_player_ungated.md",
+      "constitution": "manuals/CONSTITUTION-e1b-off.md",
+      "registry_overlay": {"gate": "off"}
+    }
+  ],
+  "seeds": [1, 2]
+}

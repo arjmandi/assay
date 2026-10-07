@@ -260,6 +260,23 @@ Left on the experiment branch, deliberately:
   restriction on unprivileged user namespaces
   (`kernel.apparmor_restrict_unprivileged_userns=0`), so the suite runs under
   bwrap for real, and every cell prints its sandbox mode (#19).
+- An evaluation runner in the repository, outside the kernel, `tools/eval/`
+  (#22): worlds times arms times seeds from one JSON job file with relative
+  paths only, each job run in the operator-first order (the operator's
+  `assay start` with the owner token file outside the run directory, then
+  the player's session in the run directory, the player a command template
+  from the job file), with a concurrency limit, per-seed JSONL rows (paid
+  actions, wins, receipts by outcome, tokens and dollars per action, read
+  from the run's journal, receipts and activity log today, with a seam for
+  `--json` once #13 lands), a summary with bootstrap intervals over seeds per
+  arm, resumption through the kernel's own `start`, a finished job never
+  rerun, a `--dry-run` that prints every command and writes nothing, and a
+  lock per state directory. The E1 and E1b designs as job files under
+  `bench/arcagi/jobs/`, the player prompts ported to `tools/eval/prompts/`
+  with every machine path removed, a fake player for the suite's end-to-end
+  queue against the counter example, and the release rule "`tools/` entirely"
+  replaced by "no machine path under `tools/`", which the hygiene test
+  enforces tree-wide. No kernel behavior change.
 
 ### Changed
 

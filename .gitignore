@@ -13,3 +13,8 @@ build/
 .assay/
 # uv run writes a lock file beside pyproject; the release pins nothing beyond pyproject.
 uv.lock
+# The evaluation runner's default state directory (runs, tokens, ledgers, results).
+eval-state/
+# The control arms' manuals, fetched by the operator (bench/arcagi/jobs/README.md).
+bench/*/jobs/manuals/*
+!bench/*/jobs/manuals/README.md

@@ -565,6 +565,21 @@ so under the sticky bit the operator audits after the run or on a copy). The
 owner operations move into the daemon with the design of section 7.2, and
 every write with #20; the arrangement gets stronger with each.
 
+### Many runs at once: the evaluation runner
+
+The order above, scaled to a design: `tools/eval/` runs worlds times arms
+times seeds from one job file, and for every job does what this chapter
+describes, in the runner's own process (the operator's `start` with the
+owner token file outside the run directory, then the player's session in
+the run directory, with the daemon already up), at most `concurrency`
+players at a time. It writes one JSONL row per run (paid actions, the win,
+the receipts by outcome, tokens and dollars per action, the chain head) and
+a summary with bootstrap intervals over the seeds of each arm, resumes an
+interrupted job through the kernel's own `start`, never reruns a finished
+one, and prints every command it would run under `--dry-run` without
+writing anything. `tools/eval/README.md` is the manual; the E1 and E1b
+designs of the paper are its worked examples under `bench/arcagi/jobs/`.
+
 ## 8. Modules
 
 Using them. Seven built-ins ship, all at advise, and `module_modes` in the
