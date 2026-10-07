@@ -228,6 +228,26 @@ def first_ungated(events: Sequence[Mapping[str, Any]]) -> int | None:
     return flagged[0] if flagged else None
 
 
+_PERMIT_MARKERS = (("gate_optional", "optional"), ("gate_off", "off"))
+
+
+def ungated_permitted(events: Sequence[Mapping[str, Any]]) -> dict[int, str]:
+    """The ungated events a control arm permitted, keyed by id, with the mode
+    whose marker the event carries (`gate_optional` or `gate_off`). The mode
+    permits exactly what it marks: an ungated event without a marker was not
+    permitted, whatever the registry says. Such events stay ungated and the
+    run stays invalid for scoring; they are only counted apart."""
+    by_id = {int(event["id"]): event for event in events if event.get("id") is not None}
+    permitted: dict[int, str] = {}
+    for event_id in ungated_events(events):
+        event = by_id.get(event_id, {})
+        for marker, mode in _PERMIT_MARKERS:
+            if event.get(marker):
+                permitted[event_id] = mode
+                break
+    return permitted
+
+
 def audit(paths: RunPaths) -> dict[str, Any]:
     """Recompute integrity from the artifacts; write .assay/audit.json; return it."""
     from .core import load_events
@@ -290,16 +310,9 @@ def audit(paths: RunPaths) -> dict[str, Any]:
             anchor_state = "DIVERGED"
             problems.append("anchor: anchored event id beyond the journal")
     ungated = ungated_events(events)
-    by_id = {int(event["id"]): event for event in events if event.get("id") is not None}
     # The control arms (gate: optional, gate: off) permit bare acts; they are
     # counted apart, with the mode that permitted them, and stay ungated.
-    permitted_modes = {
-        event_id: ("optional" if by_id[event_id].get("gate_optional") else "off")
-        for event_id in ungated
-        if event_id in by_id
-        and (by_id[event_id].get("gate_optional") or by_id[event_id].get("gate_off"))
-    }
-    ungated_permitted = sorted(permitted_modes)
+    permitted_modes = ungated_permitted(events)
     mutations = load_jsonl(paths.mutations)
     journaled = {
         int(event["mutation_id"]) for event in events if event.get("mutation_id") is not None
@@ -326,7 +339,7 @@ def audit(paths: RunPaths) -> dict[str, Any]:
         "anchor_file": str(anchor_target),
         "anchor_env_mismatch": anchor_env_mismatch,
         "ungated": ungated,
-        "ungated_permitted": ungated_permitted,
+        "ungated_permitted": sorted(permitted_modes),
         "ungated_permitted_by": sorted(set(permitted_modes.values())),
         "recovered_orphans": recovered,
         "mutations_pending": pending,

@@ -93,7 +93,7 @@ the conservative default was implemented.
 | O7 the world id rule | kept at `[a-z0-9]{2,16}`, the message names it | nothing |
 | O8 the nine agent branches | untouched | the flip (delete before publishing) |
 | O9 contributions under PolyForm NC | no statement yet | the README's contribution line |
-| O10 the INTEGRITY line on control-arm runs | kept as is, disclosed | nothing (future users only) |
+| O10 the INTEGRITY line on control-arm runs | decided: a neutral `GATE` line with a count, the audit unchanged | nothing |
 | O11 cut order under time pressure | not needed, the plan completed | nothing |
 
 ## 7. The tag

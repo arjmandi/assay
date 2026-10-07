@@ -105,6 +105,7 @@ def test_optional_gate_accepts_journals_and_audits_as_ungated(tmp_path):
         started = _start(run, registry)
         assert started.returncode == 0, started.stderr
         assert "USE | gate: optional" in started.stdout
+        assert "GATE | optional | 0 unpredicted action(s)" in started.stdout
         # e1: bare act, accepted and executed.
         bare = run_cli(run, "act", "INC", "amount=1")
         assert bare.returncode == 0, bare.stderr
@@ -135,7 +136,10 @@ def test_optional_gate_accepts_journals_and_audits_as_ungated(tmp_path):
 
         status = run_cli(run, "status")
         assert status.returncode == 0, status.stderr
-        assert "GATE | optional" in status.stdout
+        # Neutral on every status: the mode and a count, no alarm. The verdict
+        # stays the audit's.
+        assert "GATE | optional | 2 unpredicted action(s)" in status.stdout
+        assert "INTEGRITY" not in status.stdout
 
         audited = run_cli(run, "audit")
         assert audited.returncode == 0, audited.stderr
@@ -147,6 +151,35 @@ def test_optional_gate_accepts_journals_and_audits_as_ungated(tmp_path):
         assert report["ungated_permitted"] == [1, 3]
         assert report["invalid_for_scoring"] is True
         assert report["chain"] == "intact"
+    finally:
+        stop_run(run)
+
+
+def test_an_unmarked_ungated_event_is_still_an_integrity_finding(tmp_path):
+    """The mode permits exactly what it marks. An ungated event without the
+    marker (here forged into the journal) is not the control arm's doing, so
+    status keeps the INTEGRITY line for it while the GATE line counts only the
+    permitted ones, and the audit lists both apart."""
+    run = tmp_path / "forged"
+    run.mkdir()
+    registry = _registry(run, gate="optional")
+    try:
+        assert _start(run, registry).returncode == 0
+        assert run_cli(run, "act", "INC", "amount=1").returncode == 0
+        events = _events(run)
+        forged = dict(events[-1])
+        forged.update(id=len(events), predict=None, predict_ok=None, grade=[])
+        forged.pop("gate_optional")
+        with (run / ".assay" / "events.jsonl").open("a") as handle:
+            handle.write(json.dumps(forged, sort_keys=True) + "\n")
+        status = run_cli(run, "status")
+        assert "GATE | optional | 1 unpredicted action(s)" in status.stdout
+        assert "INTEGRITY | 1 UNGATED event(s) (first e2)" in status.stdout
+        audited = run_cli(run, "audit")
+        assert "UNGATED events [1, 2]" in audited.stdout
+        assert "1 of them permitted by `gate: optional`" in audited.stdout
+        report = json.loads((run / ".assay" / "audit.json").read_text())
+        assert report["ungated"] == [1, 2] and report["ungated_permitted"] == [1]
     finally:
         stop_run(run)
 

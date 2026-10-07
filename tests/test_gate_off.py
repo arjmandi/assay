@@ -1,7 +1,8 @@
 """`gate: off`, the second control-arm mode. The instrument is removed: no
 prediction is accepted or graded, every paid action is journaled UNGATED with
-the marker gate_off, the audit keeps the run INVALID FOR SCORING and names the
-mode, and the independent checker agrees. Not the default, never scorable."""
+the marker gate_off, status shows a neutral `GATE | off | n action(s)` line,
+the audit keeps the run INVALID FOR SCORING and names the mode, and the
+independent checker agrees. Not the default, never scorable."""
 
 from __future__ import annotations
 
@@ -64,6 +65,7 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         started = _start(run, registry)
         assert started.returncode == 0, started.stderr
         assert "USE | gate: off" in started.stdout
+        assert "GATE | off | 0 action(s)" in started.stdout
         # A prediction is refused free: the instrument is removed, not voluntary.
         refused = run_cli(run, "act", "INC", "amount=1", "--predict", "change")
         assert refused.returncode == 2 and "gate is off" in refused.stderr
@@ -86,9 +88,10 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         assert events[-1]["observation"]["counter"] == 2
         status = run_cli(run, "status")
         assert status.returncode == 0, status.stderr
-        assert "GATE | off | the prediction gate is off for this run (control arm)" in status.stdout
+        # The status line is neutral: the mode and a count. The verdict is the audit's.
+        assert "GATE | off | 3 action(s)" in status.stdout
         assert "CLAIMS |" not in status.stdout  # nothing was ever graded
-        assert "INTEGRITY | 3 UNGATED event(s)" in status.stdout
+        assert "INTEGRITY" not in status.stdout
         audited = run_cli(run, "audit")
         assert "INVALID FOR SCORING" in audited.stdout
         assert "UNGATED events [1, 2, 3]" in audited.stdout

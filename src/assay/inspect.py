@@ -322,18 +322,7 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
     if registry:
         lines.extend(registry_lines(registry))
         lines.append(budget_line(registry, events))
-        mode = gate_mode(registry)
-        if mode == "optional":
-            lines.append(
-                "GATE | optional | --predict may be omitted; an unpredicted act is "
-                "journaled UNGATED and the audit marks this run invalid for scoring"
-            )
-        elif mode == "off":
-            lines.append(
-                "GATE | off | the prediction gate is off for this run (control arm): "
-                "no claim is accepted or graded, every paid action is journaled "
-                "UNGATED and the audit marks this run invalid for scoring"
-            )
+        lines.extend(gate_lines(registry, events))
         lines.extend(_registry_status_lines(paths, registry, events))
     lines.extend(
         [
@@ -362,6 +351,22 @@ def status_text(paths: RunPaths, *, history: int = 8) -> str:
     return "\n".join(lines)
 
 
+def gate_lines(
+    registry: Mapping[str, Any], events: Sequence[Mapping[str, Any]]
+) -> list[str]:
+    """The GATE line of a control-arm run: the mode and a count, nothing more.
+    Under `optional` the count is the unpredicted actions, under `off` every
+    paid action is one. The audit, not this line, carries the verdict such a
+    run gets (invalid for scoring). Nothing under `required`."""
+    from .integrity import ungated_permitted
+
+    mode = gate_mode(registry)
+    if mode == "required":
+        return []
+    noun = "unpredicted action(s)" if mode == "optional" else "action(s)"
+    return [f"GATE | {mode} | {len(ungated_permitted(events))} {noun}"]
+
+
 def _registry_status_lines(
     paths: RunPaths,
     registry: Mapping[str, Any],
@@ -373,7 +378,7 @@ def _registry_status_lines(
     from .aggregates import meter as aggregate_meter
     from .carryover import foreign_lines
     from .channels import channel_lines
-    from .integrity import anchor_line, first_ungated, ungated_events
+    from .integrity import anchor_line, ungated_events, ungated_permitted
     from .model import batching_rights, fit_path, model_source
     from .modules import load_hazards, unlisted_lines
 
@@ -430,15 +435,13 @@ def _registry_status_lines(
             f"MIS-REFERENCE | {mis_references} claim(s) named unregistered channels "
             "(refused free; the grounding meter)"
         )
-    flagged = ungated_events(events)
+    # Ungated events a control arm permitted are counted on the GATE line;
+    # the INTEGRITY line is for the ones no mode permitted.
+    permitted = ungated_permitted(events)
+    flagged = [event_id for event_id in ungated_events(events) if event_id not in permitted]
     if flagged:
-        # TODO(owner: O10): on a control-arm run (gate optional or off) this
-        # line reads as an alarm to the agent on every status. E1 ran with it,
-        # so it is kept as is here and the paper discloses it; the review
-        # recommends a neutral `GATE | ... | n unpredicted actions` line for
-        # future control-arm users.
         lines.append(
-            f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{first_ungated(events)}) "
+            f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{flagged[0]}) "
             "— this run is INVALID FOR SCORING and trust earned after it is demoted"
         )
     lines.append(anchor_line(paths))

@@ -98,13 +98,16 @@ Left on the experiment branch, deliberately:
 - `gate: off`, the second control-arm mode beside `gate: optional`. Under
   `off` the instrument is removed: `--predict` is refused free on `act` and
   on every `--step`, nothing is graded, every paid action is journaled
-  UNGATED with the marker `gate_off: true`, status says `GATE | off`, and
-  the audit keeps the run invalid for scoring and names the mode that
-  permitted the bare acts (`ungated_permitted_by`). The default stays
-  `required`. Neither relaxed mode is scorable; they exist for the owner's
-  control-arm experiments. TODO(owner: O10): the INTEGRITY line that reads as
-  an alarm to a control-arm agent on every status is kept as is (E1 ran with
-  it) and disclosed, pending the decision on a neutral line.
+  UNGATED with the marker `gate_off: true`, and the audit keeps the run
+  invalid for scoring and names the mode that permitted the bare acts
+  (`ungated_permitted_by`). The default stays `required`. Neither relaxed
+  mode is scorable; they exist for the owner's control-arm experiments.
+- The status line of a control-arm run is neutral (O10): `GATE | optional |
+  n unpredicted action(s)` or `GATE | off | n action(s)`, the mode and a
+  count, in place of the INTEGRITY alarm that E1 ran with. A mode permits
+  exactly what it marks: an ungated event without the mode's marker still
+  raises the INTEGRITY line, on any run. The audit is unchanged (such runs
+  stay invalid for scoring, the permitted events counted apart).
 - `assay stop`: stops the run's daemon cleanly (SIGTERM, wait, report). Works
   without run state, so an orphaned daemon left behind by a hand-deleted
   `.assay` can be stopped. Never sends SIGKILL.
