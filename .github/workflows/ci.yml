@@ -22,6 +22,11 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v6
+      # The pre-tag greps of RELEASE_CHECKLIST.md section 3 (world names in
+      # the kernel, machine paths, the old manual name, em dashes and arrows)
+      # run inside the suite as tests/test_conformance.py and
+      # tests/test_hygiene.py, over git ls-files, so a new file is covered
+      # the day it is added.
       - name: The suite
         run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis pytest tests/ -q
       - name: ruff

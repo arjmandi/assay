@@ -76,3 +76,22 @@ bench/{arcagi,factorio,oolong}/   benchmark adapters, registries, protocols and
   replay diff over the published run directories, not a spot check.
 - **`bench/*/RESULTS.md` and recorded run data are real, verified results.**
   Historical record, never regenerated or edited to match new code.
+
+## Definition of done, 1.2.0
+
+`AGENTS.md` carries the seven items in full; every pull request of the
+milestone meets all of them and says so with the commands' output in its
+description. In short: the suite green and ruff clean (strict mypy from #27
+on); for a change under `src/`, G2 (the replay diff over the 25 published run
+directories, run from the owner's archive with `--vocab`; a renamed display
+string extends its VOCAB list in the same change, as narrowly as the phrase
+allows) printing `G2 | PASS | 0 differing outputs over 25 runs x 4 commands`,
+and G3 (`python3 evidence/verify_all.py`) reporting 66 journals, 0 failed; a
+contract change updating `docs/ARCHITECTURE.md`, a change to what the agent or
+the operator sees updating `CONSTITUTION.md`, `GUIDE.md` or `ONBOARDING.md`,
+and a line under 1.2.0 in `CHANGELOG.md` from every pull request; a design
+note followed, or revised first; the pre-tag greps of `RELEASE_CHECKLIST.md`
+section 3 passing (the suite runs them, in `tests/test_conformance.py` and
+`tests/test_hygiene.py`); at most one behavior change per pull request, named
+in its description; and every exact-string assertion a rename touches updated
+deliberately, never loosened to a form that would also accept the old string.
