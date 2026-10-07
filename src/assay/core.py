@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import re
+import unicodedata
 import sys
 import tempfile
 import time
@@ -99,18 +100,37 @@ def now_iso() -> str:
 # carries an alias table because of it). The review proposes
 # [a-z0-9][a-z0-9_-]{1,63}; old ids stay valid either way, and the socket and
 # anchor paths hash the directory, not the id. Relax here when decided.
-WORLD_ID_RULE = r"[a-z0-9]{2,16}"
+WORLD_ID_MAX = 64
+WORLD_ID_RULE = (
+    f"a world id is any non-empty string up to {WORLD_ID_MAX} characters with no "
+    "whitespace, control characters or path separators, kept as given"
+)
+
+
+def _world_id_problem(world_id: str) -> str | None:
+    if not world_id:
+        return "it is empty"
+    if len(world_id) > WORLD_ID_MAX:
+        return f"it is {len(world_id)} characters long"
+    for character in world_id:
+        if character.isspace():
+            return "it contains whitespace"
+        if unicodedata.category(character) == "Cc":
+            return "it contains a control character"
+        if character in "/\\":
+            return "it contains a path separator"
+    return None
 
 
 def normalize_game_id(value: str) -> str:
-    game_id = value.strip().lower()
-    if not re.fullmatch(WORLD_ID_RULE, game_id):
-        raise AssayError(
-            f"invalid world id {value!r}: a world id is 2 to 16 characters of a-z "
-            "and 0-9 (upper case is lowered). It labels this run; a benchmark "
-            "adapter may read it to pick the instance to load"
-        )
-    return game_id
+    """The world id, stored and shown as given. It is a label: the socket and
+    anchor paths hash the run directory, never the id. A benchmark adapter may
+    read it to pick the instance to load."""
+    world_id = str(value)
+    problem = _world_id_problem(world_id)
+    if problem is not None:
+        raise AssayError(f"invalid world id {value!r}: {problem}. {WORLD_ID_RULE[0].upper()}{WORLD_ID_RULE[1:]}")
+    return world_id
 
 
 def atomic_json(path: Path, value: Any) -> None:

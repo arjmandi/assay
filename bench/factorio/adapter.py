@@ -73,9 +73,10 @@ DEFAULT_SEED = 44340  # the seed FLE hardcodes into its generated compose file
 ENTITY_SAMPLE_CAP = 40
 STREAM_CAP = 4000  # chars of program stdout/stderr carried in the observation
 
-# ASSAY world ids are [a-z0-9]{2,16} (assay.core.normalize_game_id), so FLE's
-# task keys cannot be used verbatim. This table is the whole mapping; PROTOCOL.md
-# reproduces it. `assay start ironore` runs FLE's `iron_ore_throughput`.
+# The M2 runs were recorded when ASSAY world ids were [a-z0-9]{2,16}, so FLE's
+# task keys could not be used verbatim. This table is the whole mapping and
+# stays as the published ids; PROTOCOL.md reproduces it. `assay start ironore`
+# runs FLE's `iron_ore_throughput`.
 TASK_ALIASES = {
     "advcircuit": "advanced_circuit_throughput",
     "autosci": "automation_science_pack_throughput",

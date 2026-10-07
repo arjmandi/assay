@@ -124,7 +124,7 @@ the conservative default was implemented.
 | O4 the experiment tooling and the E1 files | left on `exp/2026-10` | nothing on the branch (the paper cites the archive) |
 | O5 the owner token | `--owner-token-file` plus the honest paragraph | nothing (the protocols are unchanged) |
 | O6 hot-load | the manifest, owner install | nothing |
-| O7 the world id rule | kept at `[a-z0-9]{2,16}`, the message names it | nothing |
+| O7 the world id rule | decided: any string up to 64 characters without whitespace, control characters or path separators, kept as given | nothing |
 | O8 the nine agent branches | untouched | the flip (delete before publishing) |
 | O9 contributions under PolyForm NC | no statement yet | the README's contribution line |
 | O10 the INTEGRITY line on control-arm runs | decided: a neutral `GATE` line with a count, the audit unchanged | nothing |

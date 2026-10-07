@@ -77,14 +77,26 @@ def test_relative_adapter_path_is_resolved_and_recorded(tmp_path):
 
 
 def test_world_id_error_names_the_rule(tmp_path):
+    """A world id is a label: any non-empty string up to 64 characters with
+    no whitespace, control characters or path separators, kept as given."""
     run = tmp_path / "worldid"
     _prepare(run)
-    refused = run_cli(run, "start", "my-world", "--adapter", f"{FAKE_ADAPTER}:factory",
-                      "--registry", str(run / "reg.json"))
-    assert refused.returncode == 2
-    assert "invalid world id 'my-world'" in refused.stderr
-    assert "2 to 16 characters of a-z and 0-9" in refused.stderr
-    assert not (run / ".assay").exists()
+    for bad, why in (("my world", "whitespace"), ("a/b", "path separator"),
+                     ("", "empty"), ("x" * 65, "65 characters")):
+        refused = run_cli(run, "start", bad, "--adapter", f"{FAKE_ADAPTER}:factory",
+                          "--registry", str(run / "reg.json"))
+        assert refused.returncode == 2, bad
+        assert f"invalid world id {bad!r}: " in refused.stderr and why in refused.stderr
+        assert "up to 64 characters with no whitespace" in refused.stderr
+        assert not (run / ".assay").exists()
+    try:
+        started = run_cli(run, "start", "My-World_1.v2", "--adapter", f"{FAKE_ADAPTER}:factory",
+                          "--registry", str(run / "reg.json"))
+        assert started.returncode == 0, started.stderr
+        assert "STATUS | My-World_1.v2 |" in started.stdout
+        assert json.loads((run / ".assay" / "config.json").read_text())["game_id"] == "My-World_1.v2"
+    finally:
+        stop_run(run)
 
 
 def test_internal_error_is_one_line_with_a_saved_traceback(tmp_path):

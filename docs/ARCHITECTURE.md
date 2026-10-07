@@ -189,9 +189,10 @@ where anchors go, which interpreter serves the daemon.
 
 **Contract.** All of it is optional. The pieces, each with where it lives:
 
-- **World id and mode.** `assay start WORLD_ID` (`core.normalize_game_id`,
-  the rule is `[a-z0-9]{2,16}` in 1.1.0, see the open decision O7),
-  `--mode local|competition` or `ASSAY_MODE`, `--seed N`.
+- **World id and mode.** `assay start WORLD_ID` (`core.normalize_game_id`:
+  any non-empty string up to 64 characters with no whitespace, control
+  characters or path separators, kept as given, since it is a label and never
+  a path component), `--mode local|competition` or `ASSAY_MODE`, `--seed N`.
 - **Owner token.** Minted at start on registry runs (`agenda.mint_owner_token`),
   only its sha256 is stored in `.assay/owner.json`, printed once. It authorizes
   `assay goal ratify`, `assay approve` and `assay waive` (`agenda.require_owner`).

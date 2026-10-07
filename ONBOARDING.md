@@ -238,10 +238,12 @@ given the same `seed` and action sequence. The template derives its door
 codes from the seed (`room_code`). If your world needs randomness, seed it
 from `config["seed"]`.
 
-The world id rule (`core.normalize_game_id`): 2 to 16 characters of `a-z`
-and `0-9`, upper case lowered. It labels the run. A benchmark adapter may
-read it to pick the instance, as the ARC adapter does with the game id and
-the OOLONG adapter with the pack id.
+The world id rule (`core.normalize_game_id`): any non-empty string up to 64
+characters with no whitespace, control characters or path separators, stored
+and shown as given. It labels the run (the socket and anchor paths hash the
+run directory, never the id). A benchmark adapter may read it to pick the
+instance, as the ARC adapter does with the game id and the OOLONG adapter
+with the pack id.
 
 ## 5. Write your registry
 

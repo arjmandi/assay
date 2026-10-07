@@ -104,7 +104,12 @@ def _parser() -> Parser:
     start = commands.add_parser(
         "start", help="start or resume the one persistent run"
     )
-    start.add_argument("game_id", metavar="world_id", help="a label for this run, 2 to 16 characters of a-z and 0-9; a benchmark adapter may read it to pick the instance")
+    start.add_argument(
+        "game_id",
+        metavar="world_id",
+        help="a label for this run, kept as given: up to 64 characters with no whitespace, "
+        "control characters or path separators. A benchmark adapter may read it to pick the instance",
+    )
     start.add_argument("--seed", type=int, default=0, help=argparse.SUPPRESS)
     start.add_argument(
         "--adapter",

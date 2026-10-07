@@ -216,6 +216,14 @@ Left on the experiment branch, deliberately:
   and claim form is untouched. Proven by the replay diff over the 25
   published run directories: zero differences in `status`, `audit`, `view`
   and `channel list` against the main kernel.
+- The world id rule (O7). A world id is any non-empty string up to 64
+  characters with no whitespace, control characters or path separators,
+  stored and shown as given (`My-World_1.v2` stays `My-World_1.v2`). The old
+  rule, `[a-z0-9]{2,16}` with upper case lowered, is a subset, so every
+  published id is still valid. The id is a label: the socket and anchor paths
+  hash the run directory, never the id, which is why no path rule is needed.
+  The error names what is wrong and states the rule. The Factorio task
+  aliases stay as the published ids.
 - `parse_claims(text, kind=None)` replaces `parse_claims(text, general=...)`.
   The core forms parse on every run; an observation kind's forms parse only
   when the kind is given, which nothing does in 1.1.0 (owner decision O1), and
@@ -327,7 +335,7 @@ Left on the experiment branch, deliberately:
   searched (run directory, then working directory), an unimportable module
   names the interpreter and the remedy, a missing factory is named. A file
   spec is recorded in `config.json` as an absolute path. The world id error
-  states the rule (TODO(owner: O7) on relaxing it). An exception that is not
+  states the rule. An exception that is not
   an `AssayError` prints one line, `ERROR | internal: <type>: <message>`, and
   saves the traceback to `.assay/last_error.txt` instead of dumping it.
 - Interpreter drift (ranked fix 7). The daemon runs `sys.executable` of the
