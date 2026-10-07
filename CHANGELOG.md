@@ -77,6 +77,14 @@ Left on the experiment branch, deliberately:
   never as a verdict. No cross-process lock was added around the daemon's
   write window on purpose: it would block `assay status` for the length of a
   slow step, and with recovery confined to a dead daemon it is not needed.
+- Anchors (ranked fix 3). The anchor file is pinned in `config.json` at start
+  (`anchor_file`), so every later command anchors to and audits the same file
+  whatever `ASSAY_ANCHOR_DIR` says in that shell. Runs without the key use the
+  environment as before. Status prints `ANCHORS | <file> | n anchor(s), last
+  e<id>` on registry runs. A failed anchor write is journaled to activity and
+  shown in status instead of swallowed. Start warns when the anchor directory
+  is not writable. The audit reports `anchor_env_mismatch` when the
+  environment disagrees with the recorded file (information, not a verdict).
 
 ### Regression gates
 

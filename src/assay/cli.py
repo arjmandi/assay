@@ -37,7 +37,7 @@ from .carryover import (
     registry_hash_of,
 )
 from .channels import declare_channel, known_channels, load_declared
-from .integrity import audit, audit_lines
+from .integrity import anchor_line, anchor_status, audit, audit_lines, environment_anchor_file
 from .model import (
     fit_lines,
     init_model,
@@ -519,6 +519,9 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     config["binding_hash"] = binding_hash_of(config)
     if registry_spec is not None:
         config["registry_hash"] = registry_hash_of(registry_spec)
+        # Pinned at start so every later command, whatever its environment,
+        # anchors to and audits the same file.
+        config["anchor_file"] = str(environment_anchor_file(paths))
     paths.state.mkdir(parents=True, exist_ok=True)
     atomic_json(paths.config, config)
     if registry_spec is not None:
@@ -567,6 +570,11 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     else:
         print(
             f"STARTED | {requested} | local simulator | competition accounting | replay recovery enabled"
+        )
+    if registry_spec is not None and not anchor_status(paths)["writable"]:
+        print(
+            f"WARNING | {anchor_line(paths)} | set ASSAY_ANCHOR_DIR to a writable "
+            "directory before the first anchor is due"
         )
     print(status_text(paths))
     if registry_spec is not None and gate_optional(registry_spec):

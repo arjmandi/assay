@@ -717,7 +717,7 @@ def _registry_status_lines(
     from .aggregates import meter as aggregate_meter
     from .carryover import foreign_lines
     from .channels import known_channels, load_declared
-    from .integrity import first_ungated, ungated_events
+    from .integrity import anchor_line, first_ungated, ungated_events
     from .model import batching_rights, fit_path, model_source
     from .modules import load_hazards
 
@@ -780,6 +780,7 @@ def _registry_status_lines(
             f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{first_ungated(events)}) "
             "— this run is INVALID FOR SCORING and trust earned after it is demoted"
         )
+    lines.append(anchor_line(paths))
     lines.append(emergence_line(paths))
     return lines
 

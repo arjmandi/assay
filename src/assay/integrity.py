@@ -45,15 +45,77 @@ def chain_path(paths: RunPaths) -> Path:
 
 
 def anchor_dir() -> Path:
+    """The anchor directory the environment names right now."""
     configured = os.getenv("ASSAY_ANCHOR_DIR")
     if configured:
         return Path(configured).expanduser()
     return Path.home() / ".assay" / "anchors"
 
 
-def anchor_file(paths: RunPaths) -> Path:
+def environment_anchor_file(paths: RunPaths) -> Path:
     digest = hashlib.sha256(str(paths.root.resolve()).encode()).hexdigest()[:24]
     return anchor_dir() / f"{digest}.jsonl"
+
+
+def recorded_anchor_file(paths: RunPaths) -> Path | None:
+    """The anchor file pinned in config.json at start, or None for a run that
+    predates the key."""
+    config = read_json(paths.config, None)
+    if isinstance(config, dict) and isinstance(config.get("anchor_file"), str):
+        return Path(config["anchor_file"])
+    return None
+
+
+def anchor_file(paths: RunPaths) -> Path:
+    """Where this run's chain heads go: the file recorded in config.json at
+    start, so a later shell with a different ASSAY_ANCHOR_DIR still anchors and
+    audits against the same file. Runs without the key use the environment."""
+    recorded = recorded_anchor_file(paths)
+    return recorded if recorded is not None else environment_anchor_file(paths)
+
+
+def anchor_status(paths: RunPaths) -> dict[str, Any]:
+    """The anchor line's facts: file, count, last anchored event, the last
+    failed write (if newer than the last anchor), and whether the directory
+    can be written now."""
+    target = anchor_file(paths)
+    anchors = load_jsonl(target) if target.exists() else []
+    last_event = int(anchors[-1]["event_id"]) if anchors else None
+    failed: str | None = None
+    for record in load_jsonl(paths.activity):
+        if record.get("kind") != "anchor_failed":
+            continue
+        event = record.get("event")
+        if last_event is None or (isinstance(event, int) and event > last_event):
+            failed = f"e{event}: {record.get('error')}"
+    # Writability without side effects: the nearest existing ancestor must be
+    # a writable directory (a file in the way is the common failure).
+    ancestor = target.parent
+    while not ancestor.exists() and ancestor.parent != ancestor:
+        ancestor = ancestor.parent
+    writable = ancestor.is_dir() and os.access(ancestor, os.W_OK)
+    return {
+        "file": target,
+        "count": len(anchors),
+        "last_event": last_event,
+        "failed": failed,
+        "writable": writable,
+    }
+
+
+def anchor_line(paths: RunPaths) -> str:
+    status = anchor_status(paths)
+    line = f"ANCHORS | {status['file']} | "
+    line += (
+        f"{status['count']} anchor(s), last e{status['last_event']}"
+        if status["count"]
+        else "none yet (every 25 events and on WIN)"
+    )
+    if status["failed"]:
+        line += f" | last write FAILED at {status['failed']}"
+    elif not status["writable"]:
+        line += " | directory NOT WRITABLE, heads stay chain-only until fixed"
+    return line
 
 
 def _advance(head: str, line: str) -> str:
@@ -93,16 +155,26 @@ def extend_chain(paths: RunPaths, appended_line: str, event_id: int, win: bool) 
         _, head = compute_chain(paths)
     atomic_json(chain_path(paths), {"event_id": event_id, "head": head})
     if win or (event_id > 0 and event_id % ANCHOR_EVERY == 0):
+        target = anchor_file(paths)
         try:
-            anchor_dir().mkdir(parents=True, exist_ok=True)
+            target.parent.mkdir(parents=True, exist_ok=True)
             append_jsonl(
-                anchor_file(paths),
+                target,
                 {"event_id": event_id, "head": head, "run": str(paths.root)},
             )
-        except OSError:
-            # An unanchorable filesystem degrades to chain-only integrity;
-            # the audit reports the missing anchor rather than failing spends.
-            pass
+        except OSError as error:
+            # An unanchorable filesystem degrades to chain-only integrity. The
+            # spend is never failed over it, but the failure is journaled to
+            # activity and shown in status, never swallowed.
+            append_jsonl(
+                paths.activity,
+                {
+                    "kind": "anchor_failed",
+                    "event": event_id,
+                    "file": str(target),
+                    "error": f"{type(error).__name__}: {error}",
+                },
+            )
 
 
 def redact(text: str | None, extra_names: Sequence[str] = ()) -> str | None:
@@ -181,8 +253,19 @@ def audit(paths: RunPaths) -> dict[str, Any]:
                 f"chain: stored head at e{stored.get('event_id')} does not match "
                 f"the recomputed journal head at e{last_id}"
             )
-    anchors = load_jsonl(anchor_file(paths)) if anchor_file(paths).exists() else []
+    anchor_target = anchor_file(paths)
+    anchors = load_jsonl(anchor_target) if anchor_target.exists() else []
     anchor_state = "none"
+    recorded = recorded_anchor_file(paths)
+    anchor_env_mismatch = (
+        recorded is not None and environment_anchor_file(paths) != recorded
+    )
+    if anchor_env_mismatch:
+        problems.append(
+            f"anchor_env_mismatch: ASSAY_ANCHOR_DIR names {environment_anchor_file(paths).parent} "
+            f"but this run anchors to {recorded.parent} (recorded at start); the "
+            "recorded file was audited"
+        )
     if anchors:
         latest = anchors[-1]
         replay_head = hashlib.sha256(CHAIN_SEED.encode()).hexdigest()
@@ -236,6 +319,8 @@ def audit(paths: RunPaths) -> dict[str, Any]:
         "chain": chain_state,
         "anchors": anchor_state,
         "anchor_count": len(anchors),
+        "anchor_file": str(anchor_target),
+        "anchor_env_mismatch": anchor_env_mismatch,
         "ungated": ungated,
         "ungated_permitted": ungated_permitted,
         "recovered_orphans": recovered,
