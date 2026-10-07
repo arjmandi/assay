@@ -241,6 +241,15 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- Model promotion counts only the transitions recorded after the current
+  model hash was first replayed (#18). The admission event is stored as
+  `admitted_at_event` in the fit record, read from the earliest
+  `model_replay` activity record carrying the hash (the record now carries
+  its event), and batching rights need `missed == 0` over the whole fit with
+  at least 20 counted transitions and 5 of them in the most recent quarter,
+  so a model earns rights by predicting the future, not by fitting the past.
+  The fit over every recorded transition is still computed and reported, and
+  a fit record written before this rule reads exactly as it did.
 - Version 1.2.0 replaces 1.1.0 (#28): no 1.1.0 was released; the build it
   named is commit 6ea56e4.
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds

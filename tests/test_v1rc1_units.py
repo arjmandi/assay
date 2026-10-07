@@ -262,3 +262,31 @@ def test_hazard_tags_and_demands(tmp_path):
     assert hazard.demand(view, pending) is None
     safe = {"kind": "act", "name": "GO", "params": None, "claims": [], "declares": {}}
     assert hazard.demand(view, safe) is None
+
+
+# --------------------------------------------------------------------- model
+
+
+def test_batching_rights_reads_both_fit_record_forms(tmp_path):
+    """A fit record written before the admission rule (#18) carries no
+    `admitted_at_event` and reads exactly as it always did (the published
+    run directories hold such records); a record with one names the counted
+    transitions."""
+    from assay.core import atomic_json
+    from assay.model import batching_rights, fit_path
+
+    paths = _fake_paths(tmp_path / "run")
+    old = {"fit": 0.0, "graded": 0, "missed": 0, "recent_graded": 0, "promotion": False}
+    atomic_json(fit_path(paths), old)
+    assert batching_rights(paths) == (
+        False,
+        "replay-fit not promoted: graded 0, missed 0, recent 0 "
+        "(needs missed=0, graded>=20, recent>=5)",
+    )
+    new = {**old, "graded": 20, "admitted_at_event": 20, "counted": 0, "counted_recent": 0}
+    atomic_json(fit_path(paths), new)
+    assert batching_rights(paths) == (
+        False,
+        "replay-fit not promoted: counted 0 since the admission at e20, missed 0, "
+        "recent 0 (needs missed=0, counted>=20, recent>=5)",
+    )

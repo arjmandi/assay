@@ -21,10 +21,17 @@ Trust is exactly replay-fit — no other trust states exist:
   sandbox and grades ONLY the declared channels: MISMATCH = declared channel
   wrong; INCOMPLETE = Unknown (excluded from fit, reported); undeclared
   channels are out of scope. Fit is written to `.assay/model_fit.json`.
-- PROMOTION LAW (pinned): batching rights need missed == 0 over >= 20 graded
-  transitions AND >= 5 graded transitions inside the most recent quarter of
-  the journal (thin-evidence promotion was a named failure risk). Rights are
-  void while an ungated event exists or an aggregate consequence revoked them.
+- PROMOTION LAW (pinned): a model hash is admitted at the journal event of
+  its first replay (`admitted_at_event` in the fit record, read from the
+  earliest `model_replay` activity record that carries the hash and its
+  event, or this replay when there is none), and only the paid transitions
+  recorded after that event are counted, so the model earns rights by
+  predicting the future, never by fitting the past (a lookup table over the
+  journal fits every recorded transition). Batching rights need missed == 0
+  over the whole fit, >= 20 counted transitions AND >= 5 counted transitions
+  inside the most recent quarter of the journal (thin-evidence promotion was
+  a named failure risk). Rights are void while an ungated event exists or an
+  aggregate consequence revoked them.
 - `assay model solve --to "ch NAME = V"` searches the model (sandboxed BFS) for
   a plan; every plan step carries machine-generated channel predictions,
   marked `machine` — they never enter the agent's claim meters. Plans carry
@@ -50,7 +57,15 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .core import AssayError, RunPaths, append_jsonl, atomic_json, load_events, read_json
+from .core import (
+    AssayError,
+    RunPaths,
+    append_jsonl,
+    atomic_json,
+    load_events,
+    load_jsonl,
+    read_json,
+)
 from .channels import channel_value, load_declared
 
 PROMOTION_MIN_GRADED = 20
@@ -308,8 +323,26 @@ def _observation_view(event: Mapping[str, Any]) -> dict[str, Any]:
     return observation_view(event)
 
 
+def _admitted_at_event(paths: RunPaths, current_hash: str | None, head: int) -> int:
+    """The journal event at which the current model hash was first replayed:
+    the earliest `model_replay` activity record carrying the hash and its
+    event, or the head of this replay when there is none. A record written
+    before the admission rule carries no event and cannot place one."""
+    for record in load_jsonl(paths.activity):
+        if (
+            record.get("kind") == "model_replay"
+            and record.get("model_hash") == current_hash
+            and isinstance(record.get("event"), int)
+        ):
+            return int(record["event"])
+    return head
+
+
 def replay_model(paths: RunPaths) -> dict[str, Any]:
-    """Grade the model's declared channels over every recorded paid transition."""
+    """Grade the model's declared channels over every recorded paid transition.
+
+    The fit covers every transition; promotion counts only the transitions
+    recorded after the current model hash was admitted (its first replay)."""
     declared = _declared_channels(paths)
     specs = _channel_specs_for_sandbox(paths, declared)
     events = load_events(paths)
@@ -377,16 +410,26 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
     paid_indices = [
         index for index in range(1, len(events)) if events[index].get("counts_action")
     ]
-    recent_cut = paid_indices[-max(1, len(paid_indices) // 4):] if paid_indices else []
-    recent_graded = sum(1 for index in graded_indices if index in set(recent_cut))
+    recent_cut = set(paid_indices[-max(1, len(paid_indices) // 4):] if paid_indices else [])
+    recent_graded = sum(1 for index in graded_indices if index in recent_cut)
+    # Promotion counts only the transitions recorded after the admission of
+    # this model hash (its first replay): the fit over every transition is
+    # reported, the rights are earned on the ones the model had not seen.
+    current_hash = model_hash(paths)
+    head = int(events[-1]["id"]) if events else -1
+    admitted_at_event = _admitted_at_event(paths, current_hash, head)
+    counted_indices = [index for index in graded_indices if index > admitted_at_event]
+    counted = len(counted_indices)
+    counted_recent = sum(1 for index in counted_indices if index in recent_cut)
     promotion = (
         missed == 0
-        and graded >= PROMOTION_MIN_GRADED
-        and recent_graded >= PROMOTION_MIN_RECENT
+        and counted >= PROMOTION_MIN_GRADED
+        and counted_recent >= PROMOTION_MIN_RECENT
     )
     record = {
-        "model_hash": model_hash(paths),
-        "computed_at_event": int(events[-1]["id"]) if events else -1,
+        "model_hash": current_hash,
+        "computed_at_event": head,
+        "admitted_at_event": admitted_at_event,
         "declared": declared,
         "transitions": len(transitions),
         "graded": graded,
@@ -395,6 +438,8 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
         "unknown": unknown,
         "errors": errors,
         "recent_graded": recent_graded,
+        "counted": counted,
+        "counted_recent": counted_recent,
         "per_channel": per_channel,
         "fit": round(fit, 4),
         "promotion": promotion,
@@ -406,9 +451,12 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
         paths.activity,
         {
             "kind": "model_replay",
-            "model_hash": record["model_hash"],
+            "model_hash": current_hash,
+            "event": head,
+            "admitted_at_event": admitted_at_event,
             "graded": graded,
             "missed": missed,
+            "counted": counted,
             "promotion": promotion,
         },
     )
@@ -417,7 +465,8 @@ def replay_model(paths: RunPaths) -> dict[str, Any]:
 
 def batching_rights(paths: RunPaths) -> tuple[bool, str]:
     """(rights, reason). Rights = current model passed replay-fit on THIS
-    journal, no ungated event exists, and no consequence revoked batching."""
+    journal (promotion counted on the transitions recorded after the model's
+    admission), no ungated event exists, and no consequence revoked batching."""
     from .aggregates import batching_revoked
     from .integrity import first_ungated
 
@@ -425,6 +474,14 @@ def batching_rights(paths: RunPaths) -> tuple[bool, str]:
     if not isinstance(record, dict):
         return False, "no replay-fit record (`assay model replay`)"
     if not record.get("promotion"):
+        if "admitted_at_event" in record:
+            return False, (
+                f"replay-fit not promoted: counted {record.get('counted')} since "
+                f"the admission at e{record.get('admitted_at_event')}, missed "
+                f"{record.get('missed')}, recent {record.get('counted_recent')} "
+                f"(needs missed=0, counted>={PROMOTION_MIN_GRADED}, recent>={PROMOTION_MIN_RECENT})"
+            )
+        # A fit record from before the admission rule reads as it always did.
         return False, (
             f"replay-fit not promoted: graded {record.get('graded')}, missed "
             f"{record.get('missed')}, recent {record.get('recent_graded')} "
@@ -523,7 +580,7 @@ def fit_lines(record: Mapping[str, Any]) -> list[str]:
         f"MODEL | replay-fit {record['fit']:.2%} | held {record['held']} missed "
         f"{record['missed']} unknown {record['unknown']} over {record['transitions']} "
         f"transitions | recent-quarter graded {record['recent_graded']} | "
-        f"promotion {'EARNED — model plans lift the batch cap' if record['promotion'] else 'not earned'}"
+        f"promotion {'EARNED: model plans lift the batch cap' if record['promotion'] else 'not earned'}"
     ]
     mismatch = record.get("first_mismatch")
     if mismatch:
@@ -531,10 +588,19 @@ def fit_lines(record: Mapping[str, Any]) -> list[str]:
             f"MODEL | first mismatch e{mismatch['event']} ch {mismatch['channel']}: "
             f"predicted {json.dumps(mismatch['predicted'])}, actual {json.dumps(mismatch['actual'])}"
         )
-    if not record["promotion"] and record["missed"] == 0 and record["graded"]:
-        lines.append(
-            "MODEL | fit is clean but thin — promotion needs "
-            f">={PROMOTION_MIN_GRADED} graded and >={PROMOTION_MIN_RECENT} in the "
-            "most recent quarter of the journal"
+    still: list[str] = []
+    if record["missed"]:
+        still.append("no miss")
+    if record["counted"] < PROMOTION_MIN_GRADED:
+        still.append(f"{PROMOTION_MIN_GRADED - record['counted']} more counted")
+    if record["counted_recent"] < PROMOTION_MIN_RECENT:
+        still.append(
+            f"{PROMOTION_MIN_RECENT - record['counted_recent']} more in the most recent quarter"
         )
+    lines.append(
+        f"MODEL | counted {record['counted']} transition(s) recorded after this model's "
+        f"first replay at e{record['admitted_at_event']}, {record['counted_recent']} in "
+        "the most recent quarter of the journal | promotion "
+        + ("earned on the counted transitions" if record["promotion"] else f"still needs {', '.join(still)}")
+    )
     return lines
