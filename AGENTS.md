@@ -17,7 +17,16 @@ or `python3 -m venv .venv && .venv/bin/pip install -e '.[grid,dev]'` and then
 with the adapters under `tests/`. It redirects `ASSAY_ANCHOR_DIR` and
 `XDG_CACHE_HOME` under the pytest temp root and stops every daemon it started
 when the session ends, so nothing lands under the home directory. Run the whole
-suite before calling a task done.
+suite before calling a task done, and the linter with it:
+
+```bash
+uv run --with ruff ruff check src tests
+```
+
+ruff is configured in `pyproject.toml` with its default rule set and nothing
+more. `tests/test_hygiene.py` enforces the writing rule over every tracked
+file: no em dash and no arrow in the source or the docs, no machine path, the
+old manual name gone from the code.
 
 ## Where the contracts are
 
@@ -55,6 +64,41 @@ run the template test against it.
 `bin/assay` against a benchmark, or anything under `bench/`, in a code task.
 Those start long, graded sessions, some against paid APIs. Testing the harness
 means running the test suite, not a live session.
+
+## Definition of done, 1.2.0
+
+Every pull request of the milestone meets all seven, and says so with the
+commands' output in its description.
+
+1. The suite green and ruff clean:
+   `uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/`
+   and `uv run --with ruff ruff check src tests`. From #27 on, strict mypy
+   clean as well.
+2. A change under `src/` runs G2 and G3. G2 is the replay diff over the 25
+   published run directories, run from the owner's archive:
+   `python3 <archive>/paper/v4/release-gates/g2_replay_diff.py --main <checkout of 4dc53e1> --release <the checkout under test> --python <an interpreter with numpy and pillow> --vocab`,
+   and it must print `G2 | PASS | 0 differing outputs over 25 runs x 4 commands`.
+   G3 is `python3 evidence/verify_all.py`, and it must report 66 journals,
+   0 failed. The gate masks the campaign kernel's output through the VOCAB
+   list in `g2_replay_diff.py`, so a display string the pull request renames
+   extends that list in the same change, as narrowly as the renamed phrase
+   allows: a rename without its entry fails G2, and an entry without its
+   rename is a false pass.
+3. A contract change updates `docs/ARCHITECTURE.md` in the same pull request;
+   a change to what the agent or the operator sees updates `CONSTITUTION.md`,
+   `GUIDE.md` or `ONBOARDING.md`; every pull request adds its line to
+   `CHANGELOG.md` under 1.2.0.
+4. A pull request under a design note cites the note's section and does not
+   depart from it; a departure is a revision of the note first.
+5. The pre-tag greps of `RELEASE_CHECKLIST.md` section 3 pass: no world name
+   in the kernel, no machine path, no em dash or arrow in `src/` and the
+   docs. `tests/test_conformance.py` and `tests/test_hygiene.py` run the same
+   checks, so a green suite is the proof.
+6. At most one behavior change per pull request, named in its description; a
+   refactor says "no behavior change" and G2 proves it.
+7. Nearly every test file asserts exact display strings: a rename updates its
+   assertions in the same pull request, deliberately, never by loosening them
+   to a substring or a pattern that would also accept the old form.
 
 ## Commits
 

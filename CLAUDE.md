@@ -14,13 +14,18 @@ code. `AGENTS.md` is the short version of this file for any coding agent.
 ```sh
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/      # full suite
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/test_registry.py  # one file
+uv run --with ruff ruff check src tests                                       # the linter
 ```
 
 Or, in a venv with the editable install: `pip install -e '.[grid,dev]'` then
 `pytest tests/`. The suite isolates anchors and caches under the pytest temp
-root and stops every daemon it started. No configured linter, so do not add
-one unasked. Run the full suite before considering any task done. If it fails for
-reasons unrelated to your change, say so rather than fixing unrelated breakage.
+root and stops every daemon it started. ruff is configured in `pyproject.toml`
+with its default rule set, and `uv run --with ruff ruff check src tests` must
+pass. `tests/test_hygiene.py` enforces the writing rule (no em dash and no
+arrow in the source or the docs, no machine path, the old manual name gone
+from the code). Run the full suite before considering any task done. If it
+fails for reasons unrelated to your change, say so rather than fixing unrelated
+breakage.
 
 ## Layout
 
@@ -40,7 +45,8 @@ examples/            counter_world.py and example_registry.json (the quickstart)
                       new_world/ (the template a new world copies)
 tests/               pytest; e2e tests drive the real CLI and daemon through the
                       adapters in tests/, not mocks; test_conformance.py and
-                      test_vocabulary.py enforce the kernel's boundaries
+                      test_vocabulary.py enforce the kernel's boundaries,
+                      test_hygiene.py the writing rule
 bench/{arcagi,factorio,oolong}/   benchmark adapters, registries, protocols and
                       recorded results: long, expensive sessions, not CI
 ```
