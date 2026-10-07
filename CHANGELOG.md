@@ -250,6 +250,14 @@ Left on the experiment branch, deliberately:
   so a model earns rights by predicting the future, not by fitting the past.
   The fit over every recorded transition is still computed and reported, and
   a fit record written before this rule reads exactly as it did.
+- The vacuity rule (#17). A verifier is vacuous when its identity verdict
+  (the verifier run on the unchanged observation) equalled its real verdict
+  on every one of five or more gradings: it does not use the transition.
+  Never having failed is an advisory line in status, not the flag.
+  `.assay/verifiers/stats.json` is versioned, not migrated: a file written
+  from now on carries `"rule": "identity"` with the counters under
+  `"verifiers"`; a file recorded before keeps the never-failed rule, so the
+  published runs render unchanged.
 - Version 1.2.0 replaces 1.1.0 (#28): no 1.1.0 was released; the build it
   named is commit 6ea56e4.
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds

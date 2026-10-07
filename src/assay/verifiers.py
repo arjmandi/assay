@@ -16,9 +16,18 @@ own counter, and it halts a containing batch.
 Discrimination telemetry: after grading on (before, after) the verifier also
 runs on the identity transition (before, before); both verdicts are journaled
 and per-hash counters {graded, passed, failed, invalid, identity_same_verdict}
-are kept in `.assay/verifiers/stats.json`. A verifier with graded>=5 and
-failed==0 is flagged VACUOUS in status and its passes are excluded from the
-capability meter.
+are kept in `.assay/verifiers/stats.json`. A verifier is VACUOUS when, over
+five or more gradings, its identity verdict equalled its real verdict every
+time: it does not use the transition. Status says so and its passes are
+excluded from the capability meter. A verifier that never failed is an
+advisory, not the flag.
+
+The stats file is versioned, not migrated. A file written from 1.2.0 on is
+`{"rule": "identity", "verifiers": {<hash>: counters}}`, the marker set at the
+run's first grading. A file recorded before that is the flat
+`{<hash>: counters}` of the never-failed rule (graded >= 5 and failed == 0),
+and that rule keeps applying to its run, so the published run directories
+render exactly as they did.
 """
 
 from __future__ import annotations
@@ -37,6 +46,9 @@ from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
 
 VERIFY_TIMEOUT_SECONDS = 5.0
 VACUOUS_MIN_GRADED = 5
+RULE_IDENTITY = "identity"  # from 1.2.0: the identity verdict matched every time
+RULE_NEVER_FAILED = "never_failed"  # before 1.2.0: five gradings, no failure
+_COUNTERS = ("graded", "passed", "failed", "invalid", "identity_same_verdict")
 
 _RUNNER = """\
 import importlib.util, json, sys
@@ -147,17 +159,63 @@ def run_verifier(
 
 
 def load_stats(paths: RunPaths) -> dict[str, Any]:
+    """The stats file as written, in whichever shape (see `stats_rule`)."""
     value = read_json(paths.verifier_stats, {})
     return value if isinstance(value, dict) else {}
 
 
+def stats_rule(stats: Mapping[str, Any]) -> str:
+    """Which vacuity rule a stats file is under. The marker is written at a
+    run's first grading from 1.2.0 on; a file with counters and no marker was
+    recorded under the never-failed rule, which keeps applying to that run; a
+    file with nothing in it belongs to a run that has not graded yet."""
+    if stats.get("rule") == RULE_IDENTITY:
+        return RULE_IDENTITY
+    if any(isinstance(entry, Mapping) for entry in stats.values()):
+        return RULE_NEVER_FAILED
+    return RULE_IDENTITY
+
+
+def stats_entries(stats: Mapping[str, Any]) -> Mapping[str, Any]:
+    """The per-hash counters, whichever shape the file has."""
+    if stats.get("rule") == RULE_IDENTITY:
+        entries = stats.get("verifiers")
+        return entries if isinstance(entries, Mapping) else {}
+    return stats
+
+
+def is_vacuous(entry: Mapping[str, Any], rule: str) -> bool:
+    """One verifier's counters against the rule in force for its run."""
+    graded = int(entry.get("graded", 0))
+    if graded < VACUOUS_MIN_GRADED:
+        return False
+    if rule == RULE_NEVER_FAILED:
+        return int(entry.get("failed", 0)) == 0
+    return int(entry.get("identity_same_verdict", 0)) == graded
+
+
 def vacuous_hashes(stats: Mapping[str, Any]) -> set[str]:
+    rule = stats_rule(stats)
     return {
         digest
-        for digest, entry in stats.items()
+        for digest, entry in stats_entries(stats).items()
+        if isinstance(entry, Mapping) and is_vacuous(entry, rule)
+    }
+
+
+def never_failed_hashes(stats: Mapping[str, Any]) -> set[str]:
+    """The advisory of the identity rule: graded five or more times, never
+    failed, and not vacuous. Under the never-failed rule that set is the
+    vacuous set itself, already flagged, so it is empty there."""
+    if stats_rule(stats) != RULE_IDENTITY:
+        return set()
+    return {
+        digest
+        for digest, entry in stats_entries(stats).items()
         if isinstance(entry, Mapping)
         and int(entry.get("graded", 0)) >= VACUOUS_MIN_GRADED
         and int(entry.get("failed", 0)) == 0
+        and not is_vacuous(entry, RULE_IDENTITY)
     }
 
 
@@ -183,14 +241,20 @@ def grade_verifier_claim(
     after: Mapping[str, Any],
     timeout: float = VERIFY_TIMEOUT_SECONDS,
 ) -> dict[str, Any]:
-    """Grade one verify claim, run the identity probe, update the counters."""
+    """Grade one verify claim, run the identity probe, update the counters.
+    The vacuity flag follows the rule the run's stats file is under."""
     digest = str(claim.get("verifier_hash", ""))
     record: dict[str, Any] = {**dict(claim), "verifier": True}
     stats = load_stats(paths)
-    entry = stats.setdefault(
-        digest,
-        {"graded": 0, "passed": 0, "failed": 0, "invalid": 0, "identity_same_verdict": 0},
-    )
+    rule = stats_rule(stats)
+    if rule == RULE_IDENTITY:
+        stats["rule"] = RULE_IDENTITY  # the run's first grading writes the marker
+        entries = stats.get("verifiers")
+        if not isinstance(entries, dict):
+            entries = stats["verifiers"] = {}
+    else:
+        entries = stats  # a run recorded before 1.2.0 keeps its flat file
+    entry = entries.setdefault(digest, dict.fromkeys(_COUNTERS, 0))
     result = run_verifier(paths, digest, before, after, timeout=timeout)
     if result["status"] != "ok":
         entry["invalid"] += 1
@@ -207,9 +271,7 @@ def grade_verifier_claim(
     entry["passed" if result["ok"] else "failed"] += 1
     if identity_verdict == result["ok"]:
         entry["identity_same_verdict"] += 1
-    vacuous = (
-        entry["graded"] >= VACUOUS_MIN_GRADED and entry["failed"] == 0
-    )
+    vacuous = is_vacuous(entry, rule)
     atomic_json(paths.verifier_stats, stats)
     graded = {
         **record,

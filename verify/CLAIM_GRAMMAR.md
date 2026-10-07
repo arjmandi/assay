@@ -34,9 +34,13 @@ the agent's account of it.
 
 **Executable verifiers** are the grammar's escape hatch to arbitrary checks:
 the agent writes the program, the referee runs it sandboxed and
-identity-probes it — a verifier that cannot distinguish a transformed
-observation from the original is flagged *vacuous* and its passes earn
-nothing.
+identity-probes it, running it a second time on the unchanged observation
+`(before, before)`. A verifier whose identity verdict equals its real verdict
+on every grading of a window of at least five is flagged *vacuous*: it does
+not use the transition, and its passes earn nothing. Never having failed is
+an advisory, not the flag. Runs recorded before 1.2.0 carry the earlier
+never-failed rule (five or more gradings, zero failures) in their stats file
+and are read under it.
 
 ## Frame-world claim forms (grid worlds only)
 

@@ -441,9 +441,16 @@ wall) or malformed output grades as `INVALID_CLAIM`: not a miss, its own
 counter, `predict_ok` null, and it halts a containing batch. After each grading
 the kernel also runs the verifier on the identity transition `(before, before)`
 and journals `identity_verdict`. Per-hash counters live in
-`.assay/verifiers/stats.json`. A verifier graded five or more times that never
-failed is VACUOUS: status says so and its passes are excluded from the
-capability meter (`verifiers.vacuous_hashes`, `inspect._claim_meter_lines`).
+`.assay/verifiers/stats.json`. A verifier is VACUOUS when its identity verdict
+equalled its real verdict on every one of five or more gradings, which means
+it does not use the transition: status says so, its passes are excluded from
+the capability meter, and a verifier that never failed is an advisory line,
+not a flag (`verifiers.vacuous_hashes`, `inspect._claim_meter_lines`). The
+stats file is versioned: a run recorded from 1.2.0 on carries
+`"rule": "identity"` with its counters under `"verifiers"`, a run recorded
+before it keeps the flat file of the never-failed rule (five or more gradings,
+zero failures) and is read under that rule, so the published runs render
+unchanged (`verifiers.stats_rule`).
 
 **Contract, world model** (`model.py`). `model.py` in the run root declares
 `CHANNELS` (registered channel names), `next(obs, action, params)` returning the

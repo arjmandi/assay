@@ -49,10 +49,20 @@ def _observation_lines(event: Mapping[str, Any], max_lines: int = 48) -> list[st
 
 
 def _claim_meter_lines(paths: RunPaths, events: Sequence[Mapping[str, Any]]) -> list[str]:
-    """Claim meters: split miss rates, sharpness, invalid count, VACUOUS."""
-    from .verifiers import load_stats, vacuous_hashes
+    """Claim meters: split miss rates, sharpness, invalid count, VACUOUS under
+    the rule the run's stats file is under, and the never-failed advisory."""
+    from .verifiers import (
+        RULE_IDENTITY,
+        load_stats,
+        never_failed_hashes,
+        stats_entries,
+        stats_rule,
+        vacuous_hashes,
+    )
 
     stats = load_stats(paths)
+    rule = stats_rule(stats)
+    entries = stats_entries(stats)
     vacuous = vacuous_hashes(stats)
     graded_total = coerced = invalid = 0
     counts: dict[str, list[int]] = {
@@ -103,11 +113,26 @@ def _claim_meter_lines(paths: RunPaths, events: Sequence[Mapping[str, Any]]) -> 
         f"invalid {invalid}"
     ]
     for digest in sorted(vacuous):
-        entry = stats.get(digest, {})
+        entry = entries.get(digest, {})
+        if rule == RULE_IDENTITY:
+            lines.append(
+                f"VACUOUS | verifier {digest[:12]} graded {entry.get('graded', 0)}, "
+                "identity verdict matched the real verdict every time; it does not "
+                "use the transition, its passes are excluded from the meter"
+            )
+            continue
+        # The never-failed rule's line, byte for byte, for the runs recorded
+        # under it: the replay gate compares the published runs against it.
         lines.append(
             f"VACUOUS | verifier {digest[:12]} graded {entry.get('graded', 0)} "
             "failed 0 — a verifier that never fails proves nothing; its passes "
             "are excluded from the meter"
+        )
+    for digest in sorted(never_failed_hashes(stats)):
+        entry = entries.get(digest, {})
+        lines.append(
+            f"VERIFIER | {digest[:12]} graded {entry.get('graded', 0)}, "
+            "never failed (advisory, not a flag)"
         )
     return lines
 
