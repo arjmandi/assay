@@ -41,7 +41,7 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
 )
 
 HELP = """\
-FRAME WORLDS ONLY (grid observations) | x=column y=row | recognized, not admitted in 1.1.0
+FRAME WORLDS ONLY (grid observations) | x=column y=row | recognized, not admitted in 1.2.0
   cell X,Y=V           cell at column X, row Y becomes hex color V
   move X,Y DX,DY       the object covering X,Y shifts by (DX,DY) and vacates its old cells
   vanish X,Y           every cell of the object covering X,Y stops being its color

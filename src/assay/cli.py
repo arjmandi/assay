@@ -444,7 +444,7 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             )
         if read_json(paths.registry, None) is None:
             raise AssayError(
-                "this directory owns a run without a registry, from before 1.1.0: "
+                "this directory owns a run without a registry, from before 1.2.0: "
                 "it can be inspected (status, view, audit) but not resumed"
             )
         if registry_spec is not None and registry_spec != read_json(paths.registry):

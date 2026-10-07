@@ -1,6 +1,6 @@
-# Published chain heads: the Factorio 1.1.0 evidence pack (the release-build reproduction)
+# Published chain heads: the factorio-110 evidence pack (the reproduction on the release build)
 
-**The commitment:** the recomputed `assay-journal-v1` chain heads of the two Factorio lab-task wins replayed on the release build (`release/1.1.0` at d99c0a6, 2026-10-07, claude-opus-5, cap 64, the M2 registry and strategy hints) and of the hand-played smoke that preceded them on the same build. Any shared copy of these runs must verify against its head here:
+**The commitment:** the recomputed `assay-journal-v1` chain heads of the two Factorio lab-task wins replayed on the release build, commit 6ea56e4, the build the paper calls 1.1.0 (the checkout was `release/1.1.0` at d99c0a6, the same kernel and adapters; 2026-10-07, claude-opus-5, cap 64, the M2 registry and strategy hints) and of the hand-played smoke that preceded them on the same build. Any shared copy of these runs must verify against its head here:
 
 ```bash
 gunzip -k <run>/journal.jsonl.gz

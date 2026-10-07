@@ -1,4 +1,4 @@
-# Evidence pack №7: G4, the live regression gate of release 1.1.0
+# Evidence pack №7: G4, the live regression gate of the build the paper calls 1.1.0
 
 The seventh evidence pack under the `assay-journal-v1` standard: the one
 journal behind the G4 gate of `RELEASE_CHECKLIST.md`, published so the
@@ -7,12 +7,15 @@ run the harness reports.
 
 ## The gate, in two sentences
 
-Before 1.1.0 is tagged, the release kernel plays ft09 once under the standard
-protocol (`bench/arcagi/registry_200.json`, the 1.1.0 constitution, the gated
-prompt template of experiment E1, cap 200, claude-opus-5, one session) and
-must WIN 6 of 6 within the bar of 113 paid actions set by decision 18 of the
-paper's decision log. It won in 80 paid actions, every one of them predicted,
-on `release/1.1.0` at 82bfd5d on 2026-10-07.
+Before the release is tagged, its kernel plays ft09 once under the standard
+protocol (`bench/arcagi/registry_200.json`, the release build's constitution,
+the gated prompt template of experiment E1, cap 200, claude-opus-5, one
+session) and must WIN 6 of 6 within the bar of 113 paid actions set by
+decision 18 of the paper's decision log. It won in 80 paid actions, every one
+of them predicted, on `release/1.1.0` at 82bfd5d on 2026-10-07 (3b7eb19 after
+the history rewrite of that day). The build the paper calls 1.1.0 is named by
+its final commit, 6ea56e4; the kernel commits between the two change no
+journal field and no grading rule (`CHANGELOG.md`), so the gate stands for it.
 
 ## Contents
 

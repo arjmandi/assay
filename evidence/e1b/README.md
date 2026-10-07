@@ -12,9 +12,12 @@ the agents kept using it. E1b removes the instrument: the registry key is
 `gate: off`, the agent manual carries no prediction discipline and no mention
 of the flag, and the ungated prompt template of E1 is used unchanged. The same
 three ARC-AGI-3 games (ft09 at cap 200, tr87 and cn04 at cap 1500) were each
-played twice by claude-opus-5 on the release build (`release/1.1.0` at
-a4e1d90), one session per run, with the built-in coverage audit active in
-advise mode as it is in every 1.1.0 run.
+played twice by claude-opus-5 on commit 6ea56e4, the build the paper calls
+1.1.0 (the sessions' checkout was `release/1.1.0` at a4e1d90, which the
+history rewrite of that day renamed 063d3c4; the kernel commits between it
+and 6ea56e4 change no journal field and no grading rule, `CHANGELOG.md`),
+one session per run, with the built-in coverage audit active in advise mode
+as it is in every 1.2.0 run.
 
 The pre-registered protocol is `E1B_PROTOCOL.md`. The results write-up is
 `E1_E2_RESULTS.md` section 10 and the per-run metrics with chain heads are in
@@ -42,9 +45,9 @@ commits to the clean ones.
   - `chain.json`: the writer's stored chain state `{event_id, head}`.
 
 The pinned registries (`registry_e1b_off_200.json`,
-`registry_e1b_off_1500.json`), the E1b manual and its diff against the 1.1.0
-constitution, and the creation records stay with the archived run directories
-(they carry the experiment machine's paths).
+`registry_e1b_off_1500.json`), the E1b manual and its diff against the
+release build's `CONSTITUTION.md`, and the creation records stay with the
+archived run directories (they carry the experiment machine's paths).
 
 ## Verify a journal
 

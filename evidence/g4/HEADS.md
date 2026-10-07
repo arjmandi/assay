@@ -1,9 +1,11 @@
 # Published chain head: the G4 evidence pack (the release gate)
 
 **The commitment:** the recomputed `assay-journal-v1` chain head of the one
-journal of G4, the live ft09 regression gate of release 1.1.0, played by
-claude-opus-5 on `release/1.1.0` at 82bfd5d on 2026-10-07. Whenever this run
-directory is shared with anyone, it must verify against its head here:
+journal of G4, the live ft09 regression gate of the build the paper calls
+1.1.0 (named by its final commit, 6ea56e4), played by claude-opus-5 on
+`release/1.1.0` at 82bfd5d on 2026-10-07 (3b7eb19 after the history rewrite
+of that day). Whenever this run directory is shared with anyone, it must
+verify against its head here:
 
 ```bash
 gunzip -k ft09-release-s1/journal.jsonl.gz
