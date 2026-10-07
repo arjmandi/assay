@@ -385,9 +385,14 @@ def start_broker(paths: RunPaths) -> None:
         close_fds=True,
         env=environment,
     )
-    current = read_json(paths.broker, {})
-    if current.get("status") == "STARTING":
-        atomic_json(paths.broker, {**current, "pid": process.pid})
+    # From here on the daemon is the only writer of broker.json: it replaces
+    # the STARTING descriptor with READY, ERROR or STOPPED and names its own
+    # pid there. This side used to rewrite the descriptor with the child's pid
+    # right after the spawn, and that write raced the daemon's: on a slow disk
+    # its fsync outlasted a warm daemon's whole startup, the rewrite buried
+    # READY under STARTING, and the wait below ran to its deadline against a
+    # live daemon. Identity is the process table (find_daemon), never a stored
+    # pid, so nothing needs the pid before the daemon publishes it.
     deadline = time.monotonic() + 45.0
     while time.monotonic() < deadline:
         current = read_json(paths.broker, {})

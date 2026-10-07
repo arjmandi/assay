@@ -446,6 +446,17 @@ Left on the experiment branch, deliberately:
   fell off the line and `assay stop`, `assay doctor` and the resume rule
   did not recognize a live daemon; `-ww` lifts the limit on procps and BSD
   ps alike. Found by the first CI run on ubuntu (#30).
+- The start of a run on a slow disk. `start_broker` rewrote `broker.json`
+  with the child's pid right after spawning the daemon, and that write raced
+  the daemon's own: when its fsync outlasted a warm daemon's startup, the
+  rewrite buried the daemon's READY descriptor under STARTING, the daemon
+  never wrote READY again, and `assay start` waited out its 45-second
+  deadline against a live daemon before failing with "environment owner did
+  not start". The rewrite is gone: once spawned, the daemon is the only
+  writer of `broker.json` and publishes its own pid there; identity was
+  already the process table, never a stored pid. Reproduced by stalling that
+  one write for a second; found by the second CI run on ubuntu, in two of
+  three cells on different tests (#30).
 
 ### Regression gates
 

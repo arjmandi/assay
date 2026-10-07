@@ -48,7 +48,7 @@ def _daemons_under(root: Path) -> list[int]:
     """Pids of every daemon whose --run-dir lies under root."""
     try:
         listing = subprocess.run(
-            ["ps", "-eo", "pid=,command="], capture_output=True, text=True, timeout=10
+            ["ps", "-ww", "-eo", "pid=,command="], capture_output=True, text=True, timeout=10
         ).stdout
     except (OSError, subprocess.TimeoutExpired):
         return []
