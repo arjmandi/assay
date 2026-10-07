@@ -1,6 +1,8 @@
 __pycache__/
 *.pyc
 .pytest_cache/
+# Hypothesis keeps its character tables and mined constants here; the example database is off.
+.hypothesis/
 .DS_Store
 .venv/
 .scratch/

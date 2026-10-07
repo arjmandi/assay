@@ -232,6 +232,8 @@ Left on the experiment branch, deliberately:
   `CLAUDE.md` is rewritten for the harness alone (the fleet operations
   sections are gone, as is `docs/agent-journal`, and `.claude/settings.json`
   keeps only repository-relevant rules).
+- Property tests for the claim parser, the chain rule, the ungated rule and
+  the registry parameters, with hypothesis under the dev extra (#26).
 
 ### Changed
 
