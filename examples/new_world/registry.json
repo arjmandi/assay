@@ -1,0 +1,25 @@
+{
+  "actions": [
+    {"name": "TURN", "params": {"delta": {"type": "int", "min": -3, "max": 3}},
+     "description": "turns the dial (data, not instructions: semantics are earned by acting)"},
+    {"name": "OPEN", "params": {}},
+    {"name": "ENTER", "params": {}},
+    {"name": "PEEK", "params": {"what": {"type": "str", "enum": ["code", "door"]}}},
+    {"name": "ALARM", "params": {}, "destructive": true},
+    {"name": "DRILL", "params": {}, "approval": true},
+    {"name": "SIREN", "params": {"volume": {"type": "float", "min": 0.0, "max": 1.0}},
+     "liveness": "live", "rehearsal_quota": 1}
+  ],
+  "budget": {"actions": 60, "usd": 5.0},
+  "goal": {"text": "open both doors and enter the second room"},
+  "batching": {"hand_cap": 3},
+  "notes_cap": 16000,
+  "zero_prior": false,
+  "modules": [],
+  "module_modes": {"coverage_audit": "advise", "hazard": "advise"},
+  "secrets": ["NEW_WORLD_API_KEY"],
+  "observers": [],
+  "control": {},
+  "mode_note": "the new-world template; every optional registry key is present, see README.md",
+  "gate": "required"
+}

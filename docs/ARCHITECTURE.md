@@ -588,57 +588,57 @@ recommended).
 
 ## 4. Per-world conformance
 
-Four worlds, read from the three bench adapters, the counter example, the pinned
-registries, and the run directories behind the published journals (25 ARC-AGI-3
-runs, 3 Factorio runs, 3 OOLONG runs). Cells say **present**, **optional,
-unused**, or **world-specific** with the file.
+Five worlds, read from the three bench adapters, the counter example, the
+new-world template, the pinned registries, and the run directories behind the
+published journals (25 ARC-AGI-3 runs, 3 Factorio runs, 3 OOLONG runs). Cells
+say **present**, **optional, unused**, or **world-specific** with the file.
 
-| Component | ARC-AGI-3 | Factorio (FLE) | OOLONG | Counter example |
-|---|---|---|---|---|
-| Registry file | `bench/arcagi/registry_{200,500,1500}.json` (differ in the cap only) | `bench/factorio/registry_lab{64,128}.json` | `bench/oolong/registry_{40,200}.json` (cap only) | `examples/example_registry.json` |
-| Registry: actions | `ACTION1..ACTION7`, `ACTION6 x,y` int 0..63, descriptions | `RUN program=<str base64>`, `WAIT ticks=<int 1..3600>`, descriptions | `BANK_FACT text,span=<str base64>`, `SUBMIT answer,spans=<str base64>`, descriptions | `INC amount=<int 1..2>`, `SET_LAMP state=<on\|off>`, `NOOP`, `BOMB` |
-| Registry: budget | actions 200, 500 or 1500 | actions 64 or 128 | actions 40 or 200 | actions 40 |
-| Registry: batching | `hand_cap: null` | `hand_cap: null` | `hand_cap: null` | default 3 |
-| Registry: goal, mode_note | optional, unused | present (goal text, mode_note) | present (goal text, mode_note) | present |
-| Registry: secrets | `ARC_API_KEY` | four RCON password names | optional, unused | optional, unused |
-| Registry: destructive, approval, liveness | optional, unused | optional, unused | optional, unused | `BOMB` destructive |
-| Registry: zero_prior | off (parity with the hint line) | off (explicit) | off | off |
-| Registry: modules, module_modes | unused in the 25 (the E2 experiment loaded `coverage_audit` externally) | optional, unused | optional, unused | optional, unused |
-| Registry: gate | absent (required) | absent | absent | absent |
-| Adapter | world-specific, `bench/arcagi/adapter.py` | world-specific, `bench/factorio/adapter.py` | world-specific, `bench/oolong/adapter.py` | `examples/counter_world.py` |
-| Adapter: observation shape | frames (the ARC client's frame object, 64x64, values 0..15) | dict: task, tick, stdout, stderr, inventory, entities, production, windows, policy_refusals, namespace_watch | dict: corpus path and shape (never the body), current question, census, last_result | dict: counter, lamp |
-| Adapter: `finalize` | present (`close_scorecard`) | present (teardown, cluster stop, cached observation) | present (sealed scoring, writes `.assay/oolong_score.json`) | optional, unused |
-| Adapter: `public_info` | present (game_id, title, tags, default_fps) | present (game_id, title, map_seed) | present (game_id, title, benchmark, dataset_revision, context_len, dataset) | optional, unused |
-| Adapter: refusals through the observation | not needed (the engine accepts every action) | world-specific: `POLICY_REFUSED` in `stderr`, `policy_refusals` counter | world-specific: `last_result.status = refused`, `refusals` counter | unknown action raises (no refusal path) |
-| Adapter: world policy before execution | none | world-specific: AST screen `screen_program`, `_SealedInstance`, namespace watch | world-specific: verbatim span check, census gate | none |
-| Adapter: determinism | seed plus cached game, replay on resume | recorded tick deltas replayed exactly | pure (no time, no network) | pure |
-| Adapter: remote mode | present (`--mode competition`) | local only | local only | local only |
-| Adapter: world id rule workaround | none (ids are 4 chars) | world-specific: 24-entry `TASK_ALIASES` table | none (pack ids are valid ids) | none |
-| Runtime: owner token | minted, held by the agent | minted, held by the agent | minted, held by the agent | minted |
-| Runtime: approvals, waivers | optional, unused | optional, unused | optional, unused | optional, unused |
-| Runtime: destructive declarations | optional, unused (declares present in 3 runs came from hazard advisories) | optional, unused | optional, unused | required for `BOMB` |
-| Runtime: usd cap, spend feed | optional, unused | optional, unused | optional, unused | optional, unused |
-| Runtime: carryover import | unused in the 25 (E3 on the experiment branch imported) | optional, unused | optional, unused | optional, unused |
-| Runtime: anchors, chain | chain intact on 22, absent on the 3 pre-chain runs (cd82, tn36, sp80) | chain intact | chain intact | chain intact |
-| Constitution | `CONSTITUTION.md` (named `DOCTRINE.md` when played) | `CONSTITUTION.md` plus `FLE_API.md` as world reference | `CONSTITUTION.md` | `CONSTITUTION.md` |
-| Modules: built-ins | six, advise | six, advise | six, advise | six, advise |
-| Modules: hazard tags observed | bp35 (3 classes), tu93, wa30 | none | none | `BOMB` after `GAME_OVER` |
-| Modules: external | none in the 25 | none | none | none |
-| Channels: host | present, unclaimed (progress claimed as `level+1` and `win`) | present, unclaimed (same) | present, unclaimed (same) | present, `ch goal` claimed in the e2e tests |
-| Channels: declared, form | extractor files, 6 to 16 per run in 22 of 25 (one path channel in r11l, ungradable on frames) | path channels, 7 to 14 per run, one extractor (circuit `lastrate`) | path channels `banked` and `submitted` in synth1m, none in 128k and 4m | one path channel (`counter`) |
-| Channels: claim kinds used | eq, delta (meter, cursor rows and columns, bars) | eq, delta, sign, crosses, tolerance | delta | eq, delta |
-| Verifiers | all 25 runs, 20 to 794 graded verify claims per run | 3 to 5 per run | optional, unused in the three published runs | tests only |
-| World model (`model.py`) | written in cn04, s5i5, sc25, su15, tu93, replayed in cn04, no plan ever executed | optional, unused | optional, unused | tests only |
-| Journal | frames, `n_frames`, 83 to 1172 events | dict observation, 6 to 10 events | dict observation, 41 to 51 events | dict observation |
-| Audit verdict | CLEAN on 25 of 25 | CLEAN on 3 of 3 | CLEAN on 3 of 3 | CLEAN in the tests |
-| Frame extra | present: images, dossier, scene lines, click candidates, grid `assay python` namespace | not applicable | not applicable | not applicable |
-| Rules tier | optional, unused (registry runs refuse it) | not applicable | not applicable | not applicable |
-| Kernel imports from the world | none | none | none | none |
+| Component | ARC-AGI-3 | Factorio (FLE) | OOLONG | Counter example | New-world template |
+|---|---|---|---|---|---|
+| Registry file | `bench/arcagi/registry_{200,500,1500}.json` (differ in the cap only) | `bench/factorio/registry_lab{64,128}.json` | `bench/oolong/registry_{40,200}.json` (cap only) | `examples/example_registry.json` | `examples/new_world/registry.json` (every optional key present, explained in its README) |
+| Registry: actions | `ACTION1..ACTION7`, `ACTION6 x,y` int 0..63, descriptions | `RUN program=<str base64>`, `WAIT ticks=<int 1..3600>`, descriptions | `BANK_FACT text,span=<str base64>`, `SUBMIT answer,spans=<str base64>`, descriptions | `INC amount=<int 1..2>`, `SET_LAMP state=<on\|off>`, `NOOP`, `BOMB` | `TURN delta=<int -3..3>`, `OPEN`, `ENTER`, `PEEK what=<code\|door>`, `ALARM`, `DRILL`, `SIREN volume=<float 0..1>` |
+| Registry: budget | actions 200, 500 or 1500 | actions 64 or 128 | actions 40 or 200 | actions 40 | actions 60, usd 5.0 |
+| Registry: batching | `hand_cap: null` | `hand_cap: null` | `hand_cap: null` | default 3 | `hand_cap: 3` |
+| Registry: goal, mode_note | optional, unused | present (goal text, mode_note) | present (goal text, mode_note) | present | present |
+| Registry: secrets | `ARC_API_KEY` | four RCON password names | optional, unused | optional, unused | `NEW_WORLD_API_KEY` |
+| Registry: destructive, approval, liveness | optional, unused | optional, unused | optional, unused | `BOMB` destructive | `ALARM` destructive, `DRILL` approval, `SIREN` live with rehearsal quota 1 |
+| Registry: zero_prior | off (parity with the hint line) | off (explicit) | off | off | off (explicit) |
+| Registry: modules, module_modes | unused in the 25 (the E2 experiment loaded `coverage_audit` externally) | optional, unused | optional, unused | optional, unused | `modules: []`, modes for `coverage_audit` and `hazard` |
+| Registry: gate | absent (required) | absent | absent | absent | `required` (explicit) |
+| Adapter | world-specific, `bench/arcagi/adapter.py` | world-specific, `bench/factorio/adapter.py` | world-specific, `bench/oolong/adapter.py` | `examples/counter_world.py` | `examples/new_world/adapter.py` |
+| Adapter: observation shape | frames (the ARC client's frame object, 64x64, values 0..15) | dict: task, tick, stdout, stderr, inventory, entities, production, windows, policy_refusals, namespace_watch | dict: corpus path and shape (never the body), current question, census, last_result | dict: counter, lamp | dict: room, dial, door, hint, refusals, last_result |
+| Adapter: `finalize` | present (`close_scorecard`) | present (teardown, cluster stop, cached observation) | present (sealed scoring, writes `.assay/oolong_score.json`) | optional, unused | present (writes `.assay/new_world_summary.json`) |
+| Adapter: `public_info` | present (game_id, title, tags, default_fps) | present (game_id, title, map_seed) | present (game_id, title, benchmark, dataset_revision, context_len, dataset) | optional, unused | present (world, rooms) |
+| Adapter: refusals through the observation | not needed (the engine accepts every action) | world-specific: `POLICY_REFUSED` in `stderr`, `policy_refusals` counter | world-specific: `last_result.status = refused`, `refusals` counter | unknown action raises (no refusal path) | present: `last_result.status = refused`, `refusals` counter |
+| Adapter: world policy before execution | none | world-specific: AST screen `screen_program`, `_SealedInstance`, namespace watch | world-specific: verbatim span check, census gate | none | none |
+| Adapter: determinism | seed plus cached game, replay on resume | recorded tick deltas replayed exactly | pure (no time, no network) | pure | codes derived from the seed |
+| Adapter: remote mode | present (`--mode competition`) | local only | local only | local only | local only |
+| Adapter: world id rule workaround | none (ids are 4 chars) | world-specific: 24-entry `TASK_ALIASES` table | none (pack ids are valid ids) | none | none |
+| Runtime: owner token | minted, held by the agent | minted, held by the agent | minted, held by the agent | minted | minted, delivered to a file in the test |
+| Runtime: approvals, waivers | optional, unused | optional, unused | optional, unused | optional, unused | both exercised (`DRILL`, `SIREN`) |
+| Runtime: destructive declarations | optional, unused (declares present in 3 runs came from hazard advisories) | optional, unused | optional, unused | required for `BOMB` | required for `ALARM` |
+| Runtime: usd cap, spend feed | optional, unused | optional, unused | optional, unused | optional, unused | cap present, feed unused |
+| Runtime: carryover import | unused in the 25 (E3 on the experiment branch imported) | optional, unused | optional, unused | optional, unused | optional, unused |
+| Runtime: anchors, chain | chain intact on 22, absent on the 3 pre-chain runs (cd82, tn36, sp80) | chain intact | chain intact | chain intact | chain intact |
+| Constitution | `CONSTITUTION.md` (named `DOCTRINE.md` when played) | `CONSTITUTION.md` plus `FLE_API.md` as world reference | `CONSTITUTION.md` | `CONSTITUTION.md` | `CONSTITUTION.md` |
+| Modules: built-ins | six, advise | six, advise | six, advise | six, advise | seven, advise |
+| Modules: hazard tags observed | bp35 (3 classes), tu93, wa30 | none | none | `BOMB` after `GAME_OVER` | `ALARM` after `GAME_OVER` |
+| Modules: external | none in the 25 | none | none | none | none |
+| Channels: host | present, unclaimed (progress claimed as `level+1` and `win`) | present, unclaimed (same) | present, unclaimed (same) | present, `ch goal` claimed in the e2e tests | present, `level+1` and `win` claimed |
+| Channels: declared, form | extractor files, 6 to 16 per run in 22 of 25 (one path channel in r11l, ungradable on frames) | path channels, 7 to 14 per run, one extractor (circuit `lastrate`) | path channels `banked` and `submitted` in synth1m, none in 128k and 4m | one path channel (`counter`) | path channels `dial`, `door`, `refusals` |
+| Channels: claim kinds used | eq, delta (meter, cursor rows and columns, bars) | eq, delta, sign, crosses, tolerance | delta | eq, delta | eq, delta |
+| Verifiers | all 25 runs, 20 to 794 graded verify claims per run | 3 to 5 per run | optional, unused in the three published runs | tests only | optional, unused |
+| World model (`model.py`) | written in cn04, s5i5, sc25, su15, tu93, replayed in cn04, no plan ever executed | optional, unused | optional, unused | tests only | optional, unused |
+| Journal | frames, `n_frames`, 83 to 1172 events | dict observation, 6 to 10 events | dict observation, 41 to 51 events | dict observation | dict observation, two progress units |
+| Audit verdict | CLEAN on 25 of 25 | CLEAN on 3 of 3 | CLEAN on 3 of 3 | CLEAN in the tests | CLEAN in the test |
+| Frame extra | present: images, dossier, scene lines, click candidates, grid `assay python` namespace | not applicable | not applicable | not applicable | not applicable |
+| Rules tier | optional, unused (registry runs refuse it) | not applicable | not applicable | not applicable | not applicable |
+| Kernel imports from the world | none | none | none | none | none |
 
 Counts come from the published journals (`assay-verify/evidence/*/journal-*.jsonl.gz`)
 and from `channels.json`, `verifiers/`, `hazards.json`, `model.py` and
-`model_fit.json` in the run directories. The new-world template under
-`examples/new_world/` joins this table when it lands.
+`model_fit.json` in the run directories. The template column is what
+`tests/test_conformance.py` exercises on every run of the suite.
 
 ## 5. What must never change
 

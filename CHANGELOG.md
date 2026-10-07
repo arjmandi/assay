@@ -119,6 +119,19 @@ Left on the experiment branch, deliberately:
   fresh. Receipts print `CHANNELS | name: before -> after` for declared path
   channels that changed across the act or the batch.
 
+- The conformance audit (A8.4): `tests/test_conformance.py` checks that the
+  kernel imports nothing from `bench`, `assay_grid` or pillow at module level
+  and names no world, that every adapter (the three benchmarks, the counter
+  example, the template) exposes `factory(root, config)` and a session with
+  `observation` and `step(action, data, reasoning)`, that the README
+  quickstart passes verbatim, and that the new-world template passes the
+  whole loop including the owner operations. `examples/new_world/` is that
+  template: an adapter with a refusal reported through the observation,
+  `finalize`, `public_info`, two progress units and a seed-derived
+  determinism, a registry with every optional key present, and a README
+  explaining each key. The conformance table in `docs/ARCHITECTURE.md` gains
+  the template column.
+
 ### Changed
 
 - The frame-world tier left the kernel (A8.2). `src/assay_grid/` holds
