@@ -122,11 +122,11 @@ the conservative default was implemented.
 | O2 the legacy numbered-action path | decided: deleted with the rules tier that only ran on it, a registry is required | nothing |
 | O3 the OOLONG corpora | decided: the smoke packs ship, the others fetch on first use, the tree is clean | the history rewrite (section 1), before the flip |
 | O4 the experiment tooling and the E1 files | left on `exp/2026-10` | nothing on the branch (the paper cites the archive) |
-| O5 the owner token | `--owner-token-file` plus the honest paragraph | nothing (the protocols are unchanged) |
+| O5 the owner token | decided: `--owner-token-file` ships (K7), the protocol rewrite is deferred to the next release | nothing |
 | O6 hot-load | the manifest, owner install | nothing |
 | O7 the world id rule | decided: any string up to 64 characters without whitespace, control characters or path separators, kept as given | nothing |
 | O8 the nine agent branches | untouched | the flip (delete before publishing) |
-| O9 contributions under PolyForm NC | no statement yet | the README's contribution line |
+| O9 contributions under PolyForm NC | decided: issues only in 1.1.0, stated in README.md and CONTRIBUTING.md | nothing |
 | O10 the INTEGRITY line on control-arm runs | decided: a neutral `GATE` line with a count, the audit unchanged | nothing |
 | O11 cut order under time pressure | not needed, the plan completed | nothing |
 

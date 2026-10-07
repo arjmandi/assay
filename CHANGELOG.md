@@ -3,6 +3,13 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## Next
+
+- The benchmark protocols rewritten so the operator runs `assay start` and
+  holds the owner token, which the agent then never sees (O5, scheduled). In
+  1.1.0 the option `--owner-token-file` ships and the protocols say the agent
+  ran `start` itself.
+
 ## 1.1.0 (the date is set at the tag)
 
 The first source-available release, under the PolyForm Noncommercial License
@@ -120,9 +127,8 @@ Left on the experiment branch, deliberately:
   owner token is written to that file with mode 0600, outside the run
   directory, and the path is printed instead of the token. The default is
   unchanged (printed once). In every benchmark protocol so far the agent ran
-  `start` itself and therefore held the token; the documents say so.
-  TODO(owner: O5): whether the benchmark protocols are rewritten so the
-  operator runs `start`, or this option plus an honest paragraph is enough.
+  `start` itself and therefore held the token; the documents say so. The
+  protocol rewrite is scheduled for the next release (O5, under Next).
 
 - `assay act --help` and `assay commit --help` lead with the general claim
   table (every world) and put the grid forms under a labelled "frame worlds

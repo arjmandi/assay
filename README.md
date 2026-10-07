@@ -78,7 +78,8 @@ the 25 published run directories unchanged (`CHANGELOG.md`).
 
 ASSAY is source-available under the PolyForm Noncommercial License 1.0.0
 (`LICENSE`): you may use, modify and share it for noncommercial purposes. For
-commercial terms contact the author. The vendored OOLONG scorer is MIT
+commercial terms contact the author. In 1.1.0 the repository takes issues
+only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
 (`NOTICE`). The journal standard and the independent checker live in the
 separate assay-verify repository under MIT, so anyone can verify a journal
 without a license to the harness.
