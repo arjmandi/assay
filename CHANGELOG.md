@@ -440,6 +440,12 @@ Left on the experiment branch, deliberately:
   actions up to and including the event (so `ch budget_remaining delta = -1`
   holds for any paid action), and is UNGRADABLE only when no cap is
   registered, with the reason saying so.
+- Daemon identification on Linux without a terminal. `find_daemon` reads
+  `ps -ww -eo pid=,command=`: procps cuts the listing at 80 columns when no
+  terminal is attached (under pytest, in CI), so the daemon's `--run-dir`
+  fell off the line and `assay stop`, `assay doctor` and the resume rule
+  did not recognize a live daemon; `-ww` lifts the limit on procps and BSD
+  ps alike. Found by the first CI run on ubuntu (#30).
 
 ### Regression gates
 

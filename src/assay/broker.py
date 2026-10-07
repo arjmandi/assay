@@ -429,11 +429,14 @@ def find_daemon(paths: RunPaths) -> DaemonInfo | None:
     hand-deleted `.assay` there is no broker.json at all while the daemon still
     serves the socket. So the identity is the process table: a live process
     whose command line runs the `broker_server` module with `--run-dir` naming
-    this directory. Portable across macOS and Linux through `ps`."""
+    this directory. Portable across macOS and Linux through `ps`; `-ww` lifts
+    the column limit procps applies when no terminal is attached (under pytest
+    on Linux the listing was cut at 80 columns and `--run-dir` fell off the
+    line), and BSD ps reads it as the same unlimited width."""
     roots = {str(paths.root), str(paths.root.resolve())}
     try:
         listing = subprocess.run(
-            ["ps", "-eo", "pid=,command="],
+            ["ps", "-ww", "-eo", "pid=,command="],
             capture_output=True,
             text=True,
             timeout=10.0,
