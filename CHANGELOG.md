@@ -112,10 +112,17 @@ Left on the experiment branch, deliberately:
   before any spend and the command line before sending. `assay act NAME
   --params '{...}'` or `--params @FILE` carries any parameters as JSON, the
   only form for an object or an array (and the one for a string with
-  newlines); `pname=value` stays as the sugar for scalars, and the two forms
-  are refused together in one command. `--step` takes the JSON form
-  `{"action", "params", "predict"}` and `--step @FILE` a list of them,
-  beside the `NAME pname=value :: claims` string. A model plan carries its
+  whitespace); `pname=value` stays as the sugar for scalars, and the two
+  forms are refused together in one command. `--step` takes the JSON form
+  `{"action", "params", "predict"}`, a JSON list of them, or `--step @FILE`
+  holding the list, beside the `NAME pname=value :: claims` string. A schema
+  nests at most 32 levels (`REGISTRY_INVALID` past it); one request line is
+  at most 1,000,000 bytes, refused `REQUEST_MALFORMED` by the daemon before
+  parsing (the connection answered, never hung) and `COMMAND_ARGS` by the
+  command line for a `--params` or `--step` document, as are a repeated key
+  in a JSON object and a nesting the interpreter cannot read; a rendered
+  action line escapes the line separators JSON leaves raw (U+0085, U+2028,
+  U+2029 and their kind), so it stays one line. A model plan carries its
   actions as `{action, params}` objects, written by `assay model solve` and
   validated at commit; a plan written in the old string form is refused with
   `PLAN_INVALID` and the hint to solve again. The REGISTRY block renders an

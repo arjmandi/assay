@@ -93,6 +93,7 @@ from .ops import (
     ACT,
     COMMIT,
     INSTALL_MODULE,
+    REQUEST_LIMIT_BYTES,
     RESET,
     ActRequest,
     CommitRequest,
@@ -101,6 +102,7 @@ from .ops import (
     Req,
     ResetRequest,
     Step,
+    decode_json,
 )
 from .predictions import claims_help
 from .registry import (
@@ -1075,7 +1077,11 @@ STEP_FORM_HINT = (
 
 def _json_argument(raw: str, flag: str) -> Any:
     """The JSON a flag carries: the text itself, or the content of the file
-    an `@FILE` value names (relative to the working directory)."""
+    an `@FILE` value names (relative to the working directory), under the
+    wire's rules (`ops.decode_json`): at most `REQUEST_LIMIT_BYTES`, no
+    repeated key, a nesting the interpreter can read; refused here, before
+    the socket, in the command line's code."""
+    hint = PARAMS_HINT if flag == "--params" else STEP_FORM_HINT
     text = raw
     if raw.startswith("@"):
         source = Path(raw[1:]).expanduser()
@@ -1085,16 +1091,23 @@ def _json_argument(raw: str, flag: str) -> Any:
             raise AssayError(
                 f"{flag} names a file that cannot be read: {source}: {error.strerror or error}",
                 code="COMMAND_ARGS",
-                hint=PARAMS_HINT if flag == "--params" else STEP_FORM_HINT,
+                hint=hint,
             ) from None
-    try:
-        return json.loads(text)
-    except json.JSONDecodeError as error:
+    size = len(text.encode())
+    if size > REQUEST_LIMIT_BYTES:
         raise AssayError(
-            f"{flag} is not valid JSON: {error}",
+            f"{flag} is {size} bytes; one request is at most {REQUEST_LIMIT_BYTES} bytes",
             code="COMMAND_ARGS",
-            hint=PARAMS_HINT if flag == "--params" else STEP_FORM_HINT,
-        ) from None
+            hint=hint,
+        )
+    try:
+        return decode_json(text)
+    except json.JSONDecodeError as error:
+        raise AssayError(f"{flag} is not valid JSON: {error}", code="COMMAND_ARGS", hint=hint) from None
+    except RecursionError:
+        raise AssayError(f"{flag} is nested too deep", code="COMMAND_ARGS", hint=hint) from None
+    except ValueError as error:
+        raise AssayError(f"{flag} is not accepted: {error}", code="COMMAND_ARGS", hint=hint) from None
 
 
 def _params_object(raw: str) -> dict[str, Any]:
@@ -1143,17 +1156,15 @@ def _step_object(obj: Any, registry: Mapping[str, Any]) -> Step:
 def _steps_of(raw_steps: list[str], registry: Mapping[str, Any]) -> list[Step]:
     """The `--step` values in order: a string step `NAME pname=value ::
     claims` parsed against the registry, a JSON step (the text starts with
-    `{`) read as the step object, an `@FILE` read as a list of step objects
-    (or one)."""
+    `{`) read as the step object, a JSON list of them (the text starts with
+    `[`) or an `@FILE` holding a list of step objects (or one)."""
     steps: list[Step] = []
     for raw in raw_steps:
         text = raw.strip()
-        if text.startswith("@"):
+        if text.startswith(("@", "{", "[")):
             loaded = _json_argument(text, "--step")
             items = loaded if isinstance(loaded, list) else [loaded]
             steps.extend(_step_object(item, registry) for item in items)
-        elif text.startswith("{"):
-            steps.append(_step_object(_json_argument(text, "--step"), registry))
         else:
             token, predict = split_step(raw)
             name, params = parse_registry_action(token, registry)
@@ -1579,7 +1590,7 @@ COMMANDS: tuple[Command, ...] = (
                 dest="params_json",
                 metavar="JSON",
                 help="the parameters as one JSON object, or @FILE holding one: the form for an "
-                "object or an array parameter and for a string with newlines; instead of the "
+                "object or an array parameter and for a string with whitespace; instead of the "
                 "pname=value tokens, never beside them",
             ),
             arg(
@@ -1619,8 +1630,8 @@ COMMANDS: tuple[Command, ...] = (
                 default=[],
                 metavar='"ACTION :: CLAIMS"',
                 help="one action with its own prediction, as \"NAME pname=value :: claims\" or as "
-                'the JSON object {"action", "params", "predict"} (@FILE holds a list of such '
-                "objects); repeat in execution order",
+                'the JSON object {"action", "params", "predict"} (a JSON list or @FILE holds '
+                "several); repeat in execution order",
             ),
             arg("--at", type=int, dest="at_event"),
             arg(

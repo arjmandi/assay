@@ -82,7 +82,7 @@ from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, RunPaths, read_json
+from .core import AssayError, RunPaths, one_line_json, read_json
 from .records import Event
 
 if TYPE_CHECKING:
@@ -106,6 +106,11 @@ _SCHEMA_KEYS = frozenset().union(*_KEYS_BY_TYPE.values())
 # A refused value is named up to this many characters; a program or a list
 # of spans is clipped, a scalar never is.
 SHOWN_WIDTH = 80
+# A schema nests at most this deep below its parameter (an array's items,
+# an object's property, each one step of depth); the limit bounds the
+# validator's recursion on a value as well, since a value is only ever
+# checked along its schema.
+SCHEMA_DEPTH_LIMIT = 32
 _TOP_KEYS = {
     "actions",
     "budget",
@@ -431,14 +436,34 @@ def _is_count(value: Any) -> bool:
 
 
 def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
-    return _validate_schema(f"{action}.{pname}", schema)
+    return _validate_schema(f"{action}.{pname}", schema, 0)
 
 
-def _validate_schema(where: str, schema: Any) -> dict[str, Any]:
+def _is_of_type(kind: str, value: Any) -> bool:
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "object":
+        return isinstance(value, Mapping)
+    return isinstance(value, list)
+
+
+def _validate_schema(where: str, schema: Any, depth: int) -> dict[str, Any]:
     """One parameter schema of the subset into its canonical form: the keys
     the type takes and no other, each bound a number of the right shape under
-    one spelling, every nested schema validated the same way, every enum
-    member fitting the schema. The spelling the file used is kept."""
+    one spelling, every nested schema validated the same way within
+    SCHEMA_DEPTH_LIMIT, every enum member fitting the schema. The spelling
+    the file used is kept."""
+    if depth > SCHEMA_DEPTH_LIMIT:
+        raise AssayError(
+            f"parameter schema {where} is nested past the depth limit of {SCHEMA_DEPTH_LIMIT}",
+            code="REGISTRY_INVALID",
+        )
     if not isinstance(schema, Mapping):
         raise AssayError(f"parameter schema {where} must be an object", code="REGISTRY_INVALID")
     kind = schema.get("type")
@@ -459,7 +484,7 @@ def _validate_schema(where: str, schema: Any) -> dict[str, Any]:
     elif canonical == "string":
         _validate_bounds(where, schema, output, ("minLength",), ("maxLength",), "a non-negative integer", _is_count)
     elif canonical == "object":
-        _validate_object_schema(where, schema, output)
+        _validate_object_schema(where, schema, output, depth)
     elif canonical == "array":
         _validate_bounds(where, schema, output, ("minItems",), ("maxItems",), "a non-negative integer", _is_count)
         if "items" not in schema:
@@ -467,21 +492,25 @@ def _validate_schema(where: str, schema: Any) -> dict[str, Any]:
                 f"parameter {where} is an array and needs 'items', the schema of every item",
                 code="REGISTRY_INVALID",
             )
-        output["items"] = _validate_schema(f"{where}[]", schema["items"])
+        output["items"] = _validate_schema(f"{where}[]", schema["items"], depth + 1)
     if "enum" in schema:
         values = schema["enum"]
         if not isinstance(values, list) or not values:
             raise AssayError(f"parameter {where} enum must be a non-empty list", code="REGISTRY_INVALID")
-        # Each member is of the schema's type: a scalar member is checked for
-        # its type alone (the bounds never applied to an enum), a structured
-        # member for its whole shape.
-        probe = output if canonical in ("object", "array") else {"type": kind}
+        # Each member is of the schema's type and fits the rest of it (its
+        # bounds, its shape): a member no value could ever match is a
+        # registry mistake, refused here rather than at every act.
         for value in values:
-            try:
-                _check(probe, value, where, None)
-            except AssayError:
+            if not _is_of_type(canonical, value):
                 raise AssayError(
                     f"parameter {where} enum value {value!r} does not match type {kind}",
+                    code="REGISTRY_INVALID",
+                )
+            try:
+                _check(output, value, where, None)
+            except AssayError as error:
+                raise AssayError(
+                    f"parameter {where} enum value {value!r} does not fit the schema: {error}",
                     code="REGISTRY_INVALID",
                 ) from None
         output["enum"] = list(values)
@@ -520,7 +549,9 @@ def _validate_bounds(
         raise AssayError(f"parameter {where} has {low_name} > {high_name}", code="REGISTRY_INVALID")
 
 
-def _validate_object_schema(where: str, schema: Mapping[str, Any], output: dict[str, Any]) -> None:
+def _validate_object_schema(
+    where: str, schema: Mapping[str, Any], output: dict[str, Any], depth: int
+) -> None:
     properties = schema.get("properties")
     if not isinstance(properties, Mapping) or not properties:
         raise AssayError(
@@ -531,7 +562,7 @@ def _validate_object_schema(where: str, schema: Mapping[str, Any], output: dict[
     for name, sub in properties.items():
         if not isinstance(name, str) or not _NAME.fullmatch(name):
             raise AssayError(f"parameter {where} has an invalid property name {name!r}", code="REGISTRY_INVALID")
-        canonical[name] = _validate_schema(f"{where}.{name}", sub)
+        canonical[name] = _validate_schema(f"{where}.{name}", sub, depth + 1)
     output["properties"] = canonical
     if "required" in schema:
         required = schema["required"]
@@ -601,7 +632,7 @@ def _shown(value: Any) -> str:
     text: str
     if isinstance(value, (Mapping, list)):
         try:
-            text = json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+            text = one_line_json(value)
         except (TypeError, ValueError):
             text = repr(value)
     else:
@@ -640,7 +671,11 @@ def _check(
     elif kind == "number":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
             raise refuse("is not a number")
-        value = float(value)
+        try:
+            value = float(value)
+        except OverflowError:
+            # A JSON integer past what a float holds.
+            raise refuse("must be finite") from None
         if math.isnan(value) or math.isinf(value):
             raise refuse("must be finite")
     elif kind == "string":
@@ -734,6 +769,12 @@ def validate_action(
     name = str(action).strip().upper()
     if not name:
         raise AssayError("empty action name", code="ACTION_PARAMS", hint=TOKEN_FORM_HINT)
+    if params is not None and not isinstance(params, Mapping):
+        raise AssayError(
+            f"{name} parameters must be a JSON object, not {_shown(params)}",
+            code="ACTION_PARAMS",
+            hint=TOKEN_FORM_HINT,
+        )
     supplied_raw = dict(params or {})
     if name == "RESET":
         if supplied_raw:
@@ -878,7 +919,7 @@ def _range_text(low: Any, high: Any) -> str | None:
 
 def _enum_text(value: Any) -> str:
     if isinstance(value, (bool, Mapping, list)):
-        return json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+        return one_line_json(value)
     return str(value)
 
 

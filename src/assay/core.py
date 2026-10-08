@@ -506,19 +506,34 @@ def frame_at(event: Event, frame: int = -1) -> np.ndarray[Any, Any]:
     return rows_to_grid(event.frames[frame])
 
 
+# json.dumps with ensure_ascii=False leaves these characters raw, and a
+# rendered line must stay one line for whoever splits lines: the control
+# characters json does not escape on its own (U+007F to U+009F, category Cc)
+# and the separators of categories Zl and Zp (U+2028, U+2029), each mapped to
+# its JSON escape. Everything below U+0020 json escapes itself.
+LINE_ESCAPES = {code: f"\\u{code:04x}" for code in (*range(0x7F, 0xA0), 0x2028, 0x2029)}
+
+
+def one_line_json(value: Any) -> str:
+    """A value as compact JSON on one line: non-ASCII text readable, the
+    keys of an object sorted, the characters of LINE_ESCAPES escaped."""
+    text = json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+    return text.translate(LINE_ESCAPES)
+
+
 def render_param(value: Any) -> str:
     """One parameter value on an action line: a number or a bare string as
     it is (the form every published receipt carries), true/false for a
-    boolean, compact JSON for a string that holds whitespace or a control
-    character (a program) and for an object or an array."""
+    boolean, JSON on one line for a string that holds whitespace or a
+    control character (a program) and for an object or an array."""
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, str):
         if not any(character.isspace() or unicodedata.category(character) == "Cc" for character in value):
             return value
-        return json.dumps(value, ensure_ascii=False)
+        return one_line_json(value)
     if isinstance(value, (Mapping, list)):
-        return json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+        return one_line_json(value)
     return str(value)
 
 

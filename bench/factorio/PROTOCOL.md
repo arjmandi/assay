@@ -113,7 +113,7 @@ WAIT ticks=<int 1..3600>      advance the simulation by an exact tick count
 
 **`program` is the Python source as a plain string**, passed as JSON:
 `assay act RUN --params '{"program": "..."}'`, or `--params @FILE` with a
-file holding that object, since a program holds newlines and ASSAY splits
+file holding that object, since a program holds whitespace and ASSAY splits
 `pname=value` tokens on whitespace. The kernel validates the object against
 the registry's schema before any spend and journals the source itself under
 `data`, which is what replay and audit read; `assay view --event N` prints

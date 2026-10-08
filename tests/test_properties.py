@@ -563,7 +563,9 @@ _value_text = _token | _shaped_values | st.integers().map(str) | _finite_float.m
 @st.composite
 def param_schemas(draw) -> dict[str, Any]:
     """A parameter schema the registry accepts: int or float, optionally
-    bounded, str, each optionally with an enum of its own type."""
+    bounded, str, each optionally with an enum of its own type within its
+    bounds (a member outside them is a registry mistake the kernel refuses,
+    since no value could match it)."""
     kind = draw(st.sampled_from(["int", "float", "str"]))
     schema: dict[str, Any] = {"type": kind}
     bounds = st.integers(-1000, 1000) if kind == "int" else st.integers(-1000, 1000) | _finite_float
@@ -577,7 +579,7 @@ def param_schemas(draw) -> dict[str, Any]:
         if high is not None:
             schema["max"] = high
     if draw(st.booleans()):
-        members = {"int": st.integers(-1000, 1000), "float": bounds, "str": _token}[kind]
+        members = _token if kind == "str" else values_of(schema)
         schema["enum"] = draw(st.lists(members, min_size=1, max_size=5))
     return schema
 

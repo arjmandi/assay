@@ -5,14 +5,16 @@ its refusals, the forms and the rendering of structured values."""
 from __future__ import annotations
 
 import json
+import unicodedata
 
 import pytest
 
 from conftest import event_of
 
-from assay.core import AssayError, parse_action, render_action
+from assay.core import LINE_ESCAPES, AssayError, one_line_json, parse_action, render_action, render_param
 from assay.evidence import ACTION_WIDTH, RecentLine, history_text
 from assay.registry import (
+    SCHEMA_DEPTH_LIMIT,
     action_form,
     check_budget,
     check_registry_action,
@@ -460,3 +462,97 @@ def test_history_lines_clip_a_long_action_and_keep_a_short_one():
     assert rendered == f"  e0003 a0003 L1 {long[:ACTION_WIDTH - 3]}... ✓ | 2 keys | NOT_FINISHED"
     exact = "x" * ACTION_WIDTH
     assert history_text([line(exact)]) == [f"  e0003 a0003 L1 {exact} ✓ | 2 keys | NOT_FINISHED"]
+
+
+# --- the edges of the subset (the review of #14) --------------------------------
+
+
+def test_a_number_past_what_a_float_holds_is_refused_as_not_finite():
+    huge = 10**400
+    with pytest.raises(AssayError, match="^value=1000000000") as caught:
+        validate_value({"type": "number"}, huge)
+    assert str(caught.value).endswith("... must be finite") and caught.value.code == "ACTION_PARAMS"
+    assert validate_value({"type": "number"}, 10**300) == 1e300
+
+
+def _nested_arrays(levels: int) -> dict:
+    schema: dict = {"type": "int"}
+    for _ in range(levels):
+        schema = {"type": "array", "items": schema}
+    return schema
+
+
+def test_a_schema_nests_at_most_the_depth_limit():
+    assert SCHEMA_DEPTH_LIMIT == 32
+    within = validate_registry({"actions": [{"name": "A", "params": {"p": _nested_arrays(32)}}]})
+    assert within["actions"][0]["params"]["p"] == _nested_arrays(32)
+    value: object = 1
+    for _ in range(32):
+        value = [value]
+    assert validate_value(_nested_arrays(32), value) == value
+    with pytest.raises(AssayError) as caught:
+        validate_registry({"actions": [{"name": "A", "params": {"p": _nested_arrays(33)}}]})
+    assert str(caught.value) == "parameter schema A.p" + "[]" * 33 + " is nested past the depth limit of 32"
+    assert caught.value.code == "REGISTRY_INVALID"
+    # An object's property is one level too.
+    deep: dict = {"type": "int"}
+    for _ in range(33):
+        deep = {"type": "object", "properties": {"a": deep}}
+    with pytest.raises(AssayError, match="is nested past the depth limit of 32"):
+        validate_registry({"actions": [{"name": "A", "params": {"p": deep}}]})
+
+
+def test_validate_action_refuses_parameters_that_are_not_an_object():
+    registry = canonical()
+    for params, shown in (([1], "[1]"), ("amount=1", "'amount=1'"), (7, "7")):
+        with pytest.raises(AssayError) as caught:
+            validate_action(registry, "INC", params)  # type: ignore[arg-type]
+        assert str(caught.value) == f"INC parameters must be a JSON object, not {shown}"
+        assert caught.value.code == "ACTION_PARAMS"
+
+
+@pytest.mark.parametrize(
+    "schema, message",
+    [
+        ({"type": "int", "min": 1, "enum": [0, 1]}, "parameter A.p enum value 0 does not fit the schema: A.p=0 is below min 1"),
+        ({"type": "number", "maximum": 1.5, "enum": [2.5]}, "parameter A.p enum value 2.5 does not fit the schema: A.p=2.5 is above max 1.5"),
+        ({"type": "string", "maxLength": 2, "enum": ["abc"]}, "parameter A.p enum value 'abc' does not fit the schema: A.p='abc' is 3 characters long, above maxLength 2"),
+        ({"type": "array", "items": {"type": "int"}, "maxItems": 1, "enum": [[1, 2]]}, "parameter A.p enum value [1, 2] does not fit the schema: A.p=[1,2] has 2 item(s), above maxItems 1"),
+        ({"type": "object", "properties": {"a": {"type": "int"}}, "required": ["a"], "enum": [{}]}, "parameter A.p enum value {} does not fit the schema: A.p={} is missing property(ies): ['a']"),
+    ],
+)
+def test_an_enum_member_outside_its_own_schema_is_refused_at_registry_validation(schema, message):
+    with pytest.raises(AssayError) as caught:
+        validate_registry({"actions": [{"name": "A", "params": {"p": schema}}]})
+    assert str(caught.value) == message and caught.value.code == "REGISTRY_INVALID"
+    # A type mismatch keeps its own message.
+    with pytest.raises(AssayError, match="enum value 'x' does not match type int"):
+        validate_registry({"actions": [{"name": "A", "params": {"p": {"type": "int", "min": 1, "enum": ["x"]}}}]})
+
+
+def test_rendered_lines_escape_the_separators_json_leaves_raw():
+    # The table is exactly the characters of categories Cc, Zl and Zp that
+    # json.dumps(ensure_ascii=False) does not escape on its own.
+    expected = {
+        code for code in range(0x20, 0x110000) if unicodedata.category(chr(code)) in ("Cc", "Zl", "Zp")
+    }
+    assert set(LINE_ESCAPES) == expected
+    for text, rendered in (
+        ("a\u2028b", '"a\\u2028b"'),
+        ("a\u2029b", '"a\\u2029b"'),
+        ("a\x85b", '"a\\u0085b"'),
+        ("a\x7fb", '"a\\u007fb"'),
+        ("tab\there", '"tab\\there"'),
+        ("x = 1\nprint(x)", '"x = 1\\nprint(x)"'),
+    ):
+        assert render_param(text) == rendered, text
+        assert len(render_param(text).splitlines()) == 1
+    assert render_param("caf\u00e9 ou th\u00e9") == '"caf\u00e9 ou th\u00e9"'  # readable, not escaped
+    assert render_param("plain\u00e9") == "plain\u00e9"
+    assert render_action("RUN", {"program": {"line": "x\u2029y"}}) == 'RUN program={"line":"x\\u2029y"}'
+    assert one_line_json(["a\u2028", {"k": "\x85"}]) == '["a\\u2028",{"k":"\\u0085"}]'
+    # A refused value is named on one line too.
+    with pytest.raises(AssayError) as caught:
+        validate_value({"type": "integer"}, {"a": "x\u2028y"})
+    assert str(caught.value) == 'value={"a":"x\\u2028y"} is not an integer'
+    assert len(str(caught.value).splitlines()) == 1

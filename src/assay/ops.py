@@ -36,6 +36,7 @@ fields; the daemon spends on nothing it did not read whole.
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Mapping
 from typing import Any, Generic, Protocol, Self, TypeVar
 
@@ -56,6 +57,32 @@ from .records import (
 )
 
 PROTOCOL_VERSION = 2
+# One request line is at most this many bytes: the daemon reads that many and
+# one more and refuses a longer line before parsing it (`broker._read_request`),
+# and the command line refuses a `--params` or `--step` document past it
+# before the socket sees it. A parameter without `maxLength` or `maxItems` is
+# bounded by this; those keywords are the world's own caps below it.
+REQUEST_LIMIT_BYTES = 1_000_000
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """The object of a JSON text with a repeated key refused: the last would
+    silently win, and nothing on the wire means that."""
+    obj: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"the key {key!r} is repeated")
+        obj[key] = value
+    return obj
+
+
+def decode_json(text: str | bytes) -> Any:
+    """One JSON document under the protocol's rules: a repeated key within
+    an object is refused (`ValueError`), and a document nested past the
+    interpreter's limit raises `RecursionError`; the caller words the
+    refusal in its own code (`REQUEST_MALFORMED` on the daemon,
+    `COMMAND_ARGS` on the command line)."""
+    return json.loads(text, object_pairs_hook=_strict_object)
 
 
 class Record(Protocol):

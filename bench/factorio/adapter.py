@@ -14,7 +14,7 @@ Two paid actuators (registry Option A, FLE parity):
     RUN  program=<string>   execute one program against the FLE API
     WAIT ticks=<int>        advance the simulation by an exact tick count
 
-`program` is the Python source as a plain string; it holds newlines, so it
+`program` is the Python source as a plain string; it holds whitespace, so it
 goes through `assay act RUN --params '{"program": "..."}'` (or `--params
 @FILE`), never as a `program=` token (PROTOCOL.md; the runs recorded before
 1.2.0 carried it base64-encoded). Every program is screened by a fail-closed

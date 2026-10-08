@@ -164,6 +164,20 @@ under `data` as the v1 spec allows; a receipt and `assay view` render a
 nested value as compact JSON after its key, the RECENT history lines clip a
 long action.
 
+The subset's edges, stated: `1.0` is refused for an `integer` (an integer is
+a JSON integer; a float with no fraction is not one), and a JSON integer past
+what a float holds is refused for a `number` as not finite. An `object` needs
+a non-empty `properties`. An enum member that its own schema's bounds would
+refuse is refused at registry validation (`REGISTRY_INVALID`), since no value
+could ever match it. A schema nests at most `registry.SCHEMA_DEPTH_LIMIT`
+(32) levels below its parameter, an array's items or an object's property
+each one level, refused `REGISTRY_INVALID` past it; the limit bounds the
+validator's recursion on a value too, since a value is only ever checked
+along its schema. One request line on the wire is at most
+`ops.REQUEST_LIMIT_BYTES` (1,000,000 bytes, section 7.2), so a string
+without `maxLength` and an array without `maxItems` are bounded by it;
+`maxLength` and `maxItems` are the world's own caps below it.
+
 Defaults when a key is absent: `batching.hand_cap` is 3 (the batching law,
 `registry.hand_cap`), `notes_cap` is 16000 characters (`registry.notes_cap`),
 `zero_prior` is false, `gate` is `required`, no action cap means no cap, no
@@ -1322,7 +1336,14 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   the operation up, decodes the request record, calls the handler with the run, encodes the
   result; one function per operation (#24). The client checks the reply's `v` the same way,
   so a daemon that outlived an upgrade is refused rather than misread; the client sends the
-  version of the package it belongs to.
+  version of the package it belongs to. A request line is at most `ops.REQUEST_LIMIT_BYTES`
+  (1,000,000 bytes): the daemon reads that many and one more, drains the rest of a longer
+  line so the client's send completes, and refuses it with `REQUEST_MALFORMED` before
+  parsing, so the connection is answered, never hung (#14). A document whose object repeats
+  a key is refused the same way (the last would silently win), as is one nested past the
+  interpreter's limit (`ops.decode_json`); the command line applies the same cap and the
+  same two rules to a `--params` or `--step` document, as `COMMAND_ARGS`, so the agent
+  reads the refusal before the socket does.
 - `action` and `params`: the client parses `NAME k=v ...` into the name and a scalar
   params object using the pinned registry (the coercion of `registry._coerce`), or takes
   `--params JSON` as given and validates it against the same registry (#14); the daemon

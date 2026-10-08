@@ -50,6 +50,7 @@ from .ops import (
     OBSERVE,
     PING,
     PROTOCOL_VERSION,
+    REQUEST_LIMIT_BYTES,
     RESET,
     ActRequest,
     CommitRequest,
@@ -65,6 +66,7 @@ from .ops import (
     Res,
     ResetRequest,
     daemon_operation,
+    decode_json,
 )
 from .records import Claim, Event, Mutation, Receipt
 from .run import Run
@@ -856,21 +858,43 @@ class _StopRequested(Exception):
 
 
 def _read_request(connection: socket.socket) -> dict[str, Any]:
-    """One request line from the connection, as a JSON object."""
+    """One request line from the connection, as a JSON object. At most
+    `REQUEST_LIMIT_BYTES` are read as the line, plus one byte to tell a
+    longer line from an exact one; the rest of a longer line is drained and
+    discarded so the client's send completes and the refusal reaches it
+    (the connection is answered, never hung), and the line is refused
+    before anything parses it. A repeated key and a nesting past the
+    interpreter's limit are refused the same way (`ops.decode_json`)."""
     raw = b""
-    while b"\n" not in raw:
-        chunk = connection.recv(1 << 20)
+    while b"\n" not in raw and len(raw) <= REQUEST_LIMIT_BYTES:
+        chunk = connection.recv(min(1 << 20, REQUEST_LIMIT_BYTES + 1 - len(raw)))
         if not chunk:
             break
         raw += chunk
+    if b"\n" not in raw and len(raw) > REQUEST_LIMIT_BYTES:
+        while chunk and b"\n" not in chunk:
+            chunk = connection.recv(1 << 20)
+        raise AssayError(
+            f"malformed request: a line of more than {REQUEST_LIMIT_BYTES} bytes",
+            code="REQUEST_MALFORMED",
+            hint=REQUEST_HINT,
+        )
     lines = raw.splitlines()
     if not lines or not lines[0].strip():
         raise AssayError("malformed request: no line", code="REQUEST_MALFORMED", hint=REQUEST_HINT)
     try:
-        request = json.loads(lines[0])
-    except ValueError as error:
+        request = decode_json(lines[0])
+    except json.JSONDecodeError as error:
         raise AssayError(
             f"malformed request: not JSON ({error})", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+        ) from error
+    except RecursionError:
+        raise AssayError(
+            "malformed request: nested too deep", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+        ) from None
+    except ValueError as error:
+        raise AssayError(
+            f"malformed request: {error}", code="REQUEST_MALFORMED", hint=REQUEST_HINT
         ) from error
     if not isinstance(request, dict):
         raise AssayError(

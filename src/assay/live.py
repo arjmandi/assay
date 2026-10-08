@@ -483,7 +483,10 @@ def execute_action(
     return write_receipt(run, receipt)
 
 
-STEP_SYNTAX = 'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
+STEP_SYNTAX = (
+    'each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+    'or "predict" in the step object'
+)
 STEP_HINT = "`assay act --help` lists the claim forms"
 
 

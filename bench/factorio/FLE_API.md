@@ -63,7 +63,7 @@ An agent handed the stock FLE reference and nothing else will make three
 mistakes. State these alongside the reference.
 
 1. **Source goes through `--params`.** `RUN` takes the Python source as a
-   plain string, and a program holds newlines, so it is passed as
+   plain string, and a program holds whitespace, so it is passed as
    `assay act RUN --params '{"program": "..."}'` or `--params @FILE` (a file
    holding `{"program": "..."}`), never as a `program=` token, which ASSAY
    splits on whitespace. (Runs recorded before 1.2.0 carried the source

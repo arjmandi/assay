@@ -230,7 +230,10 @@ def test_the_daemon_validates_the_params_object_against_the_registry(tmp_path):
         with pytest.raises(AssayError) as caught:
             _request(paths, "commit", {"steps": [{"action": "NOOP", "params": None, "predict": None}]}, timeout=10.0)
         assert caught.value.code == "PREDICTION_REQUIRED"
-        assert str(caught.value) == 'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
+        assert str(caught.value) == (
+            'each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+            'or "predict" in the step object'
+        )
         result = _request(
             paths, "commit",
             {"steps": [
@@ -273,7 +276,8 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         bare = run_cli(run, "commit", "--step", "NOOP")
         assert bare.returncode == 2
         assert bare.stderr == (
-            'ERROR | PREDICTION_REQUIRED | each step needs its own prediction: --step "NAME pname=value :: <claims>"\n'
+            'ERROR | PREDICTION_REQUIRED | each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+            'or "predict" in the step object\n'
             "NEXT | `assay act --help` lists the claim forms\n"
         )
         empty = run_cli(run, "commit", "--step", ":: noop")
@@ -332,12 +336,29 @@ def test_params_json_carries_structured_values_through_the_cli_and_the_daemon(tm
             (["INC", "--params", f"@{run / 'nowhere.json'}"],
              f"--params names a file that cannot be read: {run / 'nowhere.json'}: No such file or directory",
              None),
+            # The wire's rules, applied here first: a repeated key, an integer
+            # past the interpreter's digit limit, a nesting it cannot read (a
+            # 20000-deep array on 3.12, 100000 on 3.14, within the size cap).
+            (["INC", "--params", '{"amount": 1, "amount": 2}'],
+             "--params is not accepted: the key 'amount' is repeated", None),
+            (["INC", "--params", '{"amount": ' + "1" * 5000 + "}"],
+             "--params is not accepted: Exceeds the limit (4300 digits) for integer string conversion", None),
+            (["INC", "--params", '{"amount": ' + "[" * 100_000 + "]" * 100_000 + "}"],
+             "--params is nested too deep", None),
         ):
             refused = run_cli(run, "act", *arguments, "--predict", "change")
             assert refused.returncode == 2, arguments
-            assert refused.stderr.startswith(f"ERROR | COMMAND_ARGS | {message}\n"), refused.stderr
+            assert refused.stderr.startswith(f"ERROR | COMMAND_ARGS | {message}"), refused.stderr
             if hint is not None:
                 assert refused.stderr == f"ERROR | COMMAND_ARGS | {message}\nNEXT | {hint}\n"
+        # A document past the request limit is refused before the socket.
+        big = '{"amount": 1, "pad": "' + "a" * 1_000_000 + '"}'
+        (run / "big.json").write_text(big)
+        too_big = run_cli(run, "act", "INC", "--params", f"@{run / 'big.json'}", "--predict", "change")
+        assert too_big.returncode == 2
+        assert too_big.stderr.startswith(
+            f"ERROR | COMMAND_ARGS | --params is {len(big.encode())} bytes; one request is at most 1000000 bytes\n"
+        )
         assert len(_events(run)) == 2
         # A nested value, validated down to each property, journaled as given
         # (keys sorted) and rendered as compact JSON on the receipt.
@@ -403,6 +424,14 @@ def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
             assert refused.returncode == 2, step
             assert refused.stderr == f"ERROR | {code} | {message}\nNEXT | {next_step}\n", refused.stderr
         assert len(_events(run)) == 3
+        # An inline JSON list of steps, as a file would hold it.
+        listed = run_cli(
+            run, "commit", "--step",
+            '[{"action": "NOOP", "predict": "noop"}, {"action": "SET_LAMP", "params": {"state": "off"}, "predict": "change"}]',
+        )
+        assert listed.returncode == 0, listed.stderr
+        assert "OUTCOME | PREDICTED | all 2 steps landed as predicted" in listed.stdout
+        assert "  e0003 NOOP ✓" in listed.stdout and "  e0004 SET_LAMP state=off ✓" in listed.stdout
         (run / "steps.json").write_text(json.dumps([
             {"action": "APPLY", "params": {"ops": [{"kind": "inc", "amount": 2}]}, "predict": "change"},
             {"action": "INC", "params": {"amount": 1}, "predict": "win"},
@@ -410,9 +439,66 @@ def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
         from_file = run_cli(run, "commit", "--step", f"@{run / 'steps.json'}")
         assert from_file.returncode == 0, from_file.stderr
         assert "OUTCOME | GAME_COMPLETE" in from_file.stdout
-        assert '  e0003 APPLY ops=[{"amount":2,"kind":"inc"}] ✓' in from_file.stdout
-        assert "  e0004 INC amount=1 ✓" in from_file.stdout
+        assert '  e0005 APPLY ops=[{"amount":2,"kind":"inc"}] ✓' in from_file.stdout
+        assert "  e0006 INC amount=1 ✓" in from_file.stdout
         assert _events(run)[-2]["data"] == {"ops": [{"amount": 2, "kind": "inc"}]}
+    finally:
+        stop_run(run)
+
+
+def _raw_text(run: Path, text: bytes) -> dict:
+    """Bytes on the socket as given, one line, the reply as JSON."""
+    import socket
+
+    from assay.core import RunPaths
+
+    paths = RunPaths(run)
+    with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+        client.settimeout(60.0)
+        client.connect(str(paths.socket))
+        client.sendall(text + b"\n")
+        chunks = b""
+        while b"\n" not in chunks:
+            chunk = client.recv(1 << 20)
+            if not chunk:
+                break
+            chunks += chunk
+    reply = json.loads(chunks.splitlines()[0])
+    assert isinstance(reply, dict)
+    return reply
+
+
+def test_the_daemon_caps_the_request_line_and_refuses_a_repeated_key_and_deep_nesting(tmp_path):
+    """The wire's rules (#14): a line past REQUEST_LIMIT_BYTES is refused
+    before parsing and the connection answered, a repeated key and a nesting
+    the interpreter cannot read are REQUEST_MALFORMED, never INTERNAL, and
+    the daemon keeps serving with nothing spent."""
+    run = tmp_path / "limits"
+    _prepare(run)
+    try:
+        assert _start(run).returncode == 0
+        token = (run / ".assay" / "broker.token").read_text().strip()
+        head = f'{{"v": 2, "token": "{token}", "op": "act", "args": '
+        long_line = (head + '{"action": "NOOP", "predict": "' + "x" * 1_100_000 + '"}}').encode()
+        assert len(long_line) > 1_000_000
+        reply = _raw_text(run, long_line)
+        assert reply["v"] == 2 and reply["ok"] is False
+        assert reply["error"]["code"] == "REQUEST_MALFORMED" and reply["error"]["kind"] == "usage"
+        assert reply["error"]["message"] == "malformed request: a line of more than 1000000 bytes"
+        reply = _raw_text(run, (head + '{"action": "NOOP", "action": "INC", "predict": "noop"}}').encode())
+        assert reply["error"]["code"] == "REQUEST_MALFORMED"
+        assert reply["error"]["message"] == "malformed request: the key 'action' is repeated"
+        reply = _raw_text(run, (head + "[" * 100_000 + "]" * 100_000 + "}").encode())
+        assert reply["error"]["code"] == "REQUEST_MALFORMED"
+        assert reply["error"]["message"] == "malformed request: nested too deep"
+        digits = head + '{"action": "INC", "params": {"amount": ' + "1" * 5000 + '}, "predict": "change"}}'
+        reply = _raw_text(run, digits.encode())
+        assert reply["error"]["code"] == "REQUEST_MALFORMED"
+        assert reply["error"]["message"].startswith("malformed request: Exceeds the limit (4300 digits)")
+        assert _raw(run, {"v": 2, "op": "ping", "args": {}})["ok"] is True
+        assert len(_events(run)) == 1
+        assert not (run / ".assay" / "mutations.jsonl").exists()
+        assert "Traceback" not in (run / ".assay" / "broker.log").read_text()
     finally:
         stop_run(run)
 

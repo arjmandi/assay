@@ -37,7 +37,7 @@ private state, and never edit `.assay/` by hand except `NOTES.md`.
   A scalar parameter goes on the command line as `pname=value`. A parameter
   that is an object or an array (`SUBMIT spans=<array of >=1 string>`, with
   a `form:` line under the action showing the whole shape), or a string that
-  holds newlines, goes as JSON instead:
+  holds whitespace (a token splits on any), goes as JSON instead:
   `"$ASSAY" act SUBMIT --params '{"answer": "...", "spans": ["..."]}'`, or
   `--params @FILE` with the object in a file; never both forms in one
   command. Semantics are never given. `RESET` is always built-in.
