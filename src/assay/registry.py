@@ -28,6 +28,9 @@ stay valid unchanged):
                                          # uncapped; DEFAULT 3 when absent (the
                                          # batching law); model-fit plans lift it
       "notes_cap": N|null,            # notes size cap in chars (default 16000)
+      "status_budget": N,             # tokens one status may print (an estimate,
+                                      # characters over four); the renderer drops
+                                      # the lowest-value blocks first and names them
       "zero_prior": bool,             # withhold action descriptions
       "modules": ["path.py", ...],    # behavior modules, pack-tier trust
       "module_modes": {"name": "off"|"advise"|"block"},
@@ -75,6 +78,7 @@ _TOP_KEYS = {
     "goal",
     "batching",
     "notes_cap",
+    "status_budget",
     "zero_prior",
     "modules",
     "module_modes",
@@ -104,6 +108,10 @@ BUDGET_HINT = (
     "`assay audit` gives the verdict and `assay export` the knowledge file for the next run"
 )
 SCHEMA_HINT = "the REGISTRY block of `assay status` lists the actions and their schemas"
+STATUS_BUDGET_HINT = (
+    'the form is `"status_budget": N`, N a positive count of tokens (an estimate, characters '
+    "over four) every status renders under; leave it out for no budget"
+)
 TOKEN_FORM_HINT = "the form is `NAME pname=value ...`"
 
 
@@ -230,6 +238,15 @@ def validate_registry(raw: Any) -> dict[str, Any]:
         ):
             raise AssayError("notes_cap must be an integer >= 100, or null", code="REGISTRY_INVALID")
         output["notes_cap"] = cap
+    if "status_budget" in raw:
+        tokens = raw["status_budget"]
+        if not isinstance(tokens, int) or isinstance(tokens, bool) or tokens < 1:
+            raise AssayError(
+                "status_budget must be a positive integer (tokens)",
+                code="REGISTRY_INVALID",
+                hint=STATUS_BUDGET_HINT,
+            )
+        output["status_budget"] = tokens
     if "zero_prior" in raw:
         if not isinstance(raw["zero_prior"], bool):
             raise AssayError("zero_prior must be true or false", code="REGISTRY_INVALID")
@@ -308,6 +325,14 @@ def notes_cap(registry: Mapping[str, Any] | None) -> int | None:
         cap = registry["notes_cap"]
         return None if cap is None else int(cap)
     return DEFAULT_NOTES_CAP
+
+
+def status_budget(registry: Mapping[str, Any] | None) -> int | None:
+    """The token budget every status renders under (docs/ARCHITECTURE.md
+    section 7.6); None when the registry sets none."""
+    if not registry or "status_budget" not in registry:
+        return None
+    return int(registry["status_budget"])
 
 
 def zero_prior(registry: Mapping[str, Any] | None) -> bool:

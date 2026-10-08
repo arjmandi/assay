@@ -60,6 +60,10 @@ def test_load_registry_file_valid(tmp_path):
         ({"actions": [{"name": "A"}], "budget": {"actions": 0}}, "positive"),
         ({"actions": [{"name": "A"}], "budget": {"actions": "5"}}, "positive"),
         ({"actions": [{"name": "A"}], "extra": 1}, "unknown keys"),
+        ({"actions": [{"name": "A"}], "status_budget": 0}, "status_budget must be a positive integer"),
+        ({"actions": [{"name": "A"}], "status_budget": "1500"}, "status_budget must be a positive integer"),
+        ({"actions": [{"name": "A"}], "status_budget": True}, "status_budget must be a positive integer"),
+        ({"actions": [{"name": "A"}], "status_budget": None}, "status_budget must be a positive integer"),
         ({"actions": [{"name": "A", "params": {"p": {"type": "str", "min": 1}}}]}, "does not apply"),
         (
             {"actions": [{"name": "A", "params": {"p": {"type": "int", "enum": ["x"]}}}]},
@@ -75,6 +79,26 @@ def test_load_registry_file_valid(tmp_path):
 def test_registry_schema_refusals(mutant, message):
     with pytest.raises(AssayError, match=message):
         validate_registry(mutant)
+
+
+def test_status_budget_is_a_positive_count_of_tokens_or_absent():
+    """The registry key of docs/ARCHITECTURE.md section 7.6: a positive
+    integer, carried into the canonical copy and read by the accessor; a
+    bad one is refused with the registry code and a hint naming the form;
+    absent means no budget."""
+    from assay.registry import status_budget
+
+    spec = validate_registry({**REGISTRY, "status_budget": 1200})
+    assert spec["status_budget"] == 1200 and status_budget(spec) == 1200
+    assert status_budget(canonical()) is None and status_budget(None) is None
+    with pytest.raises(AssayError) as caught:
+        validate_registry({**REGISTRY, "status_budget": -5})
+    assert caught.value.code == "REGISTRY_INVALID"
+    assert str(caught.value) == "status_budget must be a positive integer (tokens)"
+    assert caught.value.hint == (
+        'the form is `"status_budget": N`, N a positive count of tokens (an estimate, characters '
+        "over four) every status renders under; leave it out for no budget"
+    )
 
 
 # --- action token parsing ---------------------------------------------------

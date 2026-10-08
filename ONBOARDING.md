@@ -286,6 +286,13 @@ From the architecture document's section 2.1:
   absent (the batching law), `null` for no cap. A replay-fit model lifts it.
 - `notes_cap`, the size of `.assay/NOTES.md` in characters, default 16000.
   Past twice the cap, paid actions refuse until it is trimmed.
+- `status_budget`, the tokens one status may print, an estimate (characters
+  over four, no tokenizer). Absent means every status prints whole and
+  `assay status --brief` fits 1500; set, `--brief` fits the smaller of the
+  two. Under a budget the renderer drops the notes tail, the observation
+  tail, the registry descriptions and the history beyond four lines, in that
+  order and only as far as needed, and ends with a TRUNCATED line naming what
+  it dropped; `assay status --json` carries the whole record regardless.
 - `zero_prior`, default false. True withholds every description.
 - `modules`, paths to external module files, pinned at start under a
   manifest. `module_modes`, `off`, `advise` or `block` per module name,
