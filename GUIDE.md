@@ -249,7 +249,7 @@ hazard fires again).
 
 `assay status` is self-sufficient: the goal, budgets, the claim meters
 (world-model misses = does the agent understand the mechanics; gamble misses
-= is it converting understanding into progress; sharpness = how much of its
+= is it converting understanding into progress; specificity = how much of its
 talk was checkable), declared channels, hazard tags, module advisories, and
 the emergence meter (self-authored verifiers, channels, models, proposals:
 initiative the harness never demanded). `assay audit` is the integrity verdict:

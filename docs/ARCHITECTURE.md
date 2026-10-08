@@ -373,7 +373,10 @@ the declaration always unlocks the action. Declarations are journaled on the
 event under `declares`.
 
 Six built-ins, all `MODE = "advise"`: `wall_spend`, `miss_streak`,
-`null_forensics`, `park_with_test`, `sharpness`, `hazard` (effect-signature
+`null_forensics`, `park_with_test`, `specificity` (named `sharpness` before
+1.2.0; a registry whose `module_modes` still says `sharpness` is read as
+`specificity`, and a registry naming both keeps the current name's mode,
+`registry.module_modes`), `hazard` (effect-signature
 tags: `entered_loss_state` and `milestone_dropped`, permanent for the run,
 exported as the distinguished carryover class). 1.2.0 adds the world-neutral
 `coverage_audit` built-in (untried and never-productive actions, stall, the
@@ -495,9 +498,9 @@ later stage (no second pack exists).
 ### 2.7 Verifiers and the world model
 
 **Role.** Agent-written code, admitted under a hash, run in the sandbox,
-identity-probed, and promoted only by replay fit. Verifiers are the sharpest
-claim available. The world model is the general form of the executable-rules
-tier: trust is exactly replay fit and nothing else.
+identity-probed, and promoted only by replay fit. Verifiers are the most
+specific claim available. The world model is the general form of the
+executable-rules tier: trust is exactly replay fit and nothing else.
 
 **Owner.** The agent writes them. The kernel admits, stores, runs, probes and
 meters them. Available in every world.
@@ -525,6 +528,19 @@ stats file is versioned: a run recorded from 1.2.0 on carries
 before it keeps the flat file of the never-failed rule (five or more gradings,
 zero failures) and is read under that rule, so the published runs render
 unchanged (`verifiers.stats_rule`).
+
+**Contract, specificity** (`meters.specificity`). Specificity is the share of
+graded claims that are not coerced free text; a claim graded as `change`
+because the prediction was prose counts against it. Every grade but a note
+counts, an invalid one included, as the CLAIMS line has always counted them.
+The CLAIMS line prints it over every grade of the run (`specificity N/M (P%)`;
+the `claims` block of the `Status` record carries `specific` and `graded`),
+and the `specificity` built-in reads the same count over the same grades, so
+its advisory's N/M is the CLAIMS line's at that moment; it advises once twenty
+or more are graded and coerced text is the majority. The meter was named
+sharpness before 1.2.0 (#25). The word changed because sharpness means
+something else in forecasting, the concentration of a predictive
+distribution, and the harness scores no distributions: a grade is binary.
 
 **Contract, world model** (`model.py`). `model.py` in the run root declares
 `CHANNELS` (registered channel names), `next(obs, action, params)` returning the

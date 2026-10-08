@@ -79,7 +79,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert (status.unit.paid, status.unit.hits, status.unit.total) == (2, 1, 2)
     assert status.claims is not None
     assert (status.claims.world_model_graded, status.claims.world_model_missed) == (2, 1)
-    assert status.claims.sharp == 2 and status.claims.graded == 2 and status.claims.invalid == 0
+    assert status.claims.specific == 2 and status.claims.graded == 2 and status.claims.invalid == 0
     assert status.vacuous is not None and status.vacuous.verifiers == ()
     assert [(line.event, line.predict_ok, line.changed, line.changed_unit) for line in status.recent] == [
         (0, None, None, "keys"), (1, True, 1, "keys"), (2, False, 1, "keys"),
@@ -106,7 +106,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert lines[16].startswith("ANCHORS | ") and "none yet (every 25 events and on WIN)" in lines[16]
     assert lines[17] == "EMERGENCE | self-authored verifiers 0 | declared channels 0 | model replays 0 | goal proposals 0"
     assert lines[18] == "PROGRESS | 2 paid actions this unit | predictions 1/2 ✓ over the last 2"
-    assert lines[19] == "CLAIMS | world-model misses 1/2 (50.0%) | gamble misses 0/0 | sharpness 2/2 (100%) | invalid 0"
+    assert lines[19] == "CLAIMS | world-model misses 1/2 (50.0%) | gamble misses 0/0 | specificity 2/2 (100%) | invalid 0"
     # The module advisory lines are the modules' own, stored as lines.
     assert status.advisories == (lines[20],)
     assert lines[20].startswith("MODULE null_forensics | e2 predicted change and observed nothing")

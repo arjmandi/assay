@@ -94,6 +94,8 @@ _ACTION_KEYS = {
 }
 _PARAM_KEYS = {"type", "min", "max", "enum"}
 MODULE_MODES = ("off", "advise", "block")
+# A built-in a registry may still name by the word it carried before 1.2.0.
+RENAMED_MODULES = {"sharpness": "specificity"}
 _GATES = ("required", "optional", "off")
 
 DEFAULT_HAND_CAP = 3       # the batching law's kernel default; registry-overridable
@@ -249,7 +251,7 @@ def validate_registry(raw: Any) -> dict[str, Any]:
                 f"module_modes must map module names to one of {list(MODULE_MODES)}",
                 code="REGISTRY_INVALID",
             )
-        output["module_modes"] = dict(modes)
+        output["module_modes"] = module_modes(raw)
     secrets = raw.get("secrets")
     if secrets is not None:
         if not isinstance(secrets, list) or not all(
@@ -310,6 +312,17 @@ def notes_cap(registry: Mapping[str, Any] | None) -> int | None:
 
 def zero_prior(registry: Mapping[str, Any] | None) -> bool:
     return bool(registry and registry.get("zero_prior"))
+
+
+def module_modes(registry: Mapping[str, Any] | None) -> dict[str, str]:
+    """The per-module modes under the built-ins' current names. `sharpness`,
+    the name the specificity module carried before 1.2.0, is read as
+    `specificity`, so a registry written or pinned under the old name keeps
+    its mode; a registry naming both keeps the current name's mode."""
+    modes = (registry or {}).get("module_modes") or {}
+    output = {RENAMED_MODULES[key]: str(mode) for key, mode in modes.items() if key in RENAMED_MODULES}
+    output.update((str(key), str(mode)) for key, mode in modes.items() if key not in RENAMED_MODULES)
+    return output
 
 
 def gate_mode(registry: Mapping[str, Any] | None) -> str:
