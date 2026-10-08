@@ -230,7 +230,10 @@ def test_an_edit_of_the_notes_is_allowed_and_paths_resolve_against_the_project_d
     # the exception is compared lowered like the rule.
     _allowed(_hook(policy, _write(".assay/NOTES.md", "Edit"), cwd=tmp_path, project_dir=run))
     _allowed(_hook(policy, _write(".assay/NOTES.md", "Edit"), cwd=run, project_dir=None))
-    _allowed(_hook(policy, _write(".assay/notes.md", "Edit"), cwd=run, project_dir=run))
+    # The exception is the file name exactly: on a case-sensitive filesystem
+    # a literal notes.md is not the agent's file.
+    _refused(_hook(policy, _write(".assay/notes.md", "Edit"), cwd=run, project_dir=run), f".assay/notes.md {STATE_TEXT}")
+    _refused(_hook(policy, _write(".assay/Notes.md", "Edit"), cwd=run, project_dir=run), f".assay/Notes.md {STATE_TEXT}")
     _allowed(_hook(policy, _write(str(run / "sub" / ".." / ".assay" / "NOTES.md"), "Write"), cwd=run, project_dir=run))
     _refused(_hook(policy, _write(".assay/events.jsonl", "Edit"), cwd=run, project_dir=None), f".assay/events.jsonl {STATE_TEXT}")
     # The agent's own files in the run directory.
@@ -650,9 +653,12 @@ def test_the_check_and_doctor_run_the_pinned_interpreter_on_the_script(tmp_path)
     doctor = _cli(run, "doctor")
     assert doctor.returncode == 0, doctor.stderr
     assert f"DOCTOR | ok | hooks | {ok_line}\n" in doctor.stdout
-    refused = _cli(run, "hooks", "install", "--check", "--policy", str(policy))
+    refused = _cli(run, "hooks", "install", "--check", "--deny", "x")
     assert refused.returncode == 2
-    assert refused.stderr == "ERROR | COMMAND_ARGS | --check takes no other flag: it verifies the hooks installed in this run directory\n"
+    assert refused.stderr == "ERROR | COMMAND_ARGS | --check takes no flag but --policy: it verifies the hooks installed in this run directory\n"
+    named = _cli(run, "hooks", "install", "--check", "--policy", str(policy))
+    assert named.returncode == 0, named.stderr
+    assert named.stdout == f"HOOKS | ok | {ok_line}\n"
     # A hook that cannot start is a non-blocking error to Claude Code: the
     # check says so instead of the mechanism failing open without a word.
     document = json.loads(policy.read_text())
@@ -668,6 +674,20 @@ def test_the_check_and_doctor_run_the_pinned_interpreter_on_the_script(tmp_path)
     doctor = _cli(run, "doctor")
     assert doctor.returncode == 2
     assert f"DOCTOR | FAIL | hooks | the pinned interpreter {tmp_path / 'gone' / 'python3'} is not an executable file\n" in doctor.stdout
+    # The exit status through the launcher itself, so `hooks install --check
+    # && start-agent` stops: 2, the usage kind.
+    broken_policy = tmp_path / "operator" / "broken.json"
+    broken_policy.write_text(json.dumps(document))
+    environment = dict(os.environ)
+    environment.pop("ASSAY", None)
+    environment["ASSAY_PYTHON"] = sys.executable
+    launched = subprocess.run(
+        [str(LAUNCHER), "--run-dir", str(run), "hooks", "install", "--check", "--policy", str(broken_policy)],
+        capture_output=True, text=True, timeout=180, env=environment,
+    )
+    assert launched.returncode == 2, (launched.stdout, launched.stderr)
+    assert launched.stdout == ""
+    assert launched.stderr.startswith(f"ERROR | HOOK_CHECK_FAILED | the pinned interpreter {tmp_path / 'gone' / 'python3'} is not an executable file\n")
     document["python"] = sys.executable
     document["version"] = 1
     policy.write_text(json.dumps(document))

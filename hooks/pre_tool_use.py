@@ -20,7 +20,7 @@ The rules, in the order they are applied:
   `cwd`) and through realpath, is refused when any of its components, compared
   lowered since the default macOS filesystem folds case, is `.assay`,
   `.claude` or `.claude.json` (except the run's own `.assay/NOTES.md`, the
-  agent's file), when it lies under the anchor directory, when it is the
+  agent's file, its name matched exactly), when it lies under the anchor directory, when it is the
   owner token file or the policy file, or when it is one of the protected
   installation paths (the hook script, the launcher, the interpreter, the
   harness's package directory, the interpreter's library directories). A
@@ -249,7 +249,11 @@ def _protected_refusal(policy: Policy, resolved: str) -> str | None:
 
 
 def _is_notes(policy: Policy, resolved: str) -> bool:
-    return resolved.lower() == os.path.join(policy.run_dir, STATE, NOTES).lower()
+    """The agent's one file under the state directory: the directory compared
+    lowered like the refusals, the file name exactly `NOTES.md`, so that on a
+    case-sensitive filesystem a literal `notes.md` is not taken for it."""
+    head, tail = os.path.split(resolved)
+    return tail == NOTES and head.lower() == os.path.join(policy.run_dir, STATE).lower()
 
 
 ELSEWHERE = "your files go in the run directory outside .assay and .claude"

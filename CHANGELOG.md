@@ -130,9 +130,11 @@ Left on the experiment branch, deliberately:
   interpreter is pinned unresolved and `hooks install --check` and an `assay
   doctor` line run it on the script (`HOOK_CHECK_FAILED`), since a hook that
   cannot start fails open; a symlinked `.claude` refuses the install;
-  `end_event` comes from the top level of a receipt document only; an editor
-  call without a path is refused; the 8.4 status paragraph says what the
-  policy does not see and names the strong form.
+  `end_event` comes from the outermost receipt document only; an editor
+  call without a path is refused; the NOTES.md exception matches the name
+  exactly; `hooks install --check --policy FILE` checks a given policy, exit
+  status 2 on failure; the 8.4 status paragraph says what the policy does
+  not see and names the strong form.
 - Token-aware output (#23, design note 2 section 7.6). `--json` on `status`,
   `act`, `commit` and `reset` carries `estimated_tokens`, the prose the call
   would have printed (without its final newline) in characters over four, an

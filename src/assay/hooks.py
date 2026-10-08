@@ -430,18 +430,23 @@ def _check_failed(problem: str) -> AssayError:
     return AssayError(problem, code="HOOK_CHECK_FAILED", hint=REINSTALL_HINT)
 
 
-def check_install(paths: RunPaths) -> str:
+def check_install(paths: RunPaths, policy_file: Path | None = None) -> str:
     """Verify that the hooks installed in a run directory can run: the
-    settings name the harness's entry, the policy file reads, the pinned
-    interpreter, the script and the launcher are there, and the interpreter
-    runs the script on a benign event and allows it. Returns the text of
-    the ok line; `HOOK_CHECK_FAILED` names what is wrong. A hook that cannot
-    start is a non-blocking error to Claude Code, so without this check the
-    mechanism would fail open without a word."""
+    settings name the harness's entry (or `policy_file` names the policy to
+    check), the policy file reads, the pinned interpreter, the script and
+    the launcher are there, and the interpreter runs the script on a benign
+    event and allows it. Returns the text of the ok line; `HOOK_CHECK_FAILED`
+    (kind usage, exit status 2) names what is wrong, so `hooks install
+    --check && ...` stops. A hook that cannot start is a non-blocking error
+    to Claude Code, so without this check the mechanism would fail open
+    without a word."""
     installed = installed_hooks(paths)
-    if installed is None:
-        raise _check_failed(f"no hooks are installed in {paths.root} (no harness entry in .claude/settings.json)")
-    script, policy_file = installed
+    if policy_file is None:
+        if installed is None:
+            raise _check_failed(f"no hooks are installed in {paths.root} (no harness entry in .claude/settings.json)")
+        script, policy_file = installed
+    else:
+        script = installed[0] if installed is not None else HOOK_SCRIPT
     policy = read_policy(policy_file)
     problems: list[str] = []
     if not policy.python.is_file() or not os.access(policy.python, os.X_OK):

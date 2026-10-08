@@ -1091,12 +1091,13 @@ def hooks_install_command(paths: RunPaths, args: argparse.Namespace) -> int:
     anchor directory is the environment's. `--check` writes nothing: it
     verifies that the hooks installed here can run."""
     if args.check:
-        if args.policy is not None or args.deny or args.launcher is not None or args.owner_token_file is not None:
+        if args.deny or args.launcher is not None or args.owner_token_file is not None:
             raise AssayError(
-                "--check takes no other flag: it verifies the hooks installed in this run directory",
+                "--check takes no flag but --policy: it verifies the hooks installed in this run directory",
                 code="COMMAND_ARGS",
             )
-        print(f"HOOKS | ok | {check_install(paths)}")
+        checked = None if args.policy is None else Path(args.policy).expanduser().resolve()
+        print(f"HOOKS | ok | {check_install(paths, checked)}")
         return 0
     if args.policy is None:
         raise AssayError(
@@ -1739,7 +1740,8 @@ LIFECYCLE: tuple[Lifecycle, ...] = (
                 "--check",
                 action="store_true",
                 help="write nothing: verify that the hooks installed here can run (the policy "
-                "reads, the pinned interpreter runs the script, the launcher is there)",
+                "reads, the pinned interpreter runs the script, the launcher is there); with "
+                "--policy FILE, that policy instead of the one the settings name",
             ),
         ),
     ),

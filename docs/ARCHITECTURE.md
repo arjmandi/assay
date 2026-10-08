@@ -1753,11 +1753,12 @@ writes the policy file with mode 0600 and the eleven hook entries into `<run
 dir>/.claude/settings.json`, one per matcher, merged into the file as it is (only the
 entries whose command text is the harness's own are replaced, so a second install is
 idempotent and a foreign hook stays), and prints `HOOKS | installed 11 entries in
-<settings>; policy <FILE>`. `assay hooks install --check`, and `assay doctor` in a run
-directory that has the entries, run the pinned interpreter and the script on a benign
-event and report `HOOK_CHECK_FAILED` (`DOCTOR | FAIL | hooks | ...`) when they cannot: a
-hook that cannot start is a non-blocking error by Claude Code's rule, so without the
-check the mechanism would fail open without a word. The policy file is one JSON object,
+<settings>; policy <FILE>`. `assay hooks install --check` (`--check --policy FILE` for a
+given policy file), and `assay doctor` in a run directory that has the entries, run the
+pinned interpreter and the script on a benign event and report `HOOK_CHECK_FAILED`
+(kind usage, exit status 2, so `hooks install --check && ...` stops; `DOCTOR | FAIL |
+hooks | ...`) when they cannot: a hook that cannot start is a non-blocking error by
+Claude Code's rule, so without the check the mechanism would fail open without a word. The policy file is one JSON object,
 version 2: `run_dir`, `anchor_dir` (the environment's resolution at install,
 `ASSAY_ANCHOR_DIR` or the default), `token_file` (`--owner-token-file` or
 `ASSAY_OWNER_TOKEN_FILE`, or null), `policy_file`, `launcher` (absolute: `--launcher`,
@@ -1779,8 +1780,9 @@ component, compared lowered since the default macOS filesystem folds case, is `.
 live, hooks included, so one write to `~/.claude/settings.json` or `~/.claude.json` could
 disable every non-managed hook of the running session), when it lies under the anchor
 directory, or when it is the token file, the policy file or a protected path; the run's
-own `.assay/NOTES.md`, compared lowered too, is the exception; a call without a path is
-refused. A Bash command is read with its quoted strings blanked for the operators and the
+own `.assay/NOTES.md` is the exception, its directory compared lowered and its name
+exactly, so that on a case-sensitive filesystem a literal `notes.md` is not taken for
+it; a call without a path is refused. A Bash command is read with its quoted strings blanked for the operators and the
 shell-state rules, so a prediction with two claims (`--predict "change; ch counter delta =
 1"`) is not compound, and with its words seen both raw and through shlex for the paths, so
 a path inside a quoted string is still seen; a word names `.assay`, `.claude` or
