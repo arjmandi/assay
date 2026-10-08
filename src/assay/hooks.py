@@ -1,28 +1,35 @@
 """The Claude Code hooks (docs/ARCHITECTURE.md section 8.4), the operator's
 side: the policy file `assay hooks install` writes, the hook entries it puts
-into `<run dir>/.claude/settings.json`, and the `tool_use` activity record
-`assay hooks post-tool-use` appends.
+into `<run dir>/.claude/settings.json`, the check that the installed hooks
+can run, and the `tool_use` activity record `assay hooks post-tool-use`
+appends.
 
 The PreToolUse script is `hooks/pre_tool_use.py` at the repository root,
 standard library only, run under the interpreter pinned at install; it reads
-the policy file and the hook's JSON and nothing the agent can write. The
-policy file (version 1) is one JSON object: `run_dir`, `anchor_dir`,
-`token_file` (or null), `policy_file`, `launcher` (absolute), `assay_value`
-(the `ASSAY` the operator had exported at install, or null), `deny` (the
-regular expressions over a Bash command), `python` (the interpreter the hook
-commands use) and `version`. The settings entries are one per matcher,
-`Bash`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit` for PreToolUse and
-those plus `mcp__assay__.*` for PostToolUse, merged into the file as it is:
-only the entries whose command text is the harness's own are replaced.
+the policy file and the hook's JSON. The policy file (version 2) is one JSON
+object: `run_dir`, `anchor_dir`, `token_file` (or null), `policy_file`,
+`launcher` (absolute), `assay_value` (the `ASSAY` the operator had exported
+at install, or null), `deny` (the regular expressions over a Bash command),
+`protected` (the installation's own paths: the hook script, the launcher,
+the interpreter as pinned and as resolved, the harness's package directory,
+the interpreter's library directories), `python` (the interpreter the hook
+command runs under, `sys.executable` as it is, so that `assay doctor` and
+`hooks install --check` can tell when it is gone) and `version`. The
+settings entries are one per matcher, `Bash`, `Write`, `Edit`, `MultiEdit`
+and `NotebookEdit` for PreToolUse and those plus `mcp__assay__.*` for
+PostToolUse, merged into the file as it is: only the entries whose command
+text is the harness's own are replaced, and a `.claude` or `settings.json`
+that is a symlink refuses the install.
 
 The PostToolUse record is fixed in shape, `{"kind": "tool_use",
 "tool_use_id", "session_id", "tool", "command_prefix", "end_event",
 "timestamp"}`, appended under the file lock by `core.append_jsonl`;
-`end_event` is the receipt's when the tool output carries one (the `EVENT |
-e<id>` line, the `end_event` field of a `--json` receipt document, or the
-record an `mcp__assay__` tool returned) and null otherwise. A journal event
-joins to its transcript by it, and by order and command text when it is
-missing (section 7.5).
+`end_event` is the receipt's when the tool output carries one as the
+outermost object's own field of an act, commit or reset document (the `EVENT
+| e<id>` line of the prose, the `end_event` field of a `--json` receipt
+document, or the record an `mcp__assay__` tool returned, under `receipt` as
+the wire's result shape has it) and null otherwise. The join is the agent's own output, a hint the reader
+checks against the journal, not an authority (section 7.5).
 """
 
 from __future__ import annotations
@@ -32,7 +39,9 @@ import json
 import os
 import re
 import shlex
+import subprocess
 import sys
+import sysconfig
 import uuid
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -41,7 +50,7 @@ from typing import Any
 from .core import AssayError, RunPaths, append_jsonl, read_json, require_run
 from .integrity import anchor_dir
 
-POLICY_VERSION = 1
+POLICY_VERSION = 2
 PRE_TOOL_USE_MATCHERS: tuple[str, ...] = ("Bash", "Write", "Edit", "MultiEdit", "NotebookEdit")
 POST_TOOL_USE_MATCHERS: tuple[str, ...] = (*PRE_TOOL_USE_MATCHERS, "mcp__assay__.*")
 # The PreToolUse script, at the repository root beside `src/`.
@@ -49,11 +58,20 @@ HOOK_SCRIPT = Path(__file__).resolve().parents[2] / "hooks" / "pre_tool_use.py"
 COMMAND_PREFIX_LENGTH = 80
 TOOL_USE = "tool_use"
 EDITORS = frozenset({"Write", "Edit", "MultiEdit", "NotebookEdit"})
+RECEIPT_KINDS = frozenset({"act", "commit", "reset"})
 # The receipt line of a paid command, as `inspect.result_text` prints it.
 EVENT_LINE = re.compile(r"^EVENT \| e(\d+) \|", re.MULTILINE)
 # The harness's own hook entries, by their command text.
 OWNED = re.compile(r"(?:pre_tool_use\.py|hooks post-tool-use) --policy ")
 REINSTALL_HINT = "reinstall the hooks with `assay hooks install --policy FILE ...` from the operator's shell"
+# The benign event the check sends through the installed hook.
+PROBE: dict[str, Any] = {
+    "session_id": "hooks-check",
+    "hook_event_name": "PreToolUse",
+    "tool_name": "Bash",
+    "tool_input": {"command": "true"},
+    "tool_use_id": "hooks-check",
+}
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -67,6 +85,7 @@ class HookPolicy:
     launcher: Path
     assay_value: str | None
     deny: tuple[str, ...]
+    protected: tuple[Path, ...]
     python: Path
     version: int = POLICY_VERSION
 
@@ -80,6 +99,7 @@ class HookPolicy:
             "launcher": str(self.launcher),
             "assay_value": self.assay_value,
             "deny": list(self.deny),
+            "protected": [str(path) for path in self.protected],
             "python": str(self.python),
         }
 
@@ -90,21 +110,18 @@ class HookPolicy:
             raise ValueError("the policy is not a JSON object")
         if obj.get("version") != POLICY_VERSION:
             raise ValueError(f"version {obj.get('version')!r} is not {POLICY_VERSION}")
-        deny = obj.get("deny")
-        if not isinstance(deny, list) or not all(isinstance(item, str) for item in deny):
-            raise ValueError("deny must be a list of strings")
-        token_file = _optional_path(obj, "token_file")
         assay_value = obj.get("assay_value")
         if assay_value is not None and (not isinstance(assay_value, str) or not assay_value):
             raise ValueError("assay_value must be a non-empty string or null")
         return cls(
             run_dir=_path(obj, "run_dir"),
             anchor_dir=_path(obj, "anchor_dir"),
-            token_file=token_file,
+            token_file=_optional_path(obj, "token_file"),
             policy_file=_path(obj, "policy_file"),
             launcher=_path(obj, "launcher"),
             assay_value=assay_value,
-            deny=tuple(deny),
+            deny=_strings(obj, "deny"),
+            protected=tuple(Path(item) for item in _strings(obj, "protected")),
             python=_path(obj, "python"),
         )
 
@@ -123,6 +140,13 @@ def _optional_path(obj: Mapping[str, Any], key: str) -> Path | None:
     if not isinstance(value, str) or not value:
         raise ValueError(f"{key} must be a non-empty string or null")
     return Path(value)
+
+
+def _strings(obj: Mapping[str, Any], key: str) -> tuple[str, ...]:
+    value = obj.get(key)
+    if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
+        raise ValueError(f"{key} must be a list of strings")
+    return tuple(value)
 
 
 def read_policy(path: Path) -> HookPolicy:
@@ -172,6 +196,28 @@ def default_launcher() -> Path | None:
     if entry.name == "assay" and entry.is_file():
         return entry
     return None
+
+
+def installation_paths(launcher: Path, python: Path) -> tuple[Path, ...]:
+    """The paths the enforcement itself lives in, which the policy protects
+    (section 8.4): the hook script, the launcher, the interpreter as pinned
+    and as resolved, the harness's package directory (the checkout's `src/`,
+    or the site-packages of an install), and the interpreter's library
+    directories (the standard library and site-packages, where a planted
+    module would load before the harness's own). Under one uid they are the
+    agent's to rewrite; the policy refuses the writes it can see, and the
+    separate-user setup (8.1) is what protects them."""
+    found = [HOOK_SCRIPT, launcher, python, Path(os.path.realpath(python)), Path(__file__).resolve().parents[1]]
+    scheme = sysconfig.get_paths()
+    for key in ("stdlib", "platstdlib", "purelib", "platlib"):
+        value = scheme.get(key)
+        if value:
+            found.append(Path(value).resolve())
+    unique: list[Path] = []
+    for path in found:
+        if path not in unique:
+            unique.append(path)
+    return tuple(unique)
 
 
 def hook_entry(matcher: str, command: str) -> dict[str, Any]:
@@ -258,6 +304,23 @@ def hook_commands(policy: HookPolicy) -> tuple[str, str]:
     return pre, post
 
 
+def settings_path_of(paths: RunPaths) -> Path:
+    return paths.root / ".claude" / "settings.json"
+
+
+def _refuse_symlink(settings_path: Path) -> None:
+    """The install writes through no symlink: a planted `.claude` or
+    `settings.json` pointing elsewhere would put the entries where the
+    agent chose (`PATH_INVALID`)."""
+    for candidate in (settings_path.parent, settings_path):
+        if candidate.is_symlink():
+            raise AssayError(
+                f"{candidate} is a symlink to {os.readlink(candidate)}, and the install writes nothing through one",
+                code="PATH_INVALID",
+                hint="replace it with a real directory or file, then install again",
+            )
+
+
 def install_hooks(
     paths: RunPaths,
     *,
@@ -268,8 +331,9 @@ def install_hooks(
 ) -> Installed:
     """Write the policy file (mode 0600) and the hook entries into the run
     directory's `.claude/settings.json`. The paths the policy pins are
-    resolved; `ASSAY` exported in this environment is pinned as the value
-    the agent's `"$ASSAY"` is trusted to carry, and must be the launcher."""
+    resolved, the interpreter excepted; `ASSAY` exported in this environment
+    is pinned as the value the agent's `"$ASSAY"` is trusted to carry, and
+    must be the launcher."""
     for pattern in deny:
         try:
             re.compile(pattern)
@@ -296,6 +360,7 @@ def install_hooks(
             code="COMMAND_ARGS",
             hint=f"export ASSAY={launcher} before the install, or pass --launcher {exported}",
         )
+    python = Path(sys.executable)
     policy = HookPolicy(
         run_dir=root,
         anchor_dir=anchor_dir().resolve(),
@@ -304,11 +369,13 @@ def install_hooks(
         launcher=launcher,
         assay_value=exported,
         deny=tuple(deny),
-        python=Path(sys.executable).resolve(),
+        protected=installation_paths(launcher, python),
+        python=python,
     )
     # The settings file is read and merged before anything is written, so
     # a file that cannot be merged refuses the install whole.
-    settings_path = paths.root / ".claude" / "settings.json"
+    settings_path = settings_path_of(paths)
+    _refuse_symlink(settings_path)
     existing = read_json(settings_path, {})
     if not isinstance(existing, dict):
         raise AssayError(
@@ -331,22 +398,105 @@ def _inside(path: Path, directory: Path) -> bool:
     return True
 
 
+# --- the check ------------------------------------------------------------------------
+
+
+def installed_hooks(paths: RunPaths) -> tuple[Path, Path] | None:
+    """The hook script and the policy file the run directory's settings
+    name in the harness's own PreToolUse entry, or None when no hooks are
+    installed there."""
+    settings = read_json(settings_path_of(paths), None)
+    if not isinstance(settings, dict):
+        return None
+    hooks = settings.get("hooks")
+    if not isinstance(hooks, dict):
+        return None
+    for entry in hooks.get("PreToolUse") or []:
+        if not isinstance(entry, dict):
+            continue
+        for item in entry.get("hooks") or []:
+            command = item.get("command") if isinstance(item, dict) else None
+            if not isinstance(command, str) or not OWNED.search(command):
+                continue
+            try:
+                words = shlex.split(command)
+                return Path(words[1]), Path(words[words.index("--policy") + 1])
+            except (ValueError, IndexError):
+                continue
+    return None
+
+
+def _check_failed(problem: str) -> AssayError:
+    return AssayError(problem, code="HOOK_CHECK_FAILED", hint=REINSTALL_HINT)
+
+
+def check_install(paths: RunPaths) -> str:
+    """Verify that the hooks installed in a run directory can run: the
+    settings name the harness's entry, the policy file reads, the pinned
+    interpreter, the script and the launcher are there, and the interpreter
+    runs the script on a benign event and allows it. Returns the text of
+    the ok line; `HOOK_CHECK_FAILED` names what is wrong. A hook that cannot
+    start is a non-blocking error to Claude Code, so without this check the
+    mechanism would fail open without a word."""
+    installed = installed_hooks(paths)
+    if installed is None:
+        raise _check_failed(f"no hooks are installed in {paths.root} (no harness entry in .claude/settings.json)")
+    script, policy_file = installed
+    policy = read_policy(policy_file)
+    problems: list[str] = []
+    if not policy.python.is_file() or not os.access(policy.python, os.X_OK):
+        problems.append(f"the pinned interpreter {policy.python} is not an executable file")
+    if not script.is_file():
+        problems.append(f"the hook script {script} is not there")
+    if not policy.launcher.is_file() or not os.access(policy.launcher, os.X_OK):
+        problems.append(f"the launcher {policy.launcher} is not an executable file")
+    if problems:
+        raise _check_failed("; ".join(problems))
+    try:
+        completed = subprocess.run(
+            [str(policy.python), str(script), "--policy", str(policy_file)],
+            input=json.dumps({**PROBE, "cwd": str(policy.run_dir)}),
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        raise _check_failed(f"the hook does not run: {type(error).__name__}: {error}") from error
+    if completed.returncode != 0 or completed.stdout or completed.stderr:
+        said = (completed.stderr or completed.stdout).strip()
+        raise _check_failed(f"the hook did not allow a benign event (exit {completed.returncode}): {said}")
+    return f"policy {policy_file}; interpreter {policy.python} runs {script}; launcher {policy.launcher}"
+
+
 # --- the PostToolUse record --------------------------------------------------------
+
+
+def _receipt_end_event(document: Mapping[str, Any]) -> int | None:
+    """The `end_event` of a receipt document: the outermost object when it
+    is an act, commit or reset record, or the one under its `receipt` key,
+    the wire's result shape; nothing nested elsewhere counts."""
+    for candidate in (document, document.get("receipt")):
+        if isinstance(candidate, Mapping) and candidate.get("kind") in RECEIPT_KINDS:
+            value = candidate.get("end_event")
+            if isinstance(value, int) and not isinstance(value, bool):
+                return value
+    return None
 
 
 def end_event_of(response: Any) -> int | None:
     """The receipt's `end_event` in a tool response, when the output carries
-    one: the `end_event` field of a record (a `--json` receipt document, the
-    record an `mcp__assay__` tool returned, whole or inside a text block), or
-    the last `EVENT | e<id>` line of the prose; None otherwise."""
+    one: a receipt document (a `--json` receipt, the record an
+    `mcp__assay__` tool returned, whole or inside a text block), or the
+    last `EVENT | e<id>` line of the prose; None otherwise."""
     if isinstance(response, Mapping):
-        value = response.get("end_event")
-        if isinstance(value, int) and not isinstance(value, bool):
-            return value
-        for item in response.values():
-            found = end_event_of(item)
-            if found is not None:
-                return found
+        found = _receipt_end_event(response)
+        if found is not None:
+            return found
+        for key in ("content", "stdout", "text", "result", "output"):
+            if key in response:
+                found = end_event_of(response[key])
+                if found is not None:
+                    return found
         return None
     if isinstance(response, list):
         for item in response:
@@ -367,7 +517,9 @@ def _end_event_in_text(text: str) -> int | None:
         except ValueError:
             document = None
         if isinstance(document, Mapping):
-            return end_event_of(document)
+            found = _receipt_end_event(document)
+            if found is not None:
+                return found
     for line in stripped.splitlines():
         candidate = line.strip()
         if candidate.startswith("{"):
@@ -376,7 +528,7 @@ def _end_event_in_text(text: str) -> int | None:
             except ValueError:
                 continue
             if isinstance(document, Mapping):
-                found = end_event_of(document)
+                found = _receipt_end_event(document)
                 if found is not None:
                     return found
     matches = EVENT_LINE.findall(text)

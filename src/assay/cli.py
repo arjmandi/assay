@@ -90,7 +90,7 @@ from .core import (
 )
 from .errors import exit_code
 from .extras import require_kind
-from .hooks import default_launcher, install_hooks, read_policy, record_tool_use
+from .hooks import check_install, default_launcher, install_hooks, installed_hooks, read_policy, record_tool_use
 from .inspect import result_text, status_text, view_lines_text, view_of
 from .live import split_step
 from .ops import (
@@ -951,6 +951,19 @@ def _doctor(paths: RunPaths) -> int:
                 note("ok", f"registry valid, {len(spec['actions'])} actions")
             except AssayError as error:
                 note("FAIL", f"registry: {error}")
+    # The Claude Code hooks installed here, if any (section 8.4): a hook
+    # that cannot start is a non-blocking error to Claude Code, so the
+    # pinned interpreter and the script are run on a benign event.
+    try:
+        installed = installed_hooks(paths)
+    except AssayError as error:
+        installed = None
+        note("FAIL", f"hooks | {error}")
+    if installed is not None:
+        try:
+            note("ok", f"hooks | {check_install(paths)}")
+        except AssayError as error:
+            note("FAIL", f"hooks | {error}")
     for level, text in lines:
         print(f"DOCTOR | {level} | {text}")
     failed = sum(1 for level, _ in lines if level == "FAIL")
@@ -1075,7 +1088,22 @@ def hooks_install_command(paths: RunPaths, args: argparse.Namespace) -> int:
     (docs/ARCHITECTURE.md section 8.4). The launcher pinned is the one
     running this command unless `--launcher` names it; the token file comes
     from `--owner-token-file` or ASSAY_OWNER_TOKEN_FILE, as at `start`; the
-    anchor directory is the environment's."""
+    anchor directory is the environment's. `--check` writes nothing: it
+    verifies that the hooks installed here can run."""
+    if args.check:
+        if args.policy is not None or args.deny or args.launcher is not None or args.owner_token_file is not None:
+            raise AssayError(
+                "--check takes no other flag: it verifies the hooks installed in this run directory",
+                code="COMMAND_ARGS",
+            )
+        print(f"HOOKS | ok | {check_install(paths)}")
+        return 0
+    if args.policy is None:
+        raise AssayError(
+            "hooks install needs --policy FILE, the policy's place outside the run directory",
+            code="COMMAND_ARGS",
+            hint="`assay hooks install --policy FILE [--deny PATTERN ...]`, or `--check` to verify an install",
+        )
     policy_file = _outside_run(paths, args.policy, "--policy")
     token_file = _owner_token_file(paths, args)
     launcher = args.launcher if args.launcher is not None else default_launcher()
@@ -1679,10 +1707,9 @@ LIFECYCLE: tuple[Lifecycle, ...] = (
             arg(
                 "--policy",
                 type=Path,
-                required=True,
                 metavar="FILE",
                 help="where the policy is written (mode 0600, outside the run directory); the "
-                "hook commands carry this path and read nothing the agent can write",
+                "hook commands carry this path",
             ),
             arg(
                 "--deny",
@@ -1707,6 +1734,12 @@ LIFECYCLE: tuple[Lifecycle, ...] = (
                 metavar="PATH",
                 help="the owner token file (outside the run directory), refused to the agent by "
                 "path; ASSAY_OWNER_TOKEN_FILE does the same",
+            ),
+            arg(
+                "--check",
+                action="store_true",
+                help="write nothing: verify that the hooks installed here can run (the policy "
+                "reads, the pinned interpreter runs the script, the launcher is there)",
             ),
         ),
     ),

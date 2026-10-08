@@ -24,12 +24,11 @@ operator resumes the run with the same `start` command and it resumes
 exactly; you begin again at `status`. Never start a run or create a second
 one for the same environment, never inspect the environment's source or
 private state, and never edit `.assay/` by hand except `NOTES.md`. In a
-Claude Code session the operator's hooks refuse, before it runs, any write
-under `.assay/` or `.claude/` and any command that reaches the world directly
-or changes `ASSAY` or `PATH`, with one line, `HOOK | REFUSED | <rule>;
-<allowed form>`, that says what to do instead; `.assay/NOTES.md` stays yours,
-and `"$ASSAY"` is the launcher as the operator exported it, so use it rather
-than setting it.
+Claude Code session the operator's hooks refuse a write under `.assay/` or
+`.claude/`, a direct call to the world, and a change to `ASSAY` or `PATH`,
+each with one line, `HOOK | REFUSED | <rule>; <allowed form>`.
+`.assay/NOTES.md` stays yours; `"$ASSAY"` is the launcher the operator
+exported, so use it rather than setting it.
 
 ## What you see
 

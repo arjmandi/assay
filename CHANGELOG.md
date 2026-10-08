@@ -114,6 +114,25 @@ Left on the experiment branch, deliberately:
   install in the launcher pattern and the separate-user form, GUIDE section
   5 what the agent sees, CONSTITUTION that the hooks exist; ruff and strict
   mypy cover `hooks/`, and the world-name rule of the conformance test too.
+  Hardened in review (122 Bash and 28 editor cases): the components are
+  compared lowered, since the default macOS filesystem folds case, and
+  refused wherever the path lies, `.claude.json` included; the operators are
+  tested outside quotes, a bare `&` among them, so a two-claim prediction is
+  not compound; the launcher's `python` and `export` sub-commands are never
+  exempt, and `export --out` under `.assay` or `.claude` is `PATH_INVALID` in
+  the kernel; the shell-state rule covers `ASSAY*`, `PYTHON*`, `PATH`,
+  `BASH_ENV`, `ENV`, `PROMPT_COMMAND`, `LD_PRELOAD`, `DYLD_*`, `printf -v`,
+  `mapfile` and a function named as the launcher; `eval`, `source`, `exec`,
+  `xargs`, `trap`, `find -delete` and `-exec`, `git clean`, `rsync --delete`,
+  `base64` decoding, `$'...'` and byte escapes are refused; the run directory
+  and its ancestors are protected from `rm`, `mv`, `chmod` and their kind
+  with `cd` followed; the policy protects the installation's own paths; the
+  interpreter is pinned unresolved and `hooks install --check` and an `assay
+  doctor` line run it on the script (`HOOK_CHECK_FAILED`), since a hook that
+  cannot start fails open; a symlinked `.claude` refuses the install;
+  `end_event` comes from the top level of a receipt document only; an editor
+  call without a path is refused; the 8.4 status paragraph says what the
+  policy does not see and names the strong form.
 - Token-aware output (#23, design note 2 section 7.6). `--json` on `status`,
   `act`, `commit` and `reset` carries `estimated_tokens`, the prose the call
   would have printed (without its final newline) in characters over four, an

@@ -426,34 +426,54 @@ and holds the owner token, and the agent's session begins after that.
 
    ```bash
    export ASSAY=<repo>/bin/assay          # the launcher the agent is told to use
-   assay hooks install --policy <tokens>/WORLD_ID.hooks.json \
+   "$ASSAY" hooks install --policy <tokens>/WORLD_ID.hooks.json \
        --owner-token-file <tokens>/WORLD_ID.token \
        --deny 'python3? .*world_client' --deny 'curl .*world[.]example'
+   "$ASSAY" hooks install --check          # the pinned interpreter runs the script
    ```
 
    The command writes the policy into the file (mode 0600): the run
    directory, the anchor directory, the token file, the file's own path, the
    deny patterns, the launcher's absolute path (the `bin/assay` or the
    installed `assay` that ran the install, or `--launcher PATH`), the
-   `ASSAY` exported in this shell, and the interpreter the hooks run under;
-   and the hook entries into `<run-dir>/.claude/settings.json`, PreToolUse
-   on `Bash`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, PostToolUse
-   on those and `mcp__assay__.*`, merged into whatever the file holds. It
-   prints `HOOKS | installed 11 entries in <run-dir>/.claude/settings.json;
-   policy <tokens>/WORLD_ID.hooks.json`. From then on, in that directory, a
-   write under `.assay/` or `.claude/` (`.assay/NOTES.md` excepted), a shell
-   command that names them, the anchor directory, the token file or the
-   policy file other than as a single `"$ASSAY"` or `<repo>/bin/assay`
-   command, a command that changes `ASSAY` or `PATH`, and a command matching
-   a deny pattern are refused before they run, with one line that names the
-   rule and the allowed form (`HOOK | REFUSED | ...`); and every tool use is
-   recorded in `.assay/activity.jsonl` as a `tool_use` record with the
-   receipt's `end_event` when the output carried one, which joins the
-   journal to the transcript. Keep `ASSAY` exported in the shell that starts
-   the agent's session: the hook trusts `"$ASSAY"` as the launcher because
-   the install pinned the value, and refuses any command that changes it.
-   The policy is a text match over the command, the operator's tool policy
-   made explicit, not a sandbox.
+   `ASSAY` exported in this shell, the installation's own paths, and the
+   interpreter the hooks run under; and the hook entries into
+   `<run-dir>/.claude/settings.json`, PreToolUse on `Bash`, `Write`, `Edit`,
+   `MultiEdit` and `NotebookEdit`, PostToolUse on those and `mcp__assay__.*`,
+   merged into whatever the file holds. It prints `HOOKS | installed 11
+   entries in <run-dir>/.claude/settings.json; policy
+   <tokens>/WORLD_ID.hooks.json`. From then on, in that directory, a write
+   under `.assay/` or `.claude/` (`.assay/NOTES.md` excepted), a shell
+   command that names them, the anchor directory, the token file, the policy
+   file or the installation other than as a single `"$ASSAY"` or
+   `<repo>/bin/assay` command, a command that changes `ASSAY`, `PYTHON*`,
+   `PATH` or the shell's other startup variables, `eval`, `source`, `exec`,
+   `xargs`, `find -delete`, `git clean` and their kind, `rm` of the run
+   directory, and a command matching a deny pattern are refused before they
+   run, with one line that names the rule and the allowed form (`HOOK |
+   REFUSED | ...`); and every tool use is recorded in `.assay/activity.jsonl`
+   as a `tool_use` record with the receipt's `end_event` when the output
+   carried one, which joins the journal to the transcript. Keep `ASSAY`
+   exported in the shell that starts the agent's session: the hook trusts
+   `"$ASSAY"` as the launcher because the install pinned the value, and
+   refuses any command that changes it.
+
+   What the hooks are not. The policy is a text match over a command the
+   agent's own shell will run, the operator's tool policy made explicit, not
+   a sandbox, and `docs/ARCHITECTURE.md` section 8.4 lists what it does not
+   see: a path built at run time, an interpreter one-liner (`python3 -c`,
+   `assay python` included), a heredoc or a script the agent wrote; the run
+   directory's deletion other than by the named verbs; the installation
+   itself, which is writable under one uid; a hook that cannot start, which
+   Claude Code treats as a non-blocking error (hence `--check` and `assay
+   doctor`); and the policy file, which the agent's user can read, so the
+   token file's path, the anchor directory and the deny patterns are known
+   to it (a deny pattern is a speed bump, not a wall), while `cat
+   "$(printenv ASSAY_OWNER_TOKEN_FILE)"` is not seen either: the token is
+   unreadable only in the separate-user setup below. The strong form is the
+   hook entries in Claude Code's managed settings file with
+   `allowManagedHooksOnly`, the one file the agent cannot edit, together
+   with the separate-user setup.
 2. The agent's session starts in `<run-dir>`, with the daemon already up.
    The integration is one prompt with four parts: read `CONSTITUTION.md`
    completely, begin with `assay status` in the run directory, solve for the
@@ -643,10 +663,11 @@ named in brackets; the suite does not run them.
    ```bash
    sudo install -d -o assayd -g assay -m 2750 /opt/assay/hooks
    cd <run-dir>
-   sudo -u assayd env ASSAY=<repo>/bin/assay assay hooks install \
+   sudo -u assayd env ASSAY="$ASSAY" "$ASSAY" hooks install \
        --policy /opt/assay/hooks/WORLD_ID.json \
        --owner-token-file /opt/assay/tokens/WORLD_ID.token --deny ...
    sudo -u assayd chmod 640 /opt/assay/hooks/WORLD_ID.json
+   sudo -u agent env ASSAY="$ASSAY" "$ASSAY" hooks install --check
    ```
 
 What it gives, and what it does not. The journal, the chain, the mutation
