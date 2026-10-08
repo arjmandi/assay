@@ -96,6 +96,22 @@ class AssayError(RuntimeError):
         return cls(f"{type(error).__name__}: {error}", code=INTERNAL, hint=hint)
 
 
+def error_text(error: AssayError) -> str:
+    """The refusal as the command line prints it on stderr (docs/ARCHITECTURE.md
+    section 7.1), and as the tool server answers it under its text form:
+    `ERROR | CODE | message`, `NEXT | hint` when the error names a next
+    step, the message's further lines, then the detail (the claims table)."""
+    head, _, tail = error.message.partition("\n")
+    lines = [f"ERROR | {error.code} | {head}"]
+    if error.hint:
+        lines.append(f"NEXT | {error.hint}")
+    if tail:
+        lines.append(tail)
+    if error.detail:
+        lines.append(error.detail)
+    return "\n".join(lines)
+
+
 @dataclasses.dataclass(frozen=True)
 class RunPaths:
     root: Path
@@ -307,13 +323,25 @@ class CommandStatus:
     run: Run
 
 
+# The surface a command record names (docs/ARCHITECTURE.md section 7.5): the
+# command line, or the tool server, which writes the same records.
+CLI_SURFACE = "cli"
+TOOL_SURFACE = "mcp"
+
+
 @contextlib.contextmanager
-def command_status(run: Run, command: str) -> Iterator[CommandStatus]:
+def command_status(
+    run: Run, command: str, *, surface: str = CLI_SURFACE
+) -> Iterator[CommandStatus]:
+    """The `command_start` and `command_end` activity records around one
+    command over the loaded run, with the code and the kind of a refusal;
+    `surface` says which surface ran it."""
     started_monotonic = time.monotonic()
     current = CommandStatus(run)
     record: dict[str, Any] = {
         "status": "RUNNING",
         "command": command,
+        "surface": surface,
         "event": run.events[-1].id if run.events else None,
         "risk": "paid_live_action"
         if command in {"act", "commit", "reset"}

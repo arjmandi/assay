@@ -76,6 +76,30 @@ an experiment with a written expectation.
    in `.assay/NOTES.md`, the observation under `assay view --event N`, and the
    whole record under `assay status --json`.
 
+## The tool form
+
+When the operator has registered the harness as tools (an MCP server named
+`assay`, one per run), the same operations are tools named after the
+commands: `status`, `view`, `act`, `commit`, `reset`, `python`,
+`channel_declare`, `channel_list`, `model_init`, `model_replay`,
+`model_solve`, `module_list`, `goal_propose`, `goal_list` and `audit`; the
+owner's operations are not among them. `act` takes the fields the command
+takes: `action` (the registered name), `params` (one JSON object, or null
+for an action without parameters), `predict` (the claims, in the grammar
+below, required exactly as `--predict` is), `because`, `at_event` and
+`declares`; on a run that requires the prediction, the tool's schema says
+so. A `commit` takes `steps` (each `{action, params, predict}`) or a
+`plan`. Write each key once: the server cannot refuse a repeated key as the
+command line does, and the last value would win. The result is the same
+text the command prints; `format: "json"` on any tool returns the record
+the command prints under `--json` instead. A refusal comes back as a tool
+error: the same `ERROR | CODE | message` and `NEXT | hint` lines, with the
+error object (`code`, `kind`, `message`, `hint`, `detail`) beside them; an
+action without a prediction is refused with `PREDICTION_REQUIRED` there as
+here. `python` runs your source in a fresh process per call, as the command
+does, for at most 120 seconds. Begin with the `status` tool as you would
+with the command, and keep the notes as before.
+
 ## The claim grammar
 
 Separate several claims with `;`. Every claim is graded; a miss on any claim

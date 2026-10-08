@@ -247,6 +247,39 @@ settings file with `allowManagedHooksOnly` plus the separate-user setup.
 See `bench/arcagi/PROTOCOL.md` for a real one. The published benchmark runs
 were played before this order existed, with the agent running `start` itself.
 
+### The tool server
+
+The same operations are reachable as MCP tools, for an agent whose host
+speaks that protocol (Claude Code among them): `assay serve-tools --run-dir
+<run-dir>` serves one run over stdio, under the server name `assay`, with
+one tool per agent-facing operation, named after the command (`status`,
+`view`, `act`, `commit`, `reset`, `python`, `channel_declare`,
+`channel_list`, `model_init`, `model_replay`, `model_solve`, `module_list`,
+`goal_propose`, `goal_list`, `audit`); the owner's operations, the lifecycle
+commands, `export` and `spend report` are not tools. It needs the `server`
+extra (`pip install -e '.[server]'`, the `mcp` package), which the kernel
+never imports. Register it per run, after `assay start`, at the local scope
+(your `~/.claude.json`, for this project) or in the project's `.mcp.json`:
+
+```bash
+claude mcp add assay -- <venv>/bin/assay serve-tools --run-dir <run-dir>
+claude mcp add --scope project assay -- <venv>/bin/assay serve-tools --run-dir <run-dir>
+```
+
+The project entry is `{"mcpServers": {"assay": {"command":
+"<venv>/bin/assay", "args": ["serve-tools", "--run-dir", "<run-dir>"]}}}`.
+Each tool's input schema is its request record (`act` takes `action`,
+`params`, `predict`, `because`, `at_event` and `declares`; on a run whose
+registry requires the prediction, `predict` is required in the schema too)
+plus `format`: the result is the text the command prints, or, with `format:
+"json"`, the record `--json` prints, as the text block and as the structured
+content; a refusal is a tool error carrying the error object of
+`docs/ERRORS.md`, with the command line's error lines as its text. The paid
+tools go through the daemon, the readers load the run from disk on every
+call, `python` runs the agent's source in a child process per call (120
+seconds at most), and both surfaces write the same `command_start` and
+`command_end` activity records, marked `surface: "mcp"` or `"cli"`.
+
 ## 6. Owner operations (your side of the run)
 
 ```bash

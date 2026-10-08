@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from . import JOURNAL_SPEC, __version__
-from .agenda import list_proposals, mint_owner_token, propose_goal
+from .agenda import list_proposals, mint_owner_token, proposal_text, proposals_text, propose_goal
 from .analysis import run_python
 from .broker import (
     REPLAY_HINT,
@@ -39,7 +39,7 @@ from .carryover import (
     import_knowledge,
     registry_hash_of,
 )
-from .channels import channel_list_of, channel_list_text, declare_channel
+from .channels import channel_declared_text, channel_list_of, channel_list_text, declare_channel
 from .integrity import (
     anchor_file,
     anchor_line,
@@ -53,7 +53,9 @@ from .integrity import (
 from .model import (
     fit_lines,
     init_model,
+    model_created_text,
     replay_model,
+    solve_lines,
     solve_model,
 )
 from .modules import (
@@ -71,6 +73,7 @@ from .sandbox import (
 )
 from .adapters import SessionCapability, recorded_capability
 from .core import (
+    CLI_SURFACE,
     LOCAL_MODE,
     REMOTE_MODE,
     AssayError,
@@ -79,11 +82,11 @@ from .core import (
     append_jsonl,
     atomic_json,
     command_status,
+    error_text,
     load_jsonl,
     normalize_game_id,
     now_iso,
     read_json,
-    render_action,
     require_run,
     run_lock,
     run_mode,
@@ -128,6 +131,7 @@ from .registry import (
     validate_registry,
 )
 from .run import Run
+from .server import serve
 from .status import (
     BRIEF_BUDGET,
     estimated_tokens,
@@ -210,9 +214,9 @@ class Group:
 @dataclasses.dataclass(frozen=True)
 class Lifecycle:
     """A command that runs before any run is loaded (start, stop, version,
-    doctor, the hooks) and returns the exit status: its identifier, its path
-    on the command line (`hooks install`), its help, what it runs, its
-    arguments."""
+    doctor, the hooks, serve-tools) and returns the exit status: its
+    identifier, its path on the command line (`hooks install`,
+    `serve-tools`), its help, what it runs, its arguments."""
 
     name: str
     path: str
@@ -1016,6 +1020,7 @@ def _lifecycle_status(paths: RunPaths, command: str) -> Iterator[None]:
     started = time.monotonic()
     record: dict[str, Any] = {
         "command": command,
+        "surface": CLI_SURFACE,
         "risk": "offline",
         "started_at": now_iso(),
         "pid": os.getpid(),
@@ -1135,6 +1140,12 @@ def hooks_post_tool_use_command(paths: RunPaths, args: argparse.Namespace) -> in
     policy = read_policy(Path(args.policy).expanduser().resolve())
     record_tool_use(policy, sys.stdin.read())
     return 0
+def serve_tools_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    # The tool server (docs/ARCHITECTURE.md section 7.5): the command line's
+    # sibling over the same daemon and the same functions, one process per
+    # run, over this process's stdin and stdout until the client closes them.
+    # `serve` imports mcp, the server extra, and refuses without it.
+    return serve(paths)
 
 
 # --- the commands over the loaded run ------------------------------------------
@@ -1374,10 +1385,7 @@ def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
 
 def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     spec = declare_channel(run, args.name, path=args.path, file=args.file)
-    print(
-        f"CHANNEL | declared {args.name} ({spec['form']}); claims "
-        f'like `ch {args.name} = V` now parse and grade'
-    )
+    print(channel_declared_text(args.name, spec))
 
 
 def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1386,7 +1394,7 @@ def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argpars
 
 
 def model_init(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
+    print(model_created_text(init_model(paths)))
 
 
 def model_replay(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1402,26 +1410,7 @@ def model_solve(paths: RunPaths, run: Run, status: CommandStatus, args: argparse
         max_nodes=args.max_nodes,
         max_depth=args.max_depth,
     )
-    if result["actions"]:
-        print(
-            f"SOLVE | plan found | {len(result['actions'])} steps | "
-            f"nodes {result['nodes']}"
-        )
-        print(
-            "ACTIONS | "
-            + " -> ".join(render_action(item["action"], item["params"]) for item in result["actions"])
-        )
-        print(
-            "PLAN | .assay/model_plan.json; execute with "
-            "`assay commit @.assay/model_plan.json` (needs replay-fit "
-            "promotion on the current journal)"
-        )
-    else:
-        print(
-            f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
-            "actions() or next() are too narrow, or the goal needs "
-            "something unmodeled"
-        )
+    print("\n".join(solve_lines(result)))
 
 
 def module_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1441,22 +1430,11 @@ def module_install(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
 
 
 def goal_propose(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    record = propose_goal(run, args.text, args.because)
-    print(
-        f"GOAL | proposal #{record['id']} journaled, awaiting owner "
-        "ratification (`assay goal ratify ID --token ...`)"
-    )
+    print(proposal_text(propose_goal(run, args.text, args.because)))
 
 
 def goal_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    proposals = list_proposals(run)
-    if not proposals:
-        print("GOAL | no proposals")
-    for entry in proposals:
-        print(
-            f"  #{entry['id']} [{entry['status']}] {entry['text']}"
-            + (f"; {entry['because']}" if entry.get("because") else "")
-        )
+    print("\n".join(proposals_text(list_proposals(run))))
 
 
 def goal_ratify(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1584,7 +1562,7 @@ def _run(paths: RunPaths, args: argparse.Namespace) -> int:
     require_run(paths)
     with run_lock(paths):
         run = Run.load(paths, strict=False)
-        with command_status(run, args.command) as status:
+        with command_status(run, args.command, surface=CLI_SURFACE) as status:
             command.run(paths, run, status, args)
     return 0
 
@@ -1597,14 +1575,7 @@ def _report_error(error: AssayError, *, machine: bool) -> int:
     if machine:
         print(_document(error.to_json()))
     else:
-        head, _, tail = error.message.partition("\n")
-        print(f"ERROR | {error.code} | {head}", file=sys.stderr)
-        if error.hint:
-            print(f"NEXT | {error.hint}", file=sys.stderr)
-        if tail:
-            print(tail, file=sys.stderr)
-        if error.detail:
-            print(error.detail, file=sys.stderr)
+        print(error_text(error), file=sys.stderr)
     return exit_code(error.kind)
 
 
@@ -1758,6 +1729,23 @@ LIFECYCLE: tuple[Lifecycle, ...] = (
                 required=True,
                 metavar="FILE",
                 help="the policy file hooks install wrote; its run directory is the one recorded",
+            ),
+        ),
+    ),
+    Lifecycle(
+        "serve_tools",
+        "serve-tools",
+        "serve this run's agent-facing operations as tools over stdio (the MCP server "
+        "named `assay`); needs the server extra, pip install 'assay-harness[server]'",
+        serve_tools_command,
+        arguments=(
+            arg(
+                "--run-dir",
+                dest="run_dir",
+                default=argparse.SUPPRESS,
+                metavar="DIR",
+                help="the run directory to serve, one run per server process (default: the "
+                "working directory)",
             ),
         ),
     ),

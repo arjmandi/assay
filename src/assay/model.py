@@ -60,6 +60,7 @@ from .core import (
     atomic_json,
     load_jsonl,
     read_json,
+    render_action,
 )
 from .channels import channel_value, load_declared
 from .sandbox import run_program
@@ -238,6 +239,11 @@ def init_model(paths: RunPaths) -> Path:
         raise AssayError(f"{target} already exists; edit it in place", code="COMMAND_ARGS")
     target.write_text(MODEL_TEMPLATE)
     return target
+
+
+def model_created_text(target: Path) -> str:
+    """The line `assay model init` prints for the template it wrote."""
+    return f"CREATED | {target}; declare CHANNELS, define next()"
 
 
 def _channel_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
@@ -595,6 +601,25 @@ def solve_model(
         },
     )
     return record
+
+
+def solve_lines(result: Mapping[str, Any]) -> list[str]:
+    """The lines `assay model solve` prints: the plan found, its actions and
+    where it was written, or the search that found none."""
+    if not result["actions"]:
+        return [
+            f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
+            "actions() or next() are too narrow, or the goal needs "
+            "something unmodeled"
+        ]
+    return [
+        f"SOLVE | plan found | {len(result['actions'])} steps | nodes {result['nodes']}",
+        "ACTIONS | "
+        + " -> ".join(render_action(item["action"], item["params"]) for item in result["actions"]),
+        "PLAN | .assay/model_plan.json; execute with "
+        "`assay commit @.assay/model_plan.json` (needs replay-fit "
+        "promotion on the current journal)",
+    ]
 
 
 def fit_lines(record: Mapping[str, Any]) -> list[str]:

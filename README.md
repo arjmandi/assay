@@ -52,6 +52,9 @@ one:
 
    `[grid]` adds pillow for frame worlds (rendering). A dict world does not
    need it. `[arcagi]` adds the ARC-AGI-3 client. `[dev]` adds pytest.
+   `[server]` adds the `mcp` package for `assay serve-tools`, the tool server
+   (the agent-facing operations as MCP tools over the same daemon; GUIDE
+   section 5).
 3. **The CLI alone.** `pipx install '.[grid]'` puts `assay` on PATH in its own
    environment, for worlds whose adapters have no dependencies of their own.
 

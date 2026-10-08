@@ -421,6 +421,15 @@ class ChannelList:
         }
 
 
+def channel_declared_text(name: str, spec: Mapping[str, Any]) -> str:
+    """The line `assay channel declare` prints: the name, its form and the
+    claims it now grades."""
+    return (
+        f"CHANNEL | declared {name} ({spec['form']}); claims "
+        f"like `ch {name} = V` now parse and grade"
+    )
+
+
 def channel_list_of(run: Run, *, fresh: bool = False) -> ChannelList:
     events = run.events
     declared = load_declared(run.paths)
