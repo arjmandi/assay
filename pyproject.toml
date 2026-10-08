@@ -21,6 +21,9 @@ grid = ["pillow>=10,<13"]
 arcagi = ["arc-agi", "pillow>=10,<13"]
 # Building or fetching an OOLONG corpus pack reads a parquet shard; the adapter itself needs nothing.
 oolong = ["pyarrow", "pandas"]
+# The tool server (`assay serve-tools`, docs/ARCHITECTURE.md section 7.5) speaks MCP through the
+# mcp package, imported inside assay.server alone; the kernel never needs it.
+server = ["mcp>=2.3,<3"]
 dev = ["pytest", "hypothesis", "ruff", "mypy"]
 
 [project.scripts]

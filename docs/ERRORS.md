@@ -50,7 +50,7 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `PYTHON_FAILED` | usage | the agent's source raised inside `assay python`. |
 | `PLAN_INVALID` | usage | the commit plan is not a model plan written by `assay model solve`, is not `.assay/model_plan.json`, or carries its actions in the string form of a plan written before 1.2.0. |
 | `KNOWLEDGE_INVALID` | usage | the knowledge file cannot be read, is not JSON or has another format. |
-| `EXTRA_MISSING` | usage | the run has frame observations and the frame-world extra (assay_grid) is not importable. |
+| `EXTRA_MISSING` | usage | an optional extra the command needs is not importable: the frame-world extra (assay_grid) on a run with frame observations, or the mcp package (the server extra) under `assay serve-tools`. |
 | `RESUME_REFUSED` | usage | start's arguments disagree with the directory's run: another world id, mode or registry, or an import on resume. |
 | `ANCHOR_DIR_UNWRITABLE` | usage | the anchor directory cannot be written, so the run's chain heads and its seal would have nowhere to go; start refuses before anything is written. |
 | `REQUEST_MALFORMED` | usage | the request line on the socket is empty, longer than 1,000,000 bytes, not JSON, not a JSON object, repeats a key, nests more than 64 containers deep, or its body does not fit the operation's request record. |

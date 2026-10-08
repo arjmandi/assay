@@ -49,13 +49,26 @@ jobs:
         run: uv run --python ${{ matrix.python }} --with numpy python -c "from assay.sandbox import sandbox_mode, sandbox_text; print('sandbox |', sandbox_text(sandbox_mode()))"
       - name: The suite
         run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis pytest tests/ -q
+      # The tool server's scenario over stdio (docs/ARCHITECTURE.md section
+      # 7.5) needs the server extra, which the suite's command leaves out so
+      # the scenario skips there; this step runs the server's tests with it,
+      # whether or not the suite passed, so its verdict is its own.
+      - name: The tool server, with the server extra
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis --with mcp pytest tests/test_server.py -q
+      # The checks below have verdicts of their own, so a failed step above
+      # (the suite, or the extra's resolution) does not skip them.
       - name: ruff
+        if: ${{ !cancelled() }}
         run: uv run --with ruff ruff check src tests hooks
       # Strict over the kernel, the frame-world extra and the Claude Code
       # hook script, checked as Python 3.12 (pyproject's python_version)
       # under each cell's interpreter; the same run as a plain `mypy` from
       # the root. numpy and pillow ship their types.
       - name: mypy, strict, over the kernel, the extra and the hooks
+        if: ${{ !cancelled() }}
         run: uv run --python ${{ matrix.python }} --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks
       - name: The published journals against their heads
+        if: ${{ !cancelled() }}
         run: python3 evidence/verify_all.py

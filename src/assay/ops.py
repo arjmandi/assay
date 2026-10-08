@@ -181,6 +181,31 @@ _INTEGER_OR_NULL = {"type": ["integer", "null"]}
 _DECLARES = {"type": ["object", "null"], "additionalProperties": {"type": "string"}}
 _PARAMS = {"type": ["object", "null"]}
 
+
+def _described(schema: Mapping[str, Any], description: str) -> dict[str, Any]:
+    """A property schema with the one-line description a tool's caller reads
+    (the tool server lists the request records as `inputSchema`)."""
+    return {**schema, "description": description}
+
+
+# The descriptions the paid records share: what an action's fields mean, as
+# the command line's help says them.
+ACTION_FIELD = "the registered action name (RESET is always built in)"
+PARAMS_FIELD = (
+    "the parameters as one JSON object, under the schema the REGISTRY block of status shows; "
+    "null for an action without any"
+)
+PREDICT_FIELD = (
+    "the claims this action is graded against, as `claim; claim; ...` (noop, change, level+1, "
+    "win, verify:PATH.py, ch NAME = V, ch NAME delta ...); required unless the registry sets "
+    "gate: optional, and refused with PREDICTION_REQUIRED without it"
+)
+AT_EVENT_FIELD = "the event guard: refused unless the current event is this one"
+DECLARES_FIELD = (
+    "the structural declarations a gate or a module demanded, as field: value "
+    "(worst_case and recovery for a destructive action, revised, coverage_audit)"
+)
+
 # The error object of section 7.1, as every refused reply carries it: the
 # code, its kind, the one-line message, the next step and the further lines
 # the command line prints after them (the claims table), the last two null
@@ -361,12 +386,12 @@ class ActRequest:
     def json_schema(cls) -> dict[str, Any]:
         return _schema(
             {
-                "action": {"type": "string"},
-                "params": _PARAMS,
-                "predict": _STRING_OR_NULL,
-                "because": _STRING_OR_NULL,
-                "at_event": _INTEGER_OR_NULL,
-                "declares": _DECLARES,
+                "action": _described({"type": "string"}, ACTION_FIELD),
+                "params": _described(_PARAMS, PARAMS_FIELD),
+                "predict": _described(_STRING_OR_NULL, PREDICT_FIELD),
+                "because": _described(_STRING_OR_NULL, "a short reason for choosing this action"),
+                "at_event": _described(_INTEGER_OR_NULL, AT_EVENT_FIELD),
+                "declares": _described(_DECLARES, DECLARES_FIELD),
             },
             ("action",),
         )
@@ -402,7 +427,11 @@ class Step:
     @classmethod
     def json_schema(cls) -> dict[str, Any]:
         return _schema(
-            {"action": {"type": "string"}, "params": _PARAMS, "predict": _STRING_OR_NULL},
+            {
+                "action": _described({"type": "string"}, ACTION_FIELD),
+                "params": _described(_PARAMS, PARAMS_FIELD),
+                "predict": _described(_STRING_OR_NULL, PREDICT_FIELD),
+            },
             ("action",),
         )
 
@@ -456,10 +485,19 @@ class CommitRequest:
     def json_schema(cls) -> dict[str, Any]:
         return _schema(
             {
-                "plan": _STRING_OR_NULL,
-                "steps": {"type": "array", "items": Step.json_schema()},
-                "at_event": _INTEGER_OR_NULL,
-                "declares": _DECLARES,
+                "plan": _described(
+                    _STRING_OR_NULL,
+                    "a model plan written by `model solve`, as `@.assay/model_plan.json`; instead of steps",
+                ),
+                "steps": _described(
+                    {"type": "array", "items": Step.json_schema()},
+                    "the hand-written batch, in execution order, every step with its own prediction; "
+                    "instead of a plan",
+                ),
+                "at_event": _described(_INTEGER_OR_NULL, AT_EVENT_FIELD),
+                "declares": _described(
+                    _DECLARES, "the structural declarations a module demanded for a step in this batch"
+                ),
             }
         )
 
@@ -492,7 +530,16 @@ class ResetRequest:
     @classmethod
     def json_schema(cls) -> dict[str, Any]:
         return _schema(
-            {"because": _STRING_OR_NULL, "at_event": _INTEGER_OR_NULL, "declares": _DECLARES}
+            {
+                "because": _described(
+                    _STRING_OR_NULL,
+                    "why the current state is worth abandoning; required unless the state is GAME_OVER",
+                ),
+                "at_event": _described(_INTEGER_OR_NULL, AT_EVENT_FIELD),
+                "declares": _described(
+                    _DECLARES, "the structural declarations a module demanded for this reset"
+                ),
+            }
         )
 
 

@@ -1293,7 +1293,10 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   declaration, `observation`, `step`, `replay` and `finalize`. Anything raised there, `AssayError` or not, becomes
   `WORLD_ERROR` (kind world) carrying the text; a `finalize` failure stays the warning on
   the receipt, as today. Anything else that is not an `AssayError` becomes `INTERNAL` (kind
-  internal) with the traceback saved as today; ONBOARDING's troubleshooting section, which
+  internal) with the traceback saved as today (the command line's `.assay/last_error.txt`,
+  overwritten per failure; the tool server's `.assay/server.log`, appended per failure with
+  each traceback cut to 4,000 characters and the file kept under 1 MB by dropping its
+  head); ONBOARDING's troubleshooting section, which
   shows that line with exit 2, follows.
 - Existing codes keep their names: `BUDGET_EXHAUSTED`, `LOCAL_REPLAY_DIVERGED`,
   `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`; `UNGATED_STEP_REFUSED` is retired with
@@ -1496,19 +1499,100 @@ are stored as lines, the two exceptions the rule allows.
   or the client of a daemon operation; the agent-facing lines are unchanged.
 - The tool server (#15): the module `assay.server`, shipped as the optional extra
   `server` (the `mcp` package), started per run by the operator (`assay serve-tools
-  --run-dir DIR`, over stdio). One tool per operation in the table: daemon operations are
-  forwarded over the socket, offline operations run in the server process from disk, with
-  `Run.load` on every call and no cache (the daemon appends between calls; a load of the
-  largest ARC journal is 16 ms); `inputSchema` comes from the request record's
-  `json_schema()`; the result is the record as JSON with a `text` field holding the prose
-  rendering, so a model can read either; a tool error carries the error object. Command
-  records in the activity log say `surface: "mcp"`.
+  --run-dir DIR`, over stdio). One tool per agent-facing operation in the table: daemon
+  operations are forwarded over the socket, offline operations run in the server process
+  from disk, with `Run.load` on every call and no cache (the daemon appends between calls;
+  a load of the largest ARC journal is 16 ms), and `python` runs the agent's source in a
+  child process per call under a wall clock; `inputSchema` comes from the request record's
+  `json_schema()`, with the surface's `format` property and, on a run whose pinned registry
+  requires the prediction, `predict` required on `act` and on a commit step; the result is,
+  by default, the prose the command line prints, as one text block, and under `format:
+  "json"` the `--json` document as the text block and as the structured content (revised in
+  the review of #15: the draft carried the record and the prose on every call, 2.3 times
+  the prose on a status, and the agent pays for what it is shown, so the default is the
+  text and the record is asked for); a tool error carries the error object as the
+  structured content, with the command line's error lines as its text. Command records in
+  the activity log say `surface: "mcp"`.
 - The hooks (#11): section 8.4.
 - Activity command records gain `surface` (`cli` or `mcp`); the PostToolUse record of
   section 8.4 joins to them by the receipt's `end_event` when the tool output carries one,
   and by order and command text otherwise. The join is the agent's own output, a hint the
   reader checks against the journal, not an authority: `end_event` is taken only from the
   receipt's `EVENT` line or the top level of an act, commit or reset document.
+
+Status (#15): landed as written and revised in review, with these particulars.
+`src/assay/server.py` builds the table (`server.TOOLS`, fifteen tools) without importing
+`mcp`: the three paid daemon operations, forwarded through `broker.call` as the command
+line sends them (`act` and the steps of a `commit` validated against the pinned registry
+before the socket, as `--params` is), and twelve offline operations run from `Run.load` on
+every call, whose request records live in `server.py`, since they never cross the socket
+(`StatusRequest`, `ViewRequest`, `ChannelDeclareRequest` and the rest, decoded by the
+records kit's rules and described by the same fields, so the schema and the check cannot
+drift apart). The rule, `server.agent_facing` with `server.DAEMON_OWN` and
+`server.OPERATOR_COMMANDS`: a tool is what reads or advances the agent's own run, which
+the constitution gives the agent (the paid operations, the readers `status`, `view`,
+`audit`, `channel_list`, `module_list` and `python`, the channel, model and goal
+operations); not a tool is every operation with `owner=True` in the wire table
+(`install_module`, `approve`, `waive`, `goal_ratify`), the daemon's own `ping` and
+`observe`, the lifecycle commands (`start`, `stop`, `version`, `doctor`, `serve-tools`),
+and the operator's side effects beyond the run (`export`, the knowledge file for a later
+run, and `spend report`, the operator's feed of the bill); `tests/test_server.py` holds
+the rule against `ops.OPERATIONS` and `cli.COMMANDS`, so a new operation reaches the
+agent only once it is classified. `assay serve-tools` is a lifecycle command
+(`cli.LIFECYCLE`, whose entries carry a `path` beside the identifier now) taking
+`--run-dir DIR` after the command as well as before it; it refuses without a run
+(`RUN_MISSING`) and without the extra (`EXTRA_MISSING`, kind usage, the hint naming
+`pip install 'assay-harness[server]'`), and imports `mcp` inside `server.serve` alone,
+through `importlib`, so strict typing holds with or without it. The extra is
+`mcp>=2.3,<3`, verified against mcp 2.3.0 (its `Server` takes the handlers as
+constructor arguments, unlike 1.x, hence the floor). The paid records' schemas carry a
+one-line `description` per property (`ops._described`), shared by the daemon's
+`REQUEST_MALFORMED` hint and the tools' `inputSchema`. The listing is built once per run
+(`server.listed_schema`): the record's schema with the surface's `format` property and,
+since the pinned registry cannot change for the run's life, `predict` required as a
+string on `act` and on a commit step when `registry.gate_mode` says `required`, the
+table's nullable, optional `predict` under a control arm; the daemon still refuses a bare
+paid action with `PREDICTION_REQUIRED`, which the tool error carries. Every tool takes
+`format`, `text` (the default) or `json`, mirroring `--json`: under `text` the content is
+one text block holding the prose exactly as the command line prints it and nothing is
+structured; under `json` it is the `--json` document (the record's fields,
+`estimated_tokens` and `truncated` where the command line carries them) as the text block
+and as `structuredContent`. A refusal is `isError` with the error object as the
+structured content and, as the text, the command line's stderr lines (`core.error_text`,
+which the command line prints too) or the object under `json`; an unknown tool is
+`OPERATION_UNKNOWN`, a request that does not fit the record or a `format` that is neither
+word `REQUEST_MALFORMED`, in the daemon's words. What the mcp layer decides never reaches
+the dispatcher: `arguments` that is not an object is answered by the layer as a JSON-RPC
+invalid-params error (-32602), not `REQUEST_MALFORMED`; a request line that does not
+parse, or nests past the layer's limit, is dropped without a reply, and the server
+answers the next call; a repeated key in `arguments` is parsed by the layer with the last
+value winning, where `--params` refuses it (the constitution's tool form says to write
+each key once). `python` runs the agent's source in a child process per call (`python -m
+assay.server --run-python DIR`, the source on stdin, one JSON line back), as `assay
+python` runs it in a process of its own, under a wall clock of `PYTHON_TOOL_SECONDS` (120)
+refused as `PYTHON_FAILED` naming the limit; what the source does to its interpreter, a
+SystemExit it raises included, stays in the child, and the output is the command line's.
+The child leads a session of its own and its whole process group is killed at the limit,
+so nothing the source spawned outlives it (the command line runs the source in its own
+process, as before); the tool holds the run lock while the child runs, as the command
+line holds it for `assay python`, so a long analysis delays the other surface until the
+limit. `run_python` catches `SystemExit` too, so the command line refuses a source that
+calls `sys.exit` as `PYTHON_FAILED`, as the tool does, where it exited silently before.
+Nothing an agent causes leaves the worker: `call_tool`'s backstop catches `BaseException`,
+and a failure that is no refusal is `INTERNAL` with the traceback appended to
+`.assay/server.log` (each entry cut to 4,000 characters, the file kept under 1 MB). The
+activity records are the command line's (`core.command_status` takes the surface;
+`surface` rides on `command_start` and `command_end`, `cli` from the command line, its
+`start` and `stop` records included, `mcp` from the server), and the `command` field
+carries the tool's name where the command line writes the group's word for a grouped
+command (`channel` for `channel declare`). The prose of `channel declare`, `model init`,
+`model solve`, `goal propose` and `goal list` moved beside their records
+(`channels.channel_declared_text`, `model.model_created_text`, `model.solve_lines`,
+`agenda.proposal_text`, `agenda.proposals_text`), unchanged, so both surfaces print one
+text. The server runs one run per process, named `assay`, with the constitution's loop
+as its instructions; the PostToolUse join is #11's, whose hook reads the receipt's
+`EVENT | e<id>` line from the text block, or `end_event` from the document under
+`format: "json"`, so both forms join the transcript.
 
 ### 7.6 Token-aware output (#23)
 

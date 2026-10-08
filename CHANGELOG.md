@@ -135,6 +135,49 @@ Left on the experiment branch, deliberately:
   exactly; `hooks install --check --policy FILE` checks a given policy, exit
   status 2 on failure; the 8.4 status paragraph says what the policy does
   not see and names the strong form.
+- The tool server (#15, design note 2 section 7.5). `assay serve-tools
+  --run-dir DIR` serves one run's agent-facing operations as MCP tools over
+  stdio, under the server name `assay`, through the module `assay.server`
+  and the optional extra `server` (`pip install 'assay-harness[server]'`:
+  the `mcp` package, 2.3 or later and below 3, which the kernel never
+  imports). One tool per operation, named after the command: `status`,
+  `view`, `act`, `commit`, `reset`, `python`, `channel_declare`,
+  `channel_list`, `model_init`, `model_replay`, `model_solve`,
+  `module_list`, `goal_propose`, `goal_list` and `audit`. Not tools, by one
+  rule in the module: the owner operations (`owner=True` in the wire table:
+  `module install`, `approve`, `waive`, `goal ratify`), the daemon's own
+  `ping` and `observe`, the lifecycle commands, and the operator's side
+  effects beyond the run, `export` and `spend report`. The paid tools go
+  through the daemon as the command line goes, the parameters validated
+  against the pinned registry before the socket; the readers load the run
+  from disk on every call and never cache it; `python` runs the source in a
+  child process per call, as the command does, for at most 120 seconds
+  (`PYTHON_FAILED` past it, the child's whole process group killed), so
+  nothing the source does reaches the server; `assay python` itself now
+  refuses a source that calls `sys.exit` as `PYTHON_FAILED`, as the tool
+  does, where it exited silently with the code.
+  A tool's input schema is its request record's `json_schema()` (the wire
+  record for a daemon operation, a record of `server.py` for an offline
+  one) with a `format` property, and `predict` required on `act` and on a
+  commit step when the run's pinned registry requires the prediction; the
+  paid records' schemas now describe each property in one line. The result
+  is the text the command prints, as one text block, or, with `format:
+  "json"`, the record `--json` prints (with `estimated_tokens` and
+  `truncated` where the command line carries them) as the text block and as
+  the structured content; a refusal is a tool error carrying the error
+  object as the structured content and the command line's error lines as
+  the text, an act without a prediction refused with `PREDICTION_REQUIRED`
+  as on the command line; a failure that is no refusal is `INTERNAL`, its
+  traceback in `.assay/server.log` (4,000 characters an entry, 1 MB the
+  file). Activity
+  `command_start` and `command_end` records carry `surface`, `cli` from the
+  command line (`start` and `stop` included) and `mcp` from the server; the
+  records' shape is otherwise unchanged, and their readers read by kind.
+  `EXTRA_MISSING` covers the missing `mcp` package too. The prose of
+  `channel declare`, `model init`, `model solve`, `goal propose` and `goal
+  list` moved beside their records so both surfaces print one text; the
+  lines are unchanged. The constitution gains the tool form, `assay --help`
+  the `serve-tools` entry.
 - Token-aware output (#23, design note 2 section 7.6). `--json` on `status`,
   `act`, `commit` and `reset` carries `estimated_tokens`, the prose the call
   would have printed (without its final newline) in characters over four, an

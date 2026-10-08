@@ -125,6 +125,26 @@ def propose_goal(run: Run, text: str, because: str | None) -> dict[str, Any]:
     return record
 
 
+def proposal_text(record: Mapping[str, Any]) -> str:
+    """The line `assay goal propose` prints for the proposal it journaled."""
+    return (
+        f"GOAL | proposal #{record['id']} journaled, awaiting owner "
+        "ratification (`assay goal ratify ID --token ...`)"
+    )
+
+
+def proposals_text(proposals: Sequence[Mapping[str, Any]]) -> list[str]:
+    """The lines `assay goal list` prints: one per proposal with its status,
+    or the one line saying there is none."""
+    if not proposals:
+        return ["GOAL | no proposals"]
+    return [
+        f"  #{entry['id']} [{entry['status']}] {entry['text']}"
+        + (f"; {entry['because']}" if entry.get("because") else "")
+        for entry in proposals
+    ]
+
+
 def list_proposals(run: Run) -> list[dict[str, Any]]:
     proposals = load_jsonl(proposals_path(run.paths))
     resolved: dict[int, str] = {}

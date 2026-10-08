@@ -44,6 +44,9 @@ Windows is not supported. Three ways in, exactly as `README.md` states them:
 
    `[grid]` adds pillow for frame worlds (rendering). A dict world does not
    need it. `[arcagi]` adds the ARC-AGI-3 client. `[dev]` adds pytest.
+   `[server]` adds the `mcp` package for `assay serve-tools`, the tool server
+   (the agent-facing operations as MCP tools over the same daemon; chapter
+   7).
 3. The CLI alone. `pipx install '.[grid]'` puts `assay` on PATH in its own
    environment, for worlds whose adapters have no dependencies of their own.
 
@@ -485,6 +488,32 @@ and holds the owner token, and the agent's session begins after that.
    (chapter 6). A resume after an interruption is the operator's too: the
    same `start` command in the same directory replays the journal and keeps
    the token, and the agent begins again at `status`.
+
+The harness is also reachable as tools, for a host that speaks MCP (Claude
+Code among them). With the `server` extra installed in the venv (`pip
+install -e '.[server]'`), the operator registers the server after `start`,
+one run per server process, at the local scope (the user's `~/.claude.json`,
+for this project) or in the project's `.mcp.json`:
+
+```bash
+claude mcp add assay -- <venv>/bin/assay serve-tools --run-dir <run-dir>
+claude mcp add --scope project assay -- <venv>/bin/assay serve-tools --run-dir <run-dir>
+```
+
+The project entry is `{"mcpServers": {"assay": {"command":
+"<venv>/bin/assay", "args": ["serve-tools", "--run-dir", "<run-dir>"]}}}`.
+The server is named `assay` and its tools are the agent-facing commands by
+name (`status`, `view`, `act`, `commit`, `reset`, `python`,
+`channel_declare`, `channel_list`, `model_init`, `model_replay`,
+`model_solve`, `module_list`, `goal_propose`, `goal_list`, `audit`; never
+the owner's), each with its request record as the input schema, the result
+as the text the command prints (`format: "json"` for the record), and a
+refusal as a tool error carrying the error object; `CONSTITUTION.md` says
+what the agent sees (the tool form) and `GUIDE.md` section 5 the operator's
+side. The hooks of section 8.4 match the server's calls as `mcp__assay__.*`,
+so a tool call joins the transcript as a command does: the PostToolUse hook
+reads the receipt's `EVENT | e<id>` line from the text, or `end_event` from
+the record under `format: "json"`.
 
 The published benchmark runs were played before this order existed: the
 agent ran `start` itself and held the owner token in its own terminal, so
