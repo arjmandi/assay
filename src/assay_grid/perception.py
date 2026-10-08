@@ -288,6 +288,8 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
     """Word a settled-frame transition as component-level events.
 
     Coordinates in lines are (x,y) with x=column and y=row, matching ACTION6.
+    Every list of the story, and so every block of its lines, is in one
+    stated order (#58): largest first, then top-left first, then color.
     """
     left, right = np.asarray(before), np.asarray(after)
     empty: dict[str, Any] = {
@@ -346,7 +348,7 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
     moved: list[dict[str, Any]] = []
     gone: list[dict[str, Any]] = []
     born: list[dict[str, Any]] = []
-    for key in set(groups_before) | set(groups_after):
+    for key in sorted(set(groups_before) | set(groups_after)):
         olds = groups_before.get(key, [])
         news = groups_after.get(key, [])
         new_positions = {tuple(item["bbox"]) for item in news}
@@ -372,6 +374,22 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
             gone.extend(missing)
             born.extend(fresh)
 
+    def ordered(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """The story's one order (#58): largest first, then top-left first
+        (the bounding box, rows before columns; a move's origin), then
+        color. The keys are visited sorted and the matching below takes its
+        candidates in this order, so the story is a function of the two
+        frames and never of the process's string hashing."""
+        return sorted(
+            items,
+            key=lambda item: (
+                -int(item.get("size", item.get("to_size", 0))),
+                item.get("bbox", item.get("from_bbox")),
+                int(item.get("color", item.get("from_color", 0))),
+            ),
+        )
+
+    gone, born = ordered(gone), ordered(born)
     recolored: list[dict[str, Any]] = []
     for old_item in list(gone):
         match = next(
@@ -398,6 +416,8 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
 
     resized: list[dict[str, Any]] = []
     for old_item in list(gone):
+        # The largest appeared component of the color overlapping the
+        # vanished one, both lists being in the story's order.
         match = next(
             (
                 item
@@ -418,21 +438,19 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
                     "color": old_item["color"],
                     "from_size": old_item["size"],
                     "to_size": match["size"],
+                    "bbox": match["bbox"],
                     "representative": match["representative"],
                 }
             )
             gone.remove(old_item)
             born.remove(match)
 
-    def cap(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return sorted(items, key=lambda item: -int(item.get("size", item.get("to_size", 0))))
-
     story.update(
-        moved=cap(moved),
-        vanished=cap(gone),
-        appeared=cap(born),
-        recolored=cap(recolored),
-        resized=cap(resized),
+        moved=ordered(moved),
+        vanished=ordered(gone),
+        appeared=ordered(born),
+        recolored=ordered(recolored),
+        resized=ordered(resized),
     )
     limit = 6
     for item in story["moved"][:limit]:

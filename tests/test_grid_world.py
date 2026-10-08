@@ -1,15 +1,25 @@
 """A frame world through the real CLI and daemon: rendering, the frame grader,
 the grid refusal on registry runs, view and the offline namespace. This is the
-behavior the frame-world extra must keep when it leaves the kernel."""
+behavior the frame-world extra must keep when it leaves the kernel. Then the
+transition story's stated order, and the view as a function of the records
+across processes (#58)."""
 
 from __future__ import annotations
 
+import gzip
 import json
+import os
+import shutil
+import subprocess
+import sys
 from pathlib import Path
 
-from conftest import run_cli, stop_run
+from conftest import ASSAY_CLI, event_of, run_cli, stop_run
 
 GRID_ADAPTER = Path(__file__).resolve().parent / "grid_adapter.py"
+# The published ar25 journal, the run whose view printed three texts in three
+# processes (#58); event 264, its last, is the one the issue rendered.
+JOURNAL = Path(__file__).resolve().parents[1] / "evidence" / "arcagi" / "journal-ar25.jsonl.gz"
 REGISTRY = {
     "actions": [
         {"name": "ACTION1", "params": {}},
@@ -95,3 +105,126 @@ def test_frame_world_end_to_end(tmp_path):
         assert resumed.returncode == 0 and "completed run" in resumed.stdout
     finally:
         stop_run(run)
+
+
+# A settled-frame pair whose story ties on every key but position: three
+# color-3 shapes of size 3 and two color-5 shapes of size 2 vanish, two
+# color-6 shapes of size 3 appear, a color-7 block moves, and the color-4 bar
+# that appears overlaps two vanished color-4 components (the domino and the
+# single cell), so the resize could pair with either. These are the lines
+# whose order and content depended on the process's string hashing (#58).
+BEFORE = [
+    "3330000003",
+    "0000000003",
+    "0044040003",
+    "0000000000",
+    "3000770000",
+    "3300770000",
+    "0000000000",
+    "0005500050",
+    "0000000050",
+    "0000000000",
+]
+AFTER = [
+    "0000000000",
+    "0000000000",
+    "0044440000",
+    "0000000000",
+    "0000007700",
+    "0000007700",
+    "0000000000",
+    "0000000000",
+    "0666006000",
+    "0000006600",
+]
+# The story of that pair in its stated order: in every block the largest
+# first, then the top-left first (rows before columns), then the color; the
+# resize pairs the bar with the domino, the larger of the two vanished
+# color-4 components overlapping it, and the single cell is vanished.
+STORY = [
+    "28 cells changed in rows 0..9, cols 0..9",
+    "color 7 size 4 moved (x,y) (4,4)->(6,4) [dx=+2,dy=+0]",
+    "color 4 resized 2->4 near (x,y) (3,2)",
+    "color 3 size 3 vanished at (x,y) (1,0)",
+    "color 3 size 3 vanished at (x,y) (9,1)",
+    "color 3 size 3 vanished at (x,y) (0,5)",
+    "color 5 size 2 vanished at (x,y) (3,7)",
+    "color 5 size 2 vanished at (x,y) (8,7)",
+    "color 4 size 1 vanished at (x,y) (5,2)",
+    "color 6 size 3 appeared at (x,y) (2,8)",
+    "color 6 size 3 appeared at (x,y) (6,9)",
+]
+
+
+def _rows(text: list[str]) -> list[list[int]]:
+    return [[int(cell, 16) for cell in row] for row in text]
+
+
+def _frame_run(root: Path, name: str, frames: list[list[str]]) -> Path:
+    """A run directory `assay view` reads with no daemon: a config and a
+    journal of one frame-world event per settled frame, given as the hex
+    rows the journal stores."""
+    run = root / name
+    (run / ".assay").mkdir(parents=True)
+    (run / ".assay" / "config.json").write_text(json.dumps({"game_id": name, "mode": "local"}))
+    events = [
+        event_of(
+            id=index,
+            action="RESET" if index == 0 else "ACTION1",
+            data=None,
+            counts_action=bool(index),
+            level_before=None if index == 0 else 0,
+            available_actions=[1, 2, 6],
+            frames=[frame],
+        ).to_json()
+        for index, frame in enumerate(frames)
+    ]
+    (run / ".assay" / "events.jsonl").write_text(
+        "".join(json.dumps(event) + "\n" for event in events)
+    )
+    return run
+
+
+def _view_under_seeds(run: Path, event: int) -> list[str]:
+    """`assay view --event N` on the run once per hash seed, each in a
+    process of its own."""
+    texts = []
+    for seed in ("0", "1", "2"):
+        completed = subprocess.run(
+            [sys.executable, str(ASSAY_CLI), "--run-dir", str(run), "view", "--event", str(event)],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            env={**os.environ, "PYTHONHASHSEED": seed},
+        )
+        assert completed.returncode == 0, completed.stderr
+        texts.append(completed.stdout)
+    return texts
+
+
+def test_transition_story_is_in_its_stated_order():
+    from assay_grid.perception import transition_story
+
+    assert transition_story(_rows(BEFORE), _rows(AFTER))["lines"] == STORY
+
+
+def test_view_text_is_a_function_of_the_records(tmp_path):
+    """The same event renders byte for byte the same under three hash seeds
+    in three processes (#58): on the crafted pair, and on the last event of
+    the published ar25 journal."""
+    crafted = _frame_run(tmp_path, "crafted", [BEFORE, AFTER])
+    texts = _view_under_seeds(crafted, 1)
+    assert texts[0] == texts[1] == texts[2]
+    assert "\n".join(f"  {line}" for line in STORY) in texts[0]
+    published = tmp_path / "ar25"
+    (published / ".assay").mkdir(parents=True)
+    (published / ".assay" / "config.json").write_text(
+        json.dumps({"game_id": "ar25", "mode": "local"})
+    )
+    with gzip.open(JOURNAL, "rb") as source, (published / ".assay" / "events.jsonl").open(
+        "wb"
+    ) as sink:
+        shutil.copyfileobj(source, sink)
+    texts = _view_under_seeds(published, 264)
+    assert texts[0] == texts[1] == texts[2]
+    assert "TRANSITION | since previous settled board" in texts[0]
