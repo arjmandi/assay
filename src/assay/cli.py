@@ -77,6 +77,7 @@ from .core import (
     run_lock,
 )
 from .extras import require_kind
+from .ops import ActRequest, CommitRequest, ResetRequest
 from .inspect import result_text, status_text, view_text
 from .predictions import claims_help
 from .registry import gate_mode, load_registry_file
@@ -923,14 +924,14 @@ def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace)
         # Daemon-side gate: enforcement where the session lives.
         receipt = broker_gated(
             paths,
-            {
-                "op": "gated_act",
-                "action_token": " ".join([args.action, *args.params]),
-                "predict": args.predict,
-                "because": args.because,
-                "at_event": args.at_event,
-                "declares": _parse_declares(args.declare),
-            },
+            "act",
+            ActRequest(
+                action_token=" ".join([args.action, *args.params]),
+                predict=args.predict,
+                because=args.because,
+                at_event=args.at_event,
+                declares=_parse_declares(args.declare),
+            ),
         )
         command.run = run = Run.load(paths, strict=False)
         print(result_text(run, receipt))
@@ -942,13 +943,13 @@ def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace)
             )
         receipt = broker_gated(
             paths,
-            {
-                "op": "gated_commit",
-                "plan": args.plan,
-                "steps": args.step,
-                "at_event": args.at_event,
-                "declares": _parse_declares(args.declare),
-            },
+            "commit",
+            CommitRequest(
+                plan=args.plan,
+                steps=tuple(args.step),
+                at_event=args.at_event,
+                declares=_parse_declares(args.declare),
+            ),
             steps=max(1, len(args.step)),
         )
         command.run = run = Run.load(paths, strict=False)
@@ -956,12 +957,12 @@ def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace)
     elif args.command == "reset":
         receipt = broker_gated(
             paths,
-            {
-                "op": "gated_reset",
-                "because": args.because,
-                "at_event": args.at_event,
-                "declares": _parse_declares(args.declare),
-            },
+            "reset",
+            ResetRequest(
+                because=args.because,
+                at_event=args.at_event,
+                declares=_parse_declares(args.declare),
+            ),
         )
         command.run = run = Run.load(paths, strict=False)
         print(result_text(run, receipt))

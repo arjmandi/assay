@@ -21,7 +21,6 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from .agenda import check_rehearsal, consume_approval
 from .aggregates import open_aggregates, resolve_due
-from .broker import broker_step
 from .channels import channel_change_lines, check_channel_references
 from .core import (
     AssayError,
@@ -62,8 +61,9 @@ class Stepper(Protocol):
     keeps the prediction (docs/ARCHITECTURE.md section 6.5). `claims` is None
     for a step that carries no claims of its own (a model-plan step, a reset),
     and the record then carries no `claims` key. Returns the observation, the
-    mutation id and the finalization warning. `broker_step` is the
-    client-side form."""
+    mutation id and the finalization warning. The daemon's `spend` is the
+    one implementation: paid actions execute in the daemon (`broker`), and
+    every function here takes the stepper it spends through."""
 
     def __call__(
         self,
@@ -119,7 +119,7 @@ def paid_step(
     reasoning: Mapping[str, Any] | None = None,
     note: str = "",
     *,
-    stepper: Stepper | None = None,
+    stepper: Stepper,
     claims: Sequence[Claim] | None = None,
 ) -> tuple[Event, Event, str | None, float]:
     registry = require_registry(run)
@@ -135,9 +135,8 @@ def paid_step(
     check_registry_action(name, advertised)
     secrets = tuple(registry.get("secrets") or ())
     reasoning = redact_mapping(reasoning, secrets)
-    step = stepper or broker_step
     started = time.monotonic()
-    response, mutation_id, warning = step(run, name, data, reasoning, claims=claims)
+    response, mutation_id, warning = stepper(run, name, data, reasoning, claims=claims)
     elapsed = time.monotonic() - started
     pending = make_event(response, name, data, prior, note=redact(note, secrets) or "")
     pending = pending.updated(mutation_id=mutation_id)
@@ -354,7 +353,7 @@ def execute_action(
     because: str | None = None,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
-    stepper: Stepper | None = None,
+    stepper: Stepper,
 ) -> Receipt:
     registry = require_registry(run)
     events = head_events(run, at_event)
@@ -495,7 +494,7 @@ def execute_steps(
     *,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
-    stepper: Stepper | None = None,
+    stepper: Stepper,
 ) -> Receipt:
     if not raw_steps:
         raise AssayError("no steps supplied")
@@ -646,7 +645,7 @@ def execute_model_plan(
     reference: str,
     *,
     at_event: int | None = None,
-    stepper: Stepper | None = None,
+    stepper: Stepper,
 ) -> Receipt:
     """Execute a model plan (registry runs): the ONLY way past the hand-batch
     cap. Rights are exactly replay-fit on THIS journal; every
@@ -784,7 +783,7 @@ def reset_level(
     because: str | None = None,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
-    stepper: Stepper | None = None,
+    stepper: Stepper,
 ) -> Receipt:
     events = head_events(run, at_event)
     registry = require_registry(run)
@@ -824,8 +823,7 @@ def reset_level(
         )
     secrets = tuple(registry.get("secrets") or ())
     reason = redact(reason, secrets) or reason
-    step = stepper or broker_step
-    response, mutation_id, warning = step(run, "RESET", None, {"because": reason})
+    response, mutation_id, warning = stepper(run, "RESET", None, {"because": reason})
     pending = make_event(response, "RESET", None, prior, note=reason).updated(
         mutation_id=mutation_id
     )

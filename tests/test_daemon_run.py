@@ -54,14 +54,11 @@ from pathlib import Path
 
 from assay.broker import broker_gated
 from assay.core import RunPaths
+from assay.ops import ActRequest
 
 paths = RunPaths(Path(sys.argv[1]))
 for _ in range(int(sys.argv[2])):
-    receipt = broker_gated(
-        paths,
-        {"op": "gated_act", "action_token": "NOOP", "predict": "noop",
-         "because": None, "at_event": None, "declares": {}},
-    )
+    receipt = broker_gated(paths, "act", ActRequest(action_token="NOOP", predict="noop", declares={}))
     assert receipt.outcome == "PREDICTED", receipt
 """
 
@@ -339,6 +336,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
     anchor is #10's."""
     from assay.broker import broker_gated
     from assay.core import AssayError, RunPaths
+    from assay.ops import ActRequest
 
     run = tmp_path / "tamper"
     _prepare(run)
@@ -358,9 +356,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         # load cannot read a corrupt configuration): refused by name.
         with pytest.raises(AssayError) as caught:
             broker_gated(
-                RunPaths(run),
-                {"op": "gated_act", "action_token": "NOOP", "predict": "noop",
-                 "because": None, "at_event": None, "declares": {}},
+                RunPaths(run), "act", ActRequest(action_token="NOOP", predict="noop", declares={})
             )
         message = str(caught.value)
         assert message.startswith(f"AssayError: TAMPER_DETECTED | {what} (held "), message

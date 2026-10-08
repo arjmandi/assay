@@ -95,7 +95,9 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
         assert acted.returncode == 0, acted.stderr
         assert "OUTCOME | PREDICTED" in acted.stdout
         # The bypass channel: speaking the socket protocol directly with the
-        # bare step op. The daemon refuses; no mutation is journaled.
+        # bare step op, retired with the operation table (docs/ARCHITECTURE.md
+        # section 7.2): the daemon knows no such operation and refuses it by
+        # name (#13 names the code); no mutation is journaled.
         import sys
 
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -104,7 +106,7 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
 
         paths = RunPaths(run)
         mutations_before = len(load_jsonl(paths.mutations))
-        with pytest.raises(AssayError, match="UNGATED_STEP_REFUSED"):
+        with pytest.raises(AssayError, match="^AssayError: unknown broker operation 'step'$"):
             _request(paths, {"op": "step", "action": "NOOP", "data": None}, timeout=5.0)
         assert len(load_jsonl(paths.mutations)) == mutations_before
         # The chain is live and the audit is clean.
