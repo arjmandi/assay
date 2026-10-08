@@ -107,17 +107,20 @@ own task definitions rather than restated here.
 `hand_cap: null`, `zero_prior: false`, and two paid actuators.
 
 ```
-RUN  program=<str>            one program against the FLE API namespace
+RUN  program=<string>         one program against the FLE API namespace
 WAIT ticks=<int 1..3600>      advance the simulation by an exact tick count
 ```
 
-**`program` is base64-encoded UTF-8 Python source.** ASSAY action tokens are
-parsed by whitespace splitting (`assay.registry.parse_registry_action`), so
-source containing a space or a newline cannot be passed inline. Base64 is the
-encoding that survives that parser and lands the exact program text in the
-journal, which is what replay and audit need. A program that is not valid
-base64 is a free refusal with an error that says so; a zero-prior agent
-discovers the encoding without being told it.
+**`program` is the Python source as a plain string**, passed as JSON:
+`assay act RUN --params '{"program": "..."}'`, or `--params @FILE` with a
+file holding that object, since a program holds newlines and ASSAY splits
+`pname=value` tokens on whitespace. The kernel validates the object against
+the registry's schema before any spend and journals the source itself under
+`data`, which is what replay and audit read; `assay view --event N` prints
+it whole and the RECENT history lines clip it. (The runs recorded before
+1.2.0 carried the source base64-encoded, the only form a token could hold
+then; their journals keep that form and still verify, and this adapter no
+longer decodes it.)
 
 Information parity: published FLE agents receive the full API reference in
 their prompt. `FLE_API.md` documents how to obtain and inject the identical

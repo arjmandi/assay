@@ -98,6 +98,35 @@ Left on the experiment branch, deliberately:
   run exceeds the cap, so the replay gate cannot see it, and without `--brief`
   and without the key the status prose is otherwise unchanged, which the gate
   proves.
+- Action parameters as a JSON Schema subset, and `--params` (#14, design
+  note 2 section 7.2). A registry parameter is a schema with `type` one of
+  `integer`, `number`, `string`, `boolean`, `object` or `array`, `enum`,
+  `minimum`/`maximum`, `minLength`/`maxLength`, `properties` and `required`
+  (no undeclared property is ever admitted), `items` with `minItems` and
+  `maxItems`, nested as deep as the world needs; `int`, `float`, `str`,
+  `min` and `max` stay accepted as aliases, so every existing registry is
+  valid unchanged and its pinned copy and hash do not move. One validator in
+  the kernel, `registry.validate_value`, with no dependency, refuses with
+  `ACTION_PARAMS` naming the value by its path (`RUN program.lines[2]=7 is
+  not a string`) and the action's form as the hint; the daemon runs it
+  before any spend and the command line before sending. `assay act NAME
+  --params '{...}'` or `--params @FILE` carries any parameters as JSON, the
+  only form for an object or an array (and the one for a string with
+  newlines); `pname=value` stays as the sugar for scalars, and the two forms
+  are refused together in one command. `--step` takes the JSON form
+  `{"action", "params", "predict"}` and `--step @FILE` a list of them,
+  beside the `NAME pname=value :: claims` string. A model plan carries its
+  actions as `{action, params}` objects, written by `assay model solve` and
+  validated at commit; a plan written in the old string form is refused with
+  `PLAN_INVALID` and the hint to solve again. The REGISTRY block renders an
+  object as its property names (`<object: lines[] note?>`), an array as its
+  item type and count (`<array of >=1 string>`) and adds a `form:` line
+  under such an action with the `--params` skeleton; a receipt and `assay
+  view` render a nested value, or a string with whitespace, as compact JSON
+  after its key, and the RECENT history lines clip a long action at 96
+  characters. The journal format does not change: `data` was any JSON object
+  under `assay-journal-v1` already. The new-world template gains `DIAL
+  turns=<array of 1..4 integer>`.
 - The error catalogue and `docs/ERRORS.md` (#13, design note 2 section 7.1).
   `AssayError(message, *, code, kind, hint, detail)` in `core.py`; `errors.py`
   lists 61 codes, each with its kind and a one-line meaning, and renders
@@ -446,6 +475,20 @@ Left on the experiment branch, deliberately:
   competition, scorecard and arcade, and the test drives the kernel against
   a fake adapter per declaration (`docs/ARCHITECTURE.md` sections 2.2 and
   2.3).
+- The bench adapters and their protocols drop base64 (#14). Factorio's `RUN`
+  takes `program` as the Python source itself, a plain string passed as
+  `--params '{"program": "..."}'` or `--params @FILE`; OOLONG's `BANK_FACT`
+  takes `text` and `span` as plain strings and `SUBMIT` takes `answer` as a
+  string and `spans` as an array of strings, and the batch registry's
+  `SUBMIT answer` no longer rewrites `_` as a space (a space goes through
+  `--params`). The registries, `PROTOCOL.md` of both and `FLE_API.md` teach
+  the JSON form; `tests/test_oolong_tenant.py` drives the adapter with it.
+  The recorded results and the evidence packs are untouched: the old
+  journals keep base64 in `data` and still verify (G3), and the adapters no
+  longer decode it, so a Factorio or OOLONG run directory recorded before
+  1.2.0 is history: a resume through the new adapters replays the base64
+  text as the program or the span, the observation differs from the
+  journal, and the operator sees `LOCAL_REPLAY_DIVERGED`.
 - The error voice and the exit codes (#13). The command line prints `ERROR |
   CODE | message` on stderr (the code between the two bars), then `NEXT |
   hint` when the error names a next step, then the claims table where one

@@ -34,7 +34,13 @@ private state, and never edit `.assay/` by hand except `NOTES.md`.
   fact about the mechanics.
 - **REGISTRY**: the registered action names and parameter schemas, e.g.
   `MOVE direction=<north|south|east|west>` or `BID amount=<int 1..100>`.
-  Semantics are never given. `RESET` is always built-in.
+  A scalar parameter goes on the command line as `pname=value`. A parameter
+  that is an object or an array (`SUBMIT spans=<array of >=1 string>`, with
+  a `form:` line under the action showing the whole shape), or a string that
+  holds newlines, goes as JSON instead:
+  `"$ASSAY" act SUBMIT --params '{"answer": "...", "spans": ["..."]}'`, or
+  `--params @FILE` with the object in a file; never both forms in one
+  command. Semantics are never given. `RESET` is always built-in.
 - **BUDGET**: paid actions spent against the hard cap. When the cap is
   reached, every act/commit/reset is refused (`BUDGET_EXHAUSTED`). Plan spend
   like money: cheap probes first, expensive gambles only when justified.
@@ -117,8 +123,8 @@ latter grades UNGRADABLE on every claim). Then claim against them with the
 three forms, as these predictions from a recorded run do:
 
 ```bash
-"$ASSAY" act RUN program=... --predict "change; ch tick = 180; ch ents delta sign +; ch refusals = 0; ch prod = False"
-"$ASSAY" act RUN program=... --predict "change; ch tick = 360; ch ents = 27; ch refusals = 0; ch prod = True"
+"$ASSAY" act RUN --params '{"program": "..."}' --predict "change; ch tick = 180; ch ents delta sign +; ch refusals = 0; ch prod = False"
+"$ASSAY" act RUN --params @build.json --predict "change; ch tick = 360; ch ents = 27; ch refusals = 0; ch prod = True"
 "$ASSAY" act WAIT ticks=3600 --predict "verify:checks/first_window.py; ch tick = 3600; ch wins = 1; ch prod = True"
 "$ASSAY" act WAIT ticks=3600 --predict "win; level+1; ch tick = 7200; ch wins = 2; ch gears delta >= 16; ch prod = True"
 ```

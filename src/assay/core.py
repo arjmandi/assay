@@ -506,11 +506,35 @@ def frame_at(event: Event, frame: int = -1) -> np.ndarray[Any, Any]:
     return rows_to_grid(event.frames[frame])
 
 
+def render_param(value: Any) -> str:
+    """One parameter value on an action line: a number or a bare string as
+    it is (the form every published receipt carries), true/false for a
+    boolean, compact JSON for a string that holds whitespace or a control
+    character (a program) and for an object or an array."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, str):
+        if not any(character.isspace() or unicodedata.category(character) == "Cc" for character in value):
+            return value
+        return json.dumps(value, ensure_ascii=False)
+    if isinstance(value, (Mapping, list)):
+        return json.dumps(value, separators=(",", ":"), sort_keys=True, ensure_ascii=False)
+    return str(value)
+
+
+def render_action(name: str, data: Mapping[str, Any] | None) -> str:
+    """One line for an action: the name, then `k=v` parameters in key order
+    (`render_param`)."""
+    if data:
+        rendered = " ".join(f"{key}={render_param(data[key])}" for key in sorted(data))
+        return f"{name} {rendered}"
+    return str(name)
+
+
 def canonical_action(event: Event) -> str:
-    """One line for an event's action: the name, then `k=v` parameters in key
-    order. An observation kind may render its own form (a frame world prints
-    its point action as NAME:x,y, the form the published journals' receipts
-    carry)."""
+    """One line for an event's action (`render_action`). An observation kind
+    may render its own form (a frame world prints its point action as
+    NAME:x,y, the form the published journals' receipts carry)."""
     from .extras import kind_for
 
     kind = kind_for(event)
@@ -518,11 +542,7 @@ def canonical_action(event: Event) -> str:
         rendered = kind.canonical_action(event)
         if rendered is not None:
             return rendered
-    data = event.data
-    if data:
-        rendered = " ".join(f"{key}={data[key]}" for key in sorted(data))
-        return f"{event.action} {rendered}"
-    return str(event.action)
+    return render_action(str(event.action), event.data)
 
 
 def parse_action(

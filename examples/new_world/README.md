@@ -53,7 +53,7 @@ Every key beyond `actions` is optional. This file sets all of them but
 
 | key | what it does here |
 |---|---|
-| `actions` | the seven actuators. `TURN delta=<int -3..3>`, `PEEK what=<code\|door>` and `SIREN volume=<float 0..1>` show the three parameter types with bounds and an enum. Every parameter is required on the command line. |
+| `actions` | the eight actuators. `TURN delta=<int -3..3>`, `PEEK what=<code\|door>` and `SIREN volume=<float 0..1>` show the scalar parameter types with bounds and an enum, typed as `pname=value`. `DIAL turns=<array of 1..4 integer>` shows a structured parameter (the JSON Schema subset: `array` with `items`, `minItems` and `maxItems`; `object` with `properties` and `required`; `string` with `minLength` and `maxLength`; `boolean`): an object or an array goes as JSON, `assay act DIAL --params '{"turns": [3, 3, 1]}'` or `--params @FILE`, and the REGISTRY block prints its `form:` line. Every parameter is required on the command line. |
 | `description` on `TURN` | admissible, untrusted text shown as data, withheld under `zero_prior` |
 | `destructive: true` on `ALARM` | refuses without `--declare worst_case=... --declare recovery=...`, banned inside batches |
 | `approval: true` on `DRILL` | default deny, the owner grants one use with `assay approve DRILL --token TOK` |

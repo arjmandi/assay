@@ -266,11 +266,18 @@ From the architecture document's section 2.1:
 
 - `actions`, required, non-empty. Each action has a `name` matching
   `^[A-Za-z][A-Za-z0-9_]{0,31}$` (upper-cased, `RESET` refused because it is
-  built in) and `params`, each parameter `{"type": "int"|"float"|"str",
-  "min"?, "max"?, "enum"?}`. Every parameter is required on the command line
-  as `pname=value` and is coerced and bounds-checked before spend. The
-  template's `TURN delta=<int -3..3>`, `PEEK what=<code|door>` and
-  `SIREN volume=<float 0..1>` show the three types.
+  built in) and `params`, each parameter a schema of the JSON Schema subset:
+  `integer`, `number`, `string` or `boolean` with `enum`,
+  `minimum`/`maximum` or `minLength`/`maxLength`; `object` with `properties`
+  and `required`; `array` with `items`, `minItems` and `maxItems`; nested as
+  deep as the world needs (`int`, `float`, `str`, `min` and `max` are
+  accepted as aliases, so a 1.1.0 registry is valid unchanged). Every
+  parameter is required and validated before spend: a scalar typed as
+  `pname=value`, an object or an array passed as `assay act NAME --params
+  '{...}'` or `--params @FILE`. The template's `TURN delta=<int -3..3>`,
+  `PEEK what=<code|door>` and `SIREN volume=<float 0..1>` show the scalar
+  types and `DIAL turns=<array of 1..4 integer>` the structured form, whose
+  `form:` line in the REGISTRY block shows the JSON to send.
 - Per-action flags: `destructive: true` refuses without `--declare
   worst_case=... --declare recovery=...` and is banned inside batches
   (`ALARM`). `approval: true` is default deny, one owner-granted use at a time

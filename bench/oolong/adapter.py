@@ -19,15 +19,16 @@ first use by `packs/build_pack.py fetch <id>`.
 
 Two PAID actuators, both grounded in code (the referee grades EVIDENCE
 INTEGRITY, since a static corpus has no world-response to grade a prediction
-against, RESEARCH.md §6.1). Their string arguments are base64 because ASSAY
-action tokens are whitespace-split (same convention as bench/factorio RUN):
+against, RESEARCH.md §6.1). Their arguments are plain strings and an array of
+strings, passed as JSON (`assay act NAME --params '{...}'`), since a span
+holds spaces; the runs recorded before 1.2.0 carried them base64-encoded:
 
-    BANK_FACT text=<b64> span=<b64>
+    BANK_FACT --params '{"text": "...", "span": "..."}'
         commit a fact citing a corpus span; the span is verified as a verbatim
         substring (str.find) IN CODE. A span not present is REFUSED and the
         attempt is journaled (evidence, like an FLE policy refusal).
 
-    SUBMIT   answer=<b64> spans=<b64 json list>
+    SUBMIT --params '{"answer": "...", "spans": ["...", ...]}'
         answer the current question, citing verbatim spans (each checked). Also
         COVERAGE-gated by the v1 census (see CENSUS_RULE). On acceptance the
         answer is recorded SEALED (stored, never scored or revealed mid-run)
@@ -46,21 +47,20 @@ dataset revision is pinned in each pack's manifest.
 Banking modes, chosen by `control.bank_mode` in the run's pinned registry (the
 kernel journals the control block and leaves it to the world):
 
-    single (default)  one span per BANK_FACT, base64 answer and spans on SUBMIT,
-                      exactly as above and as every published OOLONG run was recorded.
-    batch             the E5 variant. BANK_FACT spans=<b64 json list> banks several
-                      verbatim spans in one paid action (one missing span refuses
-                      the whole action, journaled). SUBMIT answer=<plain text, a space
-                      written as _> is cited by the spans banked for the current
-                      question; a spans list, if the registry gives one, is checked
-                      verbatim as in single mode. The census and the sealed scoring
-                      are the same code.
+    single (default)  one span per BANK_FACT, an answer and its spans on SUBMIT,
+                      exactly as above (the form every published OOLONG run was
+                      recorded under, base64-encoded then).
+    batch             the E5 variant. BANK_FACT --params '{"spans": [...]}' banks
+                      several verbatim spans in one paid action (one missing span
+                      refuses the whole action, journaled). SUBMIT answer=<string>
+                      is cited by the spans banked for the current question; a
+                      spans array, if the registry gives one, is checked verbatim
+                      as in single mode. The census and the sealed scoring are the
+                      same code.
 """
 
 from __future__ import annotations
 
-import base64
-import binascii
 import hashlib
 import importlib.util
 import json
@@ -110,39 +110,22 @@ def _bank_mode(root: Path) -> str:
     return mode
 
 
-def _plain_answer(raw: Any) -> str:
-    """A plain-text answer. Action tokens are whitespace-split, so a space is
-    written as `_` (`more_common_than`, `February_2022`)."""
+def _text(raw: Any, field: str) -> str:
+    """A string parameter as the registry validated it, non-empty; a value
+    with spaces travels as JSON (`--params`), never as a token."""
     if not isinstance(raw, str) or not raw:
-        raise AssayError("answer must be non-empty plain text (write a space as _)")
-    return raw.replace("_", " ")
+        raise AssayError(f"{field} must be a non-empty string (pass it with --params)")
+    return raw
 
 
-def _decode_str(raw: Any, field: str) -> str:
-    if not isinstance(raw, str) or not raw:
-        raise AssayError(f"{field} must be a non-empty base64-encoded UTF-8 string")
-    try:
-        return base64.b64decode(raw, validate=True).decode("utf-8")
-    except (binascii.Error, ValueError, UnicodeDecodeError) as error:
-        raise AssayError(
-            f"{field} must be base64-encoded UTF-8 (ASSAY action tokens are "
-            f"whitespace-split, so raw text cannot be passed inline): {error}"
-        ) from None
-
-
-def _decode_spans(raw: Any) -> list[str]:
-    decoded = _decode_str(raw, "spans")
-    try:
-        value = json.loads(decoded)
-    except json.JSONDecodeError as error:
-        raise AssayError(
-            f"spans must be base64 of a JSON array of strings: {error}"
-        ) from None
-    if not isinstance(value, list) or not value or not all(
-        isinstance(item, str) and item for item in value
+def _spans(raw: Any) -> list[str]:
+    """The `spans` parameter: a non-empty array of non-empty strings, as the
+    registry's schema admits it (`--params '{"spans": ["...", ...]}'`)."""
+    if not isinstance(raw, list) or not raw or not all(
+        isinstance(item, str) and item for item in raw
     ):
-        raise AssayError("spans must be a non-empty JSON array of non-empty strings")
-    return value
+        raise AssayError("spans must be a non-empty array of non-empty strings (pass it with --params)")
+    return list(raw)
 
 
 def _merge_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]:
@@ -369,8 +352,8 @@ class OolongSession:
         if self.bank_mode == "batch":
             self._bank_spans(payload)
             return
-        text = _decode_str(payload.get("text"), "text")
-        span = _decode_str(payload.get("span"), "span")
+        text = _text(payload.get("text"), "text")
+        span = _text(payload.get("span"), "span")
         offset = self._find_span(span)
         if offset < 0:
             # Refused, but journaled: the attempt is evidence (like an FLE
@@ -402,8 +385,8 @@ class OolongSession:
         """Batch mode: several spans in one paid action. All verbatim, or the
         whole action is refused and journaled; each verified span is one
         banked fact for the current question."""
-        spans = _decode_spans(payload.get("spans"))
-        text = _decode_str(payload["text"], "text") if payload.get("text") else None
+        spans = _spans(payload.get("spans"))
+        text = _text(payload["text"], "text") if payload.get("text") else None
         offsets: list[tuple[int, int]] = []
         for span in spans:
             offset = self._find_span(span)
@@ -434,12 +417,11 @@ class OolongSession:
         }
 
     def _do_submit(self, payload: Mapping[str, Any]) -> None:
+        answer = _text(payload.get("answer"), "answer")
         if self.bank_mode == "batch":
-            answer = _plain_answer(payload.get("answer"))
-            spans = _decode_spans(payload["spans"]) if payload.get("spans") else None
+            spans = _spans(payload["spans"]) if payload.get("spans") else None
         else:
-            answer = _decode_str(payload.get("answer"), "answer")
-            spans = _decode_spans(payload.get("spans"))
+            spans = _spans(payload.get("spans"))
         current = self._current_question()
         if current is None:  # pragma: no cover - broker refuses acting past WIN
             raise AssayError("all questions already submitted")

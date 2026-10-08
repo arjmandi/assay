@@ -11,14 +11,17 @@ state the agent has no writable path to.
 
 Two paid actuators (registry Option A, FLE parity):
 
-    RUN  program=<base64 python>   execute one program against the FLE API
-    WAIT ticks=<int>               advance the simulation by an exact tick count
+    RUN  program=<string>   execute one program against the FLE API
+    WAIT ticks=<int>        advance the simulation by an exact tick count
 
-`program` is base64 because ASSAY action tokens are whitespace-split; see
-PROTOCOL.md. Every program is screened by a fail-closed AST gate before it
-reaches the interpreter: FLE's own namespace hands agent programs the raw RCON
-client, and through it the Lua console, the host filesystem, and the production
-statistics the verifier reads. NAMESPACE_AUDIT.md documents the proof.
+`program` is the Python source as a plain string; it holds newlines, so it
+goes through `assay act RUN --params '{"program": "..."}'` (or `--params
+@FILE`), never as a `program=` token (PROTOCOL.md; the runs recorded before
+1.2.0 carried it base64-encoded). Every program is screened by a fail-closed
+AST gate before it reaches the interpreter: FLE's own namespace hands agent
+programs the raw RCON client, and through it the Lua console, the host
+filesystem, and the production statistics the verifier reads.
+NAMESPACE_AUDIT.md documents the proof.
 
 Time is never implicit. The game is paused except during metered advances, so a
 journal of (program, tick-delta) pairs is the whole of what moved the world.
@@ -27,8 +30,6 @@ journal of (program, tick-delta) pairs is the whole of what moved the world.
 from __future__ import annotations
 
 import ast
-import base64
-import binascii
 import json
 import os
 import socket
@@ -476,17 +477,15 @@ class _SealedInstance:
 # ---------------------------------------------------------------------------
 
 
-def _decode_program(raw: Any) -> str:
-    if not isinstance(raw, str) or not raw:
-        raise AssayError("RUN needs program=<base64-encoded UTF-8 python source>")
-    try:
-        return base64.b64decode(raw, validate=True).decode("utf-8")
-    except (binascii.Error, ValueError, UnicodeDecodeError) as error:
+def _program_text(raw: Any) -> str:
+    """The program as the registry validated it: a non-empty string, the
+    Python source itself (`--params '{"program": "..."}'`)."""
+    if not isinstance(raw, str) or not raw.strip():
         raise AssayError(
-            "RUN program must be base64-encoded UTF-8 python source "
-            "(ASSAY action tokens are whitespace-split, so raw source cannot be "
-            f"passed inline): {error}"
-        ) from None
+            "RUN needs a non-empty program: the Python source as a string, passed as "
+            "`--params '{\"program\": \"...\"}'` or `--params @FILE`"
+        )
+    return raw
 
 
 def _port_open(address: str, port: int, timeout: float = 1.0) -> bool:
@@ -1029,7 +1028,7 @@ class FactorioSession:
         name = str(action).upper()
         payload = dict(data or {})
         if name == "RUN":
-            self._do_run(_decode_program(payload.get("program")))
+            self._do_run(_program_text(payload.get("program")))
         elif name == "WAIT":
             self._do_wait(payload.get("ticks"))
         elif name == "RESET":
@@ -1102,9 +1101,9 @@ class FactorioSession:
                 needs_ticks = False
                 try:
                     program = (transition.params or {}).get("program")
-                    refusal, needs_ticks = screen_program(_decode_program(program))
+                    refusal, needs_ticks = screen_program(_program_text(program))
                     needs_ticks = needs_ticks and refusal is None
-                except Exception:  # noqa: BLE001 - undecodable => treat as no path
+                except Exception:  # noqa: BLE001 - unreadable => treat as no path
                     needs_ticks = False
                 if needs_ticks:
                     deltas.append(

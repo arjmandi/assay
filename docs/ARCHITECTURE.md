@@ -130,12 +130,39 @@ key by key. Top-level keys: `actions` (required), `budget`, `goal`, `batching`,
 `notes_cap`, `status_budget`, `zero_prior`, `modules`, `module_modes`, `secrets`,
 `observers`, `control`, `mode_note`, `gate`. Unknown keys are refused. Per action: `name`
 matching `^[A-Za-z][A-Za-z0-9_]{0,31}$` (upper-cased, `RESET` refused because it
-is built in), `params` (each `{"type": int|float|str, "min"?, "max"?, "enum"?}`,
-every registered parameter is required on the command line and coerced and
-bounds-checked before spend by `registry.parse_registry_action`),
-`destructive`, `approval`, `liveness` (`live|sim`), `rehearsal_quota` (live
-only), `description` (admissible, untrusted, rendered as data, withheld under
+is built in), `params` (each a schema of the JSON Schema subset below; every
+registered parameter is required and validated before spend), `destructive`,
+`approval`, `liveness` (`live|sim`), `rehearsal_quota` (live only),
+`description` (admissible, untrusted, rendered as data, withheld under
 `zero_prior`).
+
+A parameter schema (#14) is a JSON Schema subset the kernel checks itself
+(`registry.validate_value`, no dependency), nested as deep as the world
+needs: `type` one of `integer`, `number`, `string`, `boolean`, `object`,
+`array`; `enum` on any type (each member of the type); `minimum` and
+`maximum` on numbers; `minLength` and `maxLength` on strings; `properties`
+(each a schema), `required` (absent means none) and `additionalProperties`
+(only `false`, which is the rule anyway: no undeclared property is admitted)
+on objects; `items` (a schema, required) with `minItems` and `maxItems` on
+arrays. `int`, `float` and `str` are accepted as aliases of `integer`,
+`number` and `string`, and `min`/`max` of `minimum`/`maximum`, so every
+registry written for 1.1.0 is valid unchanged, and the pinned copy keeps the
+spelling the file used (a registry's hash never moves). On the command line a
+scalar parameter is typed as `pname=value` and coerced through its schema
+(`registry.parse_registry_action`); an object or an array, or any parameter
+at all, goes as `--params JSON` or `--params @FILE`, validated against the
+same schema by the client (`registry.validate_action`) and again by the
+daemon before any spend. A refusal is `ACTION_PARAMS`, naming the value by
+its path (`RUN program.lines[2]=7 is not a string`) with the action's form
+as the hint. The REGISTRY block renders a scalar as `pname=<int 1..2>`, an
+object as its property names (`<object: lines[] note?>`, `[]` an array
+property, `{}` an object property, `?` an optional one), an array as its
+item type and count (`<array of 1..8 string>`), and adds a `form:` line
+under an action with a structured parameter, the `--params` skeleton with a
+placeholder where every value goes. The journal stores the validated object
+under `data` as the v1 spec allows; a receipt and `assay view` render a
+nested value as compact JSON after its key, the RECENT history lines clip a
+long action.
 
 Defaults when a key is absent: `batching.hand_cap` is 3 (the batching law,
 `registry.hand_cap`), `notes_cap` is 16000 characters (`registry.notes_cap`),
@@ -790,7 +817,7 @@ say **present**, **optional, unused**, or **world-specific** with the file.
 | Component | ARC-AGI-3 | Factorio (FLE) | OOLONG | Counter example | New-world template |
 |---|---|---|---|---|---|
 | Registry file | `bench/arcagi/registry_{200,500,1500}.json` (differ in the cap only) | `bench/factorio/registry_lab{64,128}.json` | `bench/oolong/registry_{40,200}.json` (cap only) and `registry_200_batch.json` (`control.bank_mode: batch`, which changes the action forms) | `examples/example_registry.json` | `examples/new_world/registry.json` (every optional key present, explained in its README) |
-| Registry: actions | `ACTION1..ACTION7`, `ACTION6 x,y` int 0..63, descriptions | `RUN program=<str base64>`, `WAIT ticks=<int 1..3600>`, descriptions | `BANK_FACT text,span=<str base64>`, `SUBMIT answer,spans=<str base64>`, descriptions; the batch registry: `BANK_FACT spans=<str base64>` (several spans in one action), `SUBMIT answer=<str>` (plain text, `_` for a space) | `INC amount=<int 1..2>`, `SET_LAMP state=<on\|off>`, `NOOP`, `BOMB` | `TURN delta=<int -3..3>`, `OPEN`, `ENTER`, `PEEK what=<code\|door>`, `ALARM`, `DRILL`, `SIREN volume=<float 0..1>` |
+| Registry: actions | `ACTION1..ACTION7`, `ACTION6 x,y` int 0..63, descriptions | `RUN program=<string>` (the source as a plain string, through `--params`; base64 before 1.2.0), `WAIT ticks=<int 1..3600>`, descriptions | `BANK_FACT text,span=<string>`, `SUBMIT answer=<string> spans=<array of >=1 string>`, descriptions, through `--params` (base64 before 1.2.0); the batch registry: `BANK_FACT spans=<array of >=1 string>` (several spans in one action), `SUBMIT answer=<string>` (a plain string, through `--params` when it holds a space) | `INC amount=<int 1..2>`, `SET_LAMP state=<on\|off>`, `NOOP`, `BOMB` | `TURN delta=<int -3..3>`, `DIAL turns=<array of 1..4 integer>` (the structured parameter, through `--params`), `OPEN`, `ENTER`, `PEEK what=<code\|door>`, `ALARM`, `DRILL`, `SIREN volume=<float 0..1>` |
 | Registry: budget | actions 200, 500 or 1500 | actions 64 or 128 | actions 40 or 200 | actions 40 | actions 60, usd 5.0 |
 | Registry: batching | `hand_cap: null` | `hand_cap: null` | `hand_cap: null` | default 3 | `hand_cap: 3` |
 | Registry: goal, mode_note | optional, unused | present (goal text, mode_note) | present (goal text, mode_note) | present | present |
@@ -1174,6 +1201,28 @@ runs; `inspect.status_text` is that rendering). Not in #13: the owner operations
 "moves the owner operations into the daemon" is a later issue's), `--params JSON` is
 #14's, and `estimated_tokens` with `--brief` is #23's.
 
+What #14 landed: the registry's parameter schema as the JSON Schema subset of section
+2.1 (`object`, `array`, `string`, `number`, `integer`, `boolean`, `enum`, `required`,
+`properties`, `additionalProperties: false`, `items`, `minItems`, `maxItems`, `minimum`,
+`maximum`, `minLength`, `maxLength`, nested, with `int`, `float`, `str`, `min` and `max`
+as aliases so every existing registry is valid unchanged), checked by `registry.validate_value`
+in the kernel with no dependency and used by `validate_action` daemon-side; `assay act
+NAME --params JSON` and `--params @FILE` beside the `pname=value` sugar for scalars, the two
+never mixed in one command; `--step` in the JSON form `{"action", "params", "predict"}`
+and `--step @FILE` holding a list of them beside the string form; the model plan carrying
+its actions as `{action, params}` objects (`solve_model` writes them, `live.validate_plan_actions`
+reads them, a plan in the old string form refused with `PLAN_INVALID` and the hint to
+solve again); the wire's `params` any JSON object (the daemon validates it, the record
+no longer restricts it to scalars); `core.render_action` rendering a scalar as before and
+a nested value, or a string with whitespace, as compact JSON after its key, the RECENT
+history lines clipped at 96 characters and `assay view` whole; `registry_lines` rendering
+the compact forms and the `form:` line; the three bench adapters and their registries and
+protocols without base64 (Factorio `RUN program=<string>`, OOLONG `BANK_FACT` with plain
+strings, `SUBMIT` with `spans` as an array, the batch registry's underscore convention
+gone), the recorded results and evidence packs untouched; the new-world template's
+`DIAL turns=<array of 1..4 integer>`. Not changed: the journal format (`data` was any
+JSON object under v1 already, and the spec said so), the chain, the checker.
+
 ### 7.1 The error model
 
 - `AssayError(message, *, code="UNSPECIFIED", kind="refused", hint=None, detail=None)`. `code` is
@@ -1276,9 +1325,10 @@ runs; `inspect.status_text` is that rendering). Not in #13: the owner operations
   version of the package it belongs to.
 - `action` and `params`: the client parses `NAME k=v ...` into the name and a scalar
   params object using the pinned registry (the coercion of `registry._coerce`), or takes
-  `--params JSON` as given (#14); the daemon validates the object against the registry's
-  schema (the scalar types until #14, the JSON Schema subset from #14) and refuses before
-  any spend; the journal stores the validated object under `data`.
+  `--params JSON` as given and validates it against the same registry (#14); the daemon
+  validates the object against the registry's schema (the JSON Schema subset of section
+  2.1, nested values included) and refuses before any spend; the journal stores the
+  validated object under `data`.
 - Receipts come back as `Receipt` records; `result_text` renders them as today.
 - Status (#13): the version, the error object and `action`/`params` landed as written
   (`ops.PROTOCOL_VERSION`, `ops.ERROR_SCHEMA`, `ops.Step`); `v` must be the integer 2, not

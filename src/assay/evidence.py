@@ -74,6 +74,16 @@ def recent_lines(events: Sequence[Event], count: int = 8) -> list[RecentLine]:
     return lines
 
 
+# A history line names the action up to this many characters: a scalar
+# action never reaches it; a program or a list of spans is clipped, and
+# `assay view --event N` prints it whole on its CAUSE line.
+ACTION_WIDTH = 96
+
+
+def _clipped(action: str) -> str:
+    return action if len(action) <= ACTION_WIDTH else action[: ACTION_WIDTH - 3] + "..."
+
+
 def history_text(lines: Sequence[RecentLine]) -> list[str]:
     rendered: list[str] = []
     for line in lines:
@@ -87,7 +97,7 @@ def history_text(lines: Sequence[RecentLine]) -> list[str]:
         frames = f"frames={line.frames} | " if line.frames is not None else ""
         rendered.append(
             f"  e{line.event:04d} a{line.paid:04d} "
-            f"L{line.unit} {line.action}{mark} | {change} | {frames}{line.state}"
+            f"L{line.unit} {_clipped(line.action)}{mark} | {change} | {frames}{line.state}"
         )
     return rendered
 

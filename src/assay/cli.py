@@ -80,6 +80,7 @@ from .core import (
     normalize_game_id,
     now_iso,
     read_json,
+    render_action,
     require_run,
     run_lock,
     run_mode,
@@ -110,6 +111,7 @@ from .registry import (
     require_registry,
     spend_reports,
     status_budget,
+    validate_action,
     validate_registry,
 )
 from .run import Run
@@ -738,12 +740,14 @@ def _use_line(registry_spec: dict[str, Any]) -> str:
         return (
             "USE | gate: optional; `assay act` runs with or without --predict "
             "(an unpredicted act is journaled UNGATED; the audit marks the run "
-            "invalid for scoring); parameters go as `assay act NAME pname=value ...`; "
+            "invalid for scoring); parameters go as `assay act NAME pname=value ...` "
+            "(an object or an array as `--params '{...}'`); "
             "schemas are in REGISTRY above, semantics are never given: learn them by acting"
         )
     if gate_mode(registry_spec) == "off":
         return (
-            "USE | gate: off; `assay act NAME pname=value ...` with no --predict "
+            "USE | gate: off; `assay act NAME pname=value ...` (an object or an array as "
+            "`--params '{...}'`) with no --predict "
             "(predictions are not accepted on this run and nothing is graded; every "
             "paid action is journaled UNGATED and the audit marks the run invalid "
             "for scoring); schemas are in REGISTRY above, semantics are never given: "
@@ -751,8 +755,8 @@ def _use_line(registry_spec: dict[str, Any]) -> str:
         )
     return (
         'USE | every `assay act` needs --predict "<claims>"; parameters go as '
-        "`assay act NAME pname=value ...`; schemas are in REGISTRY above, "
-        "semantics are never given: learn them by acting"
+        "`assay act NAME pname=value ...` (an object or an array as `--params '{...}'`); "
+        "schemas are in REGISTRY above, semantics are never given: learn them by acting"
     )
 
 
@@ -1059,12 +1063,122 @@ def _paid(
     _emit(args, receipt, text, estimated_tokens=estimated_tokens(text))
 
 
+PARAMS_HINT = (
+    "pass the parameters as one JSON object, `--params '{\"pname\": value, ...}'`, "
+    "or as `--params @FILE` holding one"
+)
+STEP_FORM_HINT = (
+    'a step is `--step "NAME pname=value :: claims"`, or `--step \'{"action": "NAME", '
+    "\"params\": {...}, \"predict\": \"claims\"}'`, or `--step @FILE` holding a list of such objects"
+)
+
+
+def _json_argument(raw: str, flag: str) -> Any:
+    """The JSON a flag carries: the text itself, or the content of the file
+    an `@FILE` value names (relative to the working directory)."""
+    text = raw
+    if raw.startswith("@"):
+        source = Path(raw[1:]).expanduser()
+        try:
+            text = source.read_text()
+        except OSError as error:
+            raise AssayError(
+                f"{flag} names a file that cannot be read: {source}: {error.strerror or error}",
+                code="COMMAND_ARGS",
+                hint=PARAMS_HINT if flag == "--params" else STEP_FORM_HINT,
+            ) from None
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError as error:
+        raise AssayError(
+            f"{flag} is not valid JSON: {error}",
+            code="COMMAND_ARGS",
+            hint=PARAMS_HINT if flag == "--params" else STEP_FORM_HINT,
+        ) from None
+
+
+def _params_object(raw: str) -> dict[str, Any]:
+    """`--params`: one JSON object, the parameters as the wire carries them;
+    the registry's schema is checked next (`validate_action`)."""
+    value = _json_argument(raw, "--params")
+    if not isinstance(value, dict):
+        raise AssayError(
+            f"--params must be a JSON object, got {_json_kind(value)}",
+            code="COMMAND_ARGS",
+            hint=PARAMS_HINT,
+        )
+    return value
+
+
+def _json_kind(value: Any) -> str:
+    if value is None:
+        return "null"
+    if isinstance(value, bool):
+        return "true/false"
+    if isinstance(value, (int, float)):
+        return "a number"
+    if isinstance(value, str):
+        return "a string"
+    return "an array" if isinstance(value, list) else "an object"
+
+
+def _step_object(obj: Any, registry: Mapping[str, Any]) -> Step:
+    """One step given as JSON: the `{action, params, predict}` object of
+    the wire (`ops.Step`), its parameters validated against the pinned
+    registry like a token's."""
+    if not isinstance(obj, dict):
+        raise AssayError(
+            f"a JSON step must be an object, got {_json_kind(obj)}", code="COMMAND_ARGS", hint=STEP_FORM_HINT
+        )
+    try:
+        step = Step.from_json(obj)
+    except KeyError as error:
+        raise AssayError(f"step.{error.args[0]} is required", code="COMMAND_ARGS", hint=STEP_FORM_HINT) from None
+    except TypeError as error:
+        raise AssayError(str(error), code="COMMAND_ARGS", hint=STEP_FORM_HINT) from None
+    name, params = validate_action(registry, step.action, step.params)
+    return Step(action=name, params=params, predict=step.predict)
+
+
+def _steps_of(raw_steps: list[str], registry: Mapping[str, Any]) -> list[Step]:
+    """The `--step` values in order: a string step `NAME pname=value ::
+    claims` parsed against the registry, a JSON step (the text starts with
+    `{`) read as the step object, an `@FILE` read as a list of step objects
+    (or one)."""
+    steps: list[Step] = []
+    for raw in raw_steps:
+        text = raw.strip()
+        if text.startswith("@"):
+            loaded = _json_argument(text, "--step")
+            items = loaded if isinstance(loaded, list) else [loaded]
+            steps.extend(_step_object(item, registry) for item in items)
+        elif text.startswith("{"):
+            steps.append(_step_object(_json_argument(text, "--step"), registry))
+        else:
+            token, predict = split_step(raw)
+            name, params = parse_registry_action(token, registry)
+            steps.append(Step(action=name, params=params, predict=predict))
+    return steps
+
+
 def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     # `assay act NAME pname=value ...`: the extra tokens are typed
     # parameters, parsed here against the pinned registry into the name and
-    # the parameters object the wire carries (the daemon validates the
-    # object again before any spend); values keep the case the agent typed.
-    name, params = parse_registry_action(" ".join([args.action, *args.params]), require_registry(run))
+    # the parameters object the wire carries; `assay act NAME --params
+    # JSON` carries the object as given, validated against the same
+    # registry (the daemon validates it again before any spend); values
+    # keep the case the agent typed.
+    registry = require_registry(run)
+    if args.params_json is not None:
+        if args.params:
+            raise AssayError(
+                "act takes the parameters either as pname=value tokens or as --params, not both",
+                code="COMMAND_ARGS",
+                hint=PARAMS_HINT,
+            )
+        name, params = validate_action(registry, args.action, _params_object(args.params_json))
+    else:
+        name, params = parse_registry_action(" ".join([args.action, *args.params]), registry)
     request = ActRequest(
         action=name,
         params=params,
@@ -1083,13 +1197,7 @@ def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
             'or one or more --step "NAME pname=value :: claims"',
             code="COMMAND_ARGS",
         )
-    steps: list[Step] = []
-    if args.step:
-        registry = require_registry(run)
-        for raw in args.step:
-            token, predict = split_step(raw)
-            name, params = parse_registry_action(token, registry)
-            steps.append(Step(action=name, params=params, predict=predict))
+    steps = _steps_of(args.step, require_registry(run)) if args.step else []
     request = CommitRequest(
         plan=args.plan,
         steps=tuple(steps),
@@ -1143,7 +1251,10 @@ def model_solve(paths: RunPaths, run: Run, status: CommandStatus, args: argparse
             f"SOLVE | plan found | {len(result['actions'])} steps | "
             f"nodes {result['nodes']}"
         )
-        print("ACTIONS | " + " -> ".join(result["actions"]))
+        print(
+            "ACTIONS | "
+            + " -> ".join(render_action(item["action"], item["params"]) for item in result["actions"])
+        )
         print(
             "PLAN | .assay/model_plan.json; execute with "
             "`assay commit @.assay/model_plan.json` (needs replay-fit "
@@ -1464,6 +1575,14 @@ COMMANDS: tuple[Command, ...] = (
             arg("action"),
             arg("params", nargs="*", metavar="pname=value", help=argparse.SUPPRESS),
             arg(
+                "--params",
+                dest="params_json",
+                metavar="JSON",
+                help="the parameters as one JSON object, or @FILE holding one: the form for an "
+                "object or an array parameter and for a string with newlines; instead of the "
+                "pname=value tokens, never beside them",
+            ),
+            arg(
                 "--predict",
                 required=False,
                 help='what this action does, e.g. "change; ch counter delta = 1" (see below); required '
@@ -1499,7 +1618,9 @@ COMMANDS: tuple[Command, ...] = (
                 action="append",
                 default=[],
                 metavar='"ACTION :: CLAIMS"',
-                help="one action with its own prediction; repeat in execution order",
+                help="one action with its own prediction, as \"NAME pname=value :: claims\" or as "
+                'the JSON object {"action", "params", "predict"} (@FILE holds a list of such '
+                "objects); repeat in execution order",
             ),
             arg("--at", type=int, dest="at_event"),
             arg(

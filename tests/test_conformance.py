@@ -528,7 +528,9 @@ def test_new_world_template_end_to_end(tmp_path):
             "--registry", str(registry), "--owner-token-file", str(token_file),
         )
         assert started.returncode == 0, started.stderr
-        assert "REGISTRY | 7 registered actions" in started.stdout
+        assert "REGISTRY | 8 registered actions" in started.stdout
+        assert "  DIAL turns=<array of 1..4 integer>" in started.stdout
+        assert "    form: DIAL --params '{\"turns\": [<integer -3..3>, ... 1..4 items]}'" in started.stdout
         assert "AGENDA | goal (registry): open both doors and enter the second room" in started.stdout
         config = json.loads((run / ".assay" / "config.json").read_text())
         assert config["public_info"]["rooms"] == 2
@@ -574,12 +576,21 @@ def test_new_world_template_end_to_end(tmp_path):
         assert alarmed.returncode == 0 and "OUTCOME | GAME_OVER" in alarmed.stdout
         rewound = run_cli(run, "reset")
         assert rewound.returncode == 0 and "OUTCOME | RESET" in rewound.stdout
-        # Room 2 to the WIN, then finalize's file and a clean audit.
+        # Room 2 to the WIN with the structured action (the array through
+        # `--params @FILE`, one paid action), then finalize's file and a
+        # clean audit.
         delta = code2 % 10
-        while delta > 0:
-            step = min(3, delta)
-            assert run_cli(run, "act", "TURN", f"delta={step}", "--predict", "change").returncode == 0
-            delta -= step
+        if delta:
+            turns = [3] * (delta // 3) + ([delta % 3] if delta % 3 else [])
+            (tmp_path / "turns.json").write_text(json.dumps({"turns": turns}))
+            dialed = run_cli(
+                run, "act", "DIAL", "--params", f"@{tmp_path / 'turns.json'}",
+                "--predict", f"ch dial = {delta}", "--json",
+            )
+            assert dialed.returncode == 0, dialed.stderr
+            receipt = json.loads(dialed.stdout)
+            assert receipt["outcome"] == "PREDICTED"
+            assert receipt["action"] == "DIAL turns=" + json.dumps(turns, separators=(",", ":"))
         assert run_cli(run, "act", "OPEN", "--predict", "ch door = open").returncode == 0
         won = run_cli(run, "act", "ENTER", "--predict", "win; level+1")
         assert won.returncode == 0 and "OUTCOME | GAME_COMPLETE" in won.stdout

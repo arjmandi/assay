@@ -19,6 +19,34 @@ ACTIONS = [
     {"name": "SET_LAMP", "params": {"state": {"type": "str", "enum": ["on", "off"]}}},
     {"name": "NOOP", "params": {}},
 ]
+# The structured action of #14, served by the fake adapter: an array of
+# objects, each an `inc` with its amount or a `lamp` with its state.
+APPLY = {
+    "name": "APPLY",
+    "params": {
+        "ops": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "kind": {"type": "string", "enum": ["inc", "lamp"]},
+                    "amount": {"type": "integer", "minimum": 1, "maximum": 2},
+                    "state": {"type": "string", "enum": ["on", "off"]},
+                },
+                "required": ["kind"],
+                "additionalProperties": False,
+            },
+            "minItems": 1,
+            "maxItems": 3,
+        }
+    },
+}
+# The pinned copy of a registry is written with its keys sorted, so the form
+# lists the properties in that order.
+APPLY_FORM = (
+    "APPLY --params '{\"ops\": [{\"amount\"?: <integer 1..2>, \"kind\": <inc|lamp>, "
+    "\"state\"?: <on|off>}, ... 1..3 items]}'"
+)
 
 
 def _prepare(run: Path, **extra) -> None:
@@ -251,6 +279,140 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         empty = run_cli(run, "commit", "--step", ":: noop")
         assert empty.returncode == 2 and empty.stderr.startswith("ERROR | PREDICTION_REQUIRED | each step needs")
         assert len(_events(run)) == 4
+    finally:
+        stop_run(run)
+
+
+def test_params_json_carries_structured_values_through_the_cli_and_the_daemon(tmp_path):
+    """`assay act NAME --params JSON` and `--params @FILE` (#14): the object
+    validated by the client and again by the daemon, nested values refused by
+    their path before any spend, the journal holding the value as given and
+    the receipt rendering it as JSON."""
+    run = tmp_path / "params-json"
+    _prepare(run, actions=[*ACTIONS, APPLY])
+    try:
+        started = _start(run)
+        assert started.returncode == 0, started.stderr
+        assert "  APPLY ops=<array of 1..3 object>" in started.stdout
+        assert f"    form: {APPLY_FORM}" in started.stdout
+        # A scalar through --params is coerced like a token's value.
+        acted = run_cli(run, "act", "INC", "--params", '{"amount": 1}', "--predict", "change")
+        assert acted.returncode == 0, acted.stderr
+        assert _events(run)[-1]["data"] == {"amount": 1}
+        # Every refusal is free and names the path, the value and the form.
+        for arguments, code, message in (
+            (["APPLY", "--params", '{"ops": [{"kind": "inc", "amount": 5}]}'], "ACTION_PARAMS",
+             "APPLY ops[0].amount=5 is above max 2"),
+            (["APPLY", "--params", '{"ops": [{"kind": "inc", "extra": 1}]}'], "ACTION_PARAMS",
+             "APPLY ops[0]={\"extra\":1,\"kind\":\"inc\"} has no property 'extra'; it takes ['amount', 'kind', 'state']"),
+            (["APPLY", "--params", '{"ops": [{"amount": 1}]}'], "ACTION_PARAMS",
+             "APPLY ops[0]={\"amount\":1} is missing property(ies): ['kind']"),
+            (["APPLY", "--params", '{"ops": [{"kind": "inc"}, {"kind": "inc"}, {"kind": "inc"}, {"kind": "inc"}]}'],
+             "ACTION_PARAMS",
+             "APPLY ops=[{\"kind\":\"inc\"},{\"kind\":\"inc\"},{\"kind\":\"inc\"},{\"kind\":\"inc\"}] has 4 item(s), above maxItems 3"),
+            (["APPLY", "--params", '{"ops": {"kind": "inc"}}'], "ACTION_PARAMS",
+             "APPLY ops={\"kind\":\"inc\"} is not an array"),
+            (["APPLY", "--params", '{"ops": [{"kind": "dim"}]}'], "ACTION_PARAMS",
+             "APPLY ops[0].kind='dim' is not one of ['inc', 'lamp']"),
+            (["APPLY", "ops=x"], "ACTION_PARAMS", "APPLY ops is an array parameter and takes JSON, not a token"),
+            (["APPLY", "--params", "{}"], "ACTION_PARAMS", "APPLY is missing parameter(s): ['ops']"),
+        ):
+            refused = run_cli(run, "act", *arguments, "--predict", "change")
+            assert refused.returncode == 2, arguments
+            assert refused.stderr == f"ERROR | {code} | {message}\nNEXT | the form is `{APPLY_FORM}`\n", arguments
+        for arguments, message, hint in (
+            (["INC", "amount=1", "--params", '{"amount": 1}'],
+             "act takes the parameters either as pname=value tokens or as --params, not both",
+             "pass the parameters as one JSON object, `--params '{\"pname\": value, ...}'`, or as `--params @FILE` holding one"),
+            (["INC", "--params", "{amount: 1}"],
+             "--params is not valid JSON: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)",
+             None),
+            (["INC", "--params", "[1]"], "--params must be a JSON object, got an array", None),
+            (["INC", "--params", "null"], "--params must be a JSON object, got null", None),
+            (["INC", "--params", f"@{run / 'nowhere.json'}"],
+             f"--params names a file that cannot be read: {run / 'nowhere.json'}: No such file or directory",
+             None),
+        ):
+            refused = run_cli(run, "act", *arguments, "--predict", "change")
+            assert refused.returncode == 2, arguments
+            assert refused.stderr.startswith(f"ERROR | COMMAND_ARGS | {message}\n"), refused.stderr
+            if hint is not None:
+                assert refused.stderr == f"ERROR | COMMAND_ARGS | {message}\nNEXT | {hint}\n"
+        assert len(_events(run)) == 2
+        # A nested value, validated down to each property, journaled as given
+        # (keys sorted) and rendered as compact JSON on the receipt.
+        applied = run_cli(
+            run, "act", "APPLY", "--params",
+            '{"ops": [{"kind": "lamp", "state": "on"}, {"amount": 1, "kind": "inc"}]}',
+            "--predict", "change", "--json",
+        )
+        assert applied.returncode == 0, applied.stderr
+        receipt = json.loads(applied.stdout)
+        assert receipt["outcome"] == "PREDICTED"
+        assert receipt["action"] == 'APPLY ops=[{"kind":"lamp","state":"on"},{"amount":1,"kind":"inc"}]'
+        event = _events(run)[-1]
+        assert event["data"] == {"ops": [{"kind": "lamp", "state": "on"}, {"amount": 1, "kind": "inc"}]}
+        assert event["observation"] == {"counter": 2, "lamp": "on"}
+        status = run_cli(run, "status")
+        assert '  e0002 a0002 L1 APPLY ops=[{"kind":"lamp","state":"on"},{"amount":1,"kind":"inc"}] ✓ |' in status.stdout
+        viewed = run_cli(run, "view", "--event", "2")
+        assert 'CAUSE | APPLY ops=[{"kind":"lamp","state":"on"},{"amount":1,"kind":"inc"}]' in viewed.stdout
+        # The same object from a file.
+        (run / "ops.json").write_text('{"ops": [{"kind": "inc", "amount": 1}]}\n')
+        from_file = run_cli(run, "act", "APPLY", "--params", f"@{run / 'ops.json'}", "--predict", "win")
+        assert from_file.returncode == 0, from_file.stderr
+        assert "OUTCOME | GAME_COMPLETE" in from_file.stdout
+        assert _events(run)[-1]["data"] == {"ops": [{"amount": 1, "kind": "inc"}]}
+        audited = run_cli(run, "audit")
+        assert "AUDIT | CLEAN" in audited.stdout and "chain intact" in audited.stdout
+    finally:
+        stop_run(run)
+
+
+def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
+    """`--step '{"action", "params", "predict"}'` and `--step @FILE` holding
+    a list of such objects (#14), beside `--step "NAME k=v :: claims"`."""
+    run = tmp_path / "steps"
+    _prepare(run, actions=[*ACTIONS, APPLY])
+    try:
+        assert _start(run).returncode == 0
+        committed = run_cli(
+            run, "commit",
+            "--step", '{"action": "set_lamp", "params": {"state": "on"}, "predict": "change"}',
+            "--step", "NOOP :: noop",
+        )
+        assert committed.returncode == 0, committed.stderr
+        assert "OUTCOME | PREDICTED | all 2 steps landed as predicted" in committed.stdout
+        assert _events(run)[-2]["action"] == "SET_LAMP" and _events(run)[-2]["data"] == {"state": "on"}
+        hint = (
+            'a step is `--step "NAME pname=value :: claims"`, or `--step \'{"action": "NAME", '
+            "\"params\": {...}, \"predict\": \"claims\"}'`, or `--step @FILE` holding a list of such objects"
+        )
+        for step, code, message, next_step in (
+            ('{"action": "NOOP", "bogus": 1, "predict": "noop"}', "COMMAND_ARGS", "step.bogus is not a field of the record", hint),
+            ('{"params": {}, "predict": "noop"}', "COMMAND_ARGS", "step.action is required", hint),
+            ('{"action": "NOOP", "params": "x"}', "COMMAND_ARGS", "step.params must be a JSON object, got str", hint),
+            ('{"action": "NOOP"', "COMMAND_ARGS",
+             "--step is not valid JSON: Expecting ',' delimiter: line 1 column 18 (char 17)", hint),
+            ('{"action": "APPLY", "params": {"ops": []}, "predict": "noop"}', "ACTION_PARAMS",
+             "APPLY ops=[] has 0 item(s), below minItems 1", f"the form is `{APPLY_FORM}`"),
+            (f"@{run / 'nowhere.json'}", "COMMAND_ARGS",
+             f"--step names a file that cannot be read: {run / 'nowhere.json'}: No such file or directory", hint),
+        ):
+            refused = run_cli(run, "commit", "--step", step)
+            assert refused.returncode == 2, step
+            assert refused.stderr == f"ERROR | {code} | {message}\nNEXT | {next_step}\n", refused.stderr
+        assert len(_events(run)) == 3
+        (run / "steps.json").write_text(json.dumps([
+            {"action": "APPLY", "params": {"ops": [{"kind": "inc", "amount": 2}]}, "predict": "change"},
+            {"action": "INC", "params": {"amount": 1}, "predict": "win"},
+        ]))
+        from_file = run_cli(run, "commit", "--step", f"@{run / 'steps.json'}")
+        assert from_file.returncode == 0, from_file.stderr
+        assert "OUTCOME | GAME_COMPLETE" in from_file.stdout
+        assert '  e0003 APPLY ops=[{"amount":2,"kind":"inc"}] ✓' in from_file.stdout
+        assert "  e0004 INC amount=1 ✓" in from_file.stdout
+        assert _events(run)[-2]["data"] == {"ops": [{"amount": 2, "kind": "inc"}]}
     finally:
         stop_run(run)
 

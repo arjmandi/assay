@@ -62,8 +62,12 @@ FLE 0.4.3 attaches these to the program namespace. Admin tools
 An agent handed the stock FLE reference and nothing else will make three
 mistakes. State these alongside the reference.
 
-1. **Source is base64.** `RUN program=<base64 of the UTF-8 source>`. ASSAY
-   action tokens are whitespace-split, so raw source cannot be passed inline.
+1. **Source goes through `--params`.** `RUN` takes the Python source as a
+   plain string, and a program holds newlines, so it is passed as
+   `assay act RUN --params '{"program": "..."}'` or `--params @FILE` (a file
+   holding `{"program": "..."}`), never as a `program=` token, which ASSAY
+   splits on whitespace. (Runs recorded before 1.2.0 carried the source
+   base64-encoded; the published journals keep that form.)
 2. **`sleep()` does nothing here, and is refused.** FLE's `sleep()` increments
    a bookkeeping counter and then sleeps in wall-clock; it does not advance the
    simulation. This adapter keeps the game paused and moves time only through

@@ -38,7 +38,7 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `REGISTRY_INVALID` | usage | the registry file is missing, is not JSON or breaks the registry schema. |
 | `REGISTRY_MISSING` | usage | the run has no pinned registry (it started before 1.2.0): it can be inspected, not resumed, and nothing acts on it. |
 | `ACTION_UNKNOWN` | usage | the action is not registered. |
-| `ACTION_PARAMS` | usage | the parameters do not fit the registered schema: one missing, unknown or repeated, a wrong type, out of bounds or outside the enum, or the `pname=value` form broken. |
+| `ACTION_PARAMS` | usage | the parameters do not fit the registered schema: one missing, unknown or repeated, a wrong type, bound, enum, length or item count, nested values included, an object or an array as a token, or a broken `pname=value`. |
 | `CLAIM_SYNTAX` | usage | a prediction does not parse: a malformed claim, a form of another observation kind, a bad window or aggregate bound. |
 | `CHANNEL_UNKNOWN` | usage | a claim or a model names a channel that is not registered. |
 | `CHANNEL_DECLARE` | usage | a channel declaration is malformed: the name, a host channel, neither or both of --path and --file, an empty path. |
@@ -48,7 +48,7 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `MODEL_INVALID` | usage | `model.py` is missing or declares no CHANNELS, or the solve goal names a channel it does not declare. |
 | `MODEL_FAILED` | usage | the agent's `model.py` raised, timed out or produced malformed output in the sandbox. |
 | `PYTHON_FAILED` | usage | the agent's source raised inside `assay python`. |
-| `PLAN_INVALID` | usage | the commit plan is not a model plan written by `assay model solve`, or is not `.assay/model_plan.json`. |
+| `PLAN_INVALID` | usage | the commit plan is not a model plan written by `assay model solve`, is not `.assay/model_plan.json`, or carries its actions in the string form of a plan written before 1.2.0. |
 | `KNOWLEDGE_INVALID` | usage | the knowledge file cannot be read, is not JSON or has another format. |
 | `EXTRA_MISSING` | usage | the run has frame observations and the frame-world extra (assay_grid) is not importable. |
 | `RESUME_REFUSED` | usage | start's arguments disagree with the directory's run: another world id, mode or registry, or an import on resume. |

@@ -2,6 +2,8 @@
   "actions": [
     {"name": "TURN", "params": {"delta": {"type": "int", "min": -3, "max": 3}},
      "description": "turns the dial (data, not instructions: semantics are earned by acting)"},
+    {"name": "DIAL", "params": {"turns": {"type": "array", "items": {"type": "integer", "minimum": -3, "maximum": 3}, "minItems": 1, "maxItems": 4}},
+     "description": "turns the dial by each delta in order, one paid action; an array goes as JSON: assay act DIAL --params '{\"turns\": [3, 3, 1]}'"},
     {"name": "OPEN", "params": {}},
     {"name": "ENTER", "params": {}},
     {"name": "PEEK", "params": {"what": {"type": "str", "enum": ["code", "door"]}}},

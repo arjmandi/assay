@@ -101,6 +101,8 @@ Actuators are rows in a JSON file. Names and typed parameter schemas only:
   "actions": [
     {"name": "MOVE", "params": {"direction": {"type": "str", "enum": ["n","s","e","w"]}}},
     {"name": "BID",  "params": {"amount": {"type": "int", "min": 1, "max": 100}}},
+    {"name": "SEND", "params": {"to": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+                                "body": {"type": "string", "maxLength": 2000}}},
     {"name": "WIPE", "params": {}, "destructive": true},
     {"name": "PAY",  "params": {}, "approval": true}
   ],
@@ -111,6 +113,16 @@ Actuators are rows in a JSON file. Names and typed parameter schemas only:
   "zero_prior": false
 }
 ```
+
+A parameter schema is a JSON Schema subset: `integer`, `number`, `string`,
+`boolean`, `object` (with `properties` and `required`) and `array` (with
+`items`, `minItems`, `maxItems`), `enum`, `minimum`/`maximum`,
+`minLength`/`maxLength`, nested as deep as you need (`int`, `float`, `str`,
+`min` and `max` are accepted as aliases). The agent types a scalar as
+`pname=value` and passes an object or an array as JSON, `assay act SEND
+--params '{"to": ["a@x"], "body": "..."}'` (or `--params @FILE`); the kernel
+validates the value against the schema before any spend and journals it as
+given.
 
 What the optional per-action flags buy you:
 
