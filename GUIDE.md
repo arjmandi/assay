@@ -184,9 +184,10 @@ Two facts worth knowing before you write an adapter:
 - ASSAY assumes a **turn-based world**: one action in, one settled
   observation out. Streaming/multi-observer registration is accepted and
   journaled today but drives nothing yet.
-- On local (non-competition) runs, resume works by **replaying the journal
-  through your adapter**, so your world must be deterministic given the
-  same action sequence and seed.
+- Unless your adapter declares otherwise (the `session` declaration,
+  `docs/ARCHITECTURE.md` section 2.2), resume works by **replaying the
+  journal through your adapter**, so your world must be deterministic given
+  the same action sequence and seed.
 - The daemon runs in the interpreter that ran `assay start`; the adapter's
   dependencies live there. `ASSAY_PYTHON` pins it for the launcher, and
   `assay doctor` reports it, dry-imports the adapter, and checks the registry.

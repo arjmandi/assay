@@ -36,10 +36,11 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+from assay.adapters import Transition
 from assay.core import AssayError
 
 # ---------------------------------------------------------------------------
@@ -616,12 +617,12 @@ class FactorioSession:
         # requires each observation to reproduce exactly, so a replayed
         # pathfinding RUN must REUSE the delta it spent live rather than re-derive
         # it. `_recorded_path_deltas` holds those deltas, one per journaled
-        # pathfinding RUN, in order, read from the mutation journal at start;
-        # each is popped as its RUN is replayed (see _pump_pathfinding_ticks). It
-        # is empty on a fresh run, so live RUNs pump adaptively. Backward
+        # pathfinding RUN, in order, taken from the transitions the kernel hands
+        # the `replay` hook at a resume; each is popped as its RUN is replayed
+        # (see _pump_pathfinding_ticks). It is empty on a fresh run, where the
+        # hook is never called, so live RUNs pump adaptively. Backward
         # compatible: a pre-adaptive journal recorded +180, so 180 is reused.
-        self._root = Path(root)
-        self._recorded_path_deltas = self._load_recorded_path_deltas()
+        self._recorded_path_deltas: list[int] = []
 
         # Throughput corroboration: which entity kind is a legitimate automated
         # source of this target, and whether the corroboration is enforced. All
@@ -636,9 +637,9 @@ class FactorioSession:
 
         # Unknown-global monitor: snapshot the program-visible globals once, at
         # session start, before any agent RUN has added its own variables to the
-        # namespace. Logging only: never refuses, never voids (PROTOCOL.md).
+        # namespace. Logging only: never refuses, never voids (PROTOCOL.md). The
+        # observation body carries it, so event 0 journals it.
         self._namespace_watch = self._compute_namespace_watch()
-        self._log_namespace_watch(root)
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -855,25 +856,6 @@ class FactorioSession:
             "clean": not unexpected,
         }
 
-    def _log_namespace_watch(self, root: Path) -> None:
-        """Best-effort: also drop the watch into the run's activity journal. The
-        observation body carries it regardless; this is a convenience for a
-        reader tailing the journal, wrapped so a missing or locked journal can
-        never affect the run."""
-        try:
-            from assay.core import append_jsonl
-
-            append_jsonl(
-                Path(root) / ".assay" / "activity.jsonl",
-                {
-                    "kind": "namespace_watch",
-                    "world": self.world_id,
-                    **self._namespace_watch,
-                },
-            )
-        except Exception:  # noqa: BLE001 - the observation body is authoritative
-            pass
-
     def _research(self) -> dict[str, Any]:
         raw = self._command(
             "/sc local f=game.forces.player local n=0 "
@@ -1080,50 +1062,46 @@ class FactorioSession:
         self._stdout = ""
         self._stderr = ""
 
-    def _load_recorded_path_deltas(self) -> list[int]:
-        """Recover the tick delta each already-journaled pathfinding RUN spent.
+    def replay(self, transitions: Sequence[Transition]) -> None:
+        """The kernel's replay hook (docs/ARCHITECTURE.md section 2.2): called
+        once at a resume with every recorded transition, before the kernel steps
+        them through this fresh session. Recovers the tick delta each
+        already-journaled pathfinding RUN spent.
 
-        The broker records every paid action to `.assay/mutations.jsonl` with the
-        observation it produced, and on a local resume it replays that journal
-        through a fresh session, requiring each observation, the cursor `tick`
-        included, to reproduce exactly. A pathfinding RUN's live tick cost is
-        variable (the pump runs until the path finder answers), so replay cannot
-        re-derive it; it must reuse what was spent. This reads that ledger.
+        On a resume the broker replays the journal through a fresh session and
+        requires each observation, the cursor `tick` included, to reproduce
+        exactly. A pathfinding RUN's live tick cost is variable (the pump runs
+        until the path finder answers), so replay cannot re-derive it; it must
+        reuse what was spent, and the transitions carry it.
 
-        A pathfinding RUN's delta is the rise in the cursor across it. The journal
-        stores the cursor AFTER each action, so the delta is this RUN's recorded
-        tick minus the previous action's recorded tick (0 before the first, and 0
-        after a RESET, which the journal's ticks already reflect). Only RUNs the
-        screen marks as needing the path finder are collected, in journal order:
-        exactly the RUNs that will call the pump on replay, so ledger and pump
-        stay in lockstep (a skipped opener RESET is not a pathfinding RUN and
-        cannot desynchronise them). A pre-adaptive journal recorded a flat +180
-        per pathfinding RUN, read back verbatim (backward compatible).
+        A pathfinding RUN's delta is the rise in the cursor across it. The
+        transition holds the cursor AFTER each action, so the delta is this
+        RUN's recorded tick minus the previous action's recorded tick (0 before
+        the first, and 0 after a RESET, which the recorded ticks already
+        reflect). Only RUNs the screen marks as needing the path finder are
+        collected, in journal order: exactly the RUNs that will call the pump
+        on replay, so ledger and pump stay in lockstep. A pre-adaptive journal
+        recorded a flat +180 per pathfinding RUN, read back verbatim (backward
+        compatible).
 
-        Best-effort and self-contained: an unreadable entry falls back to the
-        legacy fixed allowance, and a missing or corrupt journal yields an empty
-        ledger, so every RUN then pumps adaptively, the fresh-run path.
+        Best-effort: an unreadable entry falls back to the legacy fixed
+        allowance. The hook is never called on a fresh run, so every RUN then
+        pumps adaptively.
         """
-        try:
-            from assay.core import load_jsonl
-
-            records = load_jsonl(self._root / ".assay" / "mutations.jsonl")
-        except Exception:  # noqa: BLE001 - no journal / unreadable => fresh run
-            return []
         deltas: list[int] = []
         prev_tick = 0
-        for record in records:
-            action = str(record.get("action", "")).upper()
+        for transition in transitions:
+            action = transition.action.upper()
             try:
                 this_tick: int | None = int(
-                    ((record.get("observation") or {}).get("data") or {}).get("tick")
+                    (transition.observation.get("data") or {}).get("tick")
                 )
             except (TypeError, ValueError):
                 this_tick = None
             if action == "RUN":
                 needs_ticks = False
                 try:
-                    program = (record.get("data") or {}).get("program")
+                    program = (transition.params or {}).get("program")
                     refusal, needs_ticks = screen_program(_decode_program(program))
                     needs_ticks = needs_ticks and refusal is None
                 except Exception:  # noqa: BLE001 - undecodable => treat as no path
@@ -1136,7 +1114,7 @@ class FactorioSession:
                     )
             if this_tick is not None:
                 prev_tick = this_tick
-        return deltas
+        self._recorded_path_deltas = deltas
 
     def _pump_pathfinding_ticks(self, worker: threading.Thread) -> None:
         """Advance ticks while a pathfinding RUN's worker thread runs.

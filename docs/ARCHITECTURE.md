@@ -95,9 +95,10 @@ Three trust classes decide where code may run:
 
 The kernel law: **the kernel makes no LLM calls.** Every grade, refusal, meter
 and verdict is deterministic code over the journal. That is also what makes
-replay possible: a local run resumes by replaying its own journal through the
-adapter (`broker._replay_local_session`) and refusing to continue if the world
-no longer reproduces a recorded observation.
+replay possible: a run resumes by replaying its own journal through the
+adapter (`broker._replay_local_session`, unless the world declares no replay)
+and refusing to continue if the world no longer reproduces a recorded
+observation.
 
 The public contract the kernel must keep honoring is in `verify/`:
 `JOURNAL_SPEC.md` (`assay-journal-v1`, the event schema, the chain
@@ -197,6 +198,51 @@ The session exposes:
   reported as a finalization warning on the receipt, after the action is
   already journaled.
 - `public_info` (optional property): a dict stored in `config.json` at start.
+- `session` (optional property): the world's declaration of its session
+  rules, a `SessionCapability` (`adapters.py`; a mapping of its fields is read
+  the same way) with three fields, each defaulting to the local value:
+  `idle_lease_seconds` (the action-idle lease the session expires under, None
+  for none; declared by a world without replay, since a session that expires
+  cannot be rebuilt by replay, and the record refuses the pair),
+  `reset_on_fresh_unit` (`world`: a RESET on a freshly entered
+  progress unit, the start of the run or the unit after a RESET or an
+  advance, goes to the world like any action; `noop`: the kernel answers it
+  with the current observation and the world never sees it) and `replayable`
+  (whether a resume may replay the journal through a fresh session). The
+  daemon reads it once after the factory and records it in `config.json`
+  under `session` at start, for the processes that have no session (the
+  command line, the status; `adapters.recorded_capability`). At every later
+  start the daemon holds the live declaration against the record and refuses
+  to serve when they differ (`DECLARATION_CHANGED`, naming the fields): the
+  command line routes the resume by the record, so a daemon under another
+  declaration would replay nothing where a replay is expected; the run
+  continues only under the declaration it started with. The kernel
+  implements every part and the adapter none: the lease, whose one rule is
+  the resume refused past it (`REMOTE_LEASE_EXPIRED`), while with the daemon
+  alive the kernel only reports the countdown on the MODE and RESUMED lines
+  and an action past the lease still reaches the world, which answers for
+  itself; the reset no-op in `broker._apply_step`, live and in replay alike;
+  and for a world without
+  replay the single daemon life (a resume keeps the live daemon and checks
+  its observation against the last event, a dead daemon is
+  `REMOTE_SESSION_UNAVAILABLE`, and so is an observation the world fails to
+  return, since there is nothing to reconstruct from). A world that declares
+  nothing gets local semantics (`adapters.LOCAL_SEMANTICS`): no lease, the
+  reset goes to the world, replay. The mode (`--mode local|remote`) is the
+  operator's word to the adapter, which reads it from the config to choose
+  its backend; the rules come from the declaration alone, so remote mode on
+  a world that declares no lease means no lease. The ARC adapter declares a
+  fifteen-minute lease and no replay in remote mode, and the fresh-unit
+  reset no-op in local mode, where an opening RESET would rewind the cached
+  game.
+- `replay(transitions)` (optional): called once at a resume of a replayable
+  world, before the kernel steps the recorded actions through the fresh
+  session, with every recorded transition as a `Transition` record (the
+  action, the validated parameters, the observation the world returned, in
+  the normalized shape of the mutation log); never on a fresh run. A world
+  that needs its own record of what it spent takes it here and reads no
+  kernel file: the Factorio adapter recovers the tick delta of each
+  pathfinding RUN from the transitions.
 
 Lifecycle values the kernel reads: `state` is `NOT_FINISHED`, `WIN` (terminal,
 triggers `finalize` and ends the daemon) or any other string, of which
@@ -208,8 +254,10 @@ action class). `levels_completed` and `win_levels` are the host progress pair,
 directory replays every recorded mutation through a fresh session and compares
 each observation to the one recorded (`broker._replay_local_session`). A
 difference is `LOCAL_REPLAY_DIVERGED` and the run stops. The adapter must
-therefore be deterministic given the same `seed` and action sequence. A remote
-run (`--mode competition`) is never replayed and expires after 15 idle minutes.
+therefore be deterministic given the same `seed` and action sequence. A world
+that declares `replayable: false` (the ARC adapter in remote mode) is never
+replayed: its session lives one daemon long and expires after the lease it
+declares (the ARC adapter's fifteen minutes).
 
 **Refusals.** A world that refuses an action for its own reasons reports the
 refusal **through the observation**, so the spend is journaled as evidence. The
@@ -221,20 +269,25 @@ nothing is spent and the error is relayed to the CLI.
 
 **Required.** `factory`, `observation`, `step`.
 
-**Optional.** `finalize`, `public_info`, world-specific policy before execution
-(the Factorio AST screen `screen_program` and its sealed instance are the worked
-example: they live entirely in the adapter).
+**Optional.** `finalize`, `public_info`, `session`, `replay`, world-specific
+policy before execution (the Factorio AST screen `screen_program` and its
+sealed instance are the worked example: they live entirely in the adapter).
 
 **Never here.** Nothing crosses from an adapter into the kernel: the kernel
 imports nothing from `bench/` and names no world (section 4 and the conformance
 tests enforce this). An adapter never reads the journal to decide an outcome,
 never writes under `.assay/` except its own files (OOLONG writes
 `.assay/corpus.txt` and `.assay/oolong_score.json`), and never sees the owner
-token.
+token. This is true of every adapter in the table since #21: the ARC adapter's
+import of the kernel's mode constants became its `session` declaration, the
+Factorio adapter's read of `.assay/mutations.jsonl` at replay became its
+`replay` hook, and its courtesy copy of the namespace watch in
+`.assay/activity.jsonl` was dropped, since the observation body carries the
+watch and event 0 journals it.
 
-**Extension points.** `public_info`, `finalize`, world policy inside `step`,
-and the observation `data` itself, which is where a world exposes everything
-the agent may read and claim against.
+**Extension points.** `public_info`, `finalize`, `session`, `replay`, world
+policy inside `step`, and the observation `data` itself, which is where a world
+exposes everything the agent may read and claim against.
 
 ### 2.3 Runtime configuration
 
@@ -249,7 +302,12 @@ where anchors go, which interpreter serves the daemon.
 - **World id and mode.** `assay start WORLD_ID` (`core.normalize_game_id`:
   any non-empty string up to 64 characters with no whitespace, control
   characters or path separators, kept as given, since it is a label and never
-  a path component), `--mode local|competition` or `ASSAY_MODE`, `--seed N`.
+  a path component), `--mode local|remote` or `ASSAY_MODE` (the value
+  `competition` that runs before 1.2.0 recorded is read as remote,
+  `core.run_mode`), `--seed N`. The mode is the operator's word to the
+  adapter; the session rules the kernel applies come from the adapter's
+  declaration (section 2.2), which the daemon records in `config.json` under
+  `session` at start.
 - **Owner token.** Minted at start on registry runs (`agenda.mint_owner_token`),
   only its sha256 is stored in `.assay/owner.json`, printed once. It authorizes
   `assay goal ratify`, `assay approve` and `assay waive` (`agenda.require_owner`).
@@ -745,8 +803,10 @@ say **present**, **optional, unused**, or **world-specific** with the file.
 | Adapter: `public_info` | present (game_id, title, tags, default_fps) | present (game_id, title, map_seed) | present (game_id, title, benchmark, dataset_revision, context_len, dataset) | optional, unused | present (world, rooms) |
 | Adapter: refusals through the observation | not needed (the engine accepts every action) | world-specific: `POLICY_REFUSED` in `stderr`, `policy_refusals` counter | world-specific: `last_result.status = refused`, `refusals` counter | unknown action raises (no refusal path) | present: `last_result.status = refused`, `refusals` counter |
 | Adapter: world policy before execution | none | world-specific: AST screen `screen_program`, `_SealedInstance`, namespace watch | world-specific: verbatim span check, census gate | none | none |
-| Adapter: determinism | seed plus cached game, replay on resume | recorded tick deltas replayed exactly | pure (no time, no network) | pure | codes derived from the seed |
-| Adapter: remote mode | present (`--mode competition`) | local only | local only | local only | local only |
+| Adapter: determinism | seed plus cached game, replay on resume | recorded tick deltas, taken from the `replay` hook, replayed exactly | pure (no time, no network) | pure | codes derived from the seed |
+| Adapter: `session` declaration | present (remote mode: a 15-minute lease, no replay, the reset goes to the server; local mode: the fresh-unit reset no-op) | none (local semantics) | none (local semantics) | none | none |
+| Adapter: `replay` hook | none | present (the tick ledger from the transitions) | none | none | none |
+| Adapter: remote mode | present (`--mode remote`) | local only | local only | local only | local only |
 | Adapter: world id rule workaround | none (ids are 4 chars) | world-specific: 24-entry `TASK_ALIASES` table | none (pack ids are valid ids) | none | none |
 | Runtime: owner token | minted, held by the agent | minted, held by the agent | minted, held by the agent | minted | minted, delivered to a file in the test |
 | Runtime: approvals, waivers | optional, unused | optional, unused | optional, unused | optional, unused | both exercised (`DRILL`, `SIREN`) |
@@ -1002,8 +1062,13 @@ the daemon alive.
   (section 8.7).
 - An `Adapter` Protocol in a new `adapters.py`, typed from the duck interface of section
   2.2: `factory(root, config)` returning a session with `observation`, `step(action, data,
-  reasoning)`, the optional `finalize()` and `public_info`. #21 adds the optional `session`
-  capability. The conformance test checks every adapter in its table against it.
+  reasoning)`, the optional `finalize()` and `public_info`. #21 added the optional `session`
+  declaration (`SessionCapability`: the action-idle lease, the fresh-unit reset rule,
+  replay) and the optional `replay(transitions)` hook, both in section 2.2: the kernel
+  implements the generic parts from the declaration, and a world that declares nothing
+  gets local semantics. The conformance test checks every adapter in its table against the
+  Protocol, the optional members' shapes included, and the kernel against a fake adapter
+  per declaration: nothing world-shaped is reachable without one.
 
 ### 6.5 Recovery under the run model (#16)
 
@@ -1127,8 +1192,8 @@ runs; `inspect.status_text` is that rendering). Not in #13: the owner operations
   `docs/ERRORS.md` by `python -m assay.errors --render`; a test asserts the file is
   current. `detail` is the further lines the command line prints after the first two
   (the claims table); `message` is one line.
-- The adapter boundary is the daemon's four calls into the session: `factory`,
-  `observation`, `step` and `finalize`. Anything raised there, `AssayError` or not, becomes
+- The adapter boundary is the daemon's calls into the session: `factory`, the `session`
+  declaration, `observation`, `step`, `replay` and `finalize`. Anything raised there, `AssayError` or not, becomes
   `WORLD_ERROR` (kind world) carrying the text; a `finalize` failure stays the warning on
   the receipt, as today. Anything else that is not an `AssayError` becomes `INTERNAL` (kind
   internal) with the traceback saved as today; ONBOARDING's troubleshooting section, which
@@ -1137,8 +1202,8 @@ runs; `inspect.status_text` is that rendering). Not in #13: the owner operations
   `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`; `UNGATED_STEP_REFUSED` is retired with
   the `step` operation (section 7.2) and an unknown operation is refused with
   `OPERATION_UNKNOWN` (kind usage); the module demand is
-  `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` becomes
-  `REMOTE_SESSION_UNAVAILABLE` with #21, the last rename: the codes freeze at the 1.2.0
+  `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` became
+  `REMOTE_SESSION_UNAVAILABLE` (#21), the last rename: the codes freeze at the 1.2.0
   tag, like the outcome tokens.
 - The CLI prints to stderr one line `ERROR | CODE | message` and, when a hint exists, a
   second line `NEXT | hint`; the error's detail (the claims table) follows as today. The
@@ -1274,7 +1339,9 @@ cover, the MODULES line) is a field the list did not name, and `estimated_tokens
 for #23. No block holds rendered text: `recent` records carry `predict_ok`, `changed`
 (a count) with `changed_unit` (the noun the observation kind supplies through
 `history_change`: keys or cells) and `frames` (the animation frame count, None on a dict
-world) so one renderer prints both forms; `mode` carries `lease_seconds`; `anchors`
+world) so one renderer prints both forms; `mode` carries the declared `idle_lease_seconds`,
+the `lease_seconds` left on it and `replayable`, from the session declaration recorded in
+`config.json` (#21); `anchors`
 carries `failed_event` and `failed_error`; the observation and notes blocks carry the
 limits the renderer applies (`max_lines`, `line_width`), which `--brief` (#23) will
 lower; `gate` is always present with the mode (None only without a registry), and the

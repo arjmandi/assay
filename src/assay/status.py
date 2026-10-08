@@ -30,7 +30,8 @@ from .agenda import agenda_text, emergence_meter, emergence_text, list_proposals
 from .aggregates import meter as aggregate_meter
 from .carryover import foreign_facts, foreign_text
 from .channels import ChannelReadings, channel_readings, channel_text
-from .core import AssayError, load_jsonl, read_json
+from .adapters import SessionCapability, recorded_capability
+from .core import REMOTE_MODE, AssayError, load_jsonl, read_json, run_mode
 from .evidence import RecentLine, history_text, recent_lines
 from .extras import kind_for
 from .integrity import anchor_status, anchor_text, ungated_events, ungated_permitted
@@ -56,7 +57,6 @@ if TYPE_CHECKING:
 OBSERVATION_LINES = 48
 NOTES_LINES = 120
 NOTES_LINE_WIDTH = 240
-LEASE_SECONDS = 15 * 60
 
 
 # --- the blocks ------------------------------------------------------------------
@@ -79,12 +79,17 @@ class RunBlock:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ModeBlock:
-    """The MODE line: `local` or `competition`, and for a remote run the
-    seconds left on the action-idle lease when the status was built (0 once
-    it ran out, None when the run's timestamps do not say)."""
+    """The MODE line: `local` or `remote`, the action-idle lease the world
+    declared in seconds (None without one), the seconds left on it when the
+    status was built (0 once it ran out, None without a lease or when the
+    run's timestamps do not say), and whether the world replays. The lease
+    and the replay come from the session declaration recorded in config.json
+    (`adapters.recorded_capability`), not from the mode."""
 
     mode: str
+    idle_lease_seconds: int | None
     lease_seconds: int | None
+    replayable: bool
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -423,28 +428,64 @@ def status_of(run: Run, *, history: int = 8) -> Status:
 
 
 def _mode_block(run: Run) -> ModeBlock:
+    capability = recorded_capability(run.config)
+    return ModeBlock(
+        mode=run_mode(run.config),
+        idle_lease_seconds=capability.idle_lease_seconds,
+        lease_seconds=lease_left(capability, idle_seconds(run)),
+        replayable=capability.replayable,
+    )
+
+
+def idle_seconds(run: Run) -> float | None:
+    """Seconds since the last paid action, or since the run's creation
+    before the first; None when the timestamps do not say."""
     import datetime as dt
 
-    config = run.config
-    mode = str(config.get("mode", "local"))
-    if mode != "competition":
-        return ModeBlock(mode=mode, lease_seconds=None)
     mutations = run.mutations
-    last = mutations[-1].timestamp if mutations else config.get("created_at")
-    lease: int | None = None
-    if last:
-        try:
-            then = dt.datetime.fromisoformat(str(last))
-            if then.tzinfo is None:
-                then = then.replace(tzinfo=dt.timezone.utc)
-            idle = max(
-                0.0,
-                (dt.datetime.now(dt.timezone.utc) - then).total_seconds(),
-            )
-            lease = 0 if idle >= LEASE_SECONDS else math.ceil(LEASE_SECONDS - idle)
-        except ValueError:
-            pass
-    return ModeBlock(mode=mode, lease_seconds=lease)
+    last = mutations[-1].timestamp if mutations else run.config.get("created_at")
+    if not last:
+        return None
+    try:
+        then = dt.datetime.fromisoformat(str(last))
+    except ValueError:
+        return None
+    if then.tzinfo is None:
+        then = then.replace(tzinfo=dt.timezone.utc)
+    return max(0.0, (dt.datetime.now(dt.timezone.utc) - then).total_seconds())
+
+
+def lease_left(capability: SessionCapability, idle: float | None) -> int | None:
+    """The seconds left on the declared action-idle lease: None without a
+    lease or when the idle time is unknown, 0 once it ran out."""
+    lease = capability.idle_lease_seconds
+    if lease is None or idle is None:
+        return None
+    return 0 if idle >= lease else math.ceil(lease - idle)
+
+
+def lease_text(idle_lease_seconds: int | None) -> str:
+    """The declared lease as the start line says it: `~15m action-idle
+    lease`, or `no action-idle lease`."""
+    if idle_lease_seconds is None:
+        return "no action-idle lease"
+    if idle_lease_seconds % 60 == 0:
+        return f"~{idle_lease_seconds // 60}m action-idle lease"
+    return f"~{idle_lease_seconds}s action-idle lease"
+
+
+def remaining_text(idle_lease_seconds: int | None, lease_seconds: int | None) -> str:
+    """The lease field of the MODE and RESUMED lines: no lease, the time left
+    on it, that it ran out, or that the timestamps do not say."""
+    if idle_lease_seconds is None:
+        return "no action-idle lease"
+    if lease_seconds is None:
+        return "unknown"
+    if lease_seconds <= 0:
+        return "expired/unavailable"
+    if lease_seconds >= 60:
+        return f"about {math.ceil(lease_seconds / 60)}m action-idle remaining"
+    return f"about {lease_seconds}s action-idle remaining"
 
 
 def _observation_block(event: Event) -> ObservationBlock:
@@ -717,7 +758,7 @@ def render_status(status: Status) -> str:
     lines = [
         f"STATUS | {run.world} | event {run.event} | {run.progress_label} "
         f"{min(total, run.progress_completed + 1)}/{total} | paid actions {run.paid} | {run.state}",
-        mode_text(status.mode.mode, status.mode.lease_seconds),
+        mode_text(status.mode),
     ]
     if status.kind is not None:
         lines.extend(status.kind.lines)
@@ -793,19 +834,13 @@ def render_status(status: Status) -> str:
     return "\n".join(lines)
 
 
-def mode_text(mode: str, lease_seconds: int | None) -> str:
-    if mode != "competition":
-        return (
-            "MODE | LOCAL SIMULATOR | competition action/reset accounting | "
-            "exact replay recovery enabled"
-        )
-    if lease_seconds is None:
-        lease = "unknown"
-    elif lease_seconds <= 0:
-        lease = "expired/unavailable"
-    else:
-        lease = f"about {math.ceil(lease_seconds / 60)}m action-idle remaining"
-    return f"MODE | REMOTE COMPETITION | {lease} | exact replay recovery unavailable"
+def mode_text(mode: ModeBlock) -> str:
+    label = "REMOTE" if mode.mode == REMOTE_MODE else "LOCAL SIMULATOR"
+    recovery = "enabled" if mode.replayable else "unavailable"
+    return (
+        f"MODE | {label} | {remaining_text(mode.idle_lease_seconds, mode.lease_seconds)} | "
+        f"exact replay recovery {recovery}"
+    )
 
 
 def observation_text(observation: Any, max_lines: int = OBSERVATION_LINES) -> list[str]:

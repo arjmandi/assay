@@ -283,12 +283,13 @@ FLE 0.4.3 (Python 3.12.12) exposes, enumerated from a live instance so the
 expected set is grounded in reality rather than guessed. Any live name not in
 the expected set is reported.
 
-The report is written two ways: into the observation body under `namespace_watch`
+The report is written into the observation body under `namespace_watch`
 (the authoritative, replay-safe, audit-visible copy: `{expected_globals,
-observed_globals, unexpected_globals, clean}`), and, best-effort, as a
-`namespace_watch` line in the run's `activity.jsonl` for a reader tailing the
-journal. The activity write is wrapped so a missing or locked journal can never
-affect the run. On the pinned version `unexpected_globals` is empty and `clean`
+observed_globals, unexpected_globals, clean}`), which event 0 journals. Until
+1.2.0 the adapter also appended a best-effort `namespace_watch` line to the
+run's `activity.jsonl` for a reader tailing the journal; that courtesy copy is
+gone (#21: an adapter writes nothing under `.assay/` but its own files), and
+the M2 runs below still carry it. On the pinned version `unexpected_globals` is empty and `clean`
 is true. A non-empty report is a signal to re-audit the AST screen before that
 FLE version is trusted: it means a new handle appeared that the screen has not
 been reasoned about.

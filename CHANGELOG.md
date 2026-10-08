@@ -388,6 +388,41 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- The remote session's words, and its rules as an adapter declaration (#21).
+  The mode value is `remote` for new runs (`--mode local|remote`; a
+  `config.json` carrying `competition`, the value of a remote run before
+  1.2.0, is read as remote); the MODE line says `REMOTE` where it said
+  `REMOTE COMPETITION`,
+  and its middle field is the lease on every run (`no action-idle lease` on
+  a local one, where it said `competition action/reset accounting`); the
+  STARTED and RESUMED lines say `REMOTE` and carry the declared lease; the
+  receipt's `scorecard finalization warning` is `finalization warning from
+  the world`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` is
+  `REMOTE_SESSION_UNAVAILABLE`, the last rename before the codes freeze;
+  `broker._competition_step` is `_apply_step`. The rules themselves come from
+  the adapter: the optional `session` property declares a `SessionCapability`
+  (`adapters.py`: `idle_lease_seconds`, `reset_on_fresh_unit`, `replayable`),
+  recorded in `config.json` under `session` at start, and the kernel
+  implements each part from it: the lease (declared by a world without
+  replay, the record refuses the pair; its one rule is the resume refused
+  past it, and the countdown on the MODE and RESUMED lines is a report),
+  the fresh-unit reset no-op (live and in replay), and the single daemon
+  life of a world without replay. At every later start the daemon holds the
+  live declaration against the record and refuses to serve when they differ,
+  with `DECLARATION_CHANGED` (kind refused, a new code) naming the fields,
+  since the command line routes the resume by the record. The ARC adapter declares a
+  fifteen-minute lease and no replay in remote mode, and the reset no-op in
+  local mode, the mode the 25 published runs ran under, so their semantics
+  are the ones they ran with. A world that declares nothing gets local semantics, which
+  changes one behavior for every other world: the fresh-unit reset skip was
+  the kernel's rule for every local world and is the ARC adapter's
+  declaration now, so a RESET on a fresh unit reaches the world (the
+  published Factorio and OOLONG journals open with no RESET, so none is
+  affected). The optional `replay(transitions)` hook hands a world the
+  recorded transitions at a resume. The conformance test's word list gains
+  competition, scorecard and arcade, and the test drives the kernel against
+  a fake adapter per declaration (`docs/ARCHITECTURE.md` sections 2.2 and
+  2.3).
 - The error voice and the exit codes (#13). The command line prints `ERROR |
   CODE | message` on stderr (the code between the two bars), then `NEXT |
   hint` when the error names a next step, then the claims table where one
@@ -691,6 +726,19 @@ Left on the experiment branch, deliberately:
 
 ### Fixed
 
+- `assay start` stops the daemon it just started when the reconstructed
+  world differs from the latest event (#21). The resume refused with
+  `LOCAL_REPLAY_DIVERGED` and left that daemon READY, so the next paid
+  action would have spent on a world the journal does not describe.
+- The two adapters that reached into the kernel (#21). The ARC adapter
+  imported the mode constants from `assay.broker`; it reads the mode from
+  the config and declares its session rules instead. The Factorio adapter
+  read `.assay/mutations.jsonl` at replay to recover its tick deltas and
+  appended a courtesy copy of its namespace watch to `.assay/activity.jsonl`;
+  it takes the deltas from the `replay` hook, and the copy is dropped, since
+  the observation body carries the watch and event 0 journals it. Section
+  2.2's rule, that an adapter never reads the journal and never writes under
+  `.assay/` except its own files, is true of every adapter in the table.
 - A grid claim on a dict run is refused by name whether or not the extra and
   pillow are installed (#24). `parse_claims` recognized the frame forms
   through `extras.all_kinds()`, which imported `assay_grid`, and so pillow,

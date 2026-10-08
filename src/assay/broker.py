@@ -19,9 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from .core import (
-    LOCAL_MODE,
     OBSERVATION_HINT,
-    REMOTE_MODE,
     AssayError,
     RunPaths,
     append_jsonl,
@@ -31,9 +29,18 @@ from .core import (
     now_iso,
     read_json,
     rows_to_grid,
+    run_mode,
 )
 from .sandbox import sandbox_mode
-from .adapters import Adapter, Session
+from .adapters import (
+    Adapter,
+    Session,
+    SessionCapability,
+    declaration_difference,
+    recorded_capability,
+    session_capability,
+    transitions_of,
+)
 from .live import execute_action, execute_model_plan, execute_steps, reset_level
 from .modules import active_modules, install_module
 from .ops import (
@@ -61,10 +68,6 @@ from .ops import (
 )
 from .records import Claim, Event, Mutation, Receipt
 from .run import Run
-
-
-def is_remote_config(config: Mapping[str, Any]) -> bool:
-    return str(config.get("mode", LOCAL_MODE)).lower() == REMOTE_MODE
 
 
 def split_adapter_spec(spec: str) -> tuple[str, str]:
@@ -321,11 +324,11 @@ def _request(
         # The read serves the hint below and nothing else: a configuration
         # the client cannot parse is the daemon's to refuse (section 8.3).
         config = {}
-    local = isinstance(config, dict) and not is_remote_config(config)
+    replayable = isinstance(config, dict) and recorded_capability(config).replayable
     recovery = (
         "run `assay start WORLD_ID` to replay the journal and resume"
-        if local
-        else "a remote competition run cannot be reconstructed"
+        if replayable
+        else "the world declared no replay, so the run cannot be reconstructed"
     )
     if not isinstance(descriptor, dict) or descriptor.get("status") != "READY":
         raise AssayError(
@@ -505,7 +508,7 @@ def start_broker(paths: RunPaths) -> None:
     descriptor = {
         "status": "STARTING",
         "started_at": time.time(),
-        "mode": read_json(paths.config, {}).get("mode", LOCAL_MODE),
+        "mode": run_mode(read_json(paths.config, {})),
     }
     atomic_json(paths.broker, descriptor)
     log = (paths.state / "broker.log").open("ab", buffering=0)
@@ -658,27 +661,41 @@ def _event_observation(event: Event) -> dict[str, Any]:
     }
 
 
-def _competition_step(
+def _apply_step(
     session: Any,
     action: str,
     data: dict[str, Any] | None,
     reasoning: Mapping[str, Any] | None,
     *,
-    fresh_level: bool,
+    fresh_unit: bool,
+    capability: SessionCapability,
 ) -> tuple[Any, bool]:
-    """Apply one paid action while preventing a local opener reset from rewinding the world."""
+    """Apply one paid action: the observation the world returned and whether
+    the next action lands on a freshly entered progress unit. Under the
+    declaration `reset_on_fresh_unit="noop"` a RESET on a fresh unit (the
+    start of the run, right after a RESET, right after an advance) never
+    reaches the world and the kernel answers with the current observation;
+    under the default every action goes to the world and the flag is moot."""
+    if capability.reset_on_fresh_unit != "noop":
+        return _session_step(session, action, data, reasoning), False
+    if action == "RESET" and fresh_unit:
+        return _session_observation(session), True
     before = _encode_observation(_session_observation(session))
-    if action == "RESET" and fresh_level:
-        observed = _session_observation(session)
-    else:
-        observed = _session_step(session, action, data, reasoning)
-    encoded = _encode_observation(observed)
-    level_advanced = encoded["levels_completed"] != before["levels_completed"]
-    return observed, action == "RESET" or level_advanced
+    observed = _session_step(session, action, data, reasoning)
+    if observed is None:
+        return None, fresh_unit  # the caller says what a missing observation means
+    advanced = _encode_observation(observed)["levels_completed"] != before["levels_completed"]
+    return observed, action == "RESET" or advanced
 
 
-def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]:
-    """Reconstruct an exact local session from the append-only paid-action journal."""
+def _replay_local_session(
+    session: Any, run: Run, capability: SessionCapability
+) -> tuple[list[Mutation], bool]:
+    """Reconstruct an exact session from the append-only paid-action journal:
+    the fresh session's observation against event 0, the recorded transitions
+    handed to the world's `replay` hook when it has one, then every recorded
+    action stepped through the session under the world's declaration and
+    its observation held against the recorded one."""
     events = run.events
     current = _encode_observation(_session_observation(session))
     if events and current != _event_observation(events[0]):
@@ -688,14 +705,19 @@ def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]
             hint=REPLAY_HINT,
         )
     mutations = run.mutations
-    fresh_level = True
+    replay = getattr(session, "replay", None)
+    if mutations and callable(replay):
+        with world_boundary("replay"):
+            replay(transitions_of(mutations))
+    fresh_unit = True
     for mutation in mutations:
-        observed, fresh_level = _competition_step(
+        observed, fresh_unit = _apply_step(
             session,
             str(mutation.action),
             mutation.data,
             mutation.reasoning,
-            fresh_level=fresh_level,
+            fresh_unit=fresh_unit,
+            capability=capability,
         )
         actual = _encode_observation(observed)
         expected = dict(mutation.observation)
@@ -705,18 +727,24 @@ def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]
                 code="LOCAL_REPLAY_DIVERGED",
                 hint=REPLAY_HINT,
             )
-    return mutations, fresh_level
+    return mutations, fresh_unit
 
 
-def _open_run(run: Run, session: Session) -> None:
+def _open_run(run: Run, session: Session, capability: SessionCapability) -> None:
     """Event 0 is the daemon's (docs/ARCHITECTURE.md section 6.3): on a fresh
-    run, the first observation, the session's `public_info` into config.json,
-    START through the one writer, and the observation kind's after-record
-    work, all before the socket binds and READY is reported."""
+    run, the first observation, the session's `public_info` and its session
+    declaration into config.json (the record the command line and the status
+    read, having no session of their own), START through the one writer, and
+    the observation kind's after-record work, all before the socket binds and
+    READY is reported."""
     from .extras import kind_for
 
     public_info = json.loads(json.dumps(_session_public_info(session)))
-    run.config = {**run.config, "public_info": dict(public_info or {})}
+    run.config = {
+        **run.config,
+        "public_info": dict(public_info or {}),
+        "session": capability.to_json(),
+    }
     atomic_json(run.paths.config, run.config)
     with world_boundary("observation"):
         pending = make_event(
@@ -781,6 +809,14 @@ _WORLD_HINTS = {
         "nothing was journaled for it; choose another action or other parameters, "
         "or read the state again with `assay status`"
     ),
+    "session": (
+        "fix the adapter's `session` declaration (docs/ARCHITECTURE.md section 2.2) and "
+        "run `assay start WORLD_ID` again; the daemon's log is .assay/broker.log"
+    ),
+    "replay": (
+        "fix the adapter's `replay` hook so it takes the recorded transitions cleanly, "
+        "then resume with `assay start WORLD_ID`; the daemon's log is .assay/broker.log"
+    ),
 }
 
 
@@ -792,6 +828,11 @@ def _session_observation(session: Any) -> Any:
 def _session_public_info(session: Any) -> Any:
     with world_boundary("observation"):
         return getattr(session, "public_info", {}) or {}
+
+
+def _session_declaration(session: Any) -> SessionCapability:
+    with world_boundary("session"):
+        return session_capability(session)
 
 
 def _session_step(
@@ -868,20 +909,29 @@ def _request_refusal(operation: Operation[Any, Any], error: TypeError | KeyError
 
 class _Daemon:
     """What the daemon holds for its life and the operations over it: the one
-    run (docs/ARCHITECTURE.md section 6.3), the world session, the local
-    replay's flag for a freshly entered progress unit, the refusal once a
-    file changed under it (section 8.3), held as what differed, or None, the
-    socket it serves with its token and its sandbox mode, and the two flags
-    of a clean stop (inside a request; stop requested). `handle` is the
-    dispatcher over the wire table (`ops`, section 7.2); the handlers are
-    the `serve_*` functions below, one per operation, bound to the table's
-    names in `HANDLERS`."""
+    run (docs/ARCHITECTURE.md section 6.3), the world session with its
+    declaration (section 2.2), the flag for a freshly entered progress unit,
+    the refusal once a file changed under it (section 8.3), held as what
+    differed, or None, the socket it serves with its token and its sandbox
+    mode, and the two flags of a clean stop (inside a request; stop
+    requested). `handle` is the dispatcher over the wire table (`ops`,
+    section 7.2); the handlers are the `serve_*` functions below, one per
+    operation, bound to the table's names in `HANDLERS`."""
 
-    def __init__(self, paths: RunPaths, run: Run, session: Session, *, fresh_level: bool) -> None:
+    def __init__(
+        self,
+        paths: RunPaths,
+        run: Run,
+        session: Session,
+        *,
+        capability: SessionCapability,
+        fresh_unit: bool,
+    ) -> None:
         self.paths = paths
         self.run = run
         self.session = session
-        self.fresh_level = fresh_level
+        self.capability = capability
+        self.fresh_unit = fresh_unit
         self.tampered: str | None = None
         self.token = ""
         self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
@@ -916,7 +966,7 @@ class _Daemon:
             {
                 "status": status,
                 "pid": os.getpid(),
-                "mode": self.run.config.get("mode", LOCAL_MODE),
+                "mode": run_mode(self.run.config),
                 "sandbox": self.sandbox,
                 **stamp,
             },
@@ -1005,18 +1055,22 @@ class _Daemon:
         if run is not self.run:
             raise AssayError("the daemon spends only on the run it holds", code="INTERNAL")
         self.verify_before_spend()
-        if is_remote_config(run.config):
-            observed = _session_step(self.session, action, data, reasoning)
-            if observed is None:
-                raise AssayError(
-                    "the competition server returned no observation. This remote run "
-                    "cannot be reconstructed; preserve its artifacts and use a fresh "
-                    "directory for another run",
-                    code="REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE",
-                )
-        else:
-            observed, self.fresh_level = _competition_step(
-                self.session, action, data, reasoning, fresh_level=self.fresh_level
+        observed, self.fresh_unit = _apply_step(
+            self.session,
+            action,
+            data,
+            reasoning,
+            fresh_unit=self.fresh_unit,
+            capability=self.capability,
+        )
+        if observed is None and not self.capability.replayable:
+            # A world without replay that returns nothing is a session gone,
+            # not a broken adapter: the run cannot be reconstructed.
+            raise AssayError(
+                "the world returned no observation and declared no replay, so this run "
+                "cannot be reconstructed; preserve its artifacts and use a fresh "
+                "directory for another run",
+                code="REMOTE_SESSION_UNAVAILABLE",
             )
         encoded = _encode_observation(observed)
         mutation_id = (run.mutations[-1].mutation_id if run.mutations else 0) + 1
@@ -1169,19 +1223,37 @@ def _open(paths: RunPaths) -> _Daemon:
     CHAIN_DIVERGED and rewrites nothing, and the run is held from here on,
     appended and chained in memory, and checked against the disk before
     every paid action (docs/ARCHITECTURE.md sections 6.3 and 8.3). Then the
-    world session, the local replay, event 0 on a fresh run, the modules
-    from the manifest the run holds (loaded once; the consults and the
-    outcome observations use the held objects), the socket and READY."""
+    world session and its declaration, the replay when the world is
+    replayable, event 0 on a fresh run, the modules from the manifest the
+    run holds (loaded once; the consults and the outcome observations use
+    the held objects), the socket and READY."""
     run = Run.load(paths, strict=True)
     session = _create_session(paths.root, run.config)
-    if is_remote_config(run.config):
-        fresh_level = False
+    capability = _session_declaration(session)
+    if run.config.get("session") is not None:
+        # The command line routes a resume by the record (section 2.2); a
+        # daemon under another declaration would replay nothing where a
+        # replay is expected, so the run continues only under the record.
+        recorded = recorded_capability(run.config)
+        if recorded != capability:
+            raise AssayError(
+                "the adapter's session declaration changed since the run started: "
+                + declaration_difference(recorded, capability),
+                code="DECLARATION_CHANGED",
+                hint=(
+                    "the run continues only under the declaration recorded in config.json; "
+                    "restore the adapter's, or start another run in a fresh directory"
+                ),
+            )
+    if capability.replayable:
+        _, fresh_unit = _replay_local_session(session, run, capability)
     else:
-        _, fresh_level = _replay_local_session(session, run)
+        # One daemon long: nothing was replayed, the run starts here.
+        fresh_unit = True
     if not run.events:
-        _open_run(run, session)
+        _open_run(run, session, capability)
     active_modules(run)
-    daemon = _Daemon(paths, run, session, fresh_level=fresh_level)
+    daemon = _Daemon(paths, run, session, capability=capability, fresh_unit=fresh_unit)
     daemon.listen()
     return daemon
 

@@ -79,6 +79,7 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `DAEMON_UNAVAILABLE` | refused | the harness's own state refused: the run's environment owner (the daemon) is not running or did not start. |
 | `DAEMON_BUSY` | refused | the harness's own state refused: the daemon is alive and inside a step, hung, or did not answer within the client's wait. |
 | `DAEMON_ORPHANED` | refused | the harness's own state refused: a live daemon still serves this directory while its run state is gone. |
+| `DECLARATION_CHANGED` | refused | the adapter's session declaration differs from the one recorded at the run's start; the run continues only under the recorded one. |
 | `WORLD_ERROR` | world | the world raised or refused inside the adapter's factory, observation or step; nothing was journaled for the action. |
 | `OBSERVATION_INVALID` | world | the adapter's observation has a shape the kernel does not take: no observation, not a JSON object under `data`, no frames, a frame that is not 2-D or has colors outside 0..15. |
 | `INTERNAL` | internal | a bug: an exception that is not a refusal; the traceback is saved. |
@@ -90,4 +91,4 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `LOCAL_REPLAY_DIVERGED` | invalid | the local world no longer reproduces the journal on replay. |
 | `REMOTE_LEASE_EXPIRED` | invalid | the remote session's action-idle lease has run out; the run is not recoverable. |
 | `REMOTE_STATE_DIVERGED` | invalid | the live remote observation differs from the journal. |
-| `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` | invalid | the remote session returned nothing or is gone; the run cannot be reconstructed. |
+| `REMOTE_SESSION_UNAVAILABLE` | invalid | the session of a world that declared no replay returned nothing or is gone; the run cannot be reconstructed. |

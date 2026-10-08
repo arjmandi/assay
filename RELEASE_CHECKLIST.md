@@ -57,7 +57,7 @@ pre-tag grep in section 3:
 git ls-files | grep -E 'test_night_orchestrator|test_e3_prepare|registry_e2_1500|agent-journal|CONSTITUTION-ungated'
 git grep -I -n -E '/Users/|/home/' -- .            # machine paths: none (tools/ included; the runner's state lives outside the tree)
 git grep -n -i 'doctrine' -- src tests examples    # the old manual name: none in code
-git grep -n -i -E 'factorio|oolong|\barc\b|arc_agi|arcengine' -- src/assay   # world names in the kernel: none
+git grep -n -i -E '\b(factorio|fle|oolong|arc|arc_agi|arcengine|arcagi|competition|scorecard|arcade)\b' -- src/assay | grep -v 'LEGACY_REMOTE_MODE = "competition"'   # world names and their words in the kernel: none but the legacy mode value, the one line tests/test_conformance.py allows by name
 git grep -n -E $'\u2014|\u2192' -- src tests examples docs verify '*.md' ':!bench/*/RESULTS.md' ':!evidence'   # em dashes and arrows: none (tests/test_hygiene.py covers the whole tree)
 git ls-files | grep -E 'packs/(corpus|questions)_synth'                       # the length-ladder text: none
 git log --all -- 'bench/oolong/packs/corpus_synth*' 'bench/oolong/packs/questions_synth*'   # and none in history

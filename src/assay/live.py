@@ -464,7 +464,7 @@ def execute_action(
     else:
         outcome, detail = "PREDICTED", "result matched the prediction"
     if warning:
-        detail += f"; scorecard finalization warning: {warning}"
+        detail += f"; finalization warning from the world: {warning}"
     changed = channel_change_lines(run, prior, event)
     receipt = Receipt(
         kind="act",
@@ -669,7 +669,7 @@ def execute_steps(
             )
             break
     if last_warning:
-        detail += f"; scorecard finalization warning: {last_warning}"
+        detail += f"; finalization warning from the world: {last_warning}"
     final_events = run.events
     aggregate_lines: list[str] = []
     aggregate_lines.extend(open_aggregates(run, all_claims))
@@ -830,7 +830,7 @@ def execute_model_plan(
             )
             break
     if last_warning:
-        detail += f"; scorecard finalization warning: {last_warning}"
+        detail += f"; finalization warning from the world: {last_warning}"
     return write_receipt(
         run,
         Receipt(
@@ -908,7 +908,7 @@ def reset_level(
         f"{unit_noun(prior.win_levels)}s and action history preserved"
     )
     if warning:
-        detail += f"; scorecard finalization warning: {warning}"
+        detail += f"; finalization warning from the world: {warning}"
     receipt = Receipt(
         kind="reset",
         outcome="RESET",

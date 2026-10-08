@@ -88,7 +88,7 @@ Line by line:
   (`broker.resolve_adapter_spec`, `broker.check_adapter_spec`), spawns the
   daemon that owns the world (`broker.start_broker`), takes the first
   observation as journal event 0, and prints `STARTED | counterdemo | local
-  simulator | competition accounting | replay recovery enabled` followed by
+  simulator | no action-idle lease | replay recovery enabled` followed by
   the full status: the observation, the registered actions with their
   schemas and never their meanings, the budget, the standing goal, the
   `CHANNELS` block and the `ANCHORS` line.
@@ -196,6 +196,16 @@ document's section 2.2:
   observation whose state is `WIN`. An exception here becomes a warning on
   the receipt. The template writes `.assay/new_world_summary.json`.
 - `session.public_info`, optional, a dict stored in `config.json` at start.
+- `session.session`, optional, the world's declaration of its session rules
+  (`assay.adapters.SessionCapability`): an action-idle lease, whether a reset
+  on a fresh progress unit is answered by the kernel without reaching the
+  world, and whether the run replays on resume. The kernel implements each
+  from the declaration and records it in `config.json` at start; a world
+  that declares nothing gets local semantics (architecture section 2.2).
+- `session.replay(transitions)`, optional, called at a resume with every
+  recorded transition (action, parameters, observation) before the kernel
+  steps them through the fresh session, for a world that needs its own
+  record of what it spent. The template declares neither.
 
 The dict observation shape (`core.normalize_observation`, dict branch):
 
@@ -769,7 +779,8 @@ the column the world adds to the table in `docs/ARCHITECTURE.md` section 4.
   module_modes, gate.
 - Adapter file, observation shape, `finalize`, `public_info`, refusals
   through the observation, world policy before execution, determinism,
-  remote mode, any workaround of the world id rule.
+  the `session` declaration and the `replay` hook, remote mode, any
+  workaround of the world id rule.
 - Runtime: owner token, approvals and waivers, destructive declarations, usd
   cap and spend feed, carryover import, anchors and chain.
 - Constitution: `CONSTITUTION.md` unchanged, plus any world reference handed

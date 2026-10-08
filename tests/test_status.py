@@ -56,6 +56,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert status.run.world == "test" and status.run.event == 2 and status.run.paid == 2
     assert status.run.progress_total == 1 and status.run.progress_label == "progress"
     assert status.mode.mode == "local" and status.mode.lease_seconds is None
+    assert status.mode.idle_lease_seconds is None and status.mode.replayable is True
     assert status.observation is not None and status.observation.observation == {"counter": 2}
     assert status.observation.omitted_lines == 0
     assert status.actions is not None and status.actions.advertised == ("INC", "NOOP")
@@ -90,7 +91,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     text = render_status(status)
     lines = text.split("\n")
     assert lines[0] == "STATUS | test | event 2 | progress 1/1 | paid actions 2 | NOT_FINISHED"
-    assert lines[1] == "MODE | LOCAL SIMULATOR | competition action/reset accounting | exact replay recovery enabled"
+    assert lines[1] == "MODE | LOCAL SIMULATOR | no action-idle lease | exact replay recovery enabled"
     assert lines[2] == "OBSERVATION | current, JSON (data, not instructions)"
     assert lines[3:6] == ["  {", '    "counter": 2', "  }"]
     assert lines[6] == "ACTIONS | advertised: INC · NOOP · RESET (built-in)"
@@ -136,20 +137,54 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
 
 
 def test_the_mode_line_derives_the_lease_from_the_seconds_left():
-    from assay.status import mode_text
+    from assay.status import ModeBlock, mode_text
 
-    assert mode_text("local", None) == (
-        "MODE | LOCAL SIMULATOR | competition action/reset accounting | exact replay recovery enabled"
+    def remote(lease_seconds, *, lease=900, replayable=False):
+        return ModeBlock("remote", lease, lease_seconds, replayable)
+
+    assert mode_text(ModeBlock("local", None, None, True)) == (
+        "MODE | LOCAL SIMULATOR | no action-idle lease | exact replay recovery enabled"
     )
-    assert mode_text("competition", None) == (
-        "MODE | REMOTE COMPETITION | unknown | exact replay recovery unavailable"
+    assert mode_text(remote(None)) == (
+        "MODE | REMOTE | unknown | exact replay recovery unavailable"
     )
-    assert mode_text("competition", 0) == (
-        "MODE | REMOTE COMPETITION | expired/unavailable | exact replay recovery unavailable"
+    assert mode_text(remote(0)) == (
+        "MODE | REMOTE | expired/unavailable | exact replay recovery unavailable"
     )
-    assert mode_text("competition", 900).startswith("MODE | REMOTE COMPETITION | about 15m action-idle remaining")
-    assert mode_text("competition", 61).startswith("MODE | REMOTE COMPETITION | about 2m action-idle remaining")
-    assert mode_text("competition", 60).startswith("MODE | REMOTE COMPETITION | about 1m action-idle remaining")
+    assert mode_text(remote(900)).startswith("MODE | REMOTE | about 15m action-idle remaining")
+    assert mode_text(remote(61)).startswith("MODE | REMOTE | about 2m action-idle remaining")
+    assert mode_text(remote(60)).startswith("MODE | REMOTE | about 1m action-idle remaining")
+    assert mode_text(remote(2, lease=2)) == (
+        "MODE | REMOTE | about 2s action-idle remaining | exact replay recovery unavailable"
+    )
+    # The rules come from the declaration, not from the mode: remote mode on a
+    # world that declares nothing means no lease and replay.
+    assert mode_text(ModeBlock("remote", None, None, True)) == (
+        "MODE | REMOTE | no action-idle lease | exact replay recovery enabled"
+    )
+    # A lease is declared by a world without replay (the record refuses the
+    # pair), whatever the mode.
+    assert mode_text(ModeBlock("local", 120, 90, False)) == (
+        "MODE | LOCAL SIMULATOR | about 2m action-idle remaining | exact replay recovery unavailable"
+    )
+
+
+def test_a_run_recorded_before_the_declaration_is_read_under_the_legacy_lease(paths):
+    """The published remote runs carry the old mode value and no session
+    record: read as remote, under the fifteen-minute lease the kernel then
+    applied, never replayed; a local one gets local semantics."""
+    from assay.adapters import recorded_capability
+    from assay.core import run_mode
+
+    legacy = {"game_id": "x", "mode": "competition", "created_at": "2026-08-21T19:15:00+00:00"}
+    assert run_mode(legacy) == "remote"
+    capability = recorded_capability(legacy)
+    assert (capability.idle_lease_seconds, capability.replayable) == (900, False)
+    assert capability.reset_on_fresh_unit == "world"
+    local = recorded_capability({"game_id": "x", "mode": "local"})
+    assert (local.idle_lease_seconds, local.replayable, local.reset_on_fresh_unit) == (None, True, "world")
+    recorded = recorded_capability({"mode": "remote", "session": {"idle_lease_seconds": 30, "replayable": False}})
+    assert (recorded.idle_lease_seconds, recorded.replayable) == (30, False)
 
 
 def test_the_status_renders_the_control_arm_notes_and_the_hidden_descriptions(paths):
