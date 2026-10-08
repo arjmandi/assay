@@ -40,7 +40,14 @@ from .adapters import SessionCapability, recorded_capability
 from .core import REMOTE_MODE, AssayError, load_jsonl, read_json, run_mode
 from .evidence import RecentLine, history_text, recent_lines
 from .extras import kind_for
-from .integrity import anchor_status, anchor_text, ungated_events, ungated_permitted
+from .integrity import (
+    anchor_status,
+    anchor_text,
+    tamper_summary,
+    tamper_text,
+    ungated_events,
+    ungated_permitted,
+)
 from .meters import level_action_count, recent_predictions, specificity
 from .model import batching_rights, fit_path, model_source
 from .modules import advisory_lines, ignored_modules, ignored_text, load_hazards
@@ -277,10 +284,22 @@ class IntegrityBlock:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
+class TamperBlock:
+    """The TAMPER line: the standing `tamper_detected` records of the
+    activity log and the state of their seal (`sealed`, `unwritten`,
+    `lifted`); present only when there is at least one (section 8.3)."""
+
+    records: int
+    state: str
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
 class AnchorsBlock:
-    """The ANCHORS line: the file, the count, the last anchored event, the
-    last failed write (its event and error) when newer than the last
-    anchor, and whether the directory can be written now."""
+    """The ANCHORS line: the file, the count of plain anchors, the last
+    anchored event, the last failed write (its event and error) when newer
+    than the last anchor, whether the directory can be written now, the
+    sealed event on a sealed run, and the problem of a file that cannot be
+    read."""
 
     file: str
     count: int
@@ -288,6 +307,8 @@ class AnchorsBlock:
     failed_event: int | None
     failed_error: str | None
     writable: bool
+    sealed: int | None
+    unreadable: str | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -380,6 +401,7 @@ class Status:
     aggregates: AggregatesBlock | None
     mis_references: int
     integrity: IntegrityBlock | None
+    tamper: TamperBlock | None
     anchors: AnchorsBlock | None
     emergence: EmergenceBlock | None
     unit: UnitBlock
@@ -408,6 +430,7 @@ def status_of(run: Run, *, history: int = 8) -> Status:
     paid = sum(1 for item in events if item.counts_action)
     hits, total = recent_predictions(events)
     claims, vacuous = _claims_blocks(run)
+    anchors = _anchors_block(run) if registry else None
     return Status(
         run=RunBlock(
             world=str(run.config.get("game_id", "unknown")),
@@ -435,7 +458,8 @@ def status_of(run: Run, *, history: int = 8) -> Status:
         aggregates=_aggregates_block(run) if registry else None,
         mis_references=_mis_references(run) if registry else 0,
         integrity=_integrity_block(run) if registry else None,
-        anchors=_anchors_block(run) if registry else None,
+        tamper=_tamper_block(run, anchors) if registry else None,
+        anchors=anchors,
         emergence=EmergenceBlock(**emergence_meter(run)) if registry else None,
         unit=UnitBlock(paid=level_action_count(events), hits=hits, total=total),
         claims=claims,
@@ -662,7 +686,17 @@ def _anchors_block(run: Run) -> AnchorsBlock:
         failed_event=status["failed_event"],
         failed_error=status["failed_error"],
         writable=bool(status["writable"]),
+        sealed=status["sealed"],
+        unreadable=status["unreadable"],
     )
+
+
+def _tamper_block(run: Run, anchors: AnchorsBlock | None) -> TamperBlock | None:
+    """The standing tamper_detected records, with the state of their seal;
+    None when the activity log carries none."""
+    sealed = anchors is not None and anchors.sealed is not None
+    records, state = tamper_summary(load_jsonl(run.paths.activity), sealed)
+    return TamperBlock(records=records, state=state) if records else None
 
 
 def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
@@ -984,6 +1018,8 @@ def _status_lines(status: Status) -> list[str]:
         )
     if status.integrity is not None:
         lines.extend(integrity_text(status.integrity))
+    if status.tamper is not None:
+        lines.append(tamper_text(status.tamper.records, status.tamper.state))
     if status.anchors is not None:
         anchors = status.anchors
         lines.append(
@@ -994,6 +1030,8 @@ def _status_lines(status: Status) -> list[str]:
                 anchors.failed_event,
                 anchors.failed_error,
                 anchors.writable,
+                anchors.sealed,
+                anchors.unreadable,
             )
         )
     if status.emergence is not None:

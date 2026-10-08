@@ -91,8 +91,11 @@ memory, verifies the journal on disk before every paid action, and refuses to co
 a difference, sealing the anchor file at the last trusted event; in a Claude Code session
 the shipped hooks refuse writes under `.assay/` and world access that bypasses `assay`;
 the operator holds the owner token outside the run, and approvals and waivers are granted
-inside the daemon against it. An agent that rewrites the journal, the chain file, the
-mutation log and the anchor file consistently while the daemon is stopped is caught only
+inside the daemon against it. The activity log is the agent's to write, so a waiver or an
+installed module recorded there is admitted at the next start on the operator's word, not
+the daemon's; the separate-user setup is what puts it out of reach. An agent that rewrites
+the journal, the chain file, the mutation log and the anchor file consistently while the
+daemon is stopped is caught only
 by a head published or anchored outside its reach, which is why heads are published with
 every evidence pack and why a separate user for the daemon is the recommended setup where
 the stakes warrant it. Nothing the agent asserts is load-bearing: every grade is computed

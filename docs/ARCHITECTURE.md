@@ -1337,8 +1337,8 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   object or null, `predict`, `because`, `at_event`, `declares`), `commit` (`steps` as a list
   of `{action, params, predict}`, or `plan`, with `at_event` and `declares`), `reset`
   (`because`, `at_event`, `declares`), and the owner operations `install_module` (`path`,
-  `token`), `approve` (`action`, `token`), `waive` (`action`, `token`, `because`),
-  `goal_ratify` (`id`, `token`). The daemon holds the approvals in memory, rebuilds the
+  `owner_token`), `approve` (`action`, `owner_token`), `waive` (`action`, `owner_token`,
+  `because`), `goal_ratify` (`id`, `owner_token`). The daemon holds the approvals in memory, rebuilds the
   waivers from the activity log at load, and records each grant and use in the activity
   log as today, so the agent cannot write an approval into a file and the file two
   processes rewrote is gone; the three owner commands need the daemon alive. The `step` operation is
@@ -1390,6 +1390,13 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   rule for `paid` and `owner`). The three commands refuse without a live daemon with
   `DAEMON_UNAVAILABLE` and the hint to resume (`broker.broker_owner`), and print what
   they printed. An approval no longer survives a stop, which is the point of holding it.
+  The four owner commands take `--token-file PATH` beside `--token`, a file outside the
+  run directory (refused inside it like `--owner-token-file`), so the token never shows in
+  the process list; a wrong or missing owner token leaves an `owner_refused` activity
+  record naming the operation and nothing else, so probing is visible; the grant is
+  stamped on the monotonic clock, checked by the gate before any spend and consumed by the
+  daemon after the disk is verified (`agenda.check_approval`, `agenda.consume_approval`),
+  so a tamper refusal leaves it held.
 
 ### 7.3 `--json`
 
@@ -1460,7 +1467,12 @@ which a status budget sets on the fitted copy the renderer prints (the head alon
 is always false); `gate` is always present with the mode (None only without a registry), and the
 budget cap lives in the budget block alone. From #10 the `integrity` block carries
 `refused_code` beside `refused`, the code the INTEGRITY line names (`CHAIN_DIVERGED`
-for the journal's own problems, `RUN_SEALED` for a sealed anchor file). The `vacuous` block lists every flagged
+for the journal's own problems, `RECORD_CORRUPT` for an anchor file that cannot be read,
+`RUN_SEALED` for a sealed one); a `tamper` block (`records`, `state`) stands between
+`integrity` and `anchors` when the activity log carries `tamper_detected` records, and
+renders the TAMPER line; the `anchors` block carries `sealed` (the sealed event) and
+`unreadable` (the problem of a file that cannot be read), which the ANCHORS line prints
+instead of counting a seal among the anchors. The `vacuous` block lists every flagged
 verifier with its counters and whether it is vacuous under the file's rule, the
 never-failed advisory being the rest; the module advisory lines and the kind's lines
 are stored as lines, the two exceptions the rule allows.
@@ -1591,6 +1603,15 @@ read from the pinned registry and the activity log at load, and the entries with
 either are `run.unadmitted` (6.4). A registry module is admitted by its file's name, so a
 module file rewritten under a registered name together with its entry's hash, while the
 daemon is stopped, is still two writes; the note's rule is as far as the shared uid goes.
+Two checks of the anchor file join the start (review of #10): `config.json`'s
+`anchor_file` must be the file the environment names, the directory from
+`ASSAY_ANCHOR_DIR` or the default and the name from the run's digest, else the start
+refuses with `ANCHOR_FILE_MISMATCH` (`integrity.check_anchor_file`, in `assay start`
+before any recovery and in the daemon before the session), since one write to
+`config.json` while the daemon was stopped would otherwise move the seal into a file the
+agent owns; and `audit` reads a recorded anchor file that lies inside the run directory
+as anchors DIVERGED, a verdict, while a mere directory difference stays the
+`anchor_env_mismatch` information line it always was.
 
 ### 8.3 What the daemon verifies before every spend
 
@@ -1608,7 +1629,23 @@ exit 5; the hint names the remedy below), and the remedy in ONBOARDING section 1
 parametrized tamper test of `tests/test_daemon_run.py` checks the seal on every one of
 its eleven edits and the `RUN_SEALED` refusal of the next start where the journal's own
 problems do not refuse first; a separate test reads the seal through `audit` after the
-stop, removes it, and resumes.
+stop, removes it, and resumes. The review of #10 added: the seal as a typed record
+(`integrity.Seal`, `from_json` and `to_json`); the remedy's order in the hint and in
+ONBOARDING (the changed file put back first, the sealing line removed last), with a
+TAMPER line on `audit` and `status` whenever the activity log carries `tamper_detected`
+records (`TAMPER | N tamper_detected record(s) in the activity log; the anchor file is
+sealed` / `the seal could not be written` / `the seal was lifted by hand`), informational
+beside the verdict; an anchor file that cannot be read as one JSON object per line
+(`integrity.read_anchors`) is a finding, not a file read around: the strict load refuses
+with `RECORD_CORRUPT` naming the file and the line, `audit` reads it as anchors DIVERGED
+with a problem line, and the ANCHORS line says `unreadable`; `assay start` refuses an
+anchor directory it cannot write with `ANCHOR_DIR_UNWRITABLE` (kind usage, the hint
+naming `ASSAY_ANCHOR_DIR` and the permission), in place of the warning it printed, so the
+seal has somewhere to go, and for a run in flight whose directory became unwritable at
+seal time the `anchor_failed` record carrying `seal` is read by `audit` as anchors
+DIVERGED with a problem line (the next start refuses while the directory stays
+unwritable, and proceeds once it is writable with that verdict standing); a sealed run's
+ANCHORS line says `sealed at eN` instead of counting the seal among the anchors.
 
 Before every paid action the daemon calls `run.verify_disk()` (section 6.3): the journal's
 length and recomputed head, the mutation log, `registry.json`, `config.json`, `chain.json`,
@@ -1630,8 +1667,10 @@ The checker in `verify/` reads no anchors and keeps its limit honest: it reports
 chain against `chain.json` and the published head only.
 
 The remedy is the operator's: the anchor file is the operator's own file outside the run,
-and removing the seal by hand lets the run resume, with the `tamper_detected` activity
-record standing as the record of what happened. The next `assay start` after a tamper
+and putting back the file the `tamper_detected` record names, then removing the seal by
+hand, last, lets the run resume, with the `tamper_detected` activity record standing as
+the record of what happened; nothing checks that the file was put back, so the order is
+the operator's discipline, and the TAMPER line keeps the record in view. The next `assay start` after a tamper
 replays the journal through the adapter and fails
 on the first divergence (`LOCAL_REPLAY_DIVERGED`) or refuses on the chain
 (`CHAIN_DIVERGED`) or the sealed anchor. An edit that rewrote the journal, the chain file,
@@ -1821,8 +1860,11 @@ memory, verifies the journal on disk before every paid action, and refuses to co
 a difference, sealing the anchor file at the last trusted event; in a Claude Code session
 the shipped hooks refuse writes under `.assay/` and world access that bypasses `assay`;
 the operator holds the owner token outside the run, and approvals and waivers are granted
-inside the daemon against it. An agent that rewrites the journal, the chain file, the
-mutation log and the anchor file consistently while the daemon is stopped is caught only
+inside the daemon against it. The activity log is the agent's to write, so a waiver or an
+installed module recorded there is admitted at the next start on the operator's word, not
+the daemon's; the separate-user setup is what puts it out of reach. An agent that rewrites
+the journal, the chain file, the mutation log and the anchor file consistently while the
+daemon is stopped is caught only
 by a head published or anchored outside its reach, which is why heads are published with
 every evidence pack and why a separate user for the daemon is the recommended setup where
 the stakes warrant it. Nothing the agent asserts is load-bearing: every grade is computed
@@ -1836,7 +1878,10 @@ agent-writable, so a `liveness_waived` record or a `module_installed` record wri
 into it while the daemon is stopped is admitted at the next start (8.1, 8.2), a
 `tamper_detected` record can be removed from it, and the seal is as safe as the anchor
 file, which a Claude Code session's hooks refuse to write (8.4) and a separate uid puts
-out of reach (8.1); isolation of agent code beyond the sandbox's stated limits, which
+out of reach (8.1); the start checks that `config.json` still names the environment's
+anchor file and the audit reads one inside the run directory as no evidence (8.2), which
+is a check on the file's place, not on its content; isolation of agent code beyond the
+sandbox's stated limits, which
 differ by platform; any guarantee against an operator who controls the machine. Inside the
 sandbox, `file-read-metadata` is unfiltered, so a program can learn the existence, size and
 modification time of any path (the journal's size, whether `~/.ssh/id_ed25519` exists),

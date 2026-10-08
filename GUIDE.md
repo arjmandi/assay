@@ -232,10 +232,10 @@ were played before this order existed, with the agent running `start` itself.
 
 ```bash
 assay start WORLD ... --owner-token-file ~/.assay/tokens/run7   # keep the token out of the agent's terminal
-assay goal ratify 2 --token TOK    # accept the agent's goal proposal #2
-assay approve PAY --token TOK      # one use of an approval-gated action
-assay waive DRIVE --token TOK --because "sim rehearsed on Tuesday's binding"
-assay module install audit.py --token TOK   # add a behavior module mid-run (journaled, manifest-pinned)
+assay goal ratify 2 --token-file ~/.assay/tokens/run7    # accept the agent's goal proposal #2
+assay approve PAY --token-file ~/.assay/tokens/run7      # one use of an approval-gated action
+assay waive DRIVE --token-file ~/.assay/tokens/run7 --because "sim rehearsed on Tuesday's binding"
+assay module install audit.py --token-file ~/.assay/tokens/run7   # add a behavior module mid-run (journaled, manifest-pinned)
 assay module list                  # active modules, modes, constitution, telemetry
 assay spend report --usd 4.20 --tokens 91000 --id turn-7  # feed the LLM bill
 assay audit                        # chain, anchors, contiguity, ungated scan
@@ -248,8 +248,10 @@ assay start WORLD ... --import assay_knowledge.json   # warm-start, demoted
 `goal ratify`, `approve`, `waive` and `module install` are daemon operations:
 each needs the daemon alive (`assay start` resumes it) and is checked inside
 the daemon against the token's hash, so nothing the agent writes into a file
-can grant one. An approval lives in the daemon's memory for ten minutes and
-does not survive a stop; a waiver lasts the run.
+can grant one. `--token-file PATH` reads the token from the file `start`
+wrote (outside the run directory), so it never appears in the process list;
+`--token TOK` passes it as given. An approval lives in the daemon's memory
+for ten minutes and does not survive a stop; a waiver lasts the run.
 
 The owner token is printed once at `start` unless `--owner-token-file` (or
 `ASSAY_OWNER_TOKEN_FILE`) writes it to a file outside the run directory. In

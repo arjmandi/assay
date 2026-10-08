@@ -41,8 +41,14 @@ from .adapters import (
     session_capability,
     transitions_of,
 )
-from .agenda import APPROVAL_EXPIRY_SECONDS, grant_approval, grant_waiver, ratify_goal
-from .integrity import TAMPER_SEAL
+from .agenda import (
+    APPROVAL_EXPIRY_SECONDS,
+    consume_approval,
+    grant_approval,
+    grant_waiver,
+    ratify_goal,
+)
+from .integrity import TAMPER_SEAL, check_anchor_file
 from .live import execute_action, execute_model_plan, execute_steps, reset_level
 from .modules import active_modules, install_module
 from .ops import (
@@ -80,6 +86,7 @@ from .ops import (
     decode_json,
 )
 from .records import Claim, Event, Mutation, Receipt
+from .registry import action_spec
 from .run import Run
 
 
@@ -1103,6 +1110,12 @@ class _Daemon:
         if run is not self.run:
             raise AssayError("the daemon spends only on the run it holds", code="INTERNAL")
         self.verify_before_spend()
+        # The owner's one-shot grant is used up here, after the disk is
+        # verified and before the world step: a refusal of either kind
+        # leaves it held (the gate checked it before any of this).
+        spec = action_spec(run.registry, action) if run.registry else None
+        if spec and spec.get("approval"):
+            consume_approval(run, action)
         observed, self.fresh_unit = _apply_step(
             self.session,
             action,
@@ -1175,7 +1188,16 @@ class _Daemon:
             decoded = operation.request.from_json(args)
         except (TypeError, KeyError) as error:
             raise _request_refusal(operation, error) from error
-        result = HANDLERS[operation.name](self, self.run, decoded)
+        try:
+            result = HANDLERS[operation.name](self, self.run, decoded)
+        except AssayError as error:
+            if operation.owner and error.code == "OWNER_TOKEN":
+                # A wrong owner token leaves its mark: the operation, never
+                # the token, so probing is visible in the activity log.
+                append_jsonl(
+                    self.paths.activity, {"kind": "owner_refused", "operation": operation.name}
+                )
+            raise
         terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
         return {"v": PROTOCOL_VERSION, "ok": True, "result": result.to_json()}, terminal
 
@@ -1302,6 +1324,10 @@ def _open(paths: RunPaths) -> _Daemon:
     run holds (loaded once; the consults and the outcome observations use
     the held objects), the socket and READY."""
     run = Run.load(paths, strict=True)
+    # The anchor file the run records must be the one the environment names
+    # (section 8.2): the seal goes there, and a config.json rewritten while
+    # the daemon was stopped must not move it into a file the agent owns.
+    check_anchor_file(paths, run.config)
     session = _create_session(paths.root, run.config)
     capability = _session_declaration(session)
     if run.config.get("session") is not None:

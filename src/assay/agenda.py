@@ -33,6 +33,7 @@ models, self-proposed goals: measuring emergence instead of assuming it.
 from __future__ import annotations
 
 import hashlib
+import hmac
 import secrets
 import time
 from collections.abc import Iterable, Mapping, Sequence
@@ -82,7 +83,9 @@ def require_owner(run: Run, token: str | None) -> None:
             "no owner token was minted for this run; owner operations are unavailable",
             code="OWNER_TOKEN",
         )
-    if not token or hashlib.sha256(token.encode()).hexdigest() != run.owner_hash:
+    if not token or not hmac.compare_digest(
+        hashlib.sha256(token.encode()).hexdigest(), run.owner_hash
+    ):
         raise AssayError(
             "owner authority required: pass --token <the token printed at start>. "
             "The agent proposes; the owner ratifies.",
@@ -163,17 +166,21 @@ def ratify_goal(run: Run, proposal_id: int, token: str | None) -> dict[str, Any]
 
 def grant_approval(run: Run, action: str, token: str | None) -> str:
     """One-shot, expiring owner approval for an approval-flagged action, held
-    on the run the daemon holds and nowhere else; a new grant replaces an
-    older one. Returns the action's name as held."""
+    on the run the daemon holds and nowhere else, stamped on the monotonic
+    clock so a wall-clock change neither extends nor cuts it; a new grant
+    replaces an older one. Returns the action's name as held."""
     require_owner(run, token)
     name = action.upper()
-    run.approvals[name] = time.time()
+    run.approvals[name] = time.monotonic()
     append_jsonl(run.paths.activity, {"kind": "approval_granted", "action": name})
     return name
 
 
-def consume_approval(run: Run, action: str) -> None:
-    """Default-deny: refuse unless a fresh, unused approval is held; use it up."""
+def check_approval(run: Run, action: str) -> str:
+    """Default-deny: a fresh, unused grant for this action must be held;
+    refused otherwise, before any spend. The grant is consumed apart, after
+    the disk is verified (`consume_approval`), so a refusal does not burn
+    it. Returns the action's name as held."""
     name = action.upper()
     granted_at = run.approvals.get(name)
     if granted_at is None:
@@ -182,13 +189,21 @@ def consume_approval(run: Run, action: str) -> None:
             code="APPROVAL_REQUIRED",
             hint=f"ask the operator to grant one use with `assay approve {action} --token ...`",
         )
-    if time.time() - granted_at > APPROVAL_EXPIRY_SECONDS:
+    if time.monotonic() - granted_at > APPROVAL_EXPIRY_SECONDS:
         raise AssayError(
             f"{action}'s approval expired after {int(APPROVAL_EXPIRY_SECONDS)}s "
             "(default-deny with timeout)",
             code="APPROVAL_REQUIRED",
             hint=f"ask the operator to run `assay approve {action} --token ...` again",
         )
+    return name
+
+
+def consume_approval(run: Run, action: str) -> None:
+    """Use the held grant up: checked again, deleted, and `approval_used`
+    recorded. The daemon calls it after the disk is verified and before the
+    world step (section 8.3)."""
+    name = check_approval(run, action)
     del run.approvals[name]
     append_jsonl(run.paths.activity, {"kind": "approval_used", "action": name})
 

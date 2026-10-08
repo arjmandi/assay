@@ -74,7 +74,8 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert status.model is None and status.hazards is None and status.spend is None and status.aggregates is None
     assert status.mis_references == 0
     assert status.integrity is not None and status.integrity.ungated == () and status.integrity.refused is None
-    assert status.integrity.refused_code is None
+    assert status.integrity.refused_code is None and status.tamper is None
+    assert status.anchors.sealed is None and status.anchors.unreadable is None
     assert status.anchors is not None and status.anchors.count == 0
     assert status.anchors.failed_event is None and status.anchors.failed_error is None
     assert status.emergence is not None and status.emergence.verifiers == 0
@@ -123,7 +124,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert list(data) == [
         "run", "mode", "observation", "actions", "kind", "registry", "budget", "gate", "agenda",
         "ignored_modules", "foreign", "channels", "model", "hazards", "spend", "aggregates",
-        "mis_references", "integrity", "anchors", "emergence", "unit", "claims", "vacuous",
+        "mis_references", "integrity", "tamper", "anchors", "emergence", "unit", "claims", "vacuous",
         "advisories", "recent", "notes",
     ]
     assert data["run"] == {
@@ -227,8 +228,9 @@ def test_the_audit_report_is_a_record_with_the_files_shape(paths):
         "computed_at", "events", "paid", "mutations", "contiguous", "chain", "anchors", "anchor_count",
         "anchor_file", "anchor_env_mismatch", "ungated", "ungated_permitted", "ungated_permitted_by",
         "recovered_orphans", "recovered_without_prediction", "mutations_pending",
-        "invalid_for_scoring", "problems",
+        "invalid_for_scoring", "problems", "tamper_records", "tamper_state",
     }
+    assert stored["tamper_records"] == 0 and stored["tamper_state"] is None
     assert stored["ungated"] == [] and stored["problems"] == []
     assert audit_lines(report)[0] == (
         "AUDIT | CLEAN | events 3 (paid 2) | contiguous yes | chain absent | anchors none (0)"

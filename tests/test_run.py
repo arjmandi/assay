@@ -348,11 +348,13 @@ def test_a_sealed_anchor_is_a_finding_lenient_and_a_refusal_strict(tmp_path, mon
     assert refused.value.code == "RUN_SEALED" and refused.value.kind == "invalid"
     assert str(refused.value).endswith("; the run is refused and nothing is rewritten")
     assert refused.value.hint == (
-        f"the anchor file is the operator's: remove the sealing line from {target} by hand to "
-        "resume; the tamper_detected activity record stays as the record of what happened"
+        "the anchor file is the operator's: put back the file the tamper_detected record in "
+        f".assay/activity.jsonl names, then remove the sealing line from {target} last; the "
+        "record stays as the record of what happened"
     )
     report = audit(lenient)
-    assert report.anchors == "DIVERGED" and report.anchor_count == 1 and report.chain == "intact"
+    assert report.tamper_records == 0 and report.tamper_state is None
+    assert report.anchors == "DIVERGED" and report.anchor_count == 0 and report.chain == "intact"
     assert report.invalid_for_scoring is True
     assert report.problems == (
         "anchor: sealed at e1 (tamper_detected): the daemon found the run's files changed under "
@@ -390,6 +392,79 @@ def test_a_sealed_anchor_is_a_finding_lenient_and_a_refusal_strict(tmp_path, mon
     assert Run.load(paths, strict=False).integrity.sealed is None
 
 
+def test_the_seal_is_a_typed_record(tmp_path, monkeypatch):
+    """The anchor file's sealing line as a record (section 6.2's convention):
+    the three keys the note names, the stamp every line carries left alone,
+    a malformed line skipped by `seal_of`."""
+    from assay.integrity import Seal, anchor_file, seal_of
+
+    seal = Seal(event_id=4, head="a" * 64, seal="tamper_detected")
+    assert Seal.from_json({**seal.to_json(), "timestamp": "t"}) == seal
+    assert seal.to_json() == {"event_id": 4, "head": "a" * 64, "seal": "tamper_detected"}
+    with pytest.raises(TypeError, match="^seal.event_id must be an integer, got str$"):
+        Seal.from_json({"event_id": "4", "head": "a", "seal": "tamper_detected"})
+    with pytest.raises(KeyError):
+        Seal.from_json({"event_id": 4, "seal": "tamper_detected"})
+    assert seal_of([{"seal": "tamper_detected", "event_id": True, "head": "x"}, seal.to_json()]) == seal
+    assert seal_of([{"event_id": 1, "head": "x", "run": "r"}]) is None
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    run.seal("tamper_detected")
+    written = json.loads(anchor_file(paths, run.config).read_text().splitlines()[-1])
+    assert Seal.from_json(written) == Seal(event_id=0, head=run.chain_head, seal="tamper_detected")
+    assert set(written) == {"event_id", "head", "seal", "timestamp"}
+
+
+def test_an_unreadable_anchor_file_is_a_finding_lenient_and_a_refusal_strict(tmp_path, monkeypatch):
+    """Section 8.3: a line of the anchor file that is not one JSON object is
+    never read around. The lenient load names the file and the line, the
+    strict load refuses with RECORD_CORRUPT, the audit reads the anchors as
+    DIVERGED with a problem line, the ANCHORS line says unreadable, and a
+    seal behind the bad line is not looked for until the line is fixed."""
+    from assay.integrity import anchor_file, anchor_line, audit
+
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    run.seal("tamper_detected")
+    target = anchor_file(paths, run.config)
+    good = target.read_text()
+    for bad, problem in (
+        ("not json\n", "line 1 is not JSON (Expecting value: line 1 column 1 (char 0))"),
+        ("[1, 2]\n", "line 1 is not an object"),
+    ):
+        target.write_text(bad + good)
+        lenient = Run.load(paths, strict=False)
+        assert lenient.integrity.anchors_unreadable == f"anchor file {target} is unreadable: {problem}"
+        assert lenient.integrity.sealed is None
+        assert lenient.integrity.refused == lenient.integrity.anchors_unreadable
+        assert lenient.integrity.refused_code == "RECORD_CORRUPT"
+        with pytest.raises(AssayError, match=f"^anchor file .* is unreadable: {problem[:12]}") as refused:
+            Run.load(paths, strict=True)
+        assert refused.value.code == "RECORD_CORRUPT" and refused.value.kind == "internal"
+        assert refused.value.hint == (
+            "the anchor file is the operator's: every line is one JSON object; fix or remove "
+            f"the line in {target} by hand, then start again"
+        )
+        report = audit(lenient)
+        assert report.anchors == "DIVERGED" and report.anchor_count == 0 and report.invalid_for_scoring is True
+        assert report.problems == (
+            f"anchor: the anchor file {target} is unreadable: {problem}; `assay start` refuses until it is fixed",
+        )
+        assert anchor_line(paths, run.config) == (
+            f"ANCHORS | {target} | unreadable: {problem}; `assay start` refuses until it is fixed"
+        )
+    # The line fixed: the seal behind it is found again.
+    target.write_text(good)
+    assert Run.load(paths, strict=False).integrity.refused_code == "RUN_SEALED"
+    assert anchor_line(paths, run.config) == (
+        f"ANCHORS | {target} | none yet (every 25 events and on WIN) | sealed at e0"
+    )
+
+
 def test_the_earliest_seal_governs_and_a_seal_beyond_the_journal_is_named(tmp_path, monkeypatch):
     from assay.core import append_jsonl
     from assay.integrity import anchor_file, audit, seal_of
@@ -403,7 +478,8 @@ def test_the_earliest_seal_governs_and_a_seal_beyond_the_journal_is_named(tmp_pa
     append_jsonl(target, {"event_id": 7, "head": "x" * 64, "seal": "tamper_detected"})
     append_jsonl(target, {"event_id": 3, "head": "y" * 64, "seal": "tamper_detected"})
     append_jsonl(target, {"event_id": "no", "head": "z", "seal": "tamper_detected"})  # malformed: ignored
-    assert seal_of([json.loads(line) for line in target.read_text().splitlines()])["event_id"] == 3
+    governing = seal_of([json.loads(line) for line in target.read_text().splitlines()])
+    assert governing is not None and governing.event_id == 3
     loaded = Run.load(paths, strict=False)
     assert loaded.integrity.sealed == (
         "anchor file sealed at e3 (tamper_detected): the daemon found the run's files changed "
@@ -416,7 +492,7 @@ def test_the_earliest_seal_governs_and_a_seal_beyond_the_journal_is_named(tmp_pa
     # A plain anchor beside the seals is still checked on its own.
     append_jsonl(target, {"event_id": 0, "head": run.chain_head, "run": str(paths.root)})
     report = audit(Run.load(paths, strict=False))
-    assert report.anchors == "DIVERGED" and report.anchor_count == 4
+    assert report.anchors == "DIVERGED" and report.anchor_count == 1
     assert report.problems[0].startswith("anchor: sealed at e3 (tamper_detected)")
 
 

@@ -452,7 +452,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         audited = run_cli(run, "audit")
         assert audited.returncode == 0, audited.stderr
         assert "AUDIT | INVALID FOR SCORING | events " in audited.stdout
-        assert "anchors DIVERGED (1)" in audited.stdout
+        assert "anchors DIVERGED (0)" in audited.stdout
         assert (
             "AUDIT | problem: anchor: sealed at e1 (tamper_detected): the daemon found the "
             "run's files changed under it and the record ends there; the run is invalid for "
@@ -495,7 +495,9 @@ def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
         approve = run_cli(run, "approve", "NOOP", "--token", token)
         assert approve.returncode == 5 and "ERROR | TAMPER_DETECTED | registry.json (held " in approve.stderr
         assert not _activity(run, "approval_granted")
-        # While it lives, status carries both the daemon's refusal and the seal.
+        # While it lives, status carries the daemon's refusal, the seal, and
+        # the standing record; the ANCHORS line names the seal instead of
+        # counting it.
         status = run_cli(run, "status")
         assert "INTEGRITY | the daemon refused a paid action: registry.json (held " in status.stdout
         assert (
@@ -503,12 +505,14 @@ def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
             "files changed under it and the record ends there; this run is INVALID FOR SCORING "
             "and `assay start` refuses to resume it (RUN_SEALED)"
         ) in status.stdout
+        assert "TAMPER | 1 tamper_detected record(s) in the activity log; the anchor file is sealed" in status.stdout
+        assert f"ANCHORS | {anchor} | none yet (every 25 events and on WIN) | sealed at e1" in status.stdout
         assert run_cli(run, "stop").returncode == 0
         audited = run_cli(run, "audit")
         assert audited.returncode == 0, audited.stderr
         assert (
             "AUDIT | INVALID FOR SCORING | events 2 (paid 1) | contiguous yes | chain intact | "
-            "anchors DIVERGED (1)"
+            "anchors DIVERGED (0)"
         ) in audited.stdout
         problems = [line for line in audited.stdout.splitlines() if line.startswith("AUDIT | problem: ")]
         assert problems == [
@@ -516,9 +520,11 @@ def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
             "files changed under it and the record ends there; the run is invalid for scoring "
             f"until the operator removes the sealing line from {anchor}",
         ]
+        assert "AUDIT | TAMPER | 1 tamper_detected record(s) in the activity log; the anchor file is sealed" in audited.stdout
         report = json.loads((run / ".assay" / "audit.json").read_text())
         assert report["anchors"] == "DIVERGED" and report["invalid_for_scoring"] is True
-        assert report["chain"] == "intact" and report["anchor_count"] == 1
+        assert report["chain"] == "intact" and report["anchor_count"] == 0
+        assert report["tamper_records"] == 1 and report["tamper_state"] == "sealed"
         status = run_cli(run, "status")
         assert "INTEGRITY | the daemon refused" not in status.stdout
         assert "refuses to resume it (RUN_SEALED)" in status.stdout
@@ -528,13 +534,14 @@ def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
             "ERROR | RUN_SEALED | anchor file sealed at e1 (tamper_detected): the daemon found "
             "the run's files changed under it and the record ends there; the run is refused and "
             "nothing is rewritten\n"
-            f"NEXT | the anchor file is the operator's: remove the sealing line from {anchor} by "
-            "hand to resume; the tamper_detected activity record stays as the record of what "
-            "happened\n"
+            "NEXT | the anchor file is the operator's: put back the file the tamper_detected record "
+            f"in .assay/activity.jsonl names, then remove the sealing line from {anchor} last; the "
+            "record stays as the record of what happened\n"
         )
         assert _anchors(run) == [seal]
-        # The remedy: the operator reads the record, puts the registry back
-        # and removes the sealing line from their own file.
+        # The remedy, in its order: the operator reads the record, puts the
+        # registry back, and removes the sealing line from their own file
+        # last.
         differed = _activity(run, "tamper_detected")[0]["differences"]
         assert [item["what"] for item in differed] == ["registry.json"]
         registry.write_bytes(original)
@@ -552,7 +559,16 @@ def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
         assert (
             "AUDIT | CLEAN | events 3 (paid 2) | contiguous yes | chain intact | anchors none (0)"
         ) in audited.stdout
+        # The record stays, and stays in view: one line on audit and status,
+        # information beside the verdict.
         assert len(_activity(run, "tamper_detected")) == 1
+        assert "AUDIT | TAMPER | 1 tamper_detected record(s) in the activity log; the seal was lifted by hand" in audited.stdout
+        assert "AUDIT | problem:" not in audited.stdout
+        report = json.loads((run / ".assay" / "audit.json").read_text())
+        assert report["tamper_records"] == 1 and report["tamper_state"] == "lifted"
+        status = run_cli(run, "status")
+        assert "TAMPER | 1 tamper_detected record(s) in the activity log; the seal was lifted by hand" in status.stdout
+        assert "INTEGRITY" not in status.stdout
     finally:
         stop_run(run)
 

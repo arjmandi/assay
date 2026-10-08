@@ -56,11 +56,13 @@ from .core import (
 )
 from .integrity import (
     ANCHOR_EVERY,
+    Seal,
     _advance,
     anchor_file,
     chain_over,
     chain_over_bytes,
     chain_path,
+    read_anchors,
     seal_finding,
     seal_of,
 )
@@ -84,15 +86,18 @@ class _Hasher(Protocol):
 class Integrity:
     """What the loader found about the record: a line that does not decode,
     the journal's contiguity, the stored chain against the recomputed head,
-    and a sealed anchor file. `chain_problem` is set whenever the chain is
-    not intact or absent, in the words the audit reports; `sealed` is the
-    seal's finding (section 8.3), after the journal's own problems."""
+    an anchor file that cannot be read, and a sealed one. `chain_problem` is
+    set whenever the chain is not intact or absent, in the words the audit
+    reports; `anchors_unreadable` names the line that is not JSON;
+    `sealed` is the seal's finding (section 8.3). The journal's own problems
+    come first, then the anchor file's."""
 
     contiguous: bool = True
     problem: str | None = None
     chain: str = CHAIN_ABSENT
     chain_problem: str | None = None
     malformed: str | None = None
+    anchors_unreadable: str | None = None
     sealed: str | None = None
 
     @property
@@ -104,6 +109,8 @@ class Integrity:
             return self.problem
         if self.chain == CHAIN_DIVERGED:
             return self.chain_problem
+        if self.anchors_unreadable is not None:
+            return self.anchors_unreadable
         if self.sealed is not None:
             return self.sealed
         return None
@@ -111,12 +118,15 @@ class Integrity:
     @property
     def refused_code(self) -> str | None:
         """The code of that refusal: `CHAIN_DIVERGED` for the journal's own
-        problems, `RUN_SEALED` for the seal, None when nothing refuses."""
-        if self.refused is None:
-            return None
-        if self.malformed is None and self.contiguous and self.chain != CHAIN_DIVERGED:
+        problems, `RECORD_CORRUPT` for an anchor file that cannot be read,
+        `RUN_SEALED` for the seal, None when nothing refuses."""
+        if self.malformed is not None or not self.contiguous or self.chain == CHAIN_DIVERGED:
+            return "CHAIN_DIVERGED"
+        if self.anchors_unreadable is not None:
+            return "RECORD_CORRUPT"
+        if self.sealed is not None:
             return "RUN_SEALED"
-        return "CHAIN_DIVERGED"
+        return None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -148,16 +158,29 @@ def _refusal(reason: str) -> AssayError:
     )
 
 
-def _sealed_refusal(reason: str, target: Any) -> AssayError:
-    """The strict load's refusal over a sealed anchor file (section 8.3):
-    the remedy is the operator's, in their own file outside the run."""
+def _anchor_refusal(integrity: Integrity, target: Any) -> AssayError:
+    """The strict load's refusal over the anchor file (section 8.3): a file
+    that cannot be read, or a seal. The remedy is the operator's, in their
+    own file outside the run, and in the order that keeps the record
+    honest: the changed file put back first, the sealing line removed
+    last."""
+    reason = integrity.refused
+    if integrity.refused_code == "RECORD_CORRUPT":
+        return AssayError(
+            f"{reason}; the run is refused and nothing is rewritten",
+            code="RECORD_CORRUPT",
+            hint=(
+                "the anchor file is the operator's: every line is one JSON object; fix or "
+                f"remove the line in {target} by hand, then start again"
+            ),
+        )
     return AssayError(
         f"{reason}; the run is refused and nothing is rewritten",
         code="RUN_SEALED",
         hint=(
-            f"the anchor file is the operator's: remove the sealing line from {target} by "
-            "hand to resume; the tamper_detected activity record stays as the record of "
-            "what happened"
+            "the anchor file is the operator's: put back the file the tamper_detected record "
+            f"in .assay/activity.jsonl names, then remove the sealing line from {target} last; "
+            "the record stays as the record of what happened"
         ),
     )
 
@@ -202,12 +225,17 @@ class Run:
         journal = _load_journal(paths, strict=strict)
         if strict and journal.integrity.refused is not None:
             raise _refusal(journal.integrity.refused)
-        # The seal comes after the journal's own problems: a sealed run whose
-        # journal was also edited is refused for the edit first.
+        # The anchor file's findings come after the journal's own problems: a
+        # sealed run whose journal was also edited is refused for the edit
+        # first; a file that cannot be read is refused before its seal is
+        # looked for.
         target = anchor_file(paths, config)
-        integrity = dataclasses.replace(journal.integrity, sealed=_sealed(target, journal.heads))
-        if strict and integrity.sealed is not None:
-            raise _sealed_refusal(integrity.sealed, target)
+        unreadable, sealed = _anchor_findings(target, journal.heads)
+        integrity = dataclasses.replace(
+            journal.integrity, anchors_unreadable=unreadable, sealed=sealed
+        )
+        if strict and integrity.refused is not None:
+            raise _anchor_refusal(integrity, target)
         mutations, mutations_bytes, mutations_hash = _load_mutations(paths)
         owner_hash = _owner_hash_of(read_json(paths.state / "owner.json", None))
         registry = load_registry(paths)
@@ -258,11 +286,11 @@ class Run:
 
     def _anchor(self, event_id: int, *, seal: str | None = None) -> None:
         target = anchor_file(self.paths, self.config)
-        record: dict[str, Any] = {"event_id": event_id, "head": self.chain_head}
+        record: dict[str, Any]
         if seal is None:
-            record["run"] = str(self.paths.root)
+            record = {"event_id": event_id, "head": self.chain_head, "run": str(self.paths.root)}
         else:
-            record["seal"] = seal
+            record = Seal(event_id=event_id, head=self.chain_head, seal=seal).to_json()
         try:
             target.parent.mkdir(parents=True, exist_ok=True)
             append_jsonl(target, record)
@@ -394,19 +422,19 @@ def _owner_hash_of(value: Any) -> str | None:
     return None
 
 
-def _sealed(target: Any, heads: list[str]) -> str | None:
-    """The finding of a sealed anchor file (section 8.3), or None: what the
-    seal says and, when the journal changed after it, how. An anchor file
-    that cannot be read is no seal; the audit reports it."""
-    try:
-        anchors = load_jsonl(target) if target.exists() else []
-    except (OSError, AssayError):
-        return None
+def _anchor_findings(target: Any, heads: list[str]) -> tuple[str | None, str | None]:
+    """The anchor file's findings (section 8.3): the problem of a file that
+    cannot be read as one JSON object per line, and the seal's finding, what
+    it says and, when the journal changed after it, how. An unreadable file
+    has no seal to find."""
+    anchors, problem = read_anchors(target)
+    if problem is not None:
+        return f"anchor file {target} is unreadable: {problem}", None
     seal = seal_of(anchors)
     if seal is None:
-        return None
+        return None, None
     what, against = seal_finding(seal, heads)
-    return f"anchor file {what}" + ("" if against is None else f"; {against}")
+    return None, f"anchor file {what}" + ("" if against is None else f"; {against}")
 
 
 def _chain_text(value: Any) -> str:
