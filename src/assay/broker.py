@@ -36,6 +36,7 @@ from .adapters import (
     Adapter,
     Session,
     SessionCapability,
+    declaration_difference,
     recorded_capability,
     session_capability,
     transitions_of,
@@ -1229,6 +1230,21 @@ def _open(paths: RunPaths) -> _Daemon:
     run = Run.load(paths, strict=True)
     session = _create_session(paths.root, run.config)
     capability = _session_declaration(session)
+    if run.config.get("session") is not None:
+        # The command line routes a resume by the record (section 2.2); a
+        # daemon under another declaration would replay nothing where a
+        # replay is expected, so the run continues only under the record.
+        recorded = recorded_capability(run.config)
+        if recorded != capability:
+            raise AssayError(
+                "the adapter's session declaration changed since the run started: "
+                + declaration_difference(recorded, capability),
+                code="DECLARATION_CHANGED",
+                hint=(
+                    "the run continues only under the declaration recorded in config.json; "
+                    "restore the adapter's, or start another run in a fresh directory"
+                ),
+            )
     if capability.replayable:
         _, fresh_unit = _replay_local_session(session, run, capability)
     else:

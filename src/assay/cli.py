@@ -350,7 +350,10 @@ def _mode_word(mode: str) -> str:
 
 
 def _lease_duration(seconds: int) -> str:
-    return f"{seconds // 60} minutes" if seconds % 60 == 0 else f"{seconds} seconds"
+    if seconds % 60 == 0:
+        minutes = seconds // 60
+        return f"{minutes} minute" if minutes == 1 else f"{minutes} minutes"
+    return f"{seconds} second" if seconds == 1 else f"{seconds} seconds"
 
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
@@ -551,6 +554,11 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
         start_broker(paths)
         restarted = True
     if not broker_matches_latest_event(run):
+        if restarted:
+            # The daemon this resume started holds a world the journal does
+            # not describe; left READY it would spend on it under the old
+            # record.
+            stop_broker(paths)
         raise AssayError(
             "reconstructed simulator state differs from the latest timeline event",
             code="LOCAL_REPLAY_DIVERGED",
@@ -558,7 +566,8 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
         )
     verb = "RECOVERED" if restarted else "RESUMED"
     print(
-        f"{verb} | {requested} | local simulator | replayed {len(run.events) - 1} paid actions"
+        f"{verb} | {requested} | {_mode_word(run_mode(run.config))} | "
+        f"replayed {len(run.events) - 1} paid actions"
     )
     return recovered
 

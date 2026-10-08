@@ -12,8 +12,8 @@ factory and stored in config.json at start, from which the kernel implements
 the generic parts (the action-idle lease, replay or its absence, a reset on a
 fresh progress unit); and `replay(transitions)`, called at a resume with every
 recorded transition before the kernel steps them through the fresh session,
-so a world that needs its own record of what it spent (a tick ledger) takes
-it from the kernel's hand and reads no kernel file. A world that declares
+so a world that needs its own record of what it spent takes it from the
+kernel's hand and reads no kernel file. A world that declares
 nothing gets local semantics (`LOCAL_SEMANTICS`): no lease, a reset on a
 fresh unit goes to the world, replay.
 
@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import dataclasses
 import inspect
+import json
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
@@ -52,8 +53,12 @@ class SessionCapability:
     world declares only what differs.
 
     `idle_lease_seconds`: the action-idle lease the world's session expires
-    under, None for no lease. The kernel shows the time left on the MODE
-    line and refuses a resume past it (`REMOTE_LEASE_EXPIRED`).
+    under, None for no lease. A lease is declared by a world without replay
+    (a session that expires cannot be rebuilt by replay, and the record
+    refuses the pair). The kernel's one rule for it is the resume refused
+    past it (`REMOTE_LEASE_EXPIRED`); with the daemon alive the kernel only
+    reports the countdown on the MODE and RESUMED lines, and an action past
+    the lease still reaches the world, which answers for itself.
     `reset_on_fresh_unit`: what a RESET on a freshly entered progress unit
     (the start of the run, the unit after a RESET or an advance) does:
     `world`, the reset goes to the world like any action; `noop`, the kernel
@@ -80,6 +85,11 @@ class SessionCapability:
             )
         if not isinstance(self.replayable, bool):
             raise ValueError(f"replayable must be true or false, got {self.replayable!r}")
+        if lease is not None and self.replayable:
+            raise ValueError(
+                "idle_lease_seconds needs replayable=False: a session that expires cannot "
+                "be rebuilt by replay; declare one or the other"
+            )
 
     @classmethod
     def from_json(cls, obj: Mapping[str, Any]) -> SessionCapability:
@@ -210,15 +220,28 @@ def recorded_capability(config: Mapping[str, Any]) -> SessionCapability:
 
 
 def transitions_of(mutations: Sequence[Any]) -> tuple[Transition, ...]:
-    """The recorded mutations as the replay hook receives them."""
+    """The recorded mutations as the replay hook receives them, each a copy
+    through JSON, so a hook that edits what it was handed edits nothing the
+    kernel holds and compares the replay against."""
     return tuple(
         Transition(
             action=str(mutation.action),
-            params=None if mutation.data is None else dict(mutation.data),
-            observation=dict(mutation.observation),
+            params=None if mutation.data is None else json.loads(json.dumps(mutation.data)),
+            observation=json.loads(json.dumps(mutation.observation)),
         )
         for mutation in mutations
     )
+
+
+def declaration_difference(recorded: SessionCapability, declared: SessionCapability) -> str:
+    """The fields on which a live declaration differs from the recorded one,
+    each as `field recorded X, declared Y`, for the refusal that names them."""
+    parts = []
+    for field in dataclasses.fields(SessionCapability):
+        before, after = getattr(recorded, field.name), getattr(declared, field.name)
+        if before != after:
+            parts.append(f"{field.name} recorded {json.dumps(before)}, declared {json.dumps(after)}")
+    return "; ".join(parts)
 
 
 def session_class(module: ModuleType, factory: Any) -> type | None:
@@ -238,9 +261,7 @@ def session_class(module: ModuleType, factory: Any) -> type | None:
 def contract_problems(module: ModuleType) -> list[str]:
     """Every way the module falls short of the adapter contract, by name:
     the factory and its parameters, and, when the factory's return annotation
-    names a class of the module, the session's `observation` property,
-    `step(self, action, data, reasoning)`, and the optional members' shapes:
-    `finalize` callable, `session` a property, `replay(self, transitions)`."""
+    names a class of the module, that class's problems (`session_problems`)."""
     problems: list[str] = []
     factory = getattr(module, "factory", None)
     if not callable(factory):
@@ -251,6 +272,15 @@ def contract_problems(module: ModuleType) -> list[str]:
     session = session_class(module, factory)
     if session is None:
         return problems
+    return problems + session_problems(session)
+
+
+def session_problems(session: type) -> list[str]:
+    """Every way a session class falls short of the contract, by name: the
+    `observation` property, `step(self, action, data, reasoning)`, and the
+    optional members' shapes: `finalize` callable, `session` a property,
+    `replay(self, transitions)`."""
+    problems: list[str] = []
     if not isinstance(getattr(session, "observation", None), property):
         problems.append(f"{session.__name__}.observation is not a property")
     step = getattr(session, "step", None)

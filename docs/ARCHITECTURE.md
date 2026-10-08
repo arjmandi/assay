@@ -202,17 +202,27 @@ The session exposes:
   rules, a `SessionCapability` (`adapters.py`; a mapping of its fields is read
   the same way) with three fields, each defaulting to the local value:
   `idle_lease_seconds` (the action-idle lease the session expires under, None
-  for none), `reset_on_fresh_unit` (`world`: a RESET on a freshly entered
+  for none; declared by a world without replay, since a session that expires
+  cannot be rebuilt by replay, and the record refuses the pair),
+  `reset_on_fresh_unit` (`world`: a RESET on a freshly entered
   progress unit, the start of the run or the unit after a RESET or an
   advance, goes to the world like any action; `noop`: the kernel answers it
   with the current observation and the world never sees it) and `replayable`
   (whether a resume may replay the journal through a fresh session). The
   daemon reads it once after the factory and records it in `config.json`
   under `session` at start, for the processes that have no session (the
-  command line, the status; `adapters.recorded_capability`). The kernel
-  implements every part and the adapter none: the lease on the MODE line and
-  the resume refused past it (`REMOTE_LEASE_EXPIRED`); the reset no-op in
-  `broker._apply_step`, live and in replay alike; and for a world without
+  command line, the status; `adapters.recorded_capability`). At every later
+  start the daemon holds the live declaration against the record and refuses
+  to serve when they differ (`DECLARATION_CHANGED`, naming the fields): the
+  command line routes the resume by the record, so a daemon under another
+  declaration would replay nothing where a replay is expected; the run
+  continues only under the declaration it started with. The kernel
+  implements every part and the adapter none: the lease, whose one rule is
+  the resume refused past it (`REMOTE_LEASE_EXPIRED`), while with the daemon
+  alive the kernel only reports the countdown on the MODE and RESUMED lines
+  and an action past the lease still reaches the world, which answers for
+  itself; the reset no-op in `broker._apply_step`, live and in replay alike;
+  and for a world without
   replay the single daemon life (a resume keeps the live daemon and checks
   its observation against the last event, a dead daemon is
   `REMOTE_SESSION_UNAVAILABLE`, and so is an observation the world fails to

@@ -139,9 +139,14 @@ def test_the_capability_record_validates_its_fields():
     for bad in (
         {"idle_lease_seconds": 0}, {"idle_lease_seconds": True}, {"idle_lease_seconds": "15m"},
         {"reset_on_fresh_unit": "skip"}, {"replayable": "no"}, {"lease": 3},
+        {"idle_lease_seconds": 5}, {"idle_lease_seconds": 5, "replayable": True},
     ):
         with pytest.raises((TypeError, ValueError)):
             SessionCapability.from_json(bad)
+    # A lease is declared by a world without replay: the kernel's one rule
+    # for a lease is the refusal at resume, which contradicts replay.
+    with pytest.raises(ValueError, match="cannot be rebuilt by replay; declare one or the other"):
+        SessionCapability(idle_lease_seconds=5)
 
     class Declares:
         session = {"reset_on_fresh_unit": "noop"}
@@ -154,6 +159,35 @@ def test_the_capability_record_validates_its_fields():
     with pytest.raises(Exception) as caught:
         session_capability(Misdeclares())
     assert caught.value.code == "WORLD_ERROR"
+
+
+def test_the_test_adapters_declaring_classes_fit_the_contract():
+    """The factory's annotation names PlainSession, so the table check sees
+    that class alone; the classes that declare, the one with the hook and
+    the drifting one are held to the same shapes by name."""
+    from assay.adapters import session_problems
+
+    module = _load(FAKES["capability"])
+    classes = (
+        module.DeclaringSession, module.EnvDeclaredSession, module.HookedSession, module.DriftingSession,
+    )
+    for session_class in classes:
+        assert session_problems(session_class) == [], session_class.__name__
+    for session_class in (module.DeclaringSession, module.EnvDeclaredSession):
+        declared = session_class.__dict__["session"]
+        assert isinstance(declared, property), session_class.__name__
+        shape = inspect.signature(declared.fget).return_annotation
+        assert str(shape).split(".")[-1] == "SessionCapability", (session_class.__name__, shape)
+    assert list(inspect.signature(module.HookedSession.replay).parameters) == ["self", "transitions"]
+    assert isinstance(module.DriftingSession.__dict__["observation"], property)
+
+
+def test_the_lease_duration_reads_singular_at_one():
+    from assay.cli import _lease_duration
+
+    assert [_lease_duration(n) for n in (1, 4, 60, 120, 900)] == [
+        "1 second", "4 seconds", "1 minute", "2 minutes", "15 minutes",
+    ]
 
 
 # --- the semantics, through the real CLI and daemon --------------------------------
@@ -185,6 +219,20 @@ def _start(run: Path, world: str, *extra: str):
 def _last_data(run: Path) -> dict:
     lines = (run / ".assay" / "events.jsonl").read_text().splitlines()
     return json.loads([line for line in lines if line.strip()][-1])["observation"]
+
+
+def _daemon_gone(run: Path, seconds: float = 5.0) -> bool:
+    """Whether no daemon identified as the run's is alive, waiting a moment
+    for one that is on its way out."""
+    from assay.broker import find_daemon
+    from assay.core import RunPaths
+
+    deadline = time.monotonic() + seconds
+    while time.monotonic() < deadline:
+        if find_daemon(RunPaths(run)) is None:
+            return True
+        time.sleep(0.05)
+    return False
 
 
 def _kill_daemon(run: Path) -> None:
@@ -240,7 +288,7 @@ def test_remote_mode_on_a_world_that_declares_nothing_means_no_lease(tmp_path):
         _kill_daemon(run)
         resumed = _start(run, "plain")
         assert resumed.returncode == 0, resumed.stderr
-        assert "RECOVERED | plain | local simulator | replayed 1 paid actions" in resumed.stdout
+        assert "RECOVERED | plain | REMOTE | replayed 1 paid actions" in resumed.stdout
         refused = _start(run, "plain", "--mode", "local")
         assert refused.returncode == 2 and "already owns a remote run" in refused.stderr
     finally:
@@ -331,6 +379,76 @@ def test_a_world_without_replay_lives_one_daemon_long(tmp_path):
         refused = run_cli(run, "act", "NOOP", "--predict", "noop")
         assert refused.returncode == 2
         assert "NEXT | the world declared no replay, so the run cannot be reconstructed" in refused.stderr
+    finally:
+        stop_run(run)
+
+
+def test_a_daemon_refuses_to_serve_under_a_changed_declaration(tmp_path, monkeypatch):
+    """The command line routes a resume by the record in config.json; a
+    daemon applying another live declaration would replay nothing where a
+    replay is expected. The daemon holds the live declaration against the
+    record before READY and refuses, naming the fields."""
+    from capability_adapter import DECLARATION_VARIABLE
+
+    monkeypatch.delenv(DECLARATION_VARIABLE, raising=False)
+    run = _prepare(tmp_path, "env")
+    try:
+        started = _start(run, "env")
+        assert started.returncode == 0, started.stderr
+        config = json.loads((run / ".assay" / "config.json").read_text())
+        assert config["session"] == {"idle_lease_seconds": None, "reset_on_fresh_unit": "world", "replayable": True}
+        assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
+        _kill_daemon(run)
+        monkeypatch.setenv(DECLARATION_VARIABLE, json.dumps({"replayable": False}))
+        refused = _start(run, "env")
+        assert refused.returncode == 2, refused.stdout
+        assert (
+            "ERROR | DECLARATION_CHANGED | the adapter's session declaration changed since the "
+            "run started: replayable recorded true, declared false"
+        ) in refused.stderr
+        assert (
+            "NEXT | the run continues only under the declaration recorded in config.json; "
+            "restore the adapter's, or start another run in a fresh directory"
+        ) in refused.stderr
+        assert json.loads((run / ".assay" / "broker.json").read_text())["status"] == "ERROR"
+        assert _daemon_gone(run)
+        monkeypatch.setenv(DECLARATION_VARIABLE, json.dumps({"reset_on_fresh_unit": "noop"}))
+        refused = _start(run, "env")
+        assert refused.returncode == 2
+        assert 'reset_on_fresh_unit recorded "world", declared "noop"' in refused.stderr
+        assert _daemon_gone(run)
+        # Under the recorded declaration again, the resume replays.
+        monkeypatch.delenv(DECLARATION_VARIABLE)
+        resumed = _start(run, "env")
+        assert resumed.returncode == 0, resumed.stderr
+        assert "RECOVERED | env | local simulator | replayed 1 paid actions" in resumed.stdout
+        assert _last_data(run) == {"counter": 1, "resets": 0}
+    finally:
+        stop_run(run)
+
+
+def test_a_resume_stops_the_daemon_it_started_when_the_world_drifts_from_the_journal(tmp_path):
+    """A replay that reproduces every recorded step, then a live observation
+    that differs from the last event: the resume refuses with
+    LOCAL_REPLAY_DIVERGED and stops the daemon it started, so nothing spends
+    on a world the journal does not describe."""
+    run = _prepare(tmp_path, "drift")
+    try:
+        started = _start(run, "drift")
+        assert started.returncode == 0, started.stderr
+        assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
+        assert _last_data(run) == {"counter": 1, "resets": 0}
+        _kill_daemon(run)
+        resumed = _start(run, "drift")
+        assert resumed.returncode == 5, resumed.stdout
+        assert (
+            "ERROR | LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the "
+            "latest timeline event"
+        ) in resumed.stderr
+        assert _daemon_gone(run)
+        assert json.loads((run / ".assay" / "broker.json").read_text())["status"] == "STOPPED"
+        refused = run_cli(run, "act", "NOOP", "--predict", "noop")
+        assert refused.returncode == 2 and "ERROR | DAEMON_UNAVAILABLE |" in refused.stderr
     finally:
         stop_run(run)
 

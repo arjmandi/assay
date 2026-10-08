@@ -162,8 +162,10 @@ def test_the_mode_line_derives_the_lease_from_the_seconds_left():
     assert mode_text(ModeBlock("remote", None, None, True)) == (
         "MODE | REMOTE | no action-idle lease | exact replay recovery enabled"
     )
-    assert mode_text(ModeBlock("local", 120, 90, True)) == (
-        "MODE | LOCAL SIMULATOR | about 2m action-idle remaining | exact replay recovery enabled"
+    # A lease is declared by a world without replay (the record refuses the
+    # pair), whatever the mode.
+    assert mode_text(ModeBlock("local", 120, 90, False)) == (
+        "MODE | LOCAL SIMULATOR | about 2m action-idle remaining | exact replay recovery unavailable"
     )
 
 

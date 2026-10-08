@@ -96,6 +96,7 @@ CHANNEL_REDEFINED = "CHANNEL_REDEFINED"
 DAEMON_UNAVAILABLE = "DAEMON_UNAVAILABLE"
 DAEMON_BUSY = "DAEMON_BUSY"
 DAEMON_ORPHANED = "DAEMON_ORPHANED"
+DECLARATION_CHANGED = "DECLARATION_CHANGED"
 
 # world: the adapter or the world failed or refused at the kernel boundary
 WORLD_ERROR = "WORLD_ERROR"
@@ -177,6 +178,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(DAEMON_UNAVAILABLE, "refused", "the harness's own state refused: the run's environment owner (the daemon) is not running or did not start."),
     ErrorCode(DAEMON_BUSY, "refused", "the harness's own state refused: the daemon is alive and inside a step, hung, or did not answer within the client's wait."),
     ErrorCode(DAEMON_ORPHANED, "refused", "the harness's own state refused: a live daemon still serves this directory while its run state is gone."),
+    ErrorCode(DECLARATION_CHANGED, "refused", "the adapter's session declaration differs from the one recorded at the run's start; the run continues only under the recorded one."),
     # world
     ErrorCode(WORLD_ERROR, "world", "the world raised or refused inside the adapter's factory, observation or step; nothing was journaled for the action."),
     ErrorCode(OBSERVATION_INVALID, "world", "the adapter's observation has a shape the kernel does not take: no observation, not a JSON object under `data`, no frames, a frame that is not 2-D or has colors outside 0..15."),

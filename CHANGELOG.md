@@ -403,9 +403,14 @@ Left on the experiment branch, deliberately:
   the adapter: the optional `session` property declares a `SessionCapability`
   (`adapters.py`: `idle_lease_seconds`, `reset_on_fresh_unit`, `replayable`),
   recorded in `config.json` under `session` at start, and the kernel
-  implements each part from it: the lease on the MODE line and the resume
-  refused past it, the fresh-unit reset no-op (live and in replay), and the
-  single daemon life of a world without replay. The ARC adapter declares a
+  implements each part from it: the lease (declared by a world without
+  replay, the record refuses the pair; its one rule is the resume refused
+  past it, and the countdown on the MODE and RESUMED lines is a report),
+  the fresh-unit reset no-op (live and in replay), and the single daemon
+  life of a world without replay. At every later start the daemon holds the
+  live declaration against the record and refuses to serve when they differ,
+  with `DECLARATION_CHANGED` (kind refused, a new code) naming the fields,
+  since the command line routes the resume by the record. The ARC adapter declares a
   fifteen-minute lease and no replay in remote mode, and the reset no-op in
   local mode, the mode the 25 published runs ran under, so their semantics
   are the ones they ran with. A world that declares nothing gets local semantics, which
@@ -721,6 +726,10 @@ Left on the experiment branch, deliberately:
 
 ### Fixed
 
+- `assay start` stops the daemon it just started when the reconstructed
+  world differs from the latest event (#21). The resume refused with
+  `LOCAL_REPLAY_DIVERGED` and left that daemon READY, so the next paid
+  action would have spent on a world the journal does not describe.
 - The two adapters that reached into the kernel (#21). The ARC adapter
   imported the mode constants from `assay.broker`; it reads the mode from
   the config and declares its session rules instead. The Factorio adapter
