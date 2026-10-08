@@ -185,10 +185,14 @@ def test_the_retired_command_word_answers_and_is_absent_from_the_help(tmp_path):
         assert root.returncode == 0 and "channel" not in root.stdout and "    state " in root.stdout
         group = run_cli(run, "channel", "--help")
         assert group.returncode == 0 and group.stdout.startswith("usage: assay state [-h] {declare,list} ...")
+        # The refusal names the `state` group's field. The choices after it
+        # are rendered bare by some interpreters and quoted by others (the
+        # 3.13 and 3.14 patch releases), so the line is pinned up to them.
         unknown = run_cli(run, "channel", "nope")
-        assert unknown.returncode == 2 and unknown.stderr.startswith(
-            "ERROR | CLI_USAGE | argument state_command: invalid choice: 'nope' (choose from declare, list)\n"
-        )
+        assert unknown.returncode == 2
+        refusal = unknown.stderr.split("\n")[0]
+        assert refusal.startswith("ERROR | CLI_USAGE | argument state_command: invalid choice: 'nope' (choose from ")
+        assert refusal.endswith(("(choose from declare, list)", "(choose from 'declare', 'list')"))
     finally:
         stop_run(run)
 
