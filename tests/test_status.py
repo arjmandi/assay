@@ -267,3 +267,76 @@ def test_the_printed_status_is_the_rendered_record(tmp_path):
     finally:
         stop_run(run)
     assert isinstance(Path(run), Path)
+
+
+def _one_document(completed) -> dict:
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stderr == ""
+    assert completed.stdout.count("\n") == 1 and completed.stdout.endswith("\n")
+    document = json.loads(completed.stdout)
+    assert isinstance(document, dict)
+    return document
+
+
+def test_every_command_with_a_result_record_takes_json(tmp_path):
+    """`--json` prints exactly one JSON document on stdout, the result
+    record, and nothing on stderr (docs/ARCHITECTURE.md section 7.3): the
+    receipt of act, commit and reset, the Status record, the view record,
+    the audit report, the channel list and the module list; the prose form
+    is unchanged."""
+    from assay.core import RunPaths
+    from assay.integrity import audit
+    from assay.run import Run
+    from assay.status import status_of
+
+    run = tmp_path / "machine"
+    run.mkdir()
+    (run / "reg.json").write_text(json.dumps({"actions": ACTIONS, "budget": {"actions": 20}}))
+    try:
+        started = run_cli(
+            run, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory", "--registry", str(run / "reg.json"),
+        )
+        assert started.returncode == 0, started.stderr
+        receipt = _one_document(run_cli(run, "act", "INC", "amount=1", "--predict", "change", "--json"))
+        assert receipt["kind"] == "act" and receipt["outcome"] == "PREDICTED"
+        assert receipt["action"] == "INC amount=1" and receipt["end_event"] == 1
+        receipts = sorted((run / ".assay" / "receipts").glob("*.json"))
+        assert json.loads(receipts[-1].read_text()) == receipt
+        batch = _one_document(run_cli(run, "commit", "--step", "NOOP :: noop", "--json"))
+        assert batch["kind"] == "commit" and [step["action"] for step in batch["steps"]] == ["NOOP"]
+        reset = _one_document(run_cli(run, "reset", "--because", "testing --json", "--json"))
+        assert reset["kind"] == "reset" and reset["outcome"] == "RESET" and reset["end_event"] == 3
+        paths = RunPaths(run)
+        status = _one_document(run_cli(run, "status", "--json"))
+        assert status == status_of(Run.load(paths, strict=False)).to_json()
+        assert status["run"]["event"] == 3 and status["run"]["paid"] == 3
+        assert status["recent"][-1]["action"] == "RESET" and status["kind"] is None
+        view = _one_document(run_cli(run, "view", "--event", "1", "--history", "2", "--json"))
+        assert set(view) == {"event", "previous", "lines"}
+        assert view["event"]["id"] == 1 and view["previous"]["id"] == 0
+        assert view["lines"][0] == "RUN | event 1 | progress 1/1 | paid actions 3 | state NOT_FINISHED"
+        assert "\n".join(view["lines"]) + "\n" == run_cli(run, "view", "--event", "1", "--history", "2").stdout
+        report = _one_document(run_cli(run, "audit", "--json"))
+        expected = audit(Run.load(paths, strict=False)).to_json()
+        assert {key: value for key, value in report.items() if key != "computed_at"} == {
+            key: value for key, value in expected.items() if key != "computed_at"
+        }
+        assert report["invalid_for_scoring"] is False and report["ungated"] == []
+        assert run_cli(run, "channel", "declare", "counter", "--path", "counter").returncode == 0
+        channels = _one_document(run_cli(run, "channel", "list", "--json"))
+        assert channels["registered"] == ["goal", "level", "budget_remaining", "counter"]
+        assert channels["readings"]["declared"] == [
+            {"name": "counter", "form": "path", "source": "live", "ok": True, "value": 0, "problem": None, "event": None}
+        ]
+        assert channels["declared"] == [{"name": "counter", "form": "path", "path": "counter", "hash": None}]
+        modules = _one_document(run_cli(run, "module", "list", "--json"))
+        assert [entry["name"] for entry in modules["modules"]][:2] == ["wall_spend", "miss_streak"]
+        assert modules["ignored"] == []
+        # The prose form is unchanged, and the flag is not accepted where
+        # there is no result record.
+        prose = run_cli(run, "status")
+        assert prose.returncode == 0 and prose.stdout.startswith("STATUS | fake1 | event 3 |")
+        refused = run_cli(run, "stop", "--json")
+        assert refused.returncode == 2 and json.loads(refused.stdout)["code"] == "CLI_USAGE"
+    finally:
+        stop_run(run)

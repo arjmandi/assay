@@ -248,9 +248,40 @@ def test_the_command_line_speaks_the_error_voice(tmp_path):
         events = [json.loads(line) for line in (world / ".assay" / "events.jsonl").read_text().splitlines()]
         assert len(events) == 1
         assert not (world / ".assay" / "mutations.jsonl").exists()
+        # --json: the error object alone, on stdout, the same exit status.
+        machine = run_cli(world, "act", "BOOM", "--predict", "change", "--json")
+        assert machine.returncode == 3 and machine.stderr == ""
+        assert json.loads(machine.stdout) == {
+            "code": "WORLD_ERROR",
+            "kind": "world",
+            "message": "ValueError: the world exploded",
+            "hint": "the world refused or failed this action; no event was journaled for it",
+        }
+        usage = run_cli(world, "act", "--json")
+        assert usage.returncode == 2 and usage.stderr == ""
+        assert json.loads(usage.stdout)["code"] == "CLI_USAGE"
+        bare = run_cli(world, "act", "NOOP", "--json")
+        assert bare.returncode == 2 and bare.stderr == ""
+        error = json.loads(bare.stdout)
+        assert error["code"] == "PREDICTION_REQUIRED" and error["kind"] == "refused"
+        assert error["message"].startswith("an empty prediction predicts nothing; say what you expect\n")
         assert run_cli(world, "act", "NOOP", "--predict", "noop").returncode == 0
     finally:
         stop_run(world)
+    # internal, exit 4, as the error object too.
+    crash = tmp_path / "crash"
+    _prepare(crash)
+    try:
+        assert _start(crash).returncode == 0
+        with (crash / ".assay" / "proposals.jsonl").open("a") as handle:
+            handle.write('{"kind": "goal_proposed"}\n')
+        broken = run_cli(crash, "status", "--json")
+        assert broken.returncode == 4 and broken.stderr == ""
+        error = json.loads(broken.stdout)
+        assert error["code"] == "INTERNAL" and error["kind"] == "internal"
+        assert error["message"].startswith("KeyError") and error["hint"].startswith("traceback in ")
+    finally:
+        stop_run(crash)
 
 
 def test_the_activity_record_of_a_failed_command_carries_the_code(tmp_path):

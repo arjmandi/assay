@@ -155,6 +155,15 @@ def arg(*flags: str, **options: Any) -> Argument:
     return Argument(flags, options)
 
 
+# Every command with a result record takes it (docs/ARCHITECTURE.md section
+# 7.3): exactly one JSON document on stdout, the record or the error object.
+JSON_FLAG = arg(
+    "--json",
+    action="store_true",
+    help="print the result record as one JSON document instead of the lines",
+)
+
+
 @dataclasses.dataclass(frozen=True)
 class Group:
     """A command that holds sub-commands (`assay channel declare`): its word,
@@ -888,7 +897,8 @@ def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
 
 
 def status_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    print(render_status(status_of(run, history=args.history)))
+    record = status_of(run, history=args.history)
+    _emit(args, record, render_status(record))
 
 
 def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -900,7 +910,17 @@ def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpars
         destination = export if export.is_absolute() else paths.root / export
         exported = require_kind(events[-1] if events else None, "export").export_history(run, destination)
         view = dataclasses.replace(view, exported=str(exported))
-    print(view_lines_text(view))
+    _emit(args, view, view_lines_text(view))
+
+
+def _emit(args: argparse.Namespace, record: Any, text: str) -> None:
+    """The one printer of a result record (docs/ARCHITECTURE.md section
+    7.3): the record as exactly one JSON document under `--json`, its
+    rendering otherwise."""
+    if getattr(args, "json", False):
+        print(json.dumps(record.to_json(), ensure_ascii=False))
+    else:
+        print(text)
 
 
 def _paid(
@@ -908,6 +928,7 @@ def _paid(
     status: CommandStatus,
     operation: Operation[Req, ReceiptResult],
     request: Req,
+    args: argparse.Namespace,
     *,
     steps: int = 1,
 ) -> None:
@@ -916,7 +937,7 @@ def _paid(
     appended what the client does not hold."""
     receipt = broker_gated(paths, operation, request, steps=steps)
     status.run = Run.load(paths, strict=False)
-    print(result_text(status.run, receipt))
+    _emit(args, receipt, result_text(status.run, receipt))
 
 
 def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -933,7 +954,7 @@ def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, status, ACT, request)
+    _paid(paths, status, ACT, request, args)
 
 
 def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -956,7 +977,7 @@ def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, status, COMMIT, request, steps=max(1, len(steps)))
+    _paid(paths, status, COMMIT, request, args, steps=max(1, len(steps)))
 
 
 def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -965,7 +986,7 @@ def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, status, RESET, request)
+    _paid(paths, status, RESET, request, args)
 
 
 def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -977,7 +998,8 @@ def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argp
 
 
 def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    print("\n".join(channel_list_text(channel_list_of(run, fresh=args.read))))
+    listing = channel_list_of(run, fresh=args.read)
+    _emit(args, listing, "\n".join(channel_list_text(listing)))
 
 
 def model_init(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1017,7 +1039,8 @@ def model_solve(paths: RunPaths, run: Run, status: CommandStatus, args: argparse
 
 
 def module_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    print("\n".join(module_list_text(module_list_of(run))))
+    listing = module_list_of(run)
+    _emit(args, listing, "\n".join(module_list_text(listing)))
 
 
 def module_install(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1078,7 +1101,8 @@ def spend_report(paths: RunPaths, run: Run, status: CommandStatus, args: argpars
 
 
 def audit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    print("\n".join(audit_lines(audit(run))))
+    report = audit(run)
+    _emit(args, report, "\n".join(audit_lines(report)))
 
 
 def approve_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1251,7 +1275,7 @@ COMMANDS: tuple[Command, ...] = (
         "status",
         "full picture: progress, image, actions, recent results, notes",
         status_command,
-        arguments=(arg("--history", type=int, default=8),),
+        arguments=(arg("--history", type=int, default=8), JSON_FLAG),
     ),
     Command(
         "view",
@@ -1272,6 +1296,7 @@ COMMANDS: tuple[Command, ...] = (
             arg(
                 "--export", type=Path, metavar="FILE.npz", help="frame worlds: export the grid history"
             ),
+            JSON_FLAG,
         ),
     ),
     Command(
@@ -1299,6 +1324,7 @@ COMMANDS: tuple[Command, ...] = (
                 help="structural declaration a gate or module demanded "
                 '(e.g. --declare "worst_case=..." --declare "recovery=...")',
             ),
+            JSON_FLAG,
         ),
         epilog=claims_help,
     ),
@@ -1329,6 +1355,7 @@ COMMANDS: tuple[Command, ...] = (
                 metavar='"field=value"',
                 help="structural declaration a module demanded for a step in this batch",
             ),
+            JSON_FLAG,
         ),
         epilog=claims_help,
     ),
@@ -1351,6 +1378,7 @@ COMMANDS: tuple[Command, ...] = (
                 help="structural declaration a module demanded for this reset "
                 '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
             ),
+            JSON_FLAG,
         ),
     ),
     Command(
@@ -1383,6 +1411,7 @@ COMMANDS: tuple[Command, ...] = (
                 help="compute extractor channels fresh (runs each extractor sandboxed) "
                 "instead of showing the last graded reading",
             ),
+            JSON_FLAG,
         ),
     ),
     Command("model_init", "model init", "create a model.py template", model_init),
@@ -1409,6 +1438,7 @@ COMMANDS: tuple[Command, ...] = (
         "module list",
         "active modules with mode and origin, plus ignored files",
         module_list,
+        arguments=(JSON_FLAG,),
     ),
     Command(
         "module_install",
@@ -1452,7 +1482,11 @@ COMMANDS: tuple[Command, ...] = (
         ),
     ),
     Command(
-        "audit", "audit", "recompute journal integrity: chain, anchors, ungated events", audit_command
+        "audit",
+        "audit",
+        "recompute journal integrity: chain, anchors, ungated events",
+        audit_command,
+        arguments=(JSON_FLAG,),
     ),
     Command(
         "approve",
