@@ -57,7 +57,15 @@ it (`core.RunPaths`). Two processes touch that state:
   (`broker.call`, the one place the client speaks the wire). Its one
   append to the journal is `reconcile` at start, with no
   daemon alive, which recovers a spend the daemon journaled but never recorded,
-  with its prediction regraded from the record (section 6.5).
+  with its prediction regraded from the record (section 6.5). Every refusal
+  of either process is an `AssayError` carrying a code from the catalogue
+  (`errors.py`, section 7.1; `docs/ERRORS.md`): the command line prints
+  `ERROR | CODE | message` on stderr, then `NEXT | hint` when the error names
+  a next step, and exits by the code's kind (usage and refused 2, world 3,
+  internal 4, invalid 5); over the socket the daemon answers with the error
+  object and the client raises the same error. Every command with a result
+  record takes `--json` and prints the record, or the error object, as one
+  JSON document (section 7.3).
 
 Both processes read the journal through one object, `run.Run` (section 6.3):
 the configuration, the registry, every event as a `records.Event`, the chain
@@ -1048,8 +1056,36 @@ the dispatch are assembled, and the `step` operation retired, refused as an unkn
 operation by name. The wire fields are today's (`action_token`, `predict`, `because`,
 `at_event`, `declares`, `steps`, `plan`, `path`, `owner_token`), the line is
 unversioned and an error is today's plain string; `approve`, `waive` and `goal_ratify`
-are offline commands of the command line. #13 adds the version, the error object,
-`action` and `params` as JSON, and moves the owner operations into the daemon.
+are offline commands of the command line.
+
+What #13 landed: the error model of 7.1 (`AssayError(message, *, code, kind, hint)` in
+`core.py`, the catalogue `errors.py` with 60 codes, each with its kind and a one-line
+meaning, a code on every raise of `src/assay` and `src/assay_grid` with a hint where
+the message did not already name the next step, the eleven refusals that led with
+`CODE | ` carrying the code beside the message instead, the exit status by kind, the
+adapter boundary wrapping whatever the factory, the observation or a step raises into
+`WORLD_ERROR`, anything else that is not an `AssayError` becoming `INTERNAL` with the
+traceback saved, the argparse path raising `CLI_USAGE`, the AST test over every raise,
+`docs/ERRORS.md` rendered by `python -m assay.errors --render` with a test that asserts
+it is current, and the two unguarded `int` conversions of `parse_claims` refusing an
+aggregate count past nine digits); the protocol of 7.2 (`v` on every request and
+reply, 2 for this package, refused with `PROTOCOL_VERSION` by the daemon before the
+token and by the client on every reply, the request's fields under `args` and the
+result under `result`, the error object `{code, kind, message, hint}` raised by the
+client as the same error, `act` carrying `action` and `params` and a commit step
+`{action, params, predict}`, parsed from `NAME k=v ...` by the client against the
+pinned registry (`registry.parse_registry_action`, `live.split_step`) and validated by
+the daemon against the same schema before any spend (`registry.validate_action`), the
+journal storing the validated object under `data`); `--json` of 7.3 on `status`,
+`view`, `audit`, `act`, `commit`, `reset`, `channel list` and `module list`, printing
+the `Status`, `View`, `AuditReport`, `Receipt`, `ChannelList` or `ModuleList` record,
+or the error object, as one JSON document, with stderr empty on success; and the
+`Status` record of 7.4 (`status.py`: `status_of(run)` builds the blocks once,
+`render_status(status)` derives today's lines, byte for byte over the 25 published
+runs; `inspect.status_text` is that rendering). Not in #13: the owner operations
+`approve`, `waive` and `goal_ratify` stay offline commands over the files (the note's
+"moves the owner operations into the daemon" is a later issue's), `--params JSON` is
+#14's, and `estimated_tokens` with `--brief` is #23's.
 
 ### 7.1 The error model
 
@@ -1094,6 +1130,10 @@ are offline commands of the command line. #13 adds the version, the error object
   "message", "hint"}}`; the client raises the same `AssayError`.
 - With `--json` the error object is the only output, on stdout, and the exit code follows
   the kind.
+- Status (#13): landed as written. The CLI's `--json` is read before the command line is
+  parsed, so a line argparse refuses still answers with the error object. The
+  `command_end` activity record of a failed command carries `code` and `error_kind`
+  beside `error`.
 
 ### 7.2 The operation table and the protocol
 
@@ -1139,6 +1179,11 @@ are offline commands of the command line. #13 adds the version, the error object
   schema (the scalar types until #14, the JSON Schema subset from #14) and refuses before
   any spend; the journal stores the validated object under `data`.
 - Receipts come back as `Receipt` records; `result_text` renders them as today.
+- Status (#13): the version, the error object and `action`/`params` landed as written
+  (`ops.PROTOCOL_VERSION`, `ops.ERROR_SCHEMA`, `ops.Step`); `broker_ping` raises a
+  `PROTOCOL_VERSION` refusal instead of reading it as silence, so a resume names the way
+  back. The owner operations `approve`, `waive` and `goal_ratify` are still offline
+  commands; moving them into the daemon is left for a later issue.
 
 ### 7.3 `--json`
 
@@ -1149,6 +1194,13 @@ success. `python`, `doctor`, `version`, `start` and `stop` have no result record
 flag. The view record is `{"event": Event, "previous": Event or null, "lines": [...]}`:
 the two events and the rendered lines, since the frame extra's view is prose. Without
 the flag the prose output is unchanged.
+
+Status (#13): landed as written. The view record carries `exported` (the path) when
+`--export` wrote a file. The result records of the offline commands (`Status`, `View`,
+`AuditReport`, `ChannelList`, `ModuleList`) have `to_json()` (`records.plain`), and
+the audit report's `to_json()` is the shape `.assay/audit.json` always had; their
+`from_json` and `json_schema()` are the tool server's (#15) when it needs them. The
+document is printed compact, on one line.
 
 ### 7.4 The `Status` record
 
@@ -1176,6 +1228,17 @@ the archive's unit and whether the notes changed since), `estimated_tokens`.
 `inspect.status_text` becomes `render_status(status)` and produces today's lines byte for
 byte, which the replay gate proves; `--json` prints the record; `--brief` (section 7.6)
 drops blocks under the budget.
+
+Status (#13): landed in `src/assay/status.py` (`status_of`, `render_status`, the blocks),
+with `inspect.status_text` kept as the rendering of the record. Two differences from the
+list above: `ignored_modules` (the files in `.assay/modules` the manifest does not
+cover, the MODULES line) is a field the list did not name, and `estimated_tokens` waits
+for #23. The `recent` records carry `frames` (the animation frame count, None on a dict
+world) so one renderer prints both forms, the observation kind supplying the change
+text (`history_change`); the `vacuous` block lists every flagged verifier with its
+counters and whether it is vacuous under the file's rule, the never-failed advisory
+being the rest; the module advisory lines and the kind's lines are stored as lines, the
+two exceptions the rule allows.
 
 ### 7.5 The surfaces
 
