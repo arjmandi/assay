@@ -245,6 +245,12 @@ assay export                       # knowledge file for the next run
 assay start WORLD ... --import assay_knowledge.json   # warm-start, demoted
 ```
 
+`goal ratify`, `approve`, `waive` and `module install` are daemon operations:
+each needs the daemon alive (`assay start` resumes it) and is checked inside
+the daemon against the token's hash, so nothing the agent writes into a file
+can grant one. An approval lives in the daemon's memory for ten minutes and
+does not survive a stop; a waiver lasts the run.
+
 The owner token is printed once at `start` unless `--owner-token-file` (or
 `ASSAY_OWNER_TOKEN_FILE`) writes it to a file outside the run directory. In
 every published benchmark run the agent ran `start` itself and therefore held

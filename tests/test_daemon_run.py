@@ -3,9 +3,12 @@
 after a thousand events; two clients racing on its socket leave a contiguous
 journal with every mutation recorded once; a file changed under it is refused
 before the next paid action and every one after, with nothing adopted,
-nothing appended, no install and the refusal on the status line; and the
-owner's module install is its operation, refused without it. Every scenario
-drives the real CLI and the real daemon with the fake adapter."""
+nothing appended, no install and the refusal on the status line, and the
+anchor file sealed at the held event so the audit reports the detection after
+the daemon is gone and the next start refuses until the operator lifts the
+seal; and the owner's module install is its operation, refused without it.
+Every scenario drives the real CLI and the real daemon with the fake
+adapter."""
 
 from __future__ import annotations
 
@@ -78,6 +81,12 @@ def _start(run: Path):
     )
 
 
+def _resume(run: Path):
+    """A resume without --registry: the pinned one is used, so an edited
+    registry file reaches the loader instead of the resume's own check."""
+    return run_cli(run, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory")
+
+
 def _token(stdout: str) -> str:
     found = re.search(r"OWNER TOKEN \| (\S+) \|", stdout)
     assert found, stdout
@@ -109,6 +118,20 @@ def _held(run: Path):
     from assay.core import RunPaths
 
     return broker_state(RunPaths(run))
+
+
+def _anchor(run: Path) -> Path:
+    """The anchor file `start` pinned: the session's ASSAY_ANCHOR_DIR names it
+    in this process as in the CLI's."""
+    from assay.core import RunPaths
+    from assay.integrity import environment_anchor_file
+
+    return environment_anchor_file(RunPaths(run))
+
+
+def _anchors(run: Path) -> list[dict]:
+    """The anchor file's records without the stamp every line carries."""
+    return [{k: v for k, v in record.items() if k != "timestamp"} for record in _lines(_anchor(run))]
 
 
 def _loaded(run: Path):
@@ -304,36 +327,49 @@ def _forge_manifest(run: Path) -> tuple[str, Restore]:
 
 
 DIVERGED = "ERROR | CHAIN_DIVERGED | chain: stored head at e1 does not match"
-# (the edit, what the refusal line shows on disk, how the next start refuses
-# or None when it does not: an appended line reads as a crash's one line, a
-# deleted chain as a pre-chain run, and a rewritten registry, owner or
-# manifest is admitted, which is the limit of section 8.3 and #10's work)
+SEALED = (
+    "ERROR | RUN_SEALED | anchor file sealed at e1 (tamper_detected): the daemon found "
+    "the run's files changed under it and the record ends there"
+)
+# (the edit, what the refusal line shows on disk, how the next start refuses:
+# the journal's own problems first (an edited line or a replaced chain head
+# is CHAIN_DIVERGED, a bad byte a malformed line), else the seal the daemon
+# left in the anchor file (section 8.3). Without the seal an appended line
+# would read as a crash's one line, a deleted chain as a pre-chain run, and a
+# rewritten registry, owner or manifest would be admitted: that is what the
+# seal closes while it stands, and the limit once the operator lifts it.)
 TAMPERS = [
-    pytest.param(_append_journal_line, "on disk ", None, id="journal-append"),
+    pytest.param(
+        _append_journal_line, "on disk ",
+        SEALED + "; the journal continues past the seal to e2, lines the daemon that sealed it never wrote",
+        id="journal-append",
+    ),
     pytest.param(_edit_journal_line, "on disk ", DIVERGED, id="journal-edit"),
     pytest.param(
         _append_bad_byte, "on disk ",
         "ERROR | CHAIN_DIVERGED | line 3 malformed: 'utf-8' codec can't decode byte 0xff",
         id="journal-bad-byte",
     ),
-    pytest.param(_append_mutation, "on disk ", None, id="mutation-append"),
+    pytest.param(_append_mutation, "on disk ", SEALED, id="mutation-append"),
     pytest.param(_replace_chain_head, "on disk e1 000000000000", DIVERGED, id="chain-replaced"),
-    pytest.param(_delete_chain, "on disk absent", None, id="chain-deleted"),
-    pytest.param(_edit_registry, "on disk ", None, id="registry"),
-    pytest.param(_edit_config, "on disk ", None, id="config"),
-    pytest.param(_corrupt_config, "on disk unreadable: corrupt JSON in", None, id="config-corrupt"),
-    pytest.param(_rewrite_owner, "on disk ffffffffffff", None, id="owner"),
-    pytest.param(_forge_manifest, "on disk ", None, id="manifest"),
+    pytest.param(_delete_chain, "on disk absent", SEALED, id="chain-deleted"),
+    pytest.param(_edit_registry, "on disk ", SEALED, id="registry"),
+    pytest.param(_edit_config, "on disk ", SEALED, id="config"),
+    pytest.param(_corrupt_config, "on disk unreadable: corrupt JSON in", SEALED, id="config-corrupt"),
+    pytest.param(_rewrite_owner, "on disk ffffffffffff", SEALED, id="owner"),
+    pytest.param(_forge_manifest, "on disk ", SEALED, id="manifest"),
 ]
 
 
 @pytest.mark.parametrize("tamper, found, restart", TAMPERS)
 def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper, found, restart):
-    """Section 8.3 as far as #20 takes it: the difference is named, the
-    action and every later one refused, an install refused, the activity
-    record written once, the refusal on the status line, nothing adopted
-    from the disk and nothing appended to the changed file. The sealed
-    anchor is #10's."""
+    """Section 8.3: the difference is named, the action and every later one
+    refused, an install refused, the activity record written once, the
+    anchor file sealed at the held event once, the refusal on the status
+    line, nothing adopted from the disk and nothing appended to the changed
+    file; after the stop the audit reads the seal as the end of the journal
+    and the next start refuses, for the journal's own problem where there is
+    one and for the seal otherwise."""
     from assay.broker import broker_gated
     from assay.core import AssayError, RunPaths
     from assay.ops import ACT, ActRequest
@@ -374,6 +410,10 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         after = _held(run)
         assert after.chain_event == 1 and after.chain_head == before.chain_head
         assert after.tampered is not None and after.tampered.startswith(f"{what} (held ")
+        # The seal: the held count and head, written beside the activity
+        # record, once (no regular anchor is due before e25).
+        seal = {"event_id": 1, "head": before.chain_head, "seal": "tamper_detected"}
+        assert _anchors(run) == [seal]
         if restore is not None:
             # The bytes put back change nothing: the refusal stands.
             restore()
@@ -393,6 +433,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         assert _bytes(state / "modules" / "manifest.json") == manifest
         assert not _activity(run, "module_installed")
         assert len(_activity(run, "tamper_detected")) == 1
+        assert _anchors(run) == [seal]
         assert (state / "events.jsonl").read_bytes() == journal
         # The offline readers still answer, status carries the refusal from
         # the daemon, and the daemon still stops.
@@ -405,11 +446,113 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         stopped = run_cli(run, "stop")
         assert stopped.returncode == 0, stopped.stderr
         assert "INTEGRITY | the daemon refused" not in run_cli(run, "status").stdout
-        if restart is not None:
-            resumed = _start(run)
-            assert resumed.returncode == 5, resumed.stdout
-            assert restart in resumed.stderr
-            assert (state / "events.jsonl").read_bytes() == journal
+        # After the daemon is gone the seal is what the readers see: the
+        # audit is invalid for scoring with the anchors DIVERGED whatever
+        # the chain file says, and the start refuses.
+        audited = run_cli(run, "audit")
+        assert audited.returncode == 0, audited.stderr
+        assert "AUDIT | INVALID FOR SCORING | events " in audited.stdout
+        assert "anchors DIVERGED (1)" in audited.stdout
+        assert (
+            "AUDIT | problem: anchor: sealed at e1 (tamper_detected): the daemon found the "
+            "run's files changed under it and the record ends there; the run is invalid for "
+            f"scoring until the operator removes the sealing line from {_anchor(run)}"
+        ) in audited.stdout
+        resumed = _resume(run)
+        assert resumed.returncode == 5, resumed.stdout
+        assert restart in resumed.stderr
+        assert (state / "events.jsonl").read_bytes() == journal
+        assert _anchors(run) == [seal]
+    finally:
+        stop_run(run)
+
+
+def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
+    """Section 8.3, the remedy: after a registry edit the daemon seals the
+    anchor file and refuses, the owner operations included; stopped, the
+    audit reads the seal as the end of the journal and the start refuses
+    with RUN_SEALED, naming the file. The anchor file is the operator's:
+    with the registry put back and the sealing line removed by hand the run
+    resumes, the next action lands, the audit is CLEAN again, and the
+    tamper_detected record stands as the record of what happened."""
+    run = tmp_path / "sealed"
+    _prepare(run)
+    try:
+        started = _start(run)
+        assert started.returncode == 0, started.stderr
+        token = _token(started.stdout)
+        assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
+        head = _held(run).chain_head
+        registry = run / ".assay" / "registry.json"
+        original = registry.read_bytes()
+        _edit_registry(run)
+        refused = run_cli(run, "act", "NOOP", "--predict", "noop")
+        assert refused.returncode == 5 and "ERROR | TAMPER_DETECTED | registry.json (held " in refused.stderr
+        anchor = _anchor(run)
+        seal = {"event_id": 1, "head": head, "seal": "tamper_detected"}
+        assert _anchors(run) == [seal]
+        # The owner operations are refused by the tampered daemon too, like an install.
+        approve = run_cli(run, "approve", "NOOP", "--token", token)
+        assert approve.returncode == 5 and "ERROR | TAMPER_DETECTED | registry.json (held " in approve.stderr
+        assert not _activity(run, "approval_granted")
+        # While it lives, status carries both the daemon's refusal and the seal.
+        status = run_cli(run, "status")
+        assert "INTEGRITY | the daemon refused a paid action: registry.json (held " in status.stdout
+        assert (
+            "INTEGRITY | anchor file sealed at e1 (tamper_detected): the daemon found the run's "
+            "files changed under it and the record ends there; this run is INVALID FOR SCORING "
+            "and `assay start` refuses to resume it (RUN_SEALED)"
+        ) in status.stdout
+        assert run_cli(run, "stop").returncode == 0
+        audited = run_cli(run, "audit")
+        assert audited.returncode == 0, audited.stderr
+        assert (
+            "AUDIT | INVALID FOR SCORING | events 2 (paid 1) | contiguous yes | chain intact | "
+            "anchors DIVERGED (1)"
+        ) in audited.stdout
+        problems = [line for line in audited.stdout.splitlines() if line.startswith("AUDIT | problem: ")]
+        assert problems == [
+            "AUDIT | problem: anchor: sealed at e1 (tamper_detected): the daemon found the run's "
+            "files changed under it and the record ends there; the run is invalid for scoring "
+            f"until the operator removes the sealing line from {anchor}",
+        ]
+        report = json.loads((run / ".assay" / "audit.json").read_text())
+        assert report["anchors"] == "DIVERGED" and report["invalid_for_scoring"] is True
+        assert report["chain"] == "intact" and report["anchor_count"] == 1
+        status = run_cli(run, "status")
+        assert "INTEGRITY | the daemon refused" not in status.stdout
+        assert "refuses to resume it (RUN_SEALED)" in status.stdout
+        resumed = _resume(run)
+        assert resumed.returncode == 5, resumed.stdout
+        assert resumed.stderr == (
+            "ERROR | RUN_SEALED | anchor file sealed at e1 (tamper_detected): the daemon found "
+            "the run's files changed under it and the record ends there; the run is refused and "
+            "nothing is rewritten\n"
+            f"NEXT | the anchor file is the operator's: remove the sealing line from {anchor} by "
+            "hand to resume; the tamper_detected activity record stays as the record of what "
+            "happened\n"
+        )
+        assert _anchors(run) == [seal]
+        # The remedy: the operator reads the record, puts the registry back
+        # and removes the sealing line from their own file.
+        differed = _activity(run, "tamper_detected")[0]["differences"]
+        assert [item["what"] for item in differed] == ["registry.json"]
+        registry.write_bytes(original)
+        anchor.write_text(
+            "".join(line + "\n" for line in anchor.read_text().splitlines() if '"seal"' not in line)
+        )
+        resumed = _start(run)
+        assert resumed.returncode == 0, resumed.stderr
+        assert "RECOVERED | fake1 | local simulator | replayed 1 paid actions" in resumed.stdout
+        assert "INTEGRITY" not in resumed.stdout
+        acted = run_cli(run, "act", "NOOP", "--predict", "noop")
+        assert acted.returncode == 0, acted.stderr
+        assert "OUTCOME | PREDICTED" in acted.stdout
+        audited = run_cli(run, "audit")
+        assert (
+            "AUDIT | CLEAN | events 3 (paid 2) | contiguous yes | chain intact | anchors none (0)"
+        ) in audited.stdout
+        assert len(_activity(run, "tamper_detected")) == 1
     finally:
         stop_run(run)
 

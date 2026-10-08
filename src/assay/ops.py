@@ -3,7 +3,11 @@ named once, each with its request and result record and the flags the daemon
 reads. Nothing that runs: the daemon binds one handler to each name beside
 its handlers (`broker.HANDLERS`) and the command line binds a command to the
 operations it exposes (`cli.COMMANDS`), so this module imports neither, and
-the tool server (section 7.5, #15) reads it alone for its six tools.
+the tool server (section 7.5, #15) reads it alone for its tools.
+
+The owner operations (`install_module`, `approve`, `waive`, `goal_ratify`)
+carry the owner's token as `owner_token`, since `token` on the wire is the
+daemon's own; the daemon checks it against the hash it holds (section 8.1).
 
 The protocol is versioned (`PROTOCOL_VERSION`, 2 for this package). A daemon
 operation crosses the socket as one JSON line, `{"v": 2, "token": ...,
@@ -513,6 +517,184 @@ class InstallModuleResult:
         return _schema({"record": {"type": "object"}}, ("record",))
 
 
+_APPROVE_KEYS = frozenset({"action", "owner_token"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ApproveRequest:
+    """`approve`: one use of an approval-gated action, granted by the owner
+    and held in the daemon's memory for its 600 seconds (section 7.2)."""
+
+    action: str
+    owner_token: str | None = None
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> ApproveRequest:
+        record = "approve"
+        refuse_unknown(obj, record, _APPROVE_KEYS)
+        return cls(
+            action=read_str(obj, record, "action"),
+            owner_token=read_opt_str(obj, record, "owner_token", nullable=True),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"action": self.action, "owner_token": self.owner_token}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema({"action": {"type": "string"}, "owner_token": _STRING_OR_NULL}, ("action",))
+
+
+_APPROVE_RESULT_KEYS = frozenset({"action", "expires_seconds"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ApproveResult:
+    """The action as held (upper case) and the seconds the grant lives."""
+
+    action: str
+    expires_seconds: int
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> ApproveResult:
+        record = "approve"
+        refuse_unknown(obj, record, _APPROVE_RESULT_KEYS)
+        return cls(
+            action=read_str(obj, record, "action"),
+            expires_seconds=read_int(obj, record, "expires_seconds"),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"action": self.action, "expires_seconds": self.expires_seconds}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema(
+            {"action": {"type": "string"}, "expires_seconds": {"type": "integer"}},
+            ("action", "expires_seconds"),
+        )
+
+
+_WAIVE_KEYS = frozenset({"action", "owner_token", "because"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class WaiveRequest:
+    """`waive`: the owner's waiver of a live actuator's rehearsal quota, with
+    the reason it is safe now; the activity record it leaves is the waiver,
+    rebuilt into the held set at every load (section 7.2)."""
+
+    action: str
+    owner_token: str | None = None
+    because: str | None = None
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> WaiveRequest:
+        record = "waive"
+        refuse_unknown(obj, record, _WAIVE_KEYS)
+        return cls(
+            action=read_str(obj, record, "action"),
+            owner_token=read_opt_str(obj, record, "owner_token", nullable=True),
+            because=read_opt_str(obj, record, "because", nullable=True),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"action": self.action, "owner_token": self.owner_token, "because": self.because}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema(
+            {
+                "action": {"type": "string"},
+                "owner_token": _STRING_OR_NULL,
+                "because": _STRING_OR_NULL,
+            },
+            ("action",),
+        )
+
+
+_WAIVE_RESULT_KEYS = frozenset({"action", "because"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class WaiveResult:
+    """The action as held (upper case) and the reason as journaled."""
+
+    action: str
+    because: str
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> WaiveResult:
+        record = "waive"
+        refuse_unknown(obj, record, _WAIVE_RESULT_KEYS)
+        return cls(
+            action=read_str(obj, record, "action"),
+            because=read_str(obj, record, "because"),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"action": self.action, "because": self.because}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema(
+            {"action": {"type": "string"}, "because": {"type": "string"}}, ("action", "because")
+        )
+
+
+_GOAL_RATIFY_KEYS = frozenset({"id", "owner_token"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class GoalRatifyRequest:
+    """`goal_ratify`: the owner's ratification of a goal proposal by id; the
+    daemon writes `goal.json` (section 7.2)."""
+
+    id: int
+    owner_token: str | None = None
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> GoalRatifyRequest:
+        record = "goal_ratify"
+        refuse_unknown(obj, record, _GOAL_RATIFY_KEYS)
+        return cls(
+            id=read_int(obj, record, "id"),
+            owner_token=read_opt_str(obj, record, "owner_token", nullable=True),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"id": self.id, "owner_token": self.owner_token}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema({"id": {"type": "integer"}, "owner_token": _STRING_OR_NULL}, ("id",))
+
+
+_GOAL_RATIFY_RESULT_KEYS = frozenset({"id", "text"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class GoalRatifyResult:
+    """The ratified proposal: its id and the text now presented as the
+    standing goal."""
+
+    id: int
+    text: str
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> GoalRatifyResult:
+        record = "goal_ratify"
+        refuse_unknown(obj, record, _GOAL_RATIFY_RESULT_KEYS)
+        return cls(id=read_int(obj, record, "id"), text=read_str(obj, record, "text"))
+
+    def to_json(self) -> dict[str, Any]:
+        return {"id": self.id, "text": self.text}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema({"id": {"type": "integer"}, "text": {"type": "string"}}, ("id", "text"))
+
+
 # --- the table ----------------------------------------------------------------
 
 Req = TypeVar("Req", bound=Record)
@@ -546,8 +728,17 @@ RESET: Operation[ResetRequest, ReceiptResult] = Operation(
 INSTALL_MODULE: Operation[InstallModuleRequest, InstallModuleResult] = Operation(
     "install_module", InstallModuleRequest, InstallModuleResult, owner=True
 )
+APPROVE: Operation[ApproveRequest, ApproveResult] = Operation(
+    "approve", ApproveRequest, ApproveResult, owner=True
+)
+WAIVE: Operation[WaiveRequest, WaiveResult] = Operation("waive", WaiveRequest, WaiveResult, owner=True)
+GOAL_RATIFY: Operation[GoalRatifyRequest, GoalRatifyResult] = Operation(
+    "goal_ratify", GoalRatifyRequest, GoalRatifyResult, owner=True
+)
 
-OPERATIONS: tuple[Operation[Any, Any], ...] = (PING, OBSERVE, ACT, COMMIT, RESET, INSTALL_MODULE)
+OPERATIONS: tuple[Operation[Any, Any], ...] = (
+    PING, OBSERVE, ACT, COMMIT, RESET, INSTALL_MODULE, APPROVE, WAIVE, GOAL_RATIFY,
+)
 
 
 def daemon_operation(name: Any) -> Operation[Any, Any]:

@@ -229,6 +229,34 @@ Left on the experiment branch, deliberately:
   refuses and names `assay start`. `broker.broker_state` reads the daemon's
   held chain event, head and refusal as a record (`DaemonState`, the
   `ops.PingResult` of #24).
+- The trust boundary, stated and closed where the note closes it (#10,
+  design note 3). The owner operations `approve`, `waive` and `goal_ratify`
+  are daemon operations in the wire table (`owner=True`, the token checked
+  by the daemon against the hash it holds): an approval is held in the
+  daemon's memory for its 600 seconds and consumed there by the paid path,
+  so it no longer survives a stop; the waivers are rebuilt at `Run.load`
+  from the `liveness_waived` activity records and held; a ratification
+  writes `goal.json` from the daemon; `approvals.json` and `waivers.json`
+  are gone, and every grant and use is recorded in the activity log as
+  before. The three commands print what they printed and refuse without a
+  live daemon with `DAEMON_UNAVAILABLE` and the hint to resume. On a
+  tamper the daemon now appends a sealing record to the anchor file beside
+  the `tamper_detected` activity record, `{"event_id": <held count - 1>,
+  "head": <held head>, "seal": "tamper_detected"}`; `assay audit` treats a
+  sealed anchor as the end of the journal: anchors DIVERGED and the run
+  invalid for scoring, whatever `chain.json` says, with a problem line that
+  names the seal and, when the journal changed after it, how; `assay start`
+  refuses to resume over a seal with the new code `RUN_SEALED` (kind
+  invalid, exit 5), and the remedy is the operator's, removing the line
+  from their own anchor file (ONBOARDING section 10). At start, `Run.load`
+  admits a manifest entry only if the registry's `modules` list names its
+  file or a `module_installed` activity record carries its hash; an entry
+  without either is held but never loaded, and the MODULES line reports it
+  (`manifest entry not admitted: neither registered nor installed`), so a
+  module file plus a manifest entry written while the daemon was stopped no
+  longer runs at the next start. README gains the trust-model paragraph of
+  section 8.8, verbatim, and sections 6 to 8 of `docs/ARCHITECTURE.md` say
+  what landed and what the honest limits are.
 - The 1.2.0 design notes, sections 6 to 8 of `docs/ARCHITECTURE.md`: the run
   model with typed records, the protocol with its error model and surfaces, and
   the trust model; `verify/JOURNAL_SPEC.md` states that `data` may hold any JSON

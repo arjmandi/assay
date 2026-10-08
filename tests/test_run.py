@@ -3,7 +3,11 @@ never writes, `run.append` is the one writer and keeps the held head equal to
 the head over the file, a chain behind by a crash's one line is tolerated and
 repaired by the next append, a diverged or malformed chain, a contiguity
 problem or a line that does not decode refuses a strict load and is reported
-by a lenient one, and `verify_disk` sees an edit, an in-place edit of the
+by a lenient one, a sealed anchor file (section 8.3) is reported by a lenient
+load and refuses a strict one with RUN_SEALED after the journal's own
+problems, the waivers are rebuilt from the activity log, the manifest's
+entries are admitted by the pinned registry or a module_installed record
+(section 8.2), and `verify_disk` sees an edit, an in-place edit of the
 mutation log included."""
 
 from __future__ import annotations
@@ -301,4 +305,180 @@ def test_verify_disk_sees_the_chain_file_the_owner_file_and_an_unreadable_file(t
     paths.events.write_bytes(paths.events.read_bytes() + b"\xff\n")
     assert [item.what for item in run.verify_disk()] == [
         "events.jsonl length", "events.jsonl head", "config.json",
+    ]
+
+
+def _seal_lines(paths: RunPaths, run: Run) -> list[dict]:
+    """The anchor file's records without the stamp append_jsonl adds to
+    every line, so the seal compares as the note writes it."""
+    from assay.integrity import anchor_file
+
+    target = anchor_file(paths, run.config)
+    lines = target.read_text().splitlines() if target.exists() else []
+    return [{k: v for k, v in json.loads(line).items() if k != "timestamp"} for line in lines]
+
+
+def test_a_sealed_anchor_is_a_finding_lenient_and_a_refusal_strict(tmp_path, monkeypatch):
+    """Section 8.3: the seal is the held count and head; the lenient load
+    reports it after the journal's own problems, the strict load refuses with
+    RUN_SEALED naming the file, the audit reads it as the end of the journal,
+    and what the journal does against the seal is named: nothing, lines past
+    it, or a prefix that no longer matches (where the chain's own problem
+    refuses first)."""
+    from assay.integrity import anchor_file, audit
+
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    run.append(event_of(id=-1))
+    run.seal("tamper_detected")
+    target = anchor_file(paths, run.config)
+    assert _seal_lines(paths, run) == [{"event_id": 1, "head": run.chain_head, "seal": "tamper_detected"}]
+    what = (
+        "anchor file sealed at e1 (tamper_detected): the daemon found the run's files "
+        "changed under it and the record ends there"
+    )
+    lenient = Run.load(paths, strict=False)
+    assert lenient.integrity.sealed == what
+    assert lenient.integrity.refused == what and lenient.integrity.refused_code == "RUN_SEALED"
+    assert lenient.integrity.chain == CHAIN_INTACT and lenient.integrity.contiguous
+    with pytest.raises(AssayError, match="^anchor file sealed at e1 \\(tamper_detected\\)") as refused:
+        Run.load(paths, strict=True)
+    assert refused.value.code == "RUN_SEALED" and refused.value.kind == "invalid"
+    assert str(refused.value).endswith("; the run is refused and nothing is rewritten")
+    assert refused.value.hint == (
+        f"the anchor file is the operator's: remove the sealing line from {target} by hand to "
+        "resume; the tamper_detected activity record stays as the record of what happened"
+    )
+    report = audit(lenient)
+    assert report.anchors == "DIVERGED" and report.anchor_count == 1 and report.chain == "intact"
+    assert report.invalid_for_scoring is True
+    assert report.problems == (
+        "anchor: sealed at e1 (tamper_detected): the daemon found the run's files changed under "
+        "it and the record ends there; the run is invalid for scoring until the operator removes "
+        f"the sealing line from {target}",
+    )
+    # Lines past the seal: named by the loader and the audit alike.
+    lenient.append(event_of(id=-1))
+    continued = Run.load(paths, strict=False)
+    assert continued.integrity.sealed == (
+        what + "; the journal continues past the seal to e2, lines the daemon that sealed it never wrote"
+    )
+    assert audit(continued).problems[-1] == (
+        "anchor: the journal continues past the seal to e2, lines the daemon that sealed it never wrote"
+    )
+    with pytest.raises(AssayError, match="continues past the seal to e2") as refused:
+        Run.load(paths, strict=True)
+    assert refused.value.code == "RUN_SEALED"
+    # A prefix that no longer matches: the chain's own problem refuses first,
+    # and the seal's finding stands beside it.
+    lines = paths.events.read_text().splitlines()
+    lines[1] = lines[1].replace('"INC"', '"XX"')
+    paths.events.write_text("\n".join(lines) + "\n")
+    edited = Run.load(paths, strict=False)
+    assert edited.integrity.chain == CHAIN_DIVERGED and edited.integrity.refused_code == "CHAIN_DIVERGED"
+    assert edited.integrity.sealed == (
+        what + "; the journal prefix at e1 no longer matches the sealed head; the journal changed "
+        "after it was sealed"
+    )
+    with pytest.raises(AssayError, match="^chain: stored head at e2") as refused:
+        Run.load(paths, strict=True)
+    assert refused.value.code == "CHAIN_DIVERGED"
+    # The remedy: the sealing line removed from the operator's file.
+    target.write_text("")
+    assert Run.load(paths, strict=False).integrity.sealed is None
+
+
+def test_the_earliest_seal_governs_and_a_seal_beyond_the_journal_is_named(tmp_path, monkeypatch):
+    from assay.core import append_jsonl
+    from assay.integrity import anchor_file, audit, seal_of
+
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(tmp_path / "anchors"))
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    target = anchor_file(paths, run.config)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    append_jsonl(target, {"event_id": 7, "head": "x" * 64, "seal": "tamper_detected"})
+    append_jsonl(target, {"event_id": 3, "head": "y" * 64, "seal": "tamper_detected"})
+    append_jsonl(target, {"event_id": "no", "head": "z", "seal": "tamper_detected"})  # malformed: ignored
+    assert seal_of([json.loads(line) for line in target.read_text().splitlines()])["event_id"] == 3
+    loaded = Run.load(paths, strict=False)
+    assert loaded.integrity.sealed == (
+        "anchor file sealed at e3 (tamper_detected): the daemon found the run's files changed "
+        "under it and the record ends there; the sealed event e3 is beyond the journal, which ends at e0"
+    )
+    assert audit(loaded).problems[-1] == "anchor: the sealed event e3 is beyond the journal, which ends at e0"
+    with pytest.raises(AssayError, match="beyond the journal, which ends at e0") as refused:
+        Run.load(paths, strict=True)
+    assert refused.value.code == "RUN_SEALED"
+    # A plain anchor beside the seals is still checked on its own.
+    append_jsonl(target, {"event_id": 0, "head": run.chain_head, "run": str(paths.root)})
+    report = audit(Run.load(paths, strict=False))
+    assert report.anchors == "DIVERGED" and report.anchor_count == 4
+    assert report.problems[0].startswith("anchor: sealed at e3 (tamper_detected)")
+
+
+def test_a_seal_that_cannot_be_written_is_an_anchor_failed_record(tmp_path, monkeypatch):
+    from assay.core import load_jsonl
+
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("a file where the anchor directory should be\n")
+    monkeypatch.setenv("ASSAY_ANCHOR_DIR", str(blocker / "anchors"))
+    paths = _run_dir(tmp_path)
+    run = Run.load(paths, strict=True)
+    run.append(event_of(id=-1, action="START", counts_action=False, level_before=None))
+    run.seal("tamper_detected")
+    failed = [record for record in load_jsonl(paths.activity) if record["kind"] == "anchor_failed"]
+    assert len(failed) == 1 and failed[0]["event"] == 0 and failed[0]["seal"] == "tamper_detected"
+    assert Run.load(paths, strict=True).integrity.sealed is None
+
+
+def test_waivers_are_rebuilt_from_the_activity_log_and_approvals_are_not(tmp_path):
+    from assay.core import append_jsonl
+
+    paths = _run_dir(tmp_path)
+    append_jsonl(paths.activity, {"kind": "liveness_waived", "action": "inc", "because": "safe"})
+    append_jsonl(paths.activity, {"kind": "approval_granted", "action": "FIRE"})
+    append_jsonl(paths.activity, {"kind": "liveness_waived", "action": "SIREN", "because": "rehearsed"})
+    append_jsonl(paths.activity, {"kind": "liveness_waived", "because": "no action"})  # malformed: ignored
+    run = Run.load(paths, strict=True)
+    assert run.waivers == {"INC", "SIREN"} and run.approvals == {}
+    assert not (paths.state / "approvals.json").exists() and not (paths.state / "waivers.json").exists()
+
+
+def test_manifest_entries_are_admitted_by_the_registry_or_an_install_record(tmp_path):
+    """Section 8.2: the registry names a source by the pinned file's name, a
+    module_installed record admits an entry by its hash, and the rest are
+    held as unadmitted while the manifest the run holds stays the file as
+    written, which verify_disk compares."""
+    from assay.core import append_jsonl
+
+    paths = _run_dir(tmp_path)
+    atomic_json(
+        paths.registry,
+        {"actions": [{"name": "INC", "params": {}}], "budget": {"actions": 60}, "modules": ["x/listed.py"]},
+    )
+    entries = [
+        {"name": "listed", "file": "listed.py", "sha256": "a" * 64, "origin": "registry"},
+        {"name": "added", "file": "added.py", "sha256": "b" * 64, "origin": "install"},
+        {"name": "forged", "file": "forged.py", "sha256": "c" * 64, "origin": "install"},
+        {"name": "renamed", "file": "renamed.py", "sha256": "a" * 64, "origin": "registry"},
+    ]
+    atomic_json(paths.state / "modules" / "manifest.json", {"version": 1, "modules": entries})
+    append_jsonl(paths.activity, {"kind": "module_installed", "name": "added", "file": "added.py", "sha256": "b" * 64})
+    run = Run.load(paths, strict=True)
+    assert run.manifest == entries and run.verify_disk() == []
+    assert run.unadmitted == {"forged.py", "renamed.py"}
+    from assay.modules import module_inventory
+
+    (paths.state / "modules" / "forged.py").write_text("MODULE = None\n")
+    inventory = module_inventory(run)
+    assert inventory["listed"] == []
+    assert inventory["ignored"] == [
+        "forged.py (manifest entry not admitted: neither registered nor installed)",
+        "listed.py (listed but missing)",
+        "added.py (listed but missing)",
+        "renamed.py (listed but missing)",
     ]

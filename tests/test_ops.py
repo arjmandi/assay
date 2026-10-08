@@ -1,4 +1,4 @@
-"""The wire table (docs/ARCHITECTURE.md section 7.2): the six daemon
+"""The wire table (docs/ARCHITECTURE.md section 7.2): the nine daemon
 operations named once with their request and result records; each record
 round-trips through the wire shape, describes itself with a schema naming
 its fields, and refuses a wrong type, a missing required key and a key it
@@ -16,10 +16,16 @@ def test_the_table_and_its_flags():
     from assay.ops import OPERATIONS
 
     assert [operation.name for operation in OPERATIONS] == [
-        "ping", "observe", "act", "commit", "reset", "install_module",
+        "ping", "observe", "act", "commit", "reset", "install_module", "approve", "waive", "goal_ratify",
     ]
     assert {operation.name for operation in OPERATIONS if operation.paid} == {"act", "commit", "reset"}
-    assert {operation.name for operation in OPERATIONS if operation.owner} == {"install_module"}
+    assert {operation.name for operation in OPERATIONS if operation.owner} == {
+        "install_module", "approve", "waive", "goal_ratify",
+    }
+    # The owner's token rides apart from the daemon's on every owner operation.
+    for operation in OPERATIONS:
+        if operation.owner:
+            assert operation.request.json_schema()["properties"]["owner_token"] == {"type": ["string", "null"]}
 
 
 def test_every_operation_has_a_handler_and_the_paid_ones_a_command():
@@ -30,7 +36,7 @@ def test_every_operation_has_a_handler_and_the_paid_ones_a_command():
     for operation in OPERATIONS:
         assert broker.HANDLERS[operation.name].__name__ == f"serve_{operation.name}"
     exposed = {command.operation.name for command in cli.COMMANDS if command.operation is not None}
-    assert exposed == {"act", "commit", "reset", "install_module"}
+    assert exposed == {"act", "commit", "reset", "install_module", "approve", "waive", "goal_ratify"}
 
 
 def test_commands_are_identifiers_with_unique_paths():
@@ -66,7 +72,11 @@ def test_an_unknown_operation_is_refused_by_name():
 def _samples():
     from assay.ops import (
         ActRequest,
+        ApproveRequest,
+        ApproveResult,
         CommitRequest,
+        GoalRatifyRequest,
+        GoalRatifyResult,
         InstallModuleRequest,
         InstallModuleResult,
         ObserveRequest,
@@ -76,6 +86,8 @@ def _samples():
         ReceiptResult,
         ResetRequest,
         Step,
+        WaiveRequest,
+        WaiveResult,
     )
     from assay.records import Receipt
 
@@ -100,6 +112,15 @@ def _samples():
         InstallModuleRequest(path="/tmp/probe.py", owner_token="t"),
         InstallModuleRequest(path="/tmp/probe.py"),
         InstallModuleResult(record={"name": "probe", "sha256": "0" * 64}),
+        ApproveRequest(action="fire", owner_token="t"),
+        ApproveRequest(action="FIRE"),
+        ApproveResult(action="FIRE", expires_seconds=600),
+        WaiveRequest(action="siren", owner_token="t", because="rehearsed on the sim binding"),
+        WaiveRequest(action="SIREN"),
+        WaiveResult(action="SIREN", because="rehearsed on the sim binding"),
+        GoalRatifyRequest(id=1, owner_token="t"),
+        GoalRatifyRequest(id=2),
+        GoalRatifyResult(id=1, text="win faster"),
     ]
 
 
@@ -153,6 +174,16 @@ def test_request_records_read_the_wire_fields():
         CommitRequest.from_json({"steps": [{"action": "NOOP", "predict": 1}]})
     with pytest.raises(TypeError, match="^act.bogus is not a field of the record$"):
         ActRequest.from_json({"action": "NOOP", "bogus": 1})
+    # The owner operations: the id is an integer, the token rides as owner_token.
+    from assay.ops import ApproveRequest, GoalRatifyRequest, WaiveRequest
+
+    assert GoalRatifyRequest.from_json({"id": 3}) == GoalRatifyRequest(id=3)
+    with pytest.raises(TypeError, match="^goal_ratify.id must be an integer, got str$"):
+        GoalRatifyRequest.from_json({"id": "3"})
+    with pytest.raises(TypeError, match="^approve.token is not a field of the record$"):
+        ApproveRequest.from_json({"action": "FIRE", "token": "t"})
+    with pytest.raises(KeyError):
+        WaiveRequest.from_json({"because": "x"})
     assert ActRequest.json_schema()["properties"]["params"]["type"] == ["object", "null"]
     assert CommitRequest.json_schema()["properties"]["steps"]["items"] == Step.json_schema()
 

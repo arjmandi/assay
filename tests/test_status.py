@@ -74,6 +74,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert status.model is None and status.hazards is None and status.spend is None and status.aggregates is None
     assert status.mis_references == 0
     assert status.integrity is not None and status.integrity.ungated == () and status.integrity.refused is None
+    assert status.integrity.refused_code is None
     assert status.anchors is not None and status.anchors.count == 0
     assert status.anchors.failed_event is None and status.anchors.failed_error is None
     assert status.emergence is not None and status.emergence.verifiers == 0

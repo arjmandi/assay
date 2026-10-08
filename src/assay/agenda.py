@@ -17,6 +17,14 @@ the run state; the agent cannot recover it from artifacts. The same token
 authorizes one-shot action approvals (`assay approve`) and liveness waivers
 (`assay waive`).
 
+The three owner operations run in the daemon against the hash it holds
+(docs/ARCHITECTURE.md section 7.2): an approval lives in the daemon's memory
+(`run.approvals`, the run the daemon holds) for its 600 seconds and is consumed
+there by the paid path; a waiver is the `liveness_waived` activity record,
+rebuilt into `run.waivers` at every load; a ratification is the daemon's write
+of `goal.json`. None of the three has a file of its own, so nothing the agent
+writes can grant one.
+
 The emergence meter is free journal counters over agent-initiated acts no
 module demanded: self-declared channels, self-authored verifiers, self-built
 models, self-proposed goals: measuring emergence instead of assuming it.
@@ -27,7 +35,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -49,14 +57,6 @@ def goal_path(paths: RunPaths) -> Path:
 
 def proposals_path(paths: RunPaths) -> Path:
     return paths.state / "proposals.jsonl"
-
-
-def approvals_path(paths: RunPaths) -> Path:
-    return paths.state / "approvals.json"
-
-
-def waivers_path(paths: RunPaths) -> Path:
-    return paths.state / "waivers.json"
 
 
 def mint_owner_token(paths: RunPaths) -> str:
@@ -161,60 +161,64 @@ def ratify_goal(run: Run, proposal_id: int, token: str | None) -> dict[str, Any]
     return proposal
 
 
-def grant_approval(run: Run, action: str, token: str | None) -> None:
-    """One-shot, expiring owner approval for an approval-flagged action."""
+def grant_approval(run: Run, action: str, token: str | None) -> str:
+    """One-shot, expiring owner approval for an approval-flagged action, held
+    on the run the daemon holds and nowhere else; a new grant replaces an
+    older one. Returns the action's name as held."""
     require_owner(run, token)
-    state = read_json(approvals_path(run.paths), {})
-    if not isinstance(state, dict):
-        state = {}
-    state[action.upper()] = {"granted_at": time.time(), "used": False}
-    atomic_json(approvals_path(run.paths), state)
-    append_jsonl(run.paths.activity, {"kind": "approval_granted", "action": action.upper()})
+    name = action.upper()
+    run.approvals[name] = time.time()
+    append_jsonl(run.paths.activity, {"kind": "approval_granted", "action": name})
+    return name
 
 
 def consume_approval(run: Run, action: str) -> None:
-    """Default-deny: refuse unless a fresh, unused approval exists; use it up."""
-    state = read_json(approvals_path(run.paths), {})
-    entry = state.get(action.upper()) if isinstance(state, dict) else None
-    if not isinstance(entry, dict) or entry.get("used"):
+    """Default-deny: refuse unless a fresh, unused approval is held; use it up."""
+    name = action.upper()
+    granted_at = run.approvals.get(name)
+    if granted_at is None:
         raise AssayError(
             f"{action} is approval-gated (default-deny) and has no fresh approval",
             code="APPROVAL_REQUIRED",
             hint=f"ask the operator to grant one use with `assay approve {action} --token ...`",
         )
-    age = time.time() - float(entry.get("granted_at", 0))
-    if age > APPROVAL_EXPIRY_SECONDS:
+    if time.time() - granted_at > APPROVAL_EXPIRY_SECONDS:
         raise AssayError(
             f"{action}'s approval expired after {int(APPROVAL_EXPIRY_SECONDS)}s "
             "(default-deny with timeout)",
             code="APPROVAL_REQUIRED",
             hint=f"ask the operator to run `assay approve {action} --token ...` again",
         )
-    entry["used"] = True
-    entry["used_at"] = time.time()
-    atomic_json(approvals_path(run.paths), state)
-    append_jsonl(run.paths.activity, {"kind": "approval_used", "action": action.upper()})
+    del run.approvals[name]
+    append_jsonl(run.paths.activity, {"kind": "approval_used", "action": name})
 
 
-def grant_waiver(run: Run, action: str, token: str | None, because: str) -> None:
-    """Owner waiver for a liveness rehearsal quota: explicit and journaled."""
+def grant_waiver(run: Run, action: str, token: str | None, because: str) -> dict[str, Any]:
+    """Owner waiver for a liveness rehearsal quota: explicit and journaled.
+    The activity record is the waiver; the held set is rebuilt from the
+    records at every load (`load_waivers`). Returns the record."""
     require_owner(run, token)
     if not because or not because.strip():
         raise AssayError("a liveness waiver needs --because <why it is safe now>", code="COMMAND_ARGS")
-    state = read_json(waivers_path(run.paths), {})
-    if not isinstance(state, dict):
-        state = {}
-    state[action.upper()] = {"at": time.time(), "because": because.strip()}
-    atomic_json(waivers_path(run.paths), state)
-    append_jsonl(
-        run.paths.activity,
-        {"kind": "liveness_waived", "action": action.upper(), "because": because.strip()},
-    )
+    name = action.upper()
+    record = {"kind": "liveness_waived", "action": name, "because": because.strip()}
+    run.waivers.add(name)
+    append_jsonl(run.paths.activity, record)
+    return record
+
+
+def load_waivers(activity: Iterable[Mapping[str, Any]]) -> set[str]:
+    """The waived actions, from the `liveness_waived` records of the
+    activity log: what `Run.load` holds as `run.waivers`."""
+    return {
+        str(record["action"]).upper()
+        for record in activity
+        if record.get("kind") == "liveness_waived" and isinstance(record.get("action"), str)
+    }
 
 
 def has_waiver(run: Run, action: str) -> bool:
-    state = read_json(waivers_path(run.paths), {})
-    return isinstance(state, dict) and action.upper() in state
+    return action.upper() in run.waivers
 
 
 def check_rehearsal(run: Run, action: str) -> None:

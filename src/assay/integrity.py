@@ -40,6 +40,8 @@ if TYPE_CHECKING:
 
 ANCHOR_EVERY = 25
 CHAIN_SEED = "assay-chain-v1"
+# The seal the daemon writes into the anchor file on a tamper (section 8.3).
+TAMPER_SEAL = "tamper_detected"
 # Env names whose values are always redacted, registered or not.
 DEFAULT_SECRET_ENV = ("ANTHROPIC_API_KEY", "CLAUDE_CODE_OAUTH_TOKEN")
 _MIN_SECRET_LENGTH = 8  # never redact trivially short values ("1", "true", ...)
@@ -144,6 +146,54 @@ def anchor_line(paths: RunPaths, config: Mapping[str, Any] | None) -> str:
         status["failed_error"],
         status["writable"],
     )
+
+
+def seal_of(anchors: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
+    """The sealing record that governs an anchor file (docs/ARCHITECTURE.md
+    section 8.3): the earliest well-formed record carrying `seal`, by event
+    id, or None. A seal says the journal ends exactly at its event with its
+    head; the earliest one is the first point past which nothing is the
+    daemon's record."""
+    seals = [
+        record
+        for record in anchors
+        if isinstance(record, Mapping)
+        and record.get("seal")
+        and isinstance(record.get("event_id"), int)
+        and not isinstance(record.get("event_id"), bool)
+        and isinstance(record.get("head"), str)
+    ]
+    if not seals:
+        return None
+    return dict(min(seals, key=lambda record: int(record["event_id"])))
+
+
+def seal_finding(seal: Mapping[str, Any], heads: Sequence[str]) -> tuple[str, str | None]:
+    """What a seal says, and what the journal does against it: a sealed event
+    beyond the journal, a prefix that no longer matches the sealed head, or
+    lines past the seal; None when the journal ends exactly at the sealed
+    event with the sealed head. The audit and the loader share it, so they
+    agree."""
+    sealed = int(seal["event_id"])
+    last = len(heads) - 1
+    what = (
+        f"sealed at e{sealed} ({seal['seal']}): the daemon found the run's files changed "
+        "under it and the record ends there"
+    )
+    if sealed > last:
+        ends = "is empty" if last < 0 else f"ends at e{last}"
+        return what, f"the sealed event e{sealed} is beyond the journal, which {ends}"
+    if heads[sealed] != seal["head"]:
+        return what, (
+            f"the journal prefix at e{sealed} no longer matches the sealed head; "
+            "the journal changed after it was sealed"
+        )
+    if last > sealed:
+        return what, (
+            f"the journal continues past the seal to e{last}, lines the daemon that "
+            "sealed it never wrote"
+        )
+    return what, None
 
 
 def _advance(head: str, line: str) -> str:
@@ -302,8 +352,9 @@ def audit(run: Run) -> AuditReport:
             f"but this run anchors to {recorded.parent} (recorded at start); the "
             "recorded file was audited"
         )
-    if anchors:
-        latest = anchors[-1]
+    plain_anchors = [record for record in anchors if not (isinstance(record, Mapping) and record.get("seal"))]
+    if plain_anchors:
+        latest = plain_anchors[-1]
         target = int(latest["event_id"])
         if target < len(run.heads):
             anchor_state = (
@@ -317,6 +368,20 @@ def audit(run: Run) -> AuditReport:
         else:
             anchor_state = "DIVERGED"
             problems.append("anchor: anchored event id beyond the journal")
+    # A sealed anchor is the end of the journal (section 8.3): the daemon
+    # found a file changed under it and refused to go on, so the record is
+    # invalid for scoring until the operator lifts the seal, whatever
+    # chain.json says, and any change after the seal is named.
+    seal = seal_of(anchors)
+    if seal is not None:
+        anchor_state = "DIVERGED"
+        what, against = seal_finding(seal, run.heads)
+        problems.append(
+            f"anchor: {what}; the run is invalid for scoring until the operator "
+            f"removes the sealing line from {anchor_target}"
+        )
+        if against is not None:
+            problems.append(f"anchor: {against}")
     ungated = ungated_events(events)
     # The control arms (gate: optional, gate: off) permit bare acts; they are
     # counted apart, with the mode that permitted them, and stay ungated.

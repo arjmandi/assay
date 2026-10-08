@@ -330,6 +330,14 @@ assay waive SIREN --token TOK --because "..."   # journaled waiver of a rehearsa
 assay module install PATH --token TOK           # add a behavior module mid-run
 ```
 
+All four are daemon operations (`docs/ARCHITECTURE.md` section 7.2): the
+daemon checks the token against the hash it holds, and without a live daemon
+each refuses with `DAEMON_UNAVAILABLE` and names `assay start`, which resumes
+it. An approval lives in the daemon's memory for its 600 seconds and does not
+survive a stop; a waiver lasts the run (the daemon rebuilds the set from the
+`liveness_waived` records of the activity log at every start); a ratification
+writes `goal.json` from the daemon. None of the three keeps a file of its own.
+
 Machine-readable output. Every command takes `--json`: exactly one JSON
 document on stdout and nothing on stderr. For `status`, `view`, `audit`,
 `act`, `commit`, `reset`, `channel list` and `module list` it is the
@@ -555,7 +563,7 @@ named in brackets; the suite does not run them.
    the target and renames it) and can neither delete nor rename over the
    daemon's. The lock and the activity log, which every command appends to
    (`core.run_lock`, `core.append_jsonl`), the proposals file, which the
-   agent's `propose` and the operator's `ratify` both append to, and
+   agent's `propose` appends to (the daemon appends the ratification), and
    `NOTES.md`, the agent's file, are group-writable:
 
    ```bash
@@ -588,7 +596,8 @@ named in brackets; the suite does not run them.
    The operator's commands (`goal ratify`, `approve`, `waive`, `module
    install`, `stop`, the resume) run as the daemon's user, with the token
    read from its file: `sudo -u assayd assay goal ratify N --token "$(sudo
-   -u assayd cat /opt/assay/tokens/WORLD_ID.token)"`.
+   -u assayd cat /opt/assay/tokens/WORLD_ID.token)"`. The first four are
+   daemon operations and need the daemon alive.
 
 What it gives, and what it does not. The journal, the chain, the mutation
 log, the pinned registry and configuration, the owner hash, the module
@@ -598,11 +607,21 @@ while the daemon is stopped. What the agent's commands write today stays the
 agent's to write: the activity log, the channel declarations, the proposals,
 the model fit and plan, and `audit.json` (rewritten by whoever runs `audit`,
 so under the sticky bit the operator audits after the run or on a copy). The
-owner operations move into the daemon with the design of section 7.2; since
-#20 the daemon holds the run in memory and checks those files against what it
-holds before every paid action, refusing on a difference with
-`TAMPER_DETECTED` and saying so on the status INTEGRITY line while it lives;
-the arrangement gets stronger with each.
+owner operations run in the daemon (section 7.2, #10): an approval is held in
+its memory, a waiver is rebuilt from the activity log at every start, a
+ratification writes `goal.json` from the daemon, and none of the three has a
+file the agent could write. Since #20 the daemon holds the run in memory and
+checks those files against what it holds before every paid action, refusing
+on a difference with `TAMPER_DETECTED` and saying so on the status INTEGRITY
+line while it lives; since #10 it also seals the anchor file at the last event
+it trusted, so `assay audit` reports the detection after the daemon is gone
+and `assay start` refuses to resume over the seal (`RUN_SEALED`) until the
+operator removes it. The two limits that remain are the ones section 8.3 of
+`docs/ARCHITECTURE.md` states: a `liveness_waived` or `module_installed` record
+written into the activity log while the daemon is stopped is admitted at the
+next start, and a consistent rewrite of the journal, the chain file, the
+mutation log and the anchor file while the daemon is stopped is caught only by
+a head published or anchored outside the agent's reach.
 
 ### Many runs at once: the evaluation runner
 
@@ -771,6 +790,32 @@ corrupt file, 5 when the run can no longer be scored or continued.
   before the first anchor is due. `anchor_env_mismatch` in the audit means
   the environment names a different directory than the run recorded. The
   recorded file is the one audited.
+- A sealed anchor file. When the daemon finds a run file changed under it
+  (`TAMPER_DETECTED`), it appends a sealing line to the anchor file at the
+  last event it trusted, `{"event_id": N, "head": ..., "seal":
+  "tamper_detected"}` with the timestamp every anchor line carries, beside
+  the `tamper_detected` record in
+  `.assay/activity.jsonl` that names what differed. From then on `assay
+  audit` reports `INVALID FOR SCORING` with `anchors DIVERGED` and a
+  `problem: anchor: sealed at eN ...` line, whatever `chain.json` says, and
+  `assay start` refuses with:
+
+  ```
+  ERROR | RUN_SEALED | anchor file sealed at eN (tamper_detected): the daemon found the run's files changed under it and the record ends there; the run is refused and nothing is rewritten
+  ```
+
+  The remedy is yours: the anchor file is your own file outside the run
+  (the `ANCHORS |` line names it). Read the `tamper_detected` record, decide
+  whether the record is worth resuming, and if it is, remove the sealing
+  line from the anchor file by hand; `assay start` then resumes, and the
+  `tamper_detected` record stands as the record of what happened. A seal
+  whose journal was also changed afterwards (a prefix that no longer
+  matches, lines past the sealed event) is named as such by the audit, and
+  that record is not worth resuming.
+- `ERROR | DAEMON_UNAVAILABLE | approve is a daemon operation and this run's
+  environment owner is not running` (the same for `waive`, `goal ratify` and
+  `module install`). The owner operations run inside the daemon, against the
+  token hash it holds; `assay start` resumes it, then run the command again.
 - Interpreter drift. `WARNING | interpreter changed: ...` on resume means
   this shell's Python is not the one the run started with. Set
   `ASSAY_PYTHON` to the original if the adapter's dependencies live there.

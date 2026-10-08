@@ -272,6 +272,7 @@ class IntegrityBlock:
 
     ungated: tuple[int, ...]
     refused: str | None
+    refused_code: str | None
     daemon_refusal: str | None
 
 
@@ -630,7 +631,10 @@ def _integrity_block(run: Run) -> IntegrityBlock:
     permitted = ungated_permitted(events)
     flagged = tuple(event_id for event_id in ungated_events(events) if event_id not in permitted)
     return IntegrityBlock(
-        ungated=flagged, refused=run.integrity.refused, daemon_refusal=_daemon_refusal(run)
+        ungated=flagged,
+        refused=run.integrity.refused,
+        refused_code=run.integrity.refused_code,
+        daemon_refusal=_daemon_refusal(run),
     )
 
 
@@ -1066,7 +1070,7 @@ def integrity_text(integrity: IntegrityBlock) -> list[str]:
     if integrity.refused is not None:
         lines.append(
             f"INTEGRITY | {integrity.refused}; this run is INVALID FOR SCORING and `assay start` "
-            "refuses to resume it (CHAIN_DIVERGED)"
+            f"refuses to resume it ({integrity.refused_code})"
         )
     if integrity.daemon_refusal is not None:
         lines.append(

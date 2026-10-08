@@ -167,7 +167,9 @@ def test_the_daemon_checks_the_version_before_the_token_and_the_operation(tmp_pa
         assert wrong["error"]["code"] == "DAEMON_TOKEN" and wrong["error"]["kind"] == "refused"
         unknown = _raw(run, {"v": 2, "op": "step", "args": {}})
         assert unknown["error"]["code"] == "OPERATION_UNKNOWN"
-        assert unknown["error"]["hint"] == "the operations are ping, observe, act, commit, reset, install_module"
+        assert unknown["error"]["hint"] == (
+            "the operations are ping, observe, act, commit, reset, install_module, approve, waive, goal_ratify"
+        )
         assert len(_events(run)) == 1
         assert not (run / ".assay" / "mutations.jsonl").exists()
     finally:

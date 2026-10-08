@@ -110,6 +110,7 @@ TIMELINE_EMPTY = "TIMELINE_EMPTY"
 
 # invalid: the run can no longer be scored or continued
 CHAIN_DIVERGED = "CHAIN_DIVERGED"
+RUN_SEALED = "RUN_SEALED"
 TAMPER_DETECTED = "TAMPER_DETECTED"
 LOCAL_REPLAY_DIVERGED = "LOCAL_REPLAY_DIVERGED"
 REMOTE_LEASE_EXPIRED = "REMOTE_LEASE_EXPIRED"
@@ -189,6 +190,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(TIMELINE_EMPTY, "internal", "the run has no events; event 0 is the daemon's before READY, so an empty journal is a broken run."),
     # invalid
     ErrorCode(CHAIN_DIVERGED, "invalid", "the journal, its chain file or its contiguity no longer agree; the run is refused and nothing is rewritten."),
+    ErrorCode(RUN_SEALED, "invalid", "the anchor file carries a seal: the daemon found the run's files changed under it and ended the record there; the run is refused until the operator removes the sealing line."),
     ErrorCode(TAMPER_DETECTED, "invalid", "a file changed under the daemon, which keeps the record it holds and refuses every paid action until it is stopped."),
     ErrorCode(LOCAL_REPLAY_DIVERGED, "invalid", "the local world no longer reproduces the journal on replay."),
     ErrorCode(REMOTE_LEASE_EXPIRED, "invalid", "the remote session's action-idle lease has run out; the run is not recoverable."),

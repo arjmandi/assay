@@ -17,20 +17,14 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from . import JOURNAL_SPEC, __version__
-from .agenda import (
-    grant_approval,
-    grant_waiver,
-    list_proposals,
-    mint_owner_token,
-    propose_goal,
-    ratify_goal,
-)
+from .agenda import list_proposals, mint_owner_token, propose_goal
 from .analysis import run_python
 from .broker import (
     REPLAY_HINT,
     broker_gated,
     broker_install_module,
     broker_matches_latest_event,
+    broker_owner,
     broker_ping,
     check_adapter_spec,
     find_daemon,
@@ -91,17 +85,23 @@ from .inspect import result_text, status_text, view_lines_text, view_of
 from .live import split_step
 from .ops import (
     ACT,
+    APPROVE,
     COMMIT,
+    GOAL_RATIFY,
     INSTALL_MODULE,
     REQUEST_LIMIT_BYTES,
     RESET,
+    WAIVE,
     ActRequest,
+    ApproveRequest,
     CommitRequest,
+    GoalRatifyRequest,
     Operation,
     ReceiptResult,
     Req,
     ResetRequest,
     Step,
+    WaiveRequest,
     decode_json,
 )
 from .predictions import claims_help
@@ -1315,9 +1315,12 @@ def goal_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.N
 
 
 def goal_ratify(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    proposal = ratify_goal(run, args.id, args.token)
+    # The owner's ratification runs in the daemon, against the hash it
+    # holds; the daemon writes goal.json. Refused without a live daemon.
+    request = GoalRatifyRequest(id=args.id, owner_token=args.token)
+    ratified = broker_owner(paths, GOAL_RATIFY, request, command="goal ratify", again="ratify")
     print(
-        f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
+        f"GOAL | ratified #{ratified.id}: {ratified.text}; status now "
         "re-presents it as the standing goal"
     )
 
@@ -1349,16 +1352,22 @@ def audit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
 
 
 def approve_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    grant_approval(run, args.action, args.token)
+    # The grant lives in the daemon's memory for its 600 seconds and is
+    # consumed there; nothing is written that the agent could write.
+    request = ApproveRequest(action=args.action, owner_token=args.token)
+    granted = broker_owner(paths, APPROVE, request, command="approve", again="approve")
     print(
-        f"APPROVED | one use of {args.action.upper()} granted "
-        "(expires in 10 minutes, consumed on use)"
+        f"APPROVED | one use of {granted.action} granted "
+        f"(expires in {granted.expires_seconds // 60} minutes, consumed on use)"
     )
 
 
 def waive_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    grant_waiver(run, args.action, args.token, args.because or "")
-    print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
+    # The waiver is the activity record the daemon writes, rebuilt into the
+    # held set at every load.
+    request = WaiveRequest(action=args.action, owner_token=args.token, because=args.because)
+    waived = broker_owner(paths, WAIVE, request, command="waive", again="waive")
+    print(f"WAIVED | rehearsal quota for {waived.action} (journaled)")
 
 
 def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1743,6 +1752,7 @@ COMMANDS: tuple[Command, ...] = (
         "goal ratify",
         "owner: ratify a proposal by id (requires the owner token)",
         goal_ratify,
+        operation=GOAL_RATIFY,
         arguments=(arg("id", type=int), arg("--token")),
     ),
     Command(
@@ -1774,6 +1784,7 @@ COMMANDS: tuple[Command, ...] = (
         "approve",
         "owner: grant one use of an approval-gated action",
         approve_command,
+        operation=APPROVE,
         arguments=(arg("action"), arg("--token")),
     ),
     Command(
@@ -1781,6 +1792,7 @@ COMMANDS: tuple[Command, ...] = (
         "waive",
         "owner: waive a live actuator's rehearsal quota (journaled)",
         waive_command,
+        operation=WAIVE,
         arguments=(arg("action"), arg("--token"), arg("--because")),
     ),
 )
