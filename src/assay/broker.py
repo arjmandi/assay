@@ -67,6 +67,7 @@ from .ops import (
     ApproveRequest,
     ApproveResult,
     CommitRequest,
+    DocumentTooDeep,
     GoalRatifyRequest,
     GoalRatifyResult,
     InstallModuleRequest,
@@ -891,8 +892,9 @@ def _read_request(connection: socket.socket) -> dict[str, Any]:
     longer line from an exact one; the rest of a longer line is drained and
     discarded so the client's send completes and the refusal reaches it
     (the connection is answered, never hung), and the line is refused
-    before anything parses it. A repeated key and a nesting past the
-    interpreter's limit are refused the same way (`ops.decode_json`)."""
+    before anything parses it. A repeated key and a nesting past
+    `DOCUMENT_DEPTH_LIMIT`, measured after the parse, are refused the same
+    way (`ops.decode_json`)."""
     raw = b""
     while b"\n" not in raw and len(raw) <= REQUEST_LIMIT_BYTES:
         chunk = connection.recv(min(1 << 20, REQUEST_LIMIT_BYTES + 1 - len(raw)))
@@ -916,7 +918,7 @@ def _read_request(connection: socket.socket) -> dict[str, Any]:
         raise AssayError(
             f"malformed request: not JSON ({error})", code="REQUEST_MALFORMED", hint=REQUEST_HINT
         ) from error
-    except RecursionError:
+    except DocumentTooDeep:
         raise AssayError(
             "malformed request: nested too deep", code="REQUEST_MALFORMED", hint=REQUEST_HINT
         ) from None

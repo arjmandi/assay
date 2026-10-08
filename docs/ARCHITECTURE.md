@@ -176,7 +176,14 @@ validator's recursion on a value too, since a value is only ever checked
 along its schema. One request line on the wire is at most
 `ops.REQUEST_LIMIT_BYTES` (1,000,000 bytes, section 7.2), so a string
 without `maxLength` and an array without `maxItems` are bounded by it;
-`maxLength` and `maxItems` are the world's own caps below it.
+`maxLength` and `maxItems` are the world's own caps below it. A document
+nests at most `ops.DOCUMENT_DEPTH_LIMIT` (64) containers deep, the params
+object and the request's wrapping counted, measured after the parse
+(section 7.2); a value within a schema of `SCHEMA_DEPTH_LIMIT` never
+reaches it. Both caps apply to a `--params` document however it arrives;
+one longer than the operating system's limit on a single argument (128 KiB
+on Linux) is refused by the system, in its own words, before the command
+line runs, and goes through `--params @FILE`.
 
 Defaults when a key is absent: `batching.hand_cap` is 3 (the batching law,
 `registry.hand_cap`), `notes_cap` is 16000 characters (`registry.notes_cap`),
@@ -1361,10 +1368,15 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   (1,000,000 bytes): the daemon reads that many and one more, drains the rest of a longer
   line so the client's send completes, and refuses it with `REQUEST_MALFORMED` before
   parsing, so the connection is answered, never hung (#14). A document whose object repeats
-  a key is refused the same way (the last would silently win), as is one nested past the
-  interpreter's limit (`ops.decode_json`); the command line applies the same cap and the
-  same two rules to a `--params` or `--step` document, as `COMMAND_ARGS`, so the agent
-  reads the refusal before the socket does.
+  a key is refused the same way (the last would silently win), as is one nested more than
+  `ops.DOCUMENT_DEPTH_LIMIT` (64) containers deep, the request object itself the first
+  level: `ops.decode_json` measures the depth after the parse with a stack of its own
+  (`ops.document_depth`) and refuses past the limit, never leaving the refusal to the
+  interpreter's `RecursionError`, whose threshold moves with the version (3.12 gives up
+  past about 20,000 levels, 3.14.5 reads 100,000) and with the thread's stack; a parse the
+  interpreter does give up on is refused in the same words. The command line applies the
+  same cap and the same two rules to a `--params` or `--step` document, as `COMMAND_ARGS`,
+  so the agent reads the refusal before the socket does.
 - `action` and `params`: the client parses `NAME k=v ...` into the name and a scalar
   params object using the pinned registry (the coercion of `registry._coerce`), or takes
   `--params JSON` as given and validates it against the same registry (#14); the daemon

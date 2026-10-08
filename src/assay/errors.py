@@ -154,7 +154,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(EXTRA_MISSING, "usage", "the run has frame observations and the frame-world extra (assay_grid) is not importable."),
     ErrorCode(RESUME_REFUSED, "usage", "start's arguments disagree with the directory's run: another world id, mode or registry, or an import on resume."),
     ErrorCode(ANCHOR_DIR_UNWRITABLE, "usage", "the anchor directory cannot be written, so the run's chain heads and its seal would have nowhere to go; start refuses before anything is written."),
-    ErrorCode(REQUEST_MALFORMED, "usage", "the request line on the socket is empty, not a JSON object, or its body does not fit the operation's request record."),
+    ErrorCode(REQUEST_MALFORMED, "usage", "the request line on the socket is empty, longer than 1,000,000 bytes, not JSON, not a JSON object, repeats a key, nests more than 64 containers deep, or its body does not fit the operation's request record."),
     ErrorCode(OPERATION_UNKNOWN, "usage", "the daemon operation is not in the wire table (the retired `step` included); nothing is written."),
     ErrorCode(PROTOCOL_VERSION, "usage", "the request or the reply carries no `v`, or another version than this package speaks."),
     # refused

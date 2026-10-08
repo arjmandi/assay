@@ -986,6 +986,23 @@ Left on the experiment branch, deliberately:
   the `aggregates.py` and `modules.py` docstrings say when and where the
   code runs; ONBOARDING quotes the current world id rule, GUIDE the grade
   text as printed, and the `--predict` help a general claim (#29).
+- The nesting limit on a JSON document is the kernel's own, not the
+  interpreter's. `ops.decode_json` refused a document nested too deep by
+  catching the `RecursionError` of `json.loads`, whose threshold moves with
+  the version (3.12 gives up past about 20,000 levels, 3.14.5 reads 100,000)
+  and with the thread's stack: on Python 3.14 the daemon read a 100,000-deep
+  request and refused it later as `args is not an object`, and the command
+  line passed one on to the registry. The depth is measured after the parse
+  with a stack of the kernel's own and refused past
+  `ops.DOCUMENT_DEPTH_LIMIT` (64, the outermost container the first level; a
+  value within a schema of `SCHEMA_DEPTH_LIMIT` never reaches it), in the
+  same words on both surfaces, `malformed request: nested too deep` on the
+  wire and `--params is nested too deep` on the command line. The suite's
+  inline 100,000-deep `--params` argument, 200 KB, was over the 128 KiB
+  Linux allows one argument, so every ubuntu cell failed with `Argument list
+  too long` before the command line ran; the extreme depth goes through
+  `--params @FILE` and the inline case is 200 deep. Found by the first CI
+  run after the billing block, on every ubuntu cell and on macOS 3.14 (#30).
 
 ### Regression gates
 
