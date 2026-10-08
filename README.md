@@ -83,6 +83,25 @@ That is one person at a terminal playing both roles; an evaluated agent does
 not start the run: the operator starts it with `--owner-token-file` and the
 agent's session begins at `assay status` (`GUIDE.md` section 5).
 
+## Trust model
+
+ASSAY's record is tamper-evident, not tamper-proof. The agent and the daemon run as the
+same user, so the agent can write the run directory. The daemon holds the chain head in
+memory, verifies the journal on disk before every paid action, and refuses to continue on
+a difference, sealing the anchor file at the last trusted event; in a Claude Code session
+the shipped hooks refuse writes under `.assay/` and world access that bypasses `assay`;
+the operator holds the owner token outside the run, and approvals and waivers are granted
+inside the daemon against it. The activity log is the agent's to write, so a waiver or an
+installed module recorded there is admitted at the next start on the operator's word, not
+the daemon's; the separate-user setup is what puts it out of reach. An agent that rewrites
+the journal, the chain file, the mutation log and the anchor file consistently while the
+daemon is stopped is caught only
+by a head published or anchored outside its reach, which is why heads are published with
+every evidence pack and why a separate user for the daemon is the recommended setup where
+the stakes warrant it. Nothing the agent asserts is load-bearing: every grade is computed
+by the kernel from the world's own response, and the published journals replay through
+the engine.
+
 ## Status
 
 1.2.0, the first open-source release. The ARC-AGI-3 campaign of

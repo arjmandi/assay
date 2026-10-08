@@ -71,7 +71,7 @@ import hashlib
 import json
 import shutil
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import TYPE_CHECKING, Any, Protocol
@@ -675,6 +675,34 @@ def load_manifest(paths: RunPaths) -> list[dict[str, Any]]:
     return []
 
 
+def unadmitted_entries(
+    manifest: Sequence[Mapping[str, Any]],
+    registry: Mapping[str, Any] | None,
+    activity: Iterable[Mapping[str, Any]],
+) -> set[str]:
+    """The files of the manifest entries neither source of authority admits
+    (docs/ARCHITECTURE.md sections 6.4 and 8.2): the pinned registry's
+    `modules` list, which names a source by the pinned file's name (the
+    basename `pin_external_modules` and `reconstruct_manifest` key by), or a
+    `module_installed` activity record carrying the entry's hash. `Run.load`
+    holds them as `run.unadmitted`; the inventory never loads them."""
+    registered = {
+        Path(entry).name
+        for entry in ((registry or {}).get("modules") or ())
+        if isinstance(entry, str)
+    }
+    installed = {
+        record.get("sha256")
+        for record in activity
+        if record.get("kind") == "module_installed" and isinstance(record.get("sha256"), str)
+    }
+    return {
+        str(entry.get("file"))
+        for entry in manifest
+        if entry.get("file") not in registered and entry.get("sha256") not in installed
+    }
+
+
 def _write_manifest(paths: RunPaths, entries: Sequence[Mapping[str, Any]]) -> None:
     atomic_json(manifest_path(paths), {"version": 1, "modules": list(entries)})
 
@@ -751,6 +779,7 @@ def install_module(run: Run, source: Path, token: str | None) -> dict[str, Any]:
     entries.append(record)
     _write_manifest(paths, entries)
     run.manifest = entries
+    run.unadmitted.discard(pinned.name)
     run.modules = None
     append_jsonl(paths.activity, {"kind": "module_installed", **record})
     return record
@@ -799,7 +828,9 @@ def reconstruct_manifest(paths: RunPaths) -> list[dict[str, Any]]:
 
 def module_inventory(run: Run) -> dict[str, Any]:
     """Listed and loadable files, and everything in the directory that is not:
-    unlisted files and listed files whose hash changed. Reads the held
+    unlisted files, listed files whose hash changed, and the entries the
+    run holds as unadmitted (neither the pinned registry nor a
+    `module_installed` record vouches for them, section 8.2). Reads the held
     manifest and the directory; writes nothing."""
     target = modules_dir(run.paths)
     if not target.is_dir():
@@ -812,6 +843,10 @@ def module_inventory(run: Run) -> dict[str, Any]:
         entry = by_file.get(file.name)
         if entry is None:
             ignored.append(f"{file.name} (not in the manifest)")
+        elif file.name in run.unadmitted:
+            ignored.append(
+                f"{file.name} (manifest entry not admitted: neither registered nor installed)"
+            )
         elif _sha256(file) != entry.get("sha256"):
             ignored.append(f"{file.name} (modified since install)")
         else:

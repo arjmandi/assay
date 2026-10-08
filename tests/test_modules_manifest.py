@@ -1,6 +1,9 @@
 """External modules load only through the manifest: registered at start or
 installed by the owner. A file dropped into .assay/modules by hand, or a pinned
-file edited afterwards, is ignored and reported, never loaded."""
+file edited afterwards, is ignored and reported, never loaded; and a manifest
+entry written while the daemon was stopped is admitted at the next start only
+if the registry names its file or a module_installed record carries its hash
+(docs/ARCHITECTURE.md section 8.2)."""
 
 from __future__ import annotations
 
@@ -161,6 +164,95 @@ def test_run_without_a_manifest_reconstructs_it_from_the_registry(tmp_path):
         assert "rogue.py (not in the manifest)" in status.stdout
         entries = _manifest(run)["modules"]
         assert entries[0]["name"] == "probe" and entries[0]["reconstructed"] is True
+    finally:
+        stop_run(run)
+
+
+def test_a_manifest_entry_written_while_the_daemon_was_stopped_is_not_admitted(tmp_path):
+    """The scenario the #20 review found: a module file and a manifest entry
+    with its hash, both written while the daemon was stopped, so the
+    verification at the next start has nothing to compare them with. The
+    entry is admitted by neither the pinned registry nor a module_installed
+    record, so it is held as written (no tamper), never loaded, and the
+    MODULES line says why; the owner's install of the same file admits it,
+    and the record the install leaves keeps it admitted across a restart."""
+    import hashlib
+
+    run = tmp_path / "forged"
+    _prepare(run)
+    probe = _write_probe(tmp_path)
+    try:
+        started = _start(run)
+        assert started.returncode == 0, started.stderr
+        token = _token(started.stdout)
+        assert run_cli(run, "stop").returncode == 0
+        modules = run / ".assay" / "modules"
+        modules.mkdir()
+        (modules / "probe.py").write_text(PROBE)
+        forged = {
+            "name": "probe",
+            "file": "probe.py",
+            "source": str(probe),
+            "sha256": hashlib.sha256(PROBE.encode()).hexdigest(),
+            "installed_at": 0,
+            "origin": "install",
+        }
+        (modules / "manifest.json").write_text(json.dumps({"version": 1, "modules": [forged]}))
+        resumed = _start(run)
+        assert resumed.returncode == 0, resumed.stderr
+        assert (
+            "MODULES | 1 file(s) in .assay/modules ignored (not installed through the registry "
+            "or `assay module install`): probe.py (manifest entry not admitted: neither "
+            "registered nor installed)"
+        ) in resumed.stdout
+        for _ in range(3):
+            acted = run_cli(run, "act", "NOOP", "--predict", "noop")
+            assert acted.returncode == 0, acted.stderr
+            assert "probe fired" not in acted.stdout
+        status = run_cli(run, "status")
+        assert "probe fired" not in status.stdout and "INTEGRITY" not in status.stdout
+        assert "probe.py (manifest entry not admitted: neither registered nor installed)" in status.stdout
+        listed = run_cli(run, "module", "list")
+        assert "probe | advise" not in listed.stdout
+        assert "probe.py (manifest entry not admitted: neither registered nor installed)" in listed.stdout
+        # The manifest the daemon holds is the file as written: nothing differed.
+        assert json.loads((modules / "manifest.json").read_text())["modules"] == [forged]
+        assert '"kind":"module_installed"' not in (run / ".assay" / "activity.jsonl").read_text()
+        # The owner's install is the sanctioned way in: the entry it writes
+        # is admitted at once, and its record keeps it admitted at the next
+        # start.
+        installed = run_cli(run, "module", "install", str(probe), "--token", token)
+        assert installed.returncode == 0, installed.stderr
+        entries = _manifest(run)["modules"]
+        assert len(entries) == 1 and entries[0]["name"] == "probe" and entries[0]["origin"] == "install"
+        acted = run_cli(run, "act", "NOOP", "--predict", "noop")
+        assert acted.returncode == 0 and "MODULE probe | probe fired" in acted.stdout
+        assert run_cli(run, "stop").returncode == 0
+        resumed = _start(run)
+        assert resumed.returncode == 0, resumed.stderr
+        assert "MODULES |" not in resumed.stdout
+        acted = run_cli(run, "act", "NOOP", "--predict", "noop")
+        assert acted.returncode == 0 and "MODULE probe | probe fired" in acted.stdout
+    finally:
+        stop_run(run)
+
+
+def test_a_registered_module_is_admitted_across_a_restart(tmp_path):
+    """The registry's `modules` list names the pinned file, so the entry is
+    admitted at every start without a module_installed record."""
+    run = tmp_path / "registered"
+    probe = _write_probe(tmp_path)
+    _prepare(run, modules=[str(probe)])
+    try:
+        assert _start(run).returncode == 0
+        assert run_cli(run, "stop").returncode == 0
+        resumed = _start(run)
+        assert resumed.returncode == 0, resumed.stderr
+        assert "MODULES |" not in resumed.stdout
+        acted = run_cli(run, "act", "NOOP", "--predict", "noop")
+        assert acted.returncode == 0 and "MODULE probe | probe fired" in acted.stdout
+        listed = run_cli(run, "module", "list")
+        assert "probe | advise | registry" in listed.stdout and "ignored" not in listed.stdout
     finally:
         stop_run(run)
 

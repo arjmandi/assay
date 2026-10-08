@@ -66,6 +66,7 @@ PLAN_INVALID = "PLAN_INVALID"
 KNOWLEDGE_INVALID = "KNOWLEDGE_INVALID"
 EXTRA_MISSING = "EXTRA_MISSING"
 RESUME_REFUSED = "RESUME_REFUSED"
+ANCHOR_DIR_UNWRITABLE = "ANCHOR_DIR_UNWRITABLE"
 REQUEST_MALFORMED = "REQUEST_MALFORMED"
 OPERATION_UNKNOWN = "OPERATION_UNKNOWN"
 PROTOCOL_VERSION = "PROTOCOL_VERSION"
@@ -97,6 +98,7 @@ DAEMON_UNAVAILABLE = "DAEMON_UNAVAILABLE"
 DAEMON_BUSY = "DAEMON_BUSY"
 DAEMON_ORPHANED = "DAEMON_ORPHANED"
 DECLARATION_CHANGED = "DECLARATION_CHANGED"
+ANCHOR_FILE_MISMATCH = "ANCHOR_FILE_MISMATCH"
 
 # world: the adapter or the world failed or refused at the kernel boundary
 WORLD_ERROR = "WORLD_ERROR"
@@ -110,6 +112,7 @@ TIMELINE_EMPTY = "TIMELINE_EMPTY"
 
 # invalid: the run can no longer be scored or continued
 CHAIN_DIVERGED = "CHAIN_DIVERGED"
+RUN_SEALED = "RUN_SEALED"
 TAMPER_DETECTED = "TAMPER_DETECTED"
 LOCAL_REPLAY_DIVERGED = "LOCAL_REPLAY_DIVERGED"
 REMOTE_LEASE_EXPIRED = "REMOTE_LEASE_EXPIRED"
@@ -150,6 +153,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(KNOWLEDGE_INVALID, "usage", "the knowledge file cannot be read, is not JSON or has another format."),
     ErrorCode(EXTRA_MISSING, "usage", "the run has frame observations and the frame-world extra (assay_grid) is not importable."),
     ErrorCode(RESUME_REFUSED, "usage", "start's arguments disagree with the directory's run: another world id, mode or registry, or an import on resume."),
+    ErrorCode(ANCHOR_DIR_UNWRITABLE, "usage", "the anchor directory cannot be written, so the run's chain heads and its seal would have nowhere to go; start refuses before anything is written."),
     ErrorCode(REQUEST_MALFORMED, "usage", "the request line on the socket is empty, not a JSON object, or its body does not fit the operation's request record."),
     ErrorCode(OPERATION_UNKNOWN, "usage", "the daemon operation is not in the wire table (the retired `step` included); nothing is written."),
     ErrorCode(PROTOCOL_VERSION, "usage", "the request or the reply carries no `v`, or another version than this package speaks."),
@@ -179,6 +183,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(DAEMON_BUSY, "refused", "the harness's own state refused: the daemon is alive and inside a step, hung, or did not answer within the client's wait."),
     ErrorCode(DAEMON_ORPHANED, "refused", "the harness's own state refused: a live daemon still serves this directory while its run state is gone."),
     ErrorCode(DECLARATION_CHANGED, "refused", "the adapter's session declaration differs from the one recorded at the run's start; the run continues only under the recorded one."),
+    ErrorCode(ANCHOR_FILE_MISMATCH, "refused", "the anchor file recorded in config.json is not the one the environment names (ASSAY_ANCHOR_DIR and the run's digest); the daemon does not start over a moved anchor file."),
     # world
     ErrorCode(WORLD_ERROR, "world", "the world raised or refused inside the adapter's factory, observation or step; nothing was journaled for the action."),
     ErrorCode(OBSERVATION_INVALID, "world", "the adapter's observation has a shape the kernel does not take: no observation, not a JSON object under `data`, no frames, a frame that is not 2-D or has colors outside 0..15."),
@@ -189,6 +194,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(TIMELINE_EMPTY, "internal", "the run has no events; event 0 is the daemon's before READY, so an empty journal is a broken run."),
     # invalid
     ErrorCode(CHAIN_DIVERGED, "invalid", "the journal, its chain file or its contiguity no longer agree; the run is refused and nothing is rewritten."),
+    ErrorCode(RUN_SEALED, "invalid", "the anchor file carries a seal: the daemon found the run's files changed under it and ended the record there; the run is refused until the operator removes the sealing line."),
     ErrorCode(TAMPER_DETECTED, "invalid", "a file changed under the daemon, which keeps the record it holds and refuses every paid action until it is stopped."),
     ErrorCode(LOCAL_REPLAY_DIVERGED, "invalid", "the local world no longer reproduces the journal on replay."),
     ErrorCode(REMOTE_LEASE_EXPIRED, "invalid", "the remote session's action-idle lease has run out; the run is not recoverable."),

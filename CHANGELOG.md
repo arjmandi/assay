@@ -229,6 +229,62 @@ Left on the experiment branch, deliberately:
   refuses and names `assay start`. `broker.broker_state` reads the daemon's
   held chain event, head and refusal as a record (`DaemonState`, the
   `ops.PingResult` of #24).
+- The trust boundary, stated and closed where the note closes it (#10,
+  design note 3). The owner operations `approve`, `waive` and `goal_ratify`
+  are daemon operations in the wire table (`owner=True`, the token checked
+  by the daemon against the hash it holds): an approval is held in the
+  daemon's memory for its 600 seconds and consumed there by the paid path,
+  so it no longer survives a stop; the waivers are rebuilt at `Run.load`
+  from the `liveness_waived` activity records and held; a ratification
+  writes `goal.json` from the daemon; `approvals.json` and `waivers.json`
+  are gone, and every grant and use is recorded in the activity log as
+  before. The three commands print what they printed and refuse without a
+  live daemon with `DAEMON_UNAVAILABLE` and the hint to resume. On a
+  tamper the daemon now appends a sealing record to the anchor file beside
+  the `tamper_detected` activity record, `{"event_id": <held count - 1>,
+  "head": <held head>, "seal": "tamper_detected"}`; `assay audit` treats a
+  sealed anchor as the end of the journal: anchors DIVERGED and the run
+  invalid for scoring, whatever `chain.json` says, with a problem line that
+  names the seal and, when the journal changed after it, how; `assay start`
+  refuses to resume over a seal with the new code `RUN_SEALED` (kind
+  invalid, exit 5), and the remedy is the operator's, removing the line
+  from their own anchor file (ONBOARDING section 10). At start, `Run.load`
+  admits a manifest entry only if the registry's `modules` list names its
+  file or a `module_installed` activity record carries its hash; an entry
+  without either is held but never loaded, and the MODULES line reports it
+  (`manifest entry not admitted: neither registered nor installed`), so a
+  module file plus a manifest entry written while the daemon was stopped no
+  longer runs at the next start. README gains the trust-model paragraph of
+  section 8.8, verbatim, and sections 6 to 8 of `docs/ARCHITECTURE.md` say
+  what landed and what the honest limits are.
+  The `Status` record's `integrity` block carries `refused_code`, the code
+  its INTEGRITY line names (`CHAIN_DIVERGED`, `RECORD_CORRUPT` or
+  `RUN_SEALED`). From the review: the seal is a typed record
+  (`integrity.Seal`); the remedy is ordered (put back the file the
+  `tamper_detected` record names, then remove the sealing line last), and
+  `audit` and `status` print `TAMPER | N tamper_detected record(s) in the
+  activity log; ...` whenever such records stand, information beside the
+  verdict (a `tamper` block in the `Status` record, `tamper_records` and
+  `tamper_state` in the audit report); an anchor file that cannot be read as
+  one JSON object per line refuses a start with `RECORD_CORRUPT` naming the
+  line, reads as anchors DIVERGED in the audit and as `unreadable` on the
+  ANCHORS line; `assay start` refuses an anchor directory it cannot write
+  with the new code `ANCHOR_DIR_UNWRITABLE` (usage) instead of printing a
+  warning, and a seal the daemon could not write (an `anchor_failed` record
+  carrying `seal`) is an audit problem with anchors DIVERGED; a resume and
+  the daemon refuse a `config.json` whose `anchor_file` is not the one the
+  environment names with the new code `ANCHOR_FILE_MISMATCH` (refused), and
+  the audit reads a recorded anchor file inside the run directory as anchors
+  DIVERGED while the `anchor_env_mismatch` line stays what it was; a sealed
+  run's ANCHORS line says `sealed at eN` instead of counting the seal; the
+  owner's grant is stamped on the monotonic clock, checked by the gate
+  before any spend and consumed by the daemon after the disk is verified, so
+  a tamper refusal no longer burns it; the owner hash is compared in
+  constant time; a wrong owner token leaves an `owner_refused` activity
+  record naming the operation; `approve`, `waive`, `goal ratify` and
+  `module install` take `--token-file PATH` (outside the run directory)
+  beside `--token`, so the token never shows in the process list, and
+  ONBOARDING's recipes use it.
 - The 1.2.0 design notes, sections 6 to 8 of `docs/ARCHITECTURE.md`: the run
   model with typed records, the protocol with its error model and surfaces, and
   the trust model; `verify/JOURNAL_SPEC.md` states that `data` may hold any JSON

@@ -41,19 +41,34 @@ from .adapters import (
     session_capability,
     transitions_of,
 )
+from .agenda import (
+    APPROVAL_EXPIRY_SECONDS,
+    consume_approval,
+    grant_approval,
+    grant_waiver,
+    ratify_goal,
+)
+from .integrity import TAMPER_SEAL, check_anchor_file
 from .live import execute_action, execute_model_plan, execute_steps, reset_level
 from .modules import active_modules, install_module
 from .ops import (
     ACT,
+    APPROVE,
     COMMIT,
+    GOAL_RATIFY,
     INSTALL_MODULE,
     OBSERVE,
     PING,
     PROTOCOL_VERSION,
     REQUEST_LIMIT_BYTES,
     RESET,
+    WAIVE,
     ActRequest,
+    ApproveRequest,
+    ApproveResult,
     CommitRequest,
+    GoalRatifyRequest,
+    GoalRatifyResult,
     InstallModuleRequest,
     InstallModuleResult,
     ObserveRequest,
@@ -65,10 +80,13 @@ from .ops import (
     Req,
     Res,
     ResetRequest,
+    WaiveRequest,
+    WaiveResult,
     daemon_operation,
     decode_json,
 )
 from .records import Claim, Event, Mutation, Receipt
+from .registry import action_spec
 from .run import Run
 
 
@@ -436,22 +454,32 @@ def broker_state(paths: RunPaths) -> PingResult:
     return call(paths, PING, PingRequest(), timeout=_ping_timeout())
 
 
+def broker_owner(
+    paths: RunPaths, operation: Operation[Req, Res], request: Req, *, command: str, again: str
+) -> Res:
+    """An owner operation through the daemon (docs/ARCHITECTURE.md sections
+    7.2 and 8.1): the daemon checks the owner token, which rides apart from
+    its own, against the hash it holds, and keeps what it grants. Without a
+    live daemon (none in the process table) the command refuses and names
+    the way back, since nothing granted behind the daemon's back is held by
+    it; a daemon inside a step is waited for like any paid command."""
+    if find_daemon(paths) is None:
+        raise AssayError(
+            f"{command} is a daemon operation and this run's environment owner is not running",
+            code="DAEMON_UNAVAILABLE",
+            hint=f"resume it with `assay start WORLD_ID`, then {again} again",
+        )
+    return call(paths, operation, request, timeout=_client_timeout(60.0))
+
+
 def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str, Any]:
     """`assay module install` as the daemon operation it is (section 6.4):
     the daemon checks the owner token against the hash it holds, pins the
-    file, updates the manifest it holds and loads the module. Without a live
-    daemon (none in the process table) the command refuses, since a manifest
+    file, updates the manifest it holds and loads the module; a manifest
     written behind the daemon's back would be a difference it refuses to
-    adopt; a daemon inside a step is waited for like any paid command."""
-    if find_daemon(paths) is None:
-        raise AssayError(
-            "module install is a daemon operation and this run's environment owner is not running",
-            code="DAEMON_UNAVAILABLE",
-            hint="resume it with `assay start WORLD_ID`, then install again",
-        )
-    # `token` on the wire is the daemon's own; the owner's rides apart.
+    adopt, so the command refuses without a live daemon."""
     request = InstallModuleRequest(path=str(source.resolve()), owner_token=token)
-    return call(paths, INSTALL_MODULE, request, timeout=_client_timeout(60.0)).record
+    return broker_owner(paths, INSTALL_MODULE, request, command="module install", again="install").record
 
 
 def broker_matches_latest_event(run: Run) -> bool:
@@ -1040,9 +1068,11 @@ class _Daemon:
     def verify_before_spend(self) -> None:
         """The files on disk against the held copies, before every paid
         action. A difference refuses this action and every later one, is
-        recorded once in the activity log with every difference whole, and
-        changes nothing the daemon holds: it never adopts the disk state and
-        never appends to a changed file."""
+        recorded once in the activity log with every difference whole, seals
+        the anchor file at the held event (section 8.3, so the readers see
+        the detection after this daemon is gone), and changes nothing the
+        daemon holds: it never adopts the disk state and never appends to a
+        changed file."""
         self.refuse_if_tampered()
         found = self.run.verify_disk()
         if not found:
@@ -1060,6 +1090,7 @@ class _Daemon:
                 "differences": [dataclasses.asdict(item) for item in found],
             },
         )
+        self.run.seal(TAMPER_SEAL)
         self.tampered = detail
         raise _tamper_error(detail)
 
@@ -1079,6 +1110,12 @@ class _Daemon:
         if run is not self.run:
             raise AssayError("the daemon spends only on the run it holds", code="INTERNAL")
         self.verify_before_spend()
+        # The owner's one-shot grant is used up here, after the disk is
+        # verified and before the world step: a refusal of either kind
+        # leaves it held (the gate checked it before any of this).
+        spec = action_spec(run.registry, action) if run.registry else None
+        if spec and spec.get("approval"):
+            consume_approval(run, action)
         observed, self.fresh_unit = _apply_step(
             self.session,
             action,
@@ -1151,7 +1188,16 @@ class _Daemon:
             decoded = operation.request.from_json(args)
         except (TypeError, KeyError) as error:
             raise _request_refusal(operation, error) from error
-        result = HANDLERS[operation.name](self, self.run, decoded)
+        try:
+            result = HANDLERS[operation.name](self, self.run, decoded)
+        except AssayError as error:
+            if operation.owner and error.code == "OWNER_TOKEN":
+                # A wrong owner token leaves its mark: the operation, never
+                # the token, so probing is visible in the activity log.
+                append_jsonl(
+                    self.paths.activity, {"kind": "owner_refused", "operation": operation.name}
+                )
+            raise
         terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
         return {"v": PROTOCOL_VERSION, "ok": True, "result": result.to_json()}, terminal
 
@@ -1227,6 +1273,29 @@ def serve_install_module(
     return InstallModuleResult(record=record)
 
 
+def serve_approve(daemon: _Daemon, run: Run, request: ApproveRequest) -> ApproveResult:
+    """The owner's one-shot approval, against the held hash, held on the run
+    the daemon holds for its 600 seconds and consumed there by the paid path
+    (section 7.2); `approval_granted` recorded as before."""
+    name = grant_approval(run, request.action, request.owner_token)
+    return ApproveResult(action=name, expires_seconds=int(APPROVAL_EXPIRY_SECONDS))
+
+
+def serve_waive(daemon: _Daemon, run: Run, request: WaiveRequest) -> WaiveResult:
+    """The owner's waiver of a rehearsal quota, against the held hash: the
+    `liveness_waived` record is the waiver, held for this life and rebuilt
+    at the next load."""
+    record = grant_waiver(run, request.action, request.owner_token, request.because or "")
+    return WaiveResult(action=str(record["action"]), because=str(record["because"]))
+
+
+def serve_goal_ratify(daemon: _Daemon, run: Run, request: GoalRatifyRequest) -> GoalRatifyResult:
+    """The owner's ratification of a goal proposal, against the held hash:
+    the daemon is the one writer of `goal.json`."""
+    proposal = ratify_goal(run, request.id, request.owner_token)
+    return GoalRatifyResult(id=request.id, text=str(proposal["text"]))
+
+
 Handler = Callable[["_Daemon", Run, Any], Any]
 
 # One function per operation (section 7.2), bound to the wire table's names
@@ -1238,6 +1307,9 @@ HANDLERS: Mapping[str, Handler] = {
     COMMIT.name: serve_commit,
     RESET.name: serve_reset,
     INSTALL_MODULE.name: serve_install_module,
+    APPROVE.name: serve_approve,
+    WAIVE.name: serve_waive,
+    GOAL_RATIFY.name: serve_goal_ratify,
 }
 
 
@@ -1252,6 +1324,10 @@ def _open(paths: RunPaths) -> _Daemon:
     run holds (loaded once; the consults and the outcome observations use
     the held objects), the socket and READY."""
     run = Run.load(paths, strict=True)
+    # The anchor file the run records must be the one the environment names
+    # (section 8.2): the seal goes there, and a config.json rewritten while
+    # the daemon was stopped must not move it into a file the agent owns.
+    check_anchor_file(paths, run.config)
     session = _create_session(paths.root, run.config)
     capability = _session_declaration(session)
     if run.config.get("session") is not None:

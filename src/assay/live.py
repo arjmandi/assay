@@ -19,7 +19,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
-from .agenda import check_rehearsal, consume_approval
+from .agenda import check_approval, check_rehearsal
 from .aggregates import open_aggregates, resolve_due
 from .channels import channel_change_lines, check_channel_references
 from .core import (
@@ -232,7 +232,9 @@ def _enforce_registry_gates(
                     code="BATCH_FORBIDDEN",
                     hint=f"take it as a single `assay act {name} ...` once the owner has run `assay approve {name}`",
                 )
-            consume_approval(run, name)
+            # Checked here, consumed by the daemon after the disk is verified
+            # (broker._Daemon.spend), so a tamper refusal does not burn the grant.
+            check_approval(run, name)
         check_rehearsal(run, name)
         pending = {
             "kind": kind,

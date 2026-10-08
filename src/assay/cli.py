@@ -17,20 +17,14 @@ from pathlib import Path
 from typing import Any, NoReturn
 
 from . import JOURNAL_SPEC, __version__
-from .agenda import (
-    grant_approval,
-    grant_waiver,
-    list_proposals,
-    mint_owner_token,
-    propose_goal,
-    ratify_goal,
-)
+from .agenda import list_proposals, mint_owner_token, propose_goal
 from .analysis import run_python
 from .broker import (
     REPLAY_HINT,
     broker_gated,
     broker_install_module,
     broker_matches_latest_event,
+    broker_owner,
     broker_ping,
     check_adapter_spec,
     find_daemon,
@@ -46,7 +40,16 @@ from .carryover import (
     registry_hash_of,
 )
 from .channels import channel_list_of, channel_list_text, declare_channel
-from .integrity import anchor_line, anchor_status, audit, audit_lines, environment_anchor_file
+from .integrity import (
+    anchor_file,
+    anchor_line,
+    anchor_status,
+    audit,
+    audit_lines,
+    check_anchor_file,
+    environment_anchor_file,
+    require_anchor_dir,
+)
 from .model import (
     fit_lines,
     init_model,
@@ -91,17 +94,23 @@ from .inspect import result_text, status_text, view_lines_text, view_of
 from .live import split_step
 from .ops import (
     ACT,
+    APPROVE,
     COMMIT,
+    GOAL_RATIFY,
     INSTALL_MODULE,
     REQUEST_LIMIT_BYTES,
     RESET,
+    WAIVE,
     ActRequest,
+    ApproveRequest,
     CommitRequest,
+    GoalRatifyRequest,
     Operation,
     ReceiptResult,
     Req,
     ResetRequest,
     Step,
+    WaiveRequest,
     decode_json,
 )
 from .predictions import claims_help
@@ -308,13 +317,9 @@ def _parse_declares(raw: list[str]) -> dict[str, str]:
     return declares
 
 
-def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
-    """Where the owner token goes instead of stdout, if anywhere: the flag,
-    else ASSAY_OWNER_TOKEN_FILE, else nowhere (printed once, as before). The
-    file must lie outside the run directory, which the agent reads freely."""
-    raw = getattr(args, "owner_token_file", None) or os.getenv("ASSAY_OWNER_TOKEN_FILE")
-    if not raw:
-        return None
+def _outside_run(paths: RunPaths, raw: str | Path, flag: str) -> Path:
+    """A path a flag names, resolved, which must lie outside the run
+    directory, which the agent reads freely."""
     target = Path(raw).expanduser()
     if not target.is_absolute():
         target = Path.cwd() / target
@@ -324,9 +329,50 @@ def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
     except ValueError:
         return target
     raise AssayError(
-        f"--owner-token-file must point outside the run directory, got {target}",
+        f"{flag} must point outside the run directory, got {target}",
         code="PATH_INVALID",
     )
+
+
+def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
+    """Where the owner token goes instead of stdout, if anywhere: the flag,
+    else ASSAY_OWNER_TOKEN_FILE, else nowhere (printed once, as before). The
+    file must lie outside the run directory, which the agent reads freely."""
+    raw = getattr(args, "owner_token_file", None) or os.getenv("ASSAY_OWNER_TOKEN_FILE")
+    if not raw:
+        return None
+    return _outside_run(paths, raw, "--owner-token-file")
+
+
+def _owner_token(paths: RunPaths, args: argparse.Namespace) -> str | None:
+    """The owner's token for an owner command: `--token-file PATH` reads it
+    from a file outside the run directory, so the token never shows in the
+    process list; `--token` passes it as given. One of the two."""
+    token_file = getattr(args, "token_file", None)
+    token = getattr(args, "token", None)
+    if token_file is None:
+        return None if token is None else str(token)
+    if token is not None:
+        raise AssayError(
+            "pass the owner token as --token or as --token-file, not both", code="COMMAND_ARGS"
+        )
+    target = _outside_run(paths, token_file, "--token-file")
+    try:
+        return target.read_text().strip()
+    except OSError as error:
+        raise AssayError(
+            f"--token-file {target} cannot be read: {type(error).__name__}: {error}",
+            code="FILE_NOT_FOUND",
+        ) from error
+
+
+TOKEN_FILE_FLAG = arg(
+    "--token-file",
+    type=Path,
+    metavar="PATH",
+    help="read the owner token from this file (outside the run directory) instead of "
+    "passing it on the command line",
+)
 
 
 def _write_owner_token(target: Path, token: str) -> None:
@@ -448,6 +494,11 @@ def _resume(
     # Strict: a contiguity problem or a diverged chain refuses the resume
     # with CHAIN_DIVERGED and rewrites nothing.
     run = Run.load(paths, strict=True)
+    # The anchor file: the recorded one must be the one the environment
+    # names, and its directory writable, before anything is appended or
+    # spawned (docs/ARCHITECTURE.md sections 8.2 and 8.3).
+    check_anchor_file(paths, run.config)
+    require_anchor_dir(anchor_file(paths, run.config))
     # Orphan recovery (a spend the daemon journaled in mutations.jsonl
     # before anyone appended its event) runs here and only here, and only
     # once the daemon is confirmed dead or absent. While the daemon lives,
@@ -614,6 +665,9 @@ def _fresh_start(
         # must import in this interpreter, the one that will serve the daemon.
         adapter_spec = resolve_adapter_spec(str(args.adapter), paths.root)
         check_adapter_spec(adapter_spec, paths.root)
+    # The anchor directory must be writable before the run exists: the
+    # chain heads and the seal go there (section 8.3).
+    require_anchor_dir(environment_anchor_file(paths))
     paths.root.mkdir(parents=True, exist_ok=True)
     config = _fresh_config(paths, requested, args.seed, mode, adapter_spec, registry_spec)
     paths.state.mkdir(parents=True, exist_ok=True)
@@ -727,11 +781,6 @@ def _print_started(
     else:
         print(
             f"STARTED | {requested} | {_mode_word(mode)} | single run | {lease} | no replay recovery"
-        )
-    if not anchor_status(paths, run.config)["writable"]:
-        print(
-            f"WARNING | {anchor_line(paths, run.config)} | set ASSAY_ANCHOR_DIR to a writable "
-            "directory before the first anchor is due"
         )
     print(status_text(run))
     print(_use_line(registry_spec))
@@ -1287,7 +1336,7 @@ def module_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse
 def module_install(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     # The owner's install runs in the daemon, against the hash and
     # the manifest it holds; it refuses without a live daemon.
-    record = broker_install_module(paths, args.path, args.token)
+    record = broker_install_module(paths, args.path, _owner_token(paths, args))
     print(
         f"MODULE | installed {record['name']} from {record['source']} "
         f"(sha256 {record['sha256'][:12]}) | journaled | active from the "
@@ -1315,9 +1364,12 @@ def goal_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.N
 
 
 def goal_ratify(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    proposal = ratify_goal(run, args.id, args.token)
+    # The owner's ratification runs in the daemon, against the hash it
+    # holds; the daemon writes goal.json. Refused without a live daemon.
+    request = GoalRatifyRequest(id=args.id, owner_token=_owner_token(paths, args))
+    ratified = broker_owner(paths, GOAL_RATIFY, request, command="goal ratify", again="ratify")
     print(
-        f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
+        f"GOAL | ratified #{ratified.id}: {ratified.text}; status now "
         "re-presents it as the standing goal"
     )
 
@@ -1349,16 +1401,24 @@ def audit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
 
 
 def approve_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    grant_approval(run, args.action, args.token)
+    # The grant lives in the daemon's memory for its 600 seconds and is
+    # consumed there; nothing is written that the agent could write.
+    request = ApproveRequest(action=args.action, owner_token=_owner_token(paths, args))
+    granted = broker_owner(paths, APPROVE, request, command="approve", again="approve")
     print(
-        f"APPROVED | one use of {args.action.upper()} granted "
-        "(expires in 10 minutes, consumed on use)"
+        f"APPROVED | one use of {granted.action} granted "
+        f"(expires in {granted.expires_seconds // 60} minutes, consumed on use)"
     )
 
 
 def waive_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    grant_waiver(run, args.action, args.token, args.because or "")
-    print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
+    # The waiver is the activity record the daemon writes, rebuilt into the
+    # held set at every load.
+    request = WaiveRequest(
+        action=args.action, owner_token=_owner_token(paths, args), because=args.because
+    )
+    waived = broker_owner(paths, WAIVE, request, command="waive", again="waive")
+    print(f"WAIVED | rehearsal quota for {waived.action} (journaled)")
 
 
 def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1728,7 +1788,7 @@ COMMANDS: tuple[Command, ...] = (
         "owner: install a module file mid-run (journaled, manifest-pinned)",
         module_install,
         operation=INSTALL_MODULE,
-        arguments=(arg("path", type=Path), arg("--token")),
+        arguments=(arg("path", type=Path), arg("--token"), TOKEN_FILE_FLAG),
     ),
     Command(
         "goal_propose",
@@ -1743,7 +1803,8 @@ COMMANDS: tuple[Command, ...] = (
         "goal ratify",
         "owner: ratify a proposal by id (requires the owner token)",
         goal_ratify,
-        arguments=(arg("id", type=int), arg("--token")),
+        operation=GOAL_RATIFY,
+        arguments=(arg("id", type=int), arg("--token"), TOKEN_FILE_FLAG),
     ),
     Command(
         "export",
@@ -1774,13 +1835,15 @@ COMMANDS: tuple[Command, ...] = (
         "approve",
         "owner: grant one use of an approval-gated action",
         approve_command,
-        arguments=(arg("action"), arg("--token")),
+        operation=APPROVE,
+        arguments=(arg("action"), arg("--token"), TOKEN_FILE_FLAG),
     ),
     Command(
         "waive",
         "waive",
         "owner: waive a live actuator's rehearsal quota (journaled)",
         waive_command,
-        arguments=(arg("action"), arg("--token"), arg("--because")),
+        operation=WAIVE,
+        arguments=(arg("action"), arg("--token"), TOKEN_FILE_FLAG, arg("--because")),
     ),
 )
