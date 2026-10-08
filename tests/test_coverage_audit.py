@@ -216,7 +216,7 @@ def test_block_mode_end_to_end(tmp_path):
         refused = run_cli(run, "act", "NOOP", "--predict", "change")
         assert refused.returncode == 2
         assert "MODULE coverage_audit | declaration demanded" in refused.stderr
-        assert "--declare revised=..." in refused.stderr
+        assert '--declare "revised=<text>"' in refused.stderr
         assert len((run / ".assay" / "events.jsonl").read_text().splitlines()) == before
         unlocked = run_cli(run, "act", "NOOP", "--predict", "change",
                            "--declare", "revised=testing whether NOOP ever changes anything")
@@ -224,7 +224,7 @@ def test_block_mode_end_to_end(tmp_path):
         assert "OUTCOME | SURPRISE" in unlocked.stdout
         conclusion = run_cli(run, "act", "NOOP", "--predict", "noop",
                              "--declare", "impossible=the counter never moves")
-        assert conclusion.returncode == 2 and "--declare coverage_audit=..." in conclusion.stderr
+        assert conclusion.returncode == 2 and '--declare "coverage_audit=<text>"' in conclusion.stderr
         audited = run_cli(run, "audit")
         assert "AUDIT | CLEAN" in audited.stdout
     finally:

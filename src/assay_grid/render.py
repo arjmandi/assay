@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image
 
-from assay.core import AssayError, RunPaths, canonical_action, frame_at
+from assay.core import AssayError, RunPaths, frame_at
 from assay.records import Event
 
 if TYPE_CHECKING:
@@ -51,7 +51,7 @@ def render_grid(grid: np.ndarray[Any, Any], destination: Path, *, scale: int = 8
     if array.ndim != 2 or (
         array.size and (int(array.min()) < 0 or int(array.max()) > 15)
     ):
-        raise AssayError("cannot render a grid with colors outside 0..15")
+        raise AssayError("cannot render a grid with colors outside 0..15", code="RECORD_CORRUPT")
     destination.parent.mkdir(parents=True, exist_ok=True)
     image = Image.fromarray(PALETTE[array].astype(np.uint8), mode="RGB")
     image = image.resize(
@@ -75,23 +75,19 @@ def render_event(paths: RunPaths, event: Event, *, all_frames: bool = False) -> 
 def current_image(run: Run) -> Path:
     events = run.events
     if not events:
-        raise AssayError("timeline is empty")
+        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     destination = image_path(run.paths, events[-1].id)
     if not destination.exists():
         render_event(run.paths, events[-1])
     return destination.resolve()
 
 
-def history_line(events: Sequence[Event], event: Event, paid: int, mark: str) -> str:
+def history_change(events: Sequence[Event], event: Event) -> tuple[int | None, str]:
+    """The frame form of a history line's change: the count of cells that
+    differ from the previous settled frame (None at the start, or when the
+    shape changed), in cells."""
     grid = frame_at(event)
     previous = frame_at(events[event.id - 1]) if event.id else None
-    changed = (
-        "start"
-        if previous is None or previous.shape != grid.shape
-        else f"{int(np.count_nonzero(previous != grid))} cells"
-    )
-    return (
-        f"  e{event.id:04d} a{paid:04d} "
-        f"L{min(event.win_levels, event.levels_completed + 1)} {canonical_action(event)}{mark} | {changed} | "
-        f"frames={len(event.frames or ())} | {event.state}"
-    )
+    if previous is None or previous.shape != grid.shape:
+        return None, "cells"
+    return int(np.count_nonzero(previous != grid)), "cells"

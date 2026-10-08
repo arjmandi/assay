@@ -58,7 +58,7 @@ from assay.ops import ACT, ActRequest
 
 paths = RunPaths(Path(sys.argv[1]))
 for _ in range(int(sys.argv[2])):
-    receipt = broker_gated(paths, ACT, ActRequest(action_token="NOOP", predict="noop", declares={}))
+    receipt = broker_gated(paths, ACT, ActRequest(action="NOOP", params=None, predict="noop", declares={}))
     assert receipt.outcome == "PREDICTED", receipt
 """
 
@@ -356,10 +356,11 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         # load cannot read a corrupt configuration): refused by name.
         with pytest.raises(AssayError) as caught:
             broker_gated(
-                RunPaths(run), ACT, ActRequest(action_token="NOOP", predict="noop", declares={})
+                RunPaths(run), ACT, ActRequest(action="NOOP", params=None, predict="noop", declares={})
             )
         message = str(caught.value)
-        assert message.startswith(f"AssayError: TAMPER_DETECTED | {what} (held "), message
+        assert caught.value.code == "TAMPER_DETECTED" and caught.value.kind == "invalid"
+        assert message.startswith(f"{what} (held "), message
         assert found in message
         assert "refuses every paid action until it is stopped" in message
         records = _activity(run, "tamper_detected")
@@ -380,14 +381,15 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         # and so is an install, which would rewrite a changed manifest; the
         # record is not written again.
         refused = run_cli(run, "act", "NOOP", "--predict", "noop")
-        assert refused.returncode == 2, refused.stdout
-        assert f"ERROR | AssayError: TAMPER_DETECTED | {what} (held " in refused.stderr
+        assert refused.returncode == 5, refused.stdout
+        assert f"ERROR | TAMPER_DETECTED | {what} (held " in refused.stderr
+        assert "NEXT | run `assay stop`, then `assay audit`" in refused.stderr
         again = run_cli(run, "commit", "--step", "NOOP :: noop")
-        assert again.returncode == 2 and f"TAMPER_DETECTED | {what} (held " in again.stderr
+        assert again.returncode == 5 and f"ERROR | TAMPER_DETECTED | {what} (held " in again.stderr
         reset = run_cli(run, "reset", "--because", "testing the refusal")
-        assert reset.returncode == 2 and "TAMPER_DETECTED" in reset.stderr
+        assert reset.returncode == 5 and "ERROR | TAMPER_DETECTED | " in reset.stderr
         install = run_cli(run, "module", "install", str(tmp_path / "probe.py"), "--token", token)
-        assert install.returncode == 2 and f"TAMPER_DETECTED | {what} (held " in install.stderr
+        assert install.returncode == 5 and f"ERROR | TAMPER_DETECTED | {what} (held " in install.stderr
         assert _bytes(state / "modules" / "manifest.json") == manifest
         assert not _activity(run, "module_installed")
         assert len(_activity(run, "tamper_detected")) == 1
@@ -405,7 +407,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         assert "INTEGRITY | the daemon refused" not in run_cli(run, "status").stdout
         if restart is not None:
             resumed = _start(run)
-            assert resumed.returncode == 2, resumed.stdout
+            assert resumed.returncode == 5, resumed.stdout
             assert restart in resumed.stderr
             assert (state / "events.jsonl").read_bytes() == journal
     finally:
@@ -426,10 +428,10 @@ def test_module_install_is_the_daemons_operation(tmp_path):
         assert run_cli(run, "stop").returncode == 0
         refused = run_cli(run, "module", "install", str(tmp_path / "probe.py"), "--token", token)
         assert refused.returncode == 2
-        assert (
-            "ERROR | module install is a daemon operation and this run's environment "
-            "owner is not running; resume it with `assay start WORLD_ID`, then install again"
-        ) in refused.stderr
+        assert refused.stderr == (
+            "ERROR | DAEMON_UNAVAILABLE | module install is a daemon operation and this run's environment "
+            "owner is not running\nNEXT | resume it with `assay start WORLD_ID`, then install again\n"
+        )
         assert not (run / ".assay" / "modules").exists()
         assert not _activity(run, "module_installed")
         assert _start(run).returncode == 0
@@ -469,12 +471,15 @@ def test_a_field_the_request_record_does_not_take_spends_nothing(tmp_path):
         assert _start(run).returncode == 0
         paths = RunPaths(run)
         before = (len(load_jsonl(paths.mutations)), len(load_jsonl(paths.events)))
-        with pytest.raises(AssayError, match="^TypeError: act.bogus is not a field of the record$"):
+        with pytest.raises(AssayError, match="^act.bogus is not a field of the record$") as bug:
             _request(
                 paths,
-                {"op": "act", "action_token": "NOOP", "predict": "noop", "bogus": 1},
+                "act",
+                {"action": "NOOP", "params": None, "predict": "noop", "bogus": 1},
                 timeout=10.0,
             )
+        assert bug.value.code == "REQUEST_MALFORMED" and bug.value.kind == "usage"
+        assert bug.value.hint is not None and bug.value.hint.startswith("the act request takes action, params, ")
         assert (len(load_jsonl(paths.mutations)), len(load_jsonl(paths.events))) == before
         assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
     finally:
@@ -489,10 +494,17 @@ def test_a_connection_closed_without_a_line_is_a_malformed_request():
 
     left, right = socket.socketpair()
     right.close()
-    with left, pytest.raises(AssayError, match="^malformed request$"):
+    with left, pytest.raises(AssayError, match="^malformed request: no line$") as caught:
         _read_request(left)
+    assert caught.value.code == "REQUEST_MALFORMED"
     left, right = socket.socketpair()
     with right:
         right.sendall(b"\n")
-    with left, pytest.raises(AssayError, match="^malformed request$"):
+    with left, pytest.raises(AssayError, match="^malformed request: no line$"):
         _read_request(left)
+    left, right = socket.socketpair()
+    with right:
+        right.sendall(b"{not json\n")
+    with left, pytest.raises(AssayError, match="^malformed request: not JSON") as caught:
+        _read_request(left)
+    assert caught.value.code == "REQUEST_MALFORMED" and caught.value.kind == "usage"

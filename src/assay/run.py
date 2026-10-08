@@ -108,8 +108,10 @@ def _file_digest(path: Any) -> str:
 
 def _refusal(reason: str) -> AssayError:
     return AssayError(
-        f"CHAIN_DIVERGED | {reason}; the run is refused and nothing is rewritten, "
-        "so the record stays as it was found"
+        f"{reason}; the run is refused and nothing is rewritten, "
+        "so the record stays as it was found",
+        code="CHAIN_DIVERGED",
+        hint="`assay audit` names the problem; the run can be inspected (status, view, audit) but not resumed",
     )
 
 

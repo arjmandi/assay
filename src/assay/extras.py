@@ -57,9 +57,7 @@ class ObservationKind(Protocol):
     def status_head_lines(self, run: Run, event: Event) -> list[str]: ...
     def result_lines(self, run: Run, receipt: Receipt) -> list[str]: ...
     def view_text(self, run: Run, index: int, flags: Mapping[str, Any]) -> str: ...
-    def history_line(
-        self, events: Sequence[Event], event: Event, paid: int, mark: str
-    ) -> str: ...
+    def history_change(self, events: Sequence[Event], event: Event) -> tuple[int | None, str]: ...
     def canonical_action(self, event: Event) -> str | None: ...
     def advertised_names(self, event: Event) -> list[str]: ...
     def python_namespace(self, events: Sequence[Event]) -> dict[str, Any]: ...
@@ -144,7 +142,7 @@ def _grid_kind() -> ObservationKind:
     try:
         from assay_grid import KIND
     except ImportError as error:
-        raise AssayError(f"{_MISSING} ({error})") from error
+        raise AssayError(f"{_MISSING} ({error})", code="EXTRA_MISSING") from error
     return KIND
 
 
@@ -170,5 +168,5 @@ def all_kinds() -> list[ObservationKind]:
 def require_kind(event: Event | None, what: str) -> ObservationKind:
     kind = kind_for(event)
     if kind is None:
-        raise AssayError(f"{what} applies to frame worlds; this run has dict observations")
+        raise AssayError(f"{what} applies to frame worlds; this run has dict observations", code="COMMAND_ARGS")
     return kind

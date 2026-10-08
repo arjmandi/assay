@@ -157,5 +157,6 @@ def run_python(run: Run, source: str) -> Any:
         return None
     except Exception as error:
         raise AssayError(
-            f"analysis failed: {type(error).__name__}: {error}"
+            f"analysis failed: {type(error).__name__}: {error}",
+            code="PYTHON_FAILED",
         ) from error

@@ -108,8 +108,9 @@ def test_a_chain_two_lines_behind_is_diverged(tmp_path):
     run.append(event_of(id=-1))
     (paths.state / "chain.json").write_text(behind)
     assert Run.load(paths, strict=False).integrity.chain == CHAIN_DIVERGED
-    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| chain: stored head at e0"):
+    with pytest.raises(AssayError, match="^chain: stored head at e0") as refused:
         Run.load(paths, strict=True)
+    assert refused.value.code == "CHAIN_DIVERGED" and refused.value.kind == "invalid"
 
 
 @pytest.mark.parametrize(
@@ -131,13 +132,14 @@ def test_a_malformed_chain_file_is_diverged_not_behind_or_absent(tmp_path, store
     assert lenient.integrity.chain == CHAIN_DIVERGED
     assert lenient.integrity.chain_problem is not None and expected in lenient.integrity.chain_problem
     assert lenient.stored_chain is None
-    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| chain: chain.json"):
+    with pytest.raises(AssayError, match="^chain: chain.json") as refused:
         Run.load(paths, strict=True)
+    assert refused.value.code == "CHAIN_DIVERGED"
     from assay.integrity import audit
 
     report = audit(lenient)
-    assert report["chain"] == "DIVERGED" and report["invalid_for_scoring"] is True
-    assert any(expected in problem for problem in report["problems"])
+    assert report.chain == "DIVERGED" and report.invalid_for_scoring is True
+    assert any(expected in problem for problem in report.problems)
 
 
 def test_a_diverged_chain_refuses_strict_and_is_reported_lenient(tmp_path):
@@ -154,8 +156,9 @@ def test_a_diverged_chain_refuses_strict_and_is_reported_lenient(tmp_path):
         "chain: stored head at e1 does not match the recomputed journal head at e1"
     )
     assert len(lenient.events) == 2 and lenient.events[0].action == "XX"
-    with pytest.raises(AssayError, match="CHAIN_DIVERGED") as refused:
+    with pytest.raises(AssayError, match="^chain: stored head at e1 does not match") as refused:
         Run.load(paths, strict=True)
+    assert refused.value.code == "CHAIN_DIVERGED"
     assert "nothing is rewritten" in str(refused.value)
     assert paths.events.read_text() == "\n".join(lines) + "\n"
 
@@ -170,8 +173,9 @@ def test_a_contiguity_problem_refuses_strict_and_is_reported_lenient(tmp_path):
     assert not lenient.integrity.contiguous
     assert lenient.integrity.problem == "event timeline is not contiguous at line 2"
     assert lenient.integrity.chain == CHAIN_BEHIND  # the stored chain's prefix still matches
-    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| event timeline is not contiguous at line 2"):
+    with pytest.raises(AssayError, match="^event timeline is not contiguous at line 2") as refused:
         Run.load(paths, strict=True)
+    assert refused.value.code == "CHAIN_DIVERGED"
 
 
 def test_verify_disk_names_what_changed(tmp_path):
@@ -245,14 +249,15 @@ def test_a_malformed_line_is_a_finding_for_the_readers_and_a_refusal_for_a_start
         assert [event.id for event in lenient.events] == [0, 1]
         assert lenient.chain_head == run.chain_head and lenient.journal_bytes == len(good.encode())
         assert lenient.integrity.chain == CHAIN_INTACT
-        with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| line 3 malformed"):
+        with pytest.raises(AssayError, match="^line 3 malformed") as refused:
             Run.load(paths, strict=True)
+        assert refused.value.code == "CHAIN_DIVERGED"
         assert paths.events.read_text() == good + bad + good.splitlines()[0] + "\n"
     from assay.integrity import audit
 
     report = audit(Run.load(paths, strict=False))
-    assert report["events"] == 2 and report["invalid_for_scoring"] is True
-    assert report["problems"] == ["journal: line 3 malformed: Expecting value: line 1 column 1 (char 0)"]
+    assert report.events == 2 and report.invalid_for_scoring is True
+    assert report.problems == ("journal: line 3 malformed: Expecting value: line 1 column 1 (char 0)",)
 
 
 def test_a_byte_that_is_not_utf8_is_a_malformed_line(tmp_path):
@@ -268,8 +273,9 @@ def test_a_byte_that_is_not_utf8_is_a_malformed_line(tmp_path):
         "line 3 malformed: 'utf-8' codec can't decode byte 0xff in position 0: invalid start byte"
     )
     assert lenient.integrity.refused == lenient.integrity.malformed
-    with pytest.raises(AssayError, match="CHAIN_DIVERGED \\| line 3 malformed: 'utf-8' codec"):
+    with pytest.raises(AssayError, match="^line 3 malformed: 'utf-8' codec") as refused:
         Run.load(paths, strict=True)
+    assert refused.value.code == "CHAIN_DIVERGED"
     assert run.verify_disk()[0].what == "events.jsonl length"
 
 

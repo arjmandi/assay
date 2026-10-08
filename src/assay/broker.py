@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import importlib
 import importlib.util
@@ -12,12 +13,14 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Callable, Mapping, Sequence
+import traceback
+from collections.abc import Callable, Iterator, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from .core import (
     LOCAL_MODE,
+    OBSERVATION_HINT,
     REMOTE_MODE,
     AssayError,
     RunPaths,
@@ -39,6 +42,7 @@ from .ops import (
     INSTALL_MODULE,
     OBSERVE,
     PING,
+    PROTOCOL_VERSION,
     RESET,
     ActRequest,
     CommitRequest,
@@ -67,7 +71,8 @@ def split_adapter_spec(spec: str) -> tuple[str, str]:
     module_name, separator, attribute = spec.rpartition(":")
     if not separator or not module_name or not attribute:
         raise AssayError(
-            f"adapter spec {spec!r} must be module:factory or /path/file.py:factory"
+            f"adapter spec {spec!r} must be module:factory or /path/file.py:factory",
+            code="ADAPTER_SPEC",
         )
     return module_name, attribute
 
@@ -91,7 +96,8 @@ def resolve_adapter_spec(spec: str, root: Path, cwd: Path | None = None) -> str:
     raise AssayError(
         f"adapter file not found: {module_name} (looked in {looked}); pass the "
         "file's path, absolute or relative to the run directory, as "
-        "/path/file.py:factory"
+        "/path/file.py:factory",
+        code="ADAPTER_SPEC",
     )
 
 
@@ -140,7 +146,8 @@ def check_adapter_spec(spec: str, root: Path) -> None:
     except subprocess.TimeoutExpired:
         raise AssayError(
             f"importing adapter {spec!r} did not finish within 60s; an adapter "
-            "module must be importable without starting the world"
+            "module must be importable without starting the world",
+            code="ADAPTER_SPEC",
         ) from None
     if completed.returncode == 0:
         return
@@ -150,9 +157,10 @@ def check_adapter_spec(spec: str, root: Path) -> None:
         raise AssayError(
             f"adapter {spec!r} is not importable by {sys.executable}: {reason}. "
             "Install the adapter's dependencies into that interpreter (or point "
-            "ASSAY_PYTHON at one that has them), or pass /path/file.py:factory"
+            "ASSAY_PYTHON at one that has them), or pass /path/file.py:factory",
+            code="ADAPTER_SPEC",
         )
-    raise AssayError(f"adapter {spec!r} failed to import: {reason}")
+    raise AssayError(f"adapter {spec!r} failed to import: {reason}", code="ADAPTER_SPEC")
 
 
 def _import_factory(spec: str, root: Path) -> Adapter:
@@ -160,20 +168,32 @@ def _import_factory(spec: str, root: Path) -> Adapter:
     candidate = Path(module_name)
     if not candidate.is_absolute():
         candidate = root / candidate
-    if candidate.suffix == ".py" and candidate.exists():
-        info = importlib.util.spec_from_file_location(
-            f"_assay_adapter_{time.time_ns()}", candidate
-        )
-        if info is None or info.loader is None:
-            raise AssayError(f"cannot import adapter {candidate}")
-        module = importlib.util.module_from_spec(info)
-        sys.modules[info.name] = module
-        info.loader.exec_module(module)
-    else:
-        module = importlib.import_module(module_name)
+    try:
+        if candidate.suffix == ".py" and candidate.exists():
+            info = importlib.util.spec_from_file_location(
+                f"_assay_adapter_{time.time_ns()}", candidate
+            )
+            if info is None or info.loader is None:
+                raise AssayError(f"cannot import adapter {candidate}", code="ADAPTER_SPEC")
+            module = importlib.util.module_from_spec(info)
+            sys.modules[info.name] = module
+            info.loader.exec_module(module)
+        else:
+            module = importlib.import_module(module_name)
+    except AssayError:
+        raise
+    except Exception as error:  # noqa: BLE001 - whatever the import raised is the adapter's problem
+        raise AssayError(
+            f"adapter {spec!r} failed to import: {type(error).__name__}: {error}",
+            code="ADAPTER_SPEC",
+            hint=(
+                "install the adapter's dependencies into the daemon's interpreter (ASSAY_PYTHON "
+                "pins it); `assay doctor` dry-imports the adapter"
+            ),
+        ) from error
     factory = getattr(module, attribute, None)
     if not callable(factory):
-        raise AssayError(f"adapter factory {spec!r} is not callable")
+        raise AssayError(f"adapter factory {spec!r} is not callable", code="ADAPTER_SPEC")
     loaded: Adapter = factory
     return loaded
 
@@ -183,14 +203,19 @@ def _create_session(root: Path, config: Mapping[str, Any]) -> Session:
     if not adapter:
         raise AssayError(
             "this run's config names no adapter; start runs with "
-            "--adapter <module-or-file.py>:factory so the broker knows which world to serve"
+            "--adapter <module-or-file.py>:factory so the broker knows which world to serve",
+            code="ADAPTER_SPEC",
         )
-    return _import_factory(str(adapter), root)(root, config)
+    factory = _import_factory(str(adapter), root)
+    with world_boundary("factory"):
+        return factory(root, config)
 
 
 def _encode_observation(value: Any) -> dict[str, Any]:
     if value is None:
-        raise AssayError("environment returned no observation")
+        raise AssayError(
+            "environment returned no observation", code="OBSERVATION_INVALID", hint=OBSERVATION_HINT
+        )
     return normalize_observation(value)
 
 
@@ -230,9 +255,65 @@ def _client_timeout(computed: float) -> float:
         return computed
 
 
+def _version_refusal(found: Any, *, side: str) -> AssayError:
+    """The refusal of a line without this package's protocol version, on
+    either side: the client and the daemon ship together, so a difference
+    is a daemon that outlived an upgrade, or a client that predates it."""
+    carried = "carries no protocol version" if found is None else f"speaks protocol version {found!r}"
+    return AssayError(
+        f"the {side} {carried}; this package speaks {PROTOCOL_VERSION}",
+        code="PROTOCOL_VERSION",
+        hint=RESTART_HINT,
+    )
+
+
+def _versioned(line: Mapping[str, Any]) -> bool:
+    """Whether the line carries this package's protocol version: the integer
+    2, not a float or a boolean that happens to compare equal."""
+    version = line.get("v")
+    return type(version) is int and version == PROTOCOL_VERSION
+
+
+def _decode_reply(raw: bytes) -> dict[str, Any]:
+    """The daemon's reply line (docs/ARCHITECTURE.md section 7.2) to the
+    result it carries: the version checked before anything else, so a
+    daemon that outlived an upgrade is refused rather than misread; the
+    error object raised as the same AssayError the daemon raised."""
+    if not raw.strip():
+        raise AssayError(
+            "empty response from environment owner", code="REPLY_MALFORMED", hint=RESTART_HINT
+        )
+    try:
+        response = json.loads(raw.splitlines()[0])
+    except ValueError as error:
+        raise AssayError(
+            f"malformed response from environment owner: {error}",
+            code="REPLY_MALFORMED",
+            hint=RESTART_HINT,
+        ) from error
+    if not isinstance(response, dict):
+        raise AssayError(
+            "malformed response from environment owner", code="REPLY_MALFORMED", hint=RESTART_HINT
+        )
+    if not _versioned(response):
+        raise _version_refusal(response.get("v"), side="environment owner")
+    if not response.get("ok"):
+        raise AssayError.from_json(response.get("error", "environment owner error"))
+    result = response.get("result")
+    if not isinstance(result, dict):
+        raise AssayError(
+            "malformed response from environment owner: no result object",
+            code="REPLY_MALFORMED",
+            hint=RESTART_HINT,
+        )
+    return result
+
+
 def _request(
-    paths: RunPaths, payload: Mapping[str, Any], timeout: float = 10.0
+    paths: RunPaths, op: str, args: Mapping[str, Any], timeout: float = 10.0
 ) -> dict[str, Any]:
+    """One operation over the socket: `{"v", "token", "op", "args"}` sent,
+    the reply decoded to its result object."""
     descriptor = read_json(paths.broker)
     try:
         config = read_json(paths.config, {})
@@ -247,16 +328,20 @@ def _request(
         else "a remote competition run cannot be reconstructed"
     )
     if not isinstance(descriptor, dict) or descriptor.get("status") != "READY":
-        raise AssayError(f"the environment owner is unavailable; {recovery}")
+        raise AssayError(
+            "the environment owner (the daemon) is not running", code="DAEMON_UNAVAILABLE", hint=recovery
+        )
     token_path = paths.state / "broker.token"
     try:
         token = token_path.read_text().strip()
     except FileNotFoundError as error:
-        raise AssayError("environment owner token is missing") from error
-    message = (
-        json.dumps({"token": token, **dict(payload)}, separators=(",", ":")).encode()
-        + b"\n"
-    )
+        raise AssayError(
+            "environment owner token is missing",
+            code="DAEMON_UNAVAILABLE",
+            hint="`assay start WORLD_ID` writes a new token with the daemon it starts",
+        ) from error
+    line = {"v": PROTOCOL_VERSION, "token": token, "op": op, "args": dict(args)}
+    message = json.dumps(line, separators=(",", ":")).encode() + b"\n"
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(timeout)
@@ -270,21 +355,31 @@ def _request(
                 chunks.append(chunk)
                 if b"\n" in chunk:
                     break
-    except (OSError, TimeoutError) as error:
-        raise AssayError(f"the environment owner stopped responding; {recovery}") from error
-    if not chunks:
-        raise AssayError("empty response from environment owner")
-    response = json.loads(b"".join(chunks).splitlines()[0])
-    if not isinstance(response, dict):
-        raise AssayError("malformed response from environment owner")
-    if not response.get("ok"):
-        raise AssayError(str(response.get("error", "environment owner error")))
-    return response
+    except TimeoutError as error:
+        # The daemon is alive and inside the step, or hung: the one thing the
+        # client must not say is "resume", which would replay under a step
+        # that may still land.
+        raise AssayError(
+            f"the environment owner did not answer within {timeout:g}s; it may still be inside the step",
+            code="DAEMON_BUSY",
+            hint=(
+                "the step may still land; run `assay status` and read the last event before "
+                "acting again (ASSAY_BROKER_TIMEOUT raises the wait)"
+            ),
+        ) from error
+    except OSError as error:
+        raise AssayError(
+            "the environment owner is not answering on its socket",
+            code="DAEMON_UNAVAILABLE",
+            hint=recovery,
+        ) from error
+    return _decode_reply(b"".join(chunks))
 
 
 PING_TIMEOUT_MIN = 0.5
 PING_TIMEOUT_MAX = 10.0
 STOP_WAIT_SECONDS = 10.0
+RESTART_HINT = "stop the daemon with `assay stop` and start it again with `assay start WORLD_ID`"
 
 
 def _ping_timeout() -> float:
@@ -296,20 +391,23 @@ def _ping_timeout() -> float:
 def call(
     paths: RunPaths, operation: Operation[Req, Res], request: Req, *, timeout: float = 10.0
 ) -> Res:
-    """One daemon operation over the socket: the request record's fields
-    under the operation's name, the reply decoded into the operation's
-    result record. The one place the client speaks the wire; #13's version
-    check lands here."""
-    response = _request(paths, {"op": operation.name, **request.to_json()}, timeout=timeout)
-    return operation.result.from_json(
-        {key: value for key, value in response.items() if key != "ok"}
-    )
+    """One daemon operation over the socket: the request record's fields as
+    the `args` of the operation's name, the reply's result decoded into the
+    operation's result record. The one place the client speaks the wire;
+    the version is checked on every reply (`_decode_reply`)."""
+    result = _request(paths, operation.name, request.to_json(), timeout=timeout)
+    return operation.result.from_json(result)
 
 
 def broker_ping(paths: RunPaths) -> bool:
+    """Whether a daemon answers on the socket. A daemon that answers in
+    another protocol version is not silent: its refusal is raised, so the
+    caller names the way back instead of waiting for a step to end."""
     try:
         return call(paths, PING, PingRequest(), timeout=_ping_timeout()).pong
-    except AssayError:
+    except AssayError as error:
+        if error.code == "PROTOCOL_VERSION":
+            raise
         return False
 
 
@@ -342,8 +440,9 @@ def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> d
     adopt; a daemon inside a step is waited for like any paid command."""
     if find_daemon(paths) is None:
         raise AssayError(
-            "module install is a daemon operation and this run's environment owner "
-            "is not running; resume it with `assay start WORLD_ID`, then install again"
+            "module install is a daemon operation and this run's environment owner is not running",
+            code="DAEMON_UNAVAILABLE",
+            hint="resume it with `assay start WORLD_ID`, then install again",
         )
     # `token` on the wire is the daemon's own; the owner's rides apart.
     request = InstallModuleRequest(path=str(source.resolve()), owner_token=token)
@@ -441,15 +540,19 @@ def start_broker(paths: RunPaths) -> None:
     while time.monotonic() < deadline:
         current = read_json(paths.broker, {})
         if current.get("status") == "ERROR":
-            raise AssayError(
-                str(current.get("error", "environment initialization failed"))
-            )
+            # The daemon's refusal before READY, as the daemon raised it
+            # (`serve` writes the error object into the descriptor).
+            raise AssayError.from_json(current.get("error", "environment initialization failed"))
         if current.get("status") == "READY" and broker_ping(paths):
             return
         if process.poll() is not None:
             break
         time.sleep(0.05)
-    raise AssayError("environment owner did not start; see .assay/broker.log")
+    raise AssayError(
+        "environment owner did not start",
+        code="DAEMON_UNAVAILABLE",
+        hint="the daemon's log is .assay/broker.log; `assay doctor` checks the interpreter and the adapter",
+    )
 
 
 @dataclasses.dataclass(frozen=True)
@@ -564,11 +667,11 @@ def _competition_step(
     fresh_level: bool,
 ) -> tuple[Any, bool]:
     """Apply one paid action while preventing a local opener reset from rewinding the world."""
-    before = _encode_observation(session.observation)
+    before = _encode_observation(_session_observation(session))
     if action == "RESET" and fresh_level:
-        observed = session.observation
+        observed = _session_observation(session)
     else:
-        observed = session.step(action, data, reasoning)
+        observed = _session_step(session, action, data, reasoning)
     encoded = _encode_observation(observed)
     level_advanced = encoded["levels_completed"] != before["levels_completed"]
     return observed, action == "RESET" or level_advanced
@@ -577,10 +680,12 @@ def _competition_step(
 def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]:
     """Reconstruct an exact local session from the append-only paid-action journal."""
     events = run.events
-    current = _encode_observation(session.observation)
+    current = _encode_observation(_session_observation(session))
     if events and current != _event_observation(events[0]):
         raise AssayError(
-            "LOCAL_REPLAY_DIVERGED | fresh simulator state differs from event 0; cached world or seed changed"
+            "fresh simulator state differs from event 0; cached world or seed changed",
+            code="LOCAL_REPLAY_DIVERGED",
+            hint=REPLAY_HINT,
         )
     mutations = run.mutations
     fresh_level = True
@@ -596,8 +701,9 @@ def _replay_local_session(session: Any, run: Run) -> tuple[list[Mutation], bool]
         expected = dict(mutation.observation)
         if actual != expected:
             raise AssayError(
-                "LOCAL_REPLAY_DIVERGED | mutation "
-                f"{mutation.mutation_id} no longer reproduces its recorded observation"
+                f"mutation {mutation.mutation_id} no longer reproduces its recorded observation",
+                code="LOCAL_REPLAY_DIVERGED",
+                hint=REPLAY_HINT,
             )
     return mutations, fresh_level
 
@@ -609,12 +715,14 @@ def _open_run(run: Run, session: Session) -> None:
     work, all before the socket binds and READY is reported."""
     from .extras import kind_for
 
-    public_info = json.loads(json.dumps(getattr(session, "public_info", {})))
+    public_info = json.loads(json.dumps(_session_public_info(session)))
     run.config = {**run.config, "public_info": dict(public_info or {})}
     atomic_json(run.paths.config, run.config)
-    event = run.append(
-        make_event(session.observation, "START", None, None, note="initial observation")
-    )
+    with world_boundary("observation"):
+        pending = make_event(
+            _session_observation(session), "START", None, None, note="initial observation"
+        )
+    event = run.append(pending)
     kind = kind_for(event)
     if kind is not None:
         kind.after_record(run, event)
@@ -626,12 +734,79 @@ def _short(value: str) -> str:
     return re.sub(r"[0-9a-f]{64}", lambda match: match.group(0)[:12], value)
 
 
-def _tamper_message(detail: str) -> str:
-    return (
-        f"TAMPER_DETECTED | {detail}: the run's files changed under the daemon, "
+def _tamper_error(detail: str) -> AssayError:
+    return AssayError(
+        f"{detail}: the run's files changed under the daemon, "
         "which keeps the record it holds and refuses every paid action until it "
-        "is stopped and the record is examined (`assay audit`)"
+        "is stopped and the record is examined (`assay audit`)",
+        code="TAMPER_DETECTED",
+        hint="run `assay stop`, then `assay audit`",
     )
+
+
+REPLAY_HINT = "preserve the directory and start another run in a fresh one"
+
+
+@contextlib.contextmanager
+def world_boundary(what: str) -> Iterator[None]:
+    """The adapter boundary (docs/ARCHITECTURE.md section 7.1): anything the
+    session raises inside the daemon's call into it, an AssayError or not,
+    becomes `WORLD_ERROR` carrying the text; the kernel's own shape checks
+    on what the session returned pass through as `OBSERVATION_INVALID`. A
+    finalize failure is not wrapped here: it stays the warning on the
+    receipt."""
+    try:
+        yield
+    except AssayError as error:
+        if error.code in _WORLD_CODES:
+            raise
+        raise AssayError(error.message, code="WORLD_ERROR", hint=error.hint or _WORLD_HINTS[what]) from error
+    except Exception as error:  # noqa: BLE001 - the world's failure, whatever it raised
+        raise AssayError(
+            f"{type(error).__name__}: {error}", code="WORLD_ERROR", hint=_WORLD_HINTS[what]
+        ) from error
+
+
+_WORLD_CODES = frozenset({"WORLD_ERROR", "OBSERVATION_INVALID"})
+_WORLD_HINTS = {
+    "factory": (
+        "fix the adapter and run `assay start WORLD_ID` again; the daemon's log is "
+        ".assay/broker.log"
+    ),
+    "observation": (
+        "fix the adapter so its observation reads cleanly, then resume with "
+        "`assay start WORLD_ID`"
+    ),
+    "step": (
+        "nothing was journaled for it; choose another action or other parameters, "
+        "or read the state again with `assay status`"
+    ),
+}
+
+
+def _session_observation(session: Any) -> Any:
+    with world_boundary("observation"):
+        return session.observation
+
+
+def _session_public_info(session: Any) -> Any:
+    with world_boundary("observation"):
+        return getattr(session, "public_info", {}) or {}
+
+
+def _session_step(
+    session: Any, action: str, data: dict[str, Any] | None, reasoning: Mapping[str, Any] | None
+) -> Any:
+    with world_boundary("step"):
+        return session.step(action, data, reasoning)
+
+
+def _error_reply(error: BaseException) -> dict[str, Any]:
+    """The error object a reply or the descriptor carries. A failure that is
+    no refusal is `INTERNAL`, its traceback printed to the daemon's log."""
+    if not isinstance(error, AssayError):
+        print(traceback.format_exc(), flush=True)
+    return AssayError.wrap(error, hint="the daemon's log is .assay/broker.log").to_json()
 
 
 class _StopRequested(Exception):
@@ -649,11 +824,46 @@ def _read_request(connection: socket.socket) -> dict[str, Any]:
         raw += chunk
     lines = raw.splitlines()
     if not lines or not lines[0].strip():
-        raise AssayError("malformed request")
-    request = json.loads(lines[0])
+        raise AssayError("malformed request: no line", code="REQUEST_MALFORMED", hint=REQUEST_HINT)
+    try:
+        request = json.loads(lines[0])
+    except ValueError as error:
+        raise AssayError(
+            f"malformed request: not JSON ({error})", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+        ) from error
     if not isinstance(request, dict):
-        raise AssayError("malformed request")
+        raise AssayError(
+            "malformed request: not a JSON object", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+        )
     return request
+
+
+REQUEST_HINT = (
+    'a request is one JSON line, {"v": 2, "token": ..., "op": NAME, "args": {...}} '
+    "(docs/ARCHITECTURE.md section 7.2)"
+)
+
+
+def _request_refusal(operation: Operation[Any, Any], error: TypeError | KeyError) -> AssayError:
+    """A body that does not fit the operation's request record: the kit's
+    message (a wrong type, a key the record does not take) or the missing
+    required key, with the record's fields as the next step."""
+    if isinstance(error, KeyError):
+        message = f"{operation.name}.{error.args[0]} is required"
+    else:
+        message = str(error)
+    schema = operation.request.json_schema()
+    fields = ", ".join(schema["properties"]) or "no fields"
+    required = ", ".join(schema["required"])
+    return AssayError(
+        message,
+        code="REQUEST_MALFORMED",
+        hint=(
+            f"the {operation.name} request takes {fields}"
+            + (f" (required: {required})" if required else "")
+            + f", the fields of ops.{operation.request.__name__}.json_schema()"
+        ),
+    )
 
 
 class _Daemon:
@@ -738,8 +948,8 @@ class _Daemon:
         with connection:
             try:
                 response, terminal = self.handle(_read_request(connection))
-            except Exception as error:  # noqa: BLE001 - isolate arbitrary adapter failures
-                response = {"ok": False, "error": f"{type(error).__name__}: {error}"}
+            except Exception as error:  # noqa: BLE001 - every failure answers as the error object
+                response = {"v": PROTOCOL_VERSION, "ok": False, "error": _error_reply(error)}
             try:
                 connection.sendall(
                     json.dumps(response, separators=(",", ":")).encode() + b"\n"
@@ -751,7 +961,7 @@ class _Daemon:
 
     def refuse_if_tampered(self) -> None:
         if self.tampered is not None:
-            raise AssayError(_tamper_message(self.tampered))
+            raise _tamper_error(self.tampered)
 
     def verify_before_spend(self) -> None:
         """The files on disk against the held copies, before every paid
@@ -777,7 +987,7 @@ class _Daemon:
             },
         )
         self.tampered = detail
-        raise AssayError(_tamper_message(detail))
+        raise _tamper_error(detail)
 
     def spend(
         self,
@@ -793,13 +1003,16 @@ class _Daemon:
         log and the step's parsed claims (section 6.5), all before the reply;
         no socket hop."""
         if run is not self.run:
-            raise AssayError("the daemon spends only on the run it holds")
+            raise AssayError("the daemon spends only on the run it holds", code="INTERNAL")
         self.verify_before_spend()
         if is_remote_config(run.config):
-            observed = self.session.step(action, data, reasoning)
+            observed = _session_step(self.session, action, data, reasoning)
             if observed is None:
                 raise AssayError(
-                    "REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE | the competition server returned no observation. This remote run cannot be reconstructed; preserve its artifacts and use a fresh directory for another run"
+                    "the competition server returned no observation. This remote run "
+                    "cannot be reconstructed; preserve its artifacts and use a fresh "
+                    "directory for another run",
+                    code="REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE",
                 )
         else:
             observed, self.fresh_level = _competition_step(
@@ -829,23 +1042,40 @@ class _Daemon:
 
     def handle(self, request: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
         """One request line to its reply, and whether the run ended with it:
-        the token checked, the operation looked up in the table, the request
-        record decoded (a field the record does not take is refused before
+        the protocol version checked before anything else, then the token,
+        the operation looked up in the table, the request record decoded
+        from `args` (a field the record does not take is refused before
         anything spends), the name's handler called with the daemon and the
-        held run, the result encoded. An unknown operation is refused by
-        name."""
+        held run, the result encoded under `result`. An unknown operation is
+        refused by name."""
+        if not _versioned(request):
+            raise _version_refusal(request.get("v"), side="client")
         if not secrets.compare_digest(str(request.get("token", "")), self.token):
-            raise AssayError("invalid environment owner token")
+            raise AssayError(
+                "invalid environment owner token",
+                code="DAEMON_TOKEN",
+                hint="the token is .assay/broker.token, written by `assay start` with the daemon",
+            )
         operation = daemon_operation(request.get("op"))
         if operation.paid or operation.owner:
             # A tampered daemon refuses before any pre-spend work; the
             # verification itself runs in `spend`, before the world step of
             # every act, commit step, model-plan step and reset.
             self.refuse_if_tampered()
-        fields = {key: value for key, value in request.items() if key not in {"token", "op"}}
-        result = HANDLERS[operation.name](self, self.run, operation.request.from_json(fields))
+        args = request.get("args", {})
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            raise AssayError(
+                "malformed request: args is not an object", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+            )
+        try:
+            decoded = operation.request.from_json(args)
+        except (TypeError, KeyError) as error:
+            raise _request_refusal(operation, error) from error
+        result = HANDLERS[operation.name](self, self.run, decoded)
         terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
-        return {"ok": True, **result.to_json()}, terminal
+        return {"v": PROTOCOL_VERSION, "ok": True, "result": result.to_json()}, terminal
 
 
 def serve_ping(daemon: _Daemon, run: Run, request: PingRequest) -> PingResult:
@@ -858,8 +1088,8 @@ def serve_ping(daemon: _Daemon, run: Run, request: PingRequest) -> PingResult:
 
 def serve_observe(daemon: _Daemon, run: Run, request: ObserveRequest) -> ObserveResult:
     return ObserveResult(
-        observation=_encode_observation(daemon.session.observation),
-        public_info=dict(getattr(daemon.session, "public_info", {}) or {}),
+        observation=_encode_observation(_session_observation(daemon.session)),
+        public_info=dict(_session_public_info(daemon.session)),
     )
 
 
@@ -867,7 +1097,8 @@ def serve_act(daemon: _Daemon, run: Run, request: ActRequest) -> ReceiptResult:
     return ReceiptResult(
         execute_action(
             run,
-            request.action_token,
+            request.action,
+            request.params,
             predict=request.predict or "",
             because=request.because,
             at_event=request.at_event,
@@ -964,14 +1195,10 @@ def serve(paths: RunPaths) -> None:
         return
     try:
         daemon = _open(paths)
-    except Exception as error:  # noqa: BLE001 - broker persists arbitrary adapter failures
+    except Exception as error:  # noqa: BLE001 - the descriptor carries whatever refused the start
         atomic_json(
             paths.broker,
-            {
-                "status": "ERROR",
-                "pid": os.getpid(),
-                "error": f"{type(error).__name__}: {error}",
-            },
+            {"status": "ERROR", "pid": os.getpid(), "error": _error_reply(error)},
         )
         return
     signal.signal(signal.SIGTERM, daemon.on_terminate)

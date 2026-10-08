@@ -110,9 +110,9 @@ def test_internal_error_is_one_line_with_a_saved_traceback(tmp_path):
         with (run / ".assay" / "proposals.jsonl").open("a") as handle:
             handle.write('{"kind": "goal_proposed"}\n')
         status = run_cli(run, "status")
-        assert status.returncode == 2
-        assert status.stderr.startswith("ERROR | internal: KeyError")
-        assert "traceback in" in status.stderr
+        assert status.returncode == 4
+        assert status.stderr.startswith("ERROR | INTERNAL | KeyError")
+        assert "NEXT | traceback in" in status.stderr
         saved = run / ".assay" / "last_error.txt"
         assert saved.exists() and "Traceback" in saved.read_text()
         assert "Traceback" not in status.stderr
@@ -146,7 +146,7 @@ def test_a_malformed_journal_line_is_a_finding_for_the_readers_and_refuses_a_sta
         assert "AUDIT | INVALID FOR SCORING | events 2 (paid 1)" in audited.stdout
         assert "AUDIT | problem: journal: line 3 malformed: missing key 'timestamp'" in audited.stdout
         resumed = _start(run, f"{FAKE_ADAPTER}:factory")
-        assert resumed.returncode == 2
+        assert resumed.returncode == 5
         assert resumed.stderr.startswith("ERROR | CHAIN_DIVERGED | line 3 malformed: missing key 'timestamp'")
         assert journal.read_text() == before
     finally:

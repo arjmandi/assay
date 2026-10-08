@@ -57,7 +57,15 @@ it (`core.RunPaths`). Two processes touch that state:
   (`broker.call`, the one place the client speaks the wire). Its one
   append to the journal is `reconcile` at start, with no
   daemon alive, which recovers a spend the daemon journaled but never recorded,
-  with its prediction regraded from the record (section 6.5).
+  with its prediction regraded from the record (section 6.5). Every refusal
+  of either process is an `AssayError` carrying a code from the catalogue
+  (`errors.py`, section 7.1; `docs/ERRORS.md`): the command line prints
+  `ERROR | CODE | message` on stderr, then `NEXT | hint` when the error names
+  a next step, and exits by the code's kind (usage and refused 2, world 3,
+  internal 4, invalid 5); over the socket the daemon answers with the error
+  object and the client raises the same error. Every command with a result
+  record takes `--json` and prints the record, or the error object, as one
+  JSON document (section 7.3).
 
 Both processes read the journal through one object, `run.Run` (section 6.3):
 the configuration, the registry, every event as a `records.Event`, the chain
@@ -672,7 +680,7 @@ is kernel-owned while the behavior is the extra's.
 The hook is one kernel module, `extras.py`: the `ObservationKind` protocol
 (`applies`, `claim_patterns`, `claim_fields`, `claims_help`, `grade_claims`,
 `after_record`, `status_head_lines`, `status_lines`, `result_lines`,
-`view_text`, `history_line`, `canonical_action`, `advertised_names`,
+`view_text`, `history_change`, `canonical_action`, `advertised_names`,
 `python_namespace`, `export_history`, and `changed`, the coverage audit's
 change signal for the kind's shape) and the functions
 `kind_for(event)` (imports `assay_grid` lazily and only when an event has
@@ -938,7 +946,7 @@ the daemon alive.
   `aggregates.py`, `agenda.py`, `model.py` and `carryover.py` that took `paths` and
   reloaded the journal takes the run, and uses `run.paths` for its own files. The
   `ObservationKind` protocol's display and after-record methods (`after_record`,
-  `status_head_lines`, `result_lines`, `view_text`, `export_history`, `history_line`) take
+  `status_head_lines`, `result_lines`, `view_text`, `export_history`, `history_change`) take
   the run too, so the frame extra stops reloading the journal (`render.current_image`,
   `views.export_history` do today). `core.load_events` is gone: `analysis.run_python`
   builds the agent's namespace from the held records, and no function below the entry
@@ -1048,12 +1056,40 @@ the dispatch are assembled, and the `step` operation retired, refused as an unkn
 operation by name. The wire fields are today's (`action_token`, `predict`, `because`,
 `at_event`, `declares`, `steps`, `plan`, `path`, `owner_token`), the line is
 unversioned and an error is today's plain string; `approve`, `waive` and `goal_ratify`
-are offline commands of the command line. #13 adds the version, the error object,
-`action` and `params` as JSON, and moves the owner operations into the daemon.
+are offline commands of the command line.
+
+What #13 landed: the error model of 7.1 (`AssayError(message, *, code, kind, hint)` in
+`core.py`, the catalogue `errors.py` with 60 codes, each with its kind and a one-line
+meaning, a code on every raise of `src/assay` and `src/assay_grid` with a hint where
+the message did not already name the next step, the eleven refusals that led with
+`CODE | ` carrying the code beside the message instead, the exit status by kind, the
+adapter boundary wrapping whatever the factory, the observation or a step raises into
+`WORLD_ERROR`, anything else that is not an `AssayError` becoming `INTERNAL` with the
+traceback saved, the argparse path raising `CLI_USAGE`, the AST test over every raise,
+`docs/ERRORS.md` rendered by `python -m assay.errors --render` with a test that asserts
+it is current, and the two unguarded `int` conversions of `parse_claims` refusing an
+aggregate count past nine digits); the protocol of 7.2 (`v` on every request and
+reply, 2 for this package, refused with `PROTOCOL_VERSION` by the daemon before the
+token and by the client on every reply, the request's fields under `args` and the
+result under `result`, the error object `{code, kind, message, hint}` raised by the
+client as the same error, `act` carrying `action` and `params` and a commit step
+`{action, params, predict}`, parsed from `NAME k=v ...` by the client against the
+pinned registry (`registry.parse_registry_action`, `live.split_step`) and validated by
+the daemon against the same schema before any spend (`registry.validate_action`), the
+journal storing the validated object under `data`); `--json` of 7.3 on `status`,
+`view`, `audit`, `act`, `commit`, `reset`, `channel list` and `module list`, printing
+the `Status`, `View`, `AuditReport`, `Receipt`, `ChannelList` or `ModuleList` record,
+or the error object, as one JSON document, with stderr empty on success; and the
+`Status` record of 7.4 (`status.py`: `status_of(run)` builds the blocks once,
+`render_status(status)` derives today's lines, byte for byte over the 25 published
+runs; `inspect.status_text` is that rendering). Not in #13: the owner operations
+`approve`, `waive` and `goal_ratify` stay offline commands over the files (the note's
+"moves the owner operations into the daemon" is a later issue's), `--params JSON` is
+#14's, and `estimated_tokens` with `--brief` is #23's.
 
 ### 7.1 The error model
 
-- `AssayError(message, *, code="UNSPECIFIED", kind="refused", hint=None)`. `code` is
+- `AssayError(message, *, code="UNSPECIFIED", kind="refused", hint=None, detail=None)`. `code` is
   UPPER_SNAKE, unique and stable. `kind` is one of `usage` (the request is wrong: schema,
   syntax, a missing file, an unknown action; exit 2), `refused` (a well-formed request the
   kernel refuses by rule: the budget, the gates, a module demand, the batching law, the
@@ -1065,14 +1101,16 @@ are offline commands of the command line. #13 adds the version, the error object
   exit 5). `hint` is the next step in one sentence.
 - The catalogue, `src/assay/errors.py`, lists every code with its kind and a one-line
   meaning. A test over the AST, in the pattern of the vocabulary test and covering
-  `src/assay` and `src/assay_grid` (211 raise sites today), refuses a `raise AssayError(`
+  `src/assay` and `src/assay_grid` (224 call sites), refuses a `raise AssayError(`
   without `code=`, and one whose `code=` is not a string literal or an `errors.NAME`
   attribute in the catalogue. The catalogue's kind wins for a catalogued code; the `kind`
-  keyword applies only to `UNSPECIFIED`.
+  keyword applies to any code outside the table, `UNSPECIFIED` among them.
   Adapters, examples and tests are not covered: the two bench adapters raise `AssayError`
   without a code at twenty sites and keep working through the defaults. The argparse
   error path (`Parser.error`) raises with `CLI_USAGE`. The catalogue renders into
-  `docs/ERRORS.md` by a script in the repository; a test asserts the file is current.
+  `docs/ERRORS.md` by `python -m assay.errors --render`; a test asserts the file is
+  current. `detail` is the further lines the command line prints after the first two
+  (the claims table); `message` is one line.
 - The adapter boundary is the daemon's four calls into the session: `factory`,
   `observation`, `step` and `finalize`. Anything raised there, `AssayError` or not, becomes
   `WORLD_ERROR` (kind world) carrying the text; a `finalize` failure stays the warning on
@@ -1082,18 +1120,34 @@ are offline commands of the command line. #13 adds the version, the error object
 - Existing codes keep their names: `BUDGET_EXHAUSTED`, `LOCAL_REPLAY_DIVERGED`,
   `REMOTE_LEASE_EXPIRED`, `REMOTE_STATE_DIVERGED`; `UNGATED_STEP_REFUSED` is retired with
   the `step` operation (section 7.2) and an unknown operation is refused with
-  `UNKNOWN_OPERATION` (kind usage); the module demand is
+  `OPERATION_UNKNOWN` (kind usage); the module demand is
   `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` becomes
   `REMOTE_SESSION_UNAVAILABLE` with #21, the last rename: the codes freeze at the 1.2.0
   tag, like the outcome tokens.
 - The CLI prints to stderr one line `ERROR | CODE | message` and, when a hint exists, a
-  second line `NEXT | hint`; multi-line help (the claims table) follows as today. The exit
-  code follows the kind. The `ERROR | ` prefix and exit 2 for usage and refused errors are
-  unchanged.
+  second line `NEXT | hint`; the error's detail (the claims table) follows as today. The
+  exit code follows the kind. The `ERROR | ` prefix and exit 2 for usage and refused
+  errors are unchanged.
 - Over the socket the error is `{"v": 2, "ok": false, "error": {"code", "kind",
-  "message", "hint"}}`; the client raises the same `AssayError`.
+  "message", "hint", "detail"}}`; the client raises the same `AssayError`.
 - With `--json` the error object is the only output, on stdout, and the exit code follows
   the kind.
+- Status (#13): landed as written, with the review's amendments: a world's own
+  refusal or failure inside the factory, the observation or a step is `WORLD_ERROR`, and
+  the kernel's shape checks on what the session returned are `OBSERVATION_INVALID` (kind
+  world too), so the agent can tell a refused action from a broken adapter; a request
+  body that does not fit the operation's record is `REQUEST_MALFORMED` (kind usage, no
+  traceback), a reply the client cannot read `REPLY_MALFORMED`; the daemon's own state
+  refusing is `DAEMON_UNAVAILABLE` (not running), `DAEMON_BUSY` (inside a step, hung, or
+  silent past the client's wait, whose hint is to read the last event before acting
+  again, never to resume) and `DAEMON_ORPHANED` (a live daemon over a hand-deleted
+  `.assay`); `MODEL_FAILED`, `PYTHON_FAILED` and `RESUME_REFUSED` are usage (the agent's
+  own code, or start's own arguments) and `TIMELINE_EMPTY` internal. The CLI's `--json`
+  is read before the command line is parsed (the flag before a `--` only), so a line
+  argparse refuses still answers with the error object. The `command_end` activity
+  record of a failed command carries `code` and `error_kind` beside `error`, and
+  `start` and `stop` write `command_start` and `command_end` like the other commands
+  when the run state existed before them.
 
 ### 7.2 The operation table and the protocol
 
@@ -1119,7 +1173,7 @@ are offline commands of the command line. #13 adds the version, the error object
   processes rewrote is gone; the three owner commands need the daemon alive. The `step` operation is
   removed: it was refused on every registry run and every run has a registry since the
   1.1.0 build; the test that asserted `UNGATED_STEP_REFUSED` asserts that an unknown
-  operation is refused with `UNKNOWN_OPERATION` and no mutation is written.
+  operation is refused with `OPERATION_UNKNOWN` and no mutation is written.
 - Offline operations, in the client from disk: `start`, `stop`, `status`, `view` (with
   `--export`), `audit`, `channel declare`, `channel list`, `export`, `spend report`,
   `goal propose`, `goal list`, `model init`, `model replay`, `model solve`, `module list`,
@@ -1139,16 +1193,36 @@ are offline commands of the command line. #13 adds the version, the error object
   schema (the scalar types until #14, the JSON Schema subset from #14) and refuses before
   any spend; the journal stores the validated object under `data`.
 - Receipts come back as `Receipt` records; `result_text` renders them as today.
+- Status (#13): the version, the error object and `action`/`params` landed as written
+  (`ops.PROTOCOL_VERSION`, `ops.ERROR_SCHEMA`, `ops.Step`); `v` must be the integer 2, not
+  a float or a boolean that compares equal; `broker_ping` raises a `PROTOCOL_VERSION`
+  refusal instead of reading it as silence, so a resume names the way back. The owner
+  operations `approve`, `waive` and `goal_ratify` are still offline commands; moving them
+  into the daemon is left for a later issue.
 
 ### 7.3 `--json`
 
-Every command with a result record accepts `--json` and prints exactly one JSON document
-on stdout: the result record (`Receipt`, `Status`, the audit report, the view record, the
-channel list, the module list) or the error object, nothing else; stderr stays empty on
-success. `python`, `doctor`, `version`, `start` and `stop` have no result record and no
-flag. The view record is `{"event": Event, "previous": Event or null, "lines": [...]}`:
-the two events and the rendered lines, since the frame extra's view is prose. Without
-the flag the prose output is unchanged.
+Every command accepts `--json` and prints exactly one JSON document on stdout: the
+result record where the command has one (`Receipt`, `Status`, the audit report, the
+view record, the channel list, the module list), `{"lines": [...]}` with the prose
+lines where it has none (`start`, `stop`, `version`, `doctor`, `python` and the other
+commands that print a line), or the error object on failure, nothing else; stderr stays
+empty on success. The view record is `{"event": Event, "previous": Event or null,
+"lines": [...]}`: the two events and the rendered lines, since the frame extra's view is
+prose. Without the flag the prose output is unchanged. (Amended in the review of #13:
+the draft gave the flag to the commands with a result record alone, which left the
+error objects of the others, the exit-5 family among them, unreachable in machine
+form.)
+
+Status (#13): landed as amended. The view record carries `exported` (the path) when
+`--export` wrote a file. The result records of the offline commands (`Status`, `View`,
+`AuditReport`, `ChannelList`, `ModuleList`) have `to_json()` (`records.plain`), and
+the audit report's `to_json()` is the shape `.assay/audit.json` always had; their
+`from_json` and `json_schema()` are the tool server's (#15) when it needs them. The
+document is printed compact, on one line, with the journal's separators and no NaN or
+infinity (a leaf that is not a JSON number is a bug, `INTERNAL`); `spend report`
+refuses a `--usd` that is not finite, and the spend totals skip an archived figure
+that is not.
 
 ### 7.4 The `Status` record
 
@@ -1176,6 +1250,22 @@ the archive's unit and whether the notes changed since), `estimated_tokens`.
 `inspect.status_text` becomes `render_status(status)` and produces today's lines byte for
 byte, which the replay gate proves; `--json` prints the record; `--brief` (section 7.6)
 drops blocks under the budget.
+
+Status (#13): landed in `src/assay/status.py` (`status_of`, `render_status`, the blocks),
+with `inspect.status_text` kept as the rendering of the record. Differences from the
+list above: `ignored_modules` (the files in `.assay/modules` the manifest does not
+cover, the MODULES line) is a field the list did not name, and `estimated_tokens` waits
+for #23. No block holds rendered text: `recent` records carry `predict_ok`, `changed`
+(a count) with `changed_unit` (the noun the observation kind supplies through
+`history_change`: keys or cells) and `frames` (the animation frame count, None on a dict
+world) so one renderer prints both forms; `mode` carries `lease_seconds`; `anchors`
+carries `failed_event` and `failed_error`; the observation and notes blocks carry the
+limits the renderer applies (`max_lines`, `line_width`), which `--brief` (#23) will
+lower; `gate` is always present with the mode (None only without a registry), and the
+budget cap lives in the budget block alone. The `vacuous` block lists every flagged
+verifier with its counters and whether it is vacuous under the file's rule, the
+never-failed advisory being the rest; the module advisory lines and the kind's lines
+are stored as lines, the two exceptions the rule allows.
 
 ### 7.5 The surfaces
 

@@ -255,6 +255,17 @@ the emergence meter (self-authored verifiers, channels, models, proposals:
 initiative the harness never demanded). `assay audit` is the integrity verdict:
 any ungated event marks the run invalid for scoring.
 
+Every refusal is one line on stderr, `ERROR | CODE | message`, with a second
+line `NEXT | hint` when the error names a next step, and the exit status says
+what kind it was: 2 for a request that is wrong or refused by rule (the
+budget, a gate, a module demand), 3 when the world failed or refused, 4 for a
+bug (the traceback is in `.assay/last_error.txt`), 5 when the run can no
+longer be scored or continued (a tampered file, a diverged chain or replay).
+`docs/ERRORS.md` lists every code. Every command takes `--json` and prints
+one JSON document instead of the lines: the result record (`status`, `view`,
+`audit`, `act`, `commit`, `reset`, `channel list`, `module list`), the lines
+as `{"lines": [...]}` for the others, or the error object on a refusal.
+
 ## 8. Honest limits (1.2.0)
 
 One adapter = one observer stream; turn-based synchronous worlds only;

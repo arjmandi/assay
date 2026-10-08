@@ -266,6 +266,8 @@ def test_rows_from_fixture_receipts_and_activity(tmp_path):
     activity = [
         {"kind": "command_start", "command": "act", "status": "RUNNING"},
         {"kind": "command_end", "command": "act", "status": "ERROR", "error": "AssayError: the prediction gate is off for this run (registry gate: off): `assay act` takes no --predict here"},
+        {"kind": "command_end", "command": "act", "status": "ERROR", "error": "the prediction gate is off for this run (registry gate: off): `assay act` takes no --predict here", "code": "GATE_OFF", "error_kind": "refused"},
+        {"kind": "command_end", "command": "act", "status": "ERROR", "error": "event guard failed: requested 7, current 1", "code": "EVENT_GUARD", "error_kind": "refused"},
         {"kind": "receipt", "outcome": "PREDICTED", "end_event": 1},
         {"kind": "command_end", "command": "act", "status": "FINISHED"},
     ]
@@ -275,7 +277,7 @@ def test_rows_from_fixture_receipts_and_activity(tmp_path):
     assert facts.events == 4 and facts.paid_actions == 3 and facts.win and facts.state == "WIN"
     assert facts.levels_completed == 1 and facts.win_levels == 1 and facts.predicted_actions == 2
     assert facts.receipts == {"GAME_COMPLETE": 1, "PREDICTED": 1, "UNGATED": 1}
-    assert facts.refused_predictions == 1 and facts.chain_head == "f00d" * 16
+    assert facts.refused_predictions == 2 and facts.chain_head == "f00d" * 16
     sessions = [
         {"session": 1, "wall_seconds": 100.5, "report": {"total_cost_usd": 1.25, "num_turns": 9, "usage": {"input_tokens": 1000, "output_tokens": 200, "cache_read_input_tokens": 300, "cache_creation_input_tokens": 0}}},
         {"session": 2, "wall_seconds": 50, "report": {"total_cost_usd": 0.75, "num_turns": 4, "usage": {"input_tokens": 500, "output_tokens": 100}}},
@@ -287,7 +289,7 @@ def test_rows_from_fixture_receipts_and_activity(tmp_path):
     assert row["tokens"] == {"input": 1500, "output": 300, "cache_read": 300, "cache_creation": 0, "total": 2100}
     assert row["dollars"] == 2.0 and row["dollars_per_action"] == round(2.0 / 3, 6)
     assert row["tokens_per_action"] == 700.0 and row["source"] == "files"
-    assert row["receipts"] == {"GAME_COMPLETE": 1, "PREDICTED": 1, "UNGATED": 1} and row["refused_predictions"] == 1
+    assert row["receipts"] == {"GAME_COMPLETE": 1, "PREDICTED": 1, "UNGATED": 1} and row["refused_predictions"] == 2
     # A run without a journal yet, and a run at the cap.
     assert results.read_run(tmp_path / "nowhere") is None
     assert results.outcome_of(None, 40) is None

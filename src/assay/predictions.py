@@ -131,10 +131,30 @@ _KEYWORD = re.compile(
 )
 
 
+CLAIMS_HINT = "`assay act --help` lists the claim forms"
+_COUNT_DIGITS = 9
+
+
 def _numeric(value: Any, what: str, part: str) -> int | float:
     if not isinstance(value, (int, float)) or isinstance(value, bool):
-        raise AssayError(f"{what} claims need a numeric value: {part!r}")
+        raise AssayError(
+            f"{what} claims need a numeric value: {part!r}", code="CLAIM_SYNTAX", hint=CLAIMS_HINT
+        )
     return value
+
+
+def _count(raw: str, what: str, part: str) -> int:
+    """An aggregate's `over` or `horizon` count. The grammar admits any run of
+    digits; a count past nine of them is refused before `int` is asked to
+    read it (Python refuses a conversion past its digit limit with a
+    ValueError, which is no refusal)."""
+    if len(raw) > _COUNT_DIGITS:
+        raise AssayError(
+            f"aggregate {what} count has {len(raw)} digits, more than {_COUNT_DIGITS}: {part[:80]!r}",
+            code="CLAIM_SYNTAX",
+            hint=CLAIMS_HINT,
+        )
+    return int(raw)
 
 
 def _core_claim(name: str, part: str, found: re.Match[str], window_s: float | None) -> Claim:
@@ -186,14 +206,16 @@ def _core_claim(name: str, part: str, found: re.Match[str], window_s: float | No
             stat=found.group(2).lower(),
             op=found.group(3),
             value=_numeric(_parse_value(found.group(4)), "aggregate", part),
-            over=int(found.group(5)),
-            horizon=int(found.group(6)),
+            over=_count(found.group(5), "over", part),
+            horizon=_count(found.group(6), "horizon", part),
             on_fail=found.group(7).lower(),
         )
         assert claim.over is not None and claim.horizon is not None
         if claim.over < 1 or claim.horizon < 1 or claim.horizon > 100:
             raise AssayError(
-                "aggregate needs over >= 1a and 1a <= horizon <= 100a"
+                "aggregate needs over >= 1a and 1a <= horizon <= 100a",
+                code="CLAIM_SYNTAX",
+                hint=CLAIMS_HINT,
             )
         return claim
     return Claim(kind=name, text=part, window_s=window_s)
@@ -216,7 +238,10 @@ def parse_claims(
     help_text = GENERAL_CLAIMS_HELP + (("\n" + kind.claims_help()) if kind is not None else "")
     if not text or not text.strip():
         raise AssayError(
-            f"an empty prediction predicts nothing; say what you expect\n{help_text}"
+            "an empty prediction predicts nothing; say what you expect",
+            code="PREDICTION_REQUIRED",
+            hint='add --predict "<claims>" (for example --predict "change"); `assay act --help` lists the forms',
+            detail=help_text,
         )
     claims: list[Claim] = []
     for raw in text.split(";"):
@@ -229,7 +254,11 @@ def parse_claims(
             part = windowed.group(1)
             window_s = float(windowed.group(2))
             if window_s <= 0:
-                raise AssayError(f"@within needs a positive number of seconds: {raw.strip()!r}")
+                raise AssayError(
+                    f"@within needs a positive number of seconds: {raw.strip()!r}",
+                    code="CLAIM_SYNTAX",
+                    hint=CLAIMS_HINT,
+                )
         matched = False
         for name, pattern in _PATTERNS:
             found = pattern.match(part)
@@ -251,9 +280,13 @@ def parse_claims(
         if not matched:
             foreign = foreign_form(part, kind)
             if foreign is not None:
-                raise AssayError(f"{refusal_text(foreign, part)}\n{help_text}")
+                raise AssayError(
+                    refusal_text(foreign, part), code="CLAIM_SYNTAX", hint=CLAIMS_HINT, detail=help_text
+                )
             if _KEYWORD.match(part):
-                raise AssayError(f"malformed claim {part!r}\n{help_text}")
+                raise AssayError(
+                    f"malformed claim {part!r}", code="CLAIM_SYNTAX", hint=CLAIMS_HINT, detail=help_text
+                )
             claims.append(Claim(kind="note", text=part))
     mechanical = [
         claim for claim in claims if claim.kind not in {"note", "aggregate"}
@@ -261,8 +294,10 @@ def parse_claims(
     if any(claim.kind == "aggregate" for claim in claims) and not mechanical:
         # Statistical claims are additive, never substitutive.
         raise AssayError(
-            "aggregate claims are additive: this action still needs a mechanical "
-            f"claim of its own\n{help_text}"
+            "aggregate claims are additive: this action still needs a mechanical claim of its own",
+            code="CLAIM_SYNTAX",
+            hint=CLAIMS_HINT,
+            detail=help_text,
         )
     if not mechanical:
         # A prose prediction still commits to a visible effect. Coerced claims

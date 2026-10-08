@@ -24,6 +24,7 @@ filtered at the boundary before it is written.
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import os
 import time
@@ -84,13 +85,15 @@ def anchor_status(paths: RunPaths, config: Mapping[str, Any] | None) -> dict[str
     target = anchor_file(paths, config)
     anchors = load_jsonl(target) if target.exists() else []
     last_event = int(anchors[-1]["event_id"]) if anchors else None
-    failed: str | None = None
+    failed_event: int | None = None
+    failed_error: str | None = None
     for record in load_jsonl(paths.activity):
         if record.get("kind") != "anchor_failed":
             continue
         event = record.get("event")
         if last_event is None or (isinstance(event, int) and event > last_event):
-            failed = f"e{event}: {record.get('error')}"
+            failed_event = event if isinstance(event, int) else None
+            failed_error = str(record.get("error"))
     # Writability without side effects: the nearest existing ancestor must be
     # a writable directory (a file in the way is the common failure).
     ancestor = target.parent
@@ -101,24 +104,46 @@ def anchor_status(paths: RunPaths, config: Mapping[str, Any] | None) -> dict[str
         "file": target,
         "count": len(anchors),
         "last_event": last_event,
-        "failed": failed,
+        "failed_event": failed_event,
+        "failed_error": failed_error,
         "writable": writable,
     }
 
 
-def anchor_line(paths: RunPaths, config: Mapping[str, Any] | None) -> str:
-    status = anchor_status(paths, config)
-    line = f"ANCHORS | {status['file']} | "
+def anchor_text(
+    file: str,
+    count: int,
+    last_event: int | None,
+    failed_event: int | None,
+    failed_error: str | None,
+    writable: bool,
+) -> str:
+    """The ANCHORS line from its facts: the file, the count and the last
+    anchored event, the last failed write (its event and error) when newer
+    than the last anchor, and whether the directory can be written now."""
+    line = f"ANCHORS | {file} | "
     line += (
-        f"{status['count']} anchor(s), last e{status['last_event']}"
-        if status["count"]
+        f"{count} anchor(s), last e{last_event}"
+        if count
         else "none yet (every 25 events and on WIN)"
     )
-    if status["failed"]:
-        line += f" | last write FAILED at {status['failed']}"
-    elif not status["writable"]:
+    if failed_error is not None:
+        line += f" | last write FAILED at e{failed_event}: {failed_error}"
+    elif not writable:
         line += " | directory NOT WRITABLE, heads stay chain-only until fixed"
     return line
+
+
+def anchor_line(paths: RunPaths, config: Mapping[str, Any] | None) -> str:
+    status = anchor_status(paths, config)
+    return anchor_text(
+        str(status["file"]),
+        status["count"],
+        status["last_event"],
+        status["failed_event"],
+        status["failed_error"],
+        status["writable"],
+    )
 
 
 def _advance(head: str, line: str) -> str:
@@ -210,7 +235,40 @@ def ungated_permitted(events: Sequence[Event]) -> dict[int, str]:
     return permitted
 
 
-def audit(run: Run) -> dict[str, Any]:
+@dataclasses.dataclass(frozen=True, slots=True)
+class AuditReport:
+    """What `assay audit` recomputes from the artifacts (docs/ARCHITECTURE.md
+    section 7.3): the report `.assay/audit.json` holds, typed; `to_json()`
+    is the file's shape."""
+
+    computed_at: float
+    events: int
+    paid: int
+    mutations: int
+    contiguous: bool
+    chain: str
+    anchors: str
+    anchor_count: int
+    anchor_file: str
+    anchor_env_mismatch: bool
+    ungated: tuple[int, ...]
+    ungated_permitted: tuple[int, ...]
+    ungated_permitted_by: tuple[str, ...]
+    recovered_orphans: tuple[int, ...]
+    recovered_without_prediction: tuple[int, ...]
+    mutations_pending: tuple[int, ...]
+    invalid_for_scoring: bool
+    problems: tuple[str, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        output: dict[str, Any] = {}
+        for field in dataclasses.fields(self):
+            value = getattr(self, field.name)
+            output[field.name] = list(value) if isinstance(value, tuple) else value
+        return output
+
+
+def audit(run: Run) -> AuditReport:
     """Recompute integrity from the artifacts; write .assay/audit.json; return it."""
     paths = run.paths
     events = run.events
@@ -286,67 +344,67 @@ def audit(run: Run) -> dict[str, Any]:
         for event_id in recovered
         if event_id in flagged and event_id not in permitted_modes
     ]
-    report = {
-        "computed_at": time.time(),
-        "events": len(events),
-        "paid": sum(1 for event in events if event.counts_action),
-        "mutations": len(run.mutations),
-        "contiguous": contiguous,
-        "chain": chain_state,
-        "anchors": anchor_state,
-        "anchor_count": len(anchors),
-        "anchor_file": str(anchor_target),
-        "anchor_env_mismatch": anchor_env_mismatch,
-        "ungated": ungated,
-        "ungated_permitted": sorted(permitted_modes),
-        "ungated_permitted_by": sorted(set(permitted_modes.values())),
-        "recovered_orphans": recovered,
-        "recovered_without_prediction": recovered_without_prediction,
-        "mutations_pending": pending,
-        "invalid_for_scoring": bool(ungated) or not contiguous or malformed is not None
+    report = AuditReport(
+        computed_at=time.time(),
+        events=len(events),
+        paid=sum(1 for event in events if event.counts_action),
+        mutations=len(run.mutations),
+        contiguous=contiguous,
+        chain=chain_state,
+        anchors=anchor_state,
+        anchor_count=len(anchors),
+        anchor_file=str(anchor_target),
+        anchor_env_mismatch=anchor_env_mismatch,
+        ungated=tuple(ungated),
+        ungated_permitted=tuple(sorted(permitted_modes)),
+        ungated_permitted_by=tuple(sorted(set(permitted_modes.values()))),
+        recovered_orphans=tuple(recovered),
+        recovered_without_prediction=tuple(recovered_without_prediction),
+        mutations_pending=tuple(pending),
+        invalid_for_scoring=bool(ungated) or not contiguous or malformed is not None
         or chain_state == "DIVERGED" or anchor_state == "DIVERGED",
-        "problems": problems,
-    }
-    atomic_json(paths.state / "audit.json", report)
+        problems=tuple(problems),
+    )
+    atomic_json(paths.state / "audit.json", report.to_json())
     return report
 
 
-def audit_lines(report: Mapping[str, Any]) -> list[str]:
-    verdict = "INVALID FOR SCORING" if report["invalid_for_scoring"] else "CLEAN"
+def audit_lines(report: AuditReport) -> list[str]:
+    verdict = "INVALID FOR SCORING" if report.invalid_for_scoring else "CLEAN"
     lines = [
-        f"AUDIT | {verdict} | events {report['events']} (paid {report['paid']}) | "
-        f"contiguous {'yes' if report['contiguous'] else 'NO'} | "
-        f"chain {report['chain']} | anchors {report['anchors']} ({report['anchor_count']})",
+        f"AUDIT | {verdict} | events {report.events} (paid {report.paid}) | "
+        f"contiguous {'yes' if report.contiguous else 'NO'} | "
+        f"chain {report.chain} | anchors {report.anchors} ({report.anchor_count})",
     ]
-    if report["ungated"]:
+    if report.ungated:
         lines.append(
-            f"AUDIT | UNGATED events {report['ungated'][:8]}; the run is invalid "
+            f"AUDIT | UNGATED events {list(report.ungated[:8])}; the run is invalid "
             "for scoring and trust earned after the first one is demoted"
         )
-    if report.get("ungated_permitted"):
-        modes = ", ".join(f"`gate: {mode}`" for mode in report.get("ungated_permitted_by") or ["optional"])
+    if report.ungated_permitted:
+        modes = ", ".join(f"`gate: {mode}`" for mode in report.ungated_permitted_by or ("optional",))
         lines.append(
-            f"AUDIT | {len(report['ungated_permitted'])} of them permitted by "
+            f"AUDIT | {len(report.ungated_permitted)} of them permitted by "
             f"{modes} (control arm), still invalid for scoring"
         )
-    if report["recovered_orphans"]:
+    if report.recovered_orphans:
         lines.append(
-            f"AUDIT | recovered orphan events {report['recovered_orphans'][:8]} "
+            f"AUDIT | recovered orphan events {list(report.recovered_orphans[:8])} "
             "(spend journaled by the broker; CLI died before recording)"
         )
-    if report.get("recovered_without_prediction"):
-        without = report["recovered_without_prediction"]
+    if report.recovered_without_prediction:
+        without = report.recovered_without_prediction
         lines.append(
             f"AUDIT | {len(without)} of them recovered without its prediction: the record "
             "predates 1.2.0 or was a model-plan step; counted UNGATED above"
         )
-    if report.get("mutations_pending"):
-        pending = report["mutations_pending"]
+    if report.mutations_pending:
+        pending = report.mutations_pending
         lines.append(
             f"AUDIT | {len(pending)} spend(s) in the mutation journal not yet in the "
-            f"timeline {pending[:8]} (a step in flight, or a crash between spend and "
+            f"timeline {list(pending[:8])} (a step in flight, or a crash between spend and "
             "record; `assay start` recovers them once the daemon is gone)"
         )
-    for problem in report["problems"]:
+    for problem in report.problems:
         lines.append(f"AUDIT | problem: {problem}")
     return lines

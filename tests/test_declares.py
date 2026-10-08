@@ -94,7 +94,8 @@ def test_reset_accepts_a_declaration_and_a_module_can_demand_it(tmp_path):
         refused = run_cli(run, "reset", "--because", "dead end")
         assert refused.returncode == 2
         assert "MODULE park_demand | declaration demanded" in refused.stderr
-        assert "--declare parked=..." in refused.stderr
+        assert "MODULE park_demand | declaration demanded before this action: parked: name the test that would reopen this line" in refused.stderr
+        assert 'NEXT | repeat the command with --declare "parked=<text>" (one flag per field); any named, non-empty text unlocks the action' in refused.stderr
         assert len(_events(run)) == 2  # nothing spent
         accepted = run_cli(
             run, "reset", "--because", "dead end",

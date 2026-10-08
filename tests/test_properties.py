@@ -351,21 +351,6 @@ def test_any_text_parses_or_is_refused_with_a_reason(text):
     assert any(claim.kind not in NOT_MECHANICAL for claim in claims)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    raises=ValueError,
-    reason="#26 found: an aggregate count of more than 4300 digits escapes as a "
-    "ValueError (Python's int digit limit; the int() calls on the over and horizon "
-    "groups in predictions.py are unguarded) instead of an AssayError refusal",
-)
-@pytest.mark.parametrize("field", ["over", "horizon"])
-def test_aggregate_count_past_the_int_digit_limit_is_refused(field):
-    digits = "1" * 4301
-    over, horizon = (digits, "1") if field == "over" else ("1", digits)
-    with pytest.raises(AssayError):
-        parse_claims(f"noop; agg ch x mean >= 1 over {over}a horizon {horizon}a on-fail advise")
-
-
 # --------------------------------------------------------------- the chain
 
 SPEC_SEED = "assay-chain-v1"

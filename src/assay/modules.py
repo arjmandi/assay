@@ -66,7 +66,9 @@ Built-ins (the standing nudge table plus the first structural module):
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 import shutil
 import time
 from collections.abc import Mapping, Sequence
@@ -638,7 +640,8 @@ def _module_object(module: Any, file: Path) -> Module:
         if not hasattr(candidate, attr):
             raise AssayError(
                 f"module {file.name} lacks {attr!r}; the module contract is "
-                "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()"
+                "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()",
+                code="MODULE_CONTRACT",
             )
     loaded: Module = candidate
     return loaded
@@ -655,12 +658,14 @@ def _check_name(name: str, file: Path, taken: Mapping[str, str]) -> None:
     if name in builtin:
         raise AssayError(
             f"module file {file.name} declares NAME {name!r}, which is a built-in; "
-            "external modules need their own name"
+            "external modules need their own name",
+            code="MODULE_CONTRACT",
         )
     if name in taken and taken[name] != file.name:
         raise AssayError(
             f"module file {file.name} declares NAME {name!r}, already provided by "
-            f"{taken[name]}"
+            f"{taken[name]}",
+            code="MODULE_CONTRACT",
         )
 
 
@@ -691,7 +696,7 @@ def pin_external_modules(paths: RunPaths, registry: Mapping[str, Any] | None) ->
         if not source.is_absolute():
             source = paths.root / source
         if not source.exists():
-            raise AssayError(f"registered module file not found: {entry}")
+            raise AssayError(f"registered module file not found: {entry}", code="FILE_NOT_FOUND")
         pinned = target / source.name
         shutil.copy2(source, pinned)
         name = module_name_of(pinned)
@@ -721,9 +726,9 @@ def install_module(run: Run, source: Path, token: str | None) -> dict[str, Any]:
     require_owner(run, token)
     paths = run.paths
     if not source.is_file():
-        raise AssayError(f"module file not found: {source}")
+        raise AssayError(f"module file not found: {source}", code="FILE_NOT_FOUND")
     if source.suffix != ".py":
-        raise AssayError("a module is one Python file (.py)")
+        raise AssayError("a module is one Python file (.py)", code="MODULE_CONTRACT")
     target = modules_dir(paths)
     target.mkdir(parents=True, exist_ok=True)
     entries = [entry for entry in run.manifest if entry.get("file") != source.name]
@@ -827,14 +832,81 @@ def _load_external(run: Run) -> list[Module]:
     return loaded
 
 
-def unlisted_lines(run: Run) -> list[str]:
-    ignored = module_inventory(run)["ignored"]
+def ignored_modules(run: Run) -> list[str]:
+    """The files in `.assay/modules` the manifest does not cover, each with
+    its reason."""
+    ignored: list[str] = module_inventory(run)["ignored"]
+    return ignored
+
+
+def ignored_text(ignored: Sequence[str]) -> list[str]:
     if not ignored:
         return []
     return [
         f"MODULES | {len(ignored)} file(s) in .assay/modules ignored (not installed "
         f"through the registry or `assay module install`): {', '.join(ignored)}"
     ]
+
+
+def unlisted_lines(run: Run) -> list[str]:
+    return ignored_text(ignored_modules(run))
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ModuleEntry:
+    name: str
+    mode: str
+    origin: str
+    constitution: str
+    telemetry: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ModuleList:
+    """What `assay module list` knows: the active modules with their mode,
+    origin, constitution and telemetry, and the ignored files."""
+
+    modules: tuple[ModuleEntry, ...]
+    ignored: tuple[str, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "modules": [dataclasses.asdict(entry) for entry in self.modules],
+            "ignored": list(self.ignored),
+        }
+
+
+def module_list_of(run: Run) -> ModuleList:
+    origins = {str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest}
+    view = ModuleView(run)
+    entries: list[ModuleEntry] = []
+    for item, mode in active_modules(run):
+        try:
+            telemetry = item.telemetry(view)
+        except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
+            telemetry = {"error": f"{type(error).__name__}: {error}"}
+        entries.append(
+            ModuleEntry(
+                name=str(item.NAME),
+                mode=str(mode),
+                origin=origins.get(item.NAME, "built-in"),
+                constitution=str(item.CONSTITUTION),
+                # As JSON data: a counter a module keeps in another type is
+                # rendered through `str`, as the listing always printed it.
+                telemetry=json.loads(json.dumps(telemetry, sort_keys=True, default=str)),
+            )
+        )
+    return ModuleList(modules=tuple(entries), ignored=tuple(ignored_modules(run)))
+
+
+def module_list_text(listing: ModuleList) -> list[str]:
+    lines = ["MODULES | active (name, mode, origin), constitution, telemetry"]
+    for entry in listing.modules:
+        lines.append(f"  {entry.name} | {entry.mode} | {entry.origin}")
+        lines.append(f"    constitution: {entry.constitution}")
+        lines.append(f"    telemetry: {json.dumps(entry.telemetry, sort_keys=True)}")
+    lines.extend(ignored_text(listing.ignored))
+    return lines
 
 
 def active_modules(run: Run) -> list[tuple[Module, str]]:
@@ -862,11 +934,15 @@ def consult_modules(run: Run, pending: Mapping[str, Any] | None) -> list[str]:
     for module, mode in active_modules(run):
         demands = module.demand(view, pending)
         if demands and mode == "block":
-            wanted = ", ".join(f"--declare {field}=..." for field in sorted(demands))
+            wanted = " ".join(f'--declare "{field}=<text>"' for field in sorted(demands))
             reasons = "; ".join(f"{field}: {why}" for field, why in sorted(demands.items()))
             raise AssayError(
-                f"MODULE {module.NAME} | declaration demanded before this action: "
-                f"{wanted} ({reasons}); the demand is structural; it never bans"
+                f"MODULE {module.NAME} | declaration demanded before this action: {reasons}",
+                code="MODULE_DEMAND",
+                hint=(
+                    f"repeat the command with {wanted} (one flag per field); any named, "
+                    "non-empty text unlocks the action"
+                ),
             )
         message = module.trigger(view, pending)
         if message:

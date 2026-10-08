@@ -5,21 +5,31 @@ its handlers (`broker.HANDLERS`) and the command line binds a command to the
 operations it exposes (`cli.COMMANDS`), so this module imports neither, and
 the tool server (section 7.5, #15) reads it alone for its six tools.
 
-A daemon operation crosses the socket as one JSON line, `{"token": ...,
-"op": NAME, ...the request record's fields}`, and is answered with `{"ok":
-true, ...the result record's fields}` or `{"ok": false, "error": ...}`; the
-fields are today's, and #13 versions the wire, names the error object and
-changes the shapes (`action` and `params` as JSON). `broker.call` sends a
-request record and decodes the result record; `broker._Daemon.handle`
-decodes the request record, calls the name's handler with the daemon and the
-held run, and encodes the result.
+The protocol is versioned (`PROTOCOL_VERSION`, 2 for this package). A daemon
+operation crosses the socket as one JSON line, `{"v": 2, "token": ...,
+"op": NAME, "args": {...the request record's fields}}`, and is answered with
+`{"v": 2, "ok": true, "result": {...the result record's fields}}` or `{"v":
+2, "ok": false, "error": {"code", "kind", "message", "hint"}}`, the error
+object of section 7.1 (`ERROR_SCHEMA`). Both sides check `v` before anything
+else and refuse a line without it, or with another value, with
+`PROTOCOL_VERSION`. `broker.call` sends a request record and decodes the
+result record; `broker._Daemon.handle` decodes the request record (a body
+that does not fit it is refused with `REQUEST_MALFORMED`, kind usage, before
+anything spends), calls the name's handler with the daemon and the held run,
+and encodes the result.
+
+An action travels as its registered name and its parameters as an object of
+scalars (`action`, `params`), never as the typed token: the client parses
+`NAME k=v ...` against the pinned registry and the daemon validates the
+object against the same schema before anything spends (`registry.validate_action`);
+a batch step is `{action, params, predict}`.
 
 The records are small frozen classes with `from_json`, `to_json` and a
 hand-written `json_schema()`, the tool server's `inputSchema`. They decode
 through the kit of `records.py`: a wrong type, a missing required key and a
-key the record does not take are refused in the internal-error voice, since
-a malformed line is a client's bug, never a refusal, and the daemon spends
-on nothing it did not read whole.
+key the record does not take raise the kit's `TypeError` or `KeyError`, which
+the daemon turns into the `REQUEST_MALFORMED` refusal naming the record's
+fields; the daemon spends on nothing it did not read whole.
 """
 
 from __future__ import annotations
@@ -29,19 +39,22 @@ from collections.abc import Mapping
 from typing import Any, Generic, Protocol, Self, TypeVar
 
 from .core import AssayError
+from .errors import KINDS
 from .records import (
     Receipt,
     read_bool,
     read_int,
+    read_list,
     read_object,
     read_opt_int,
-    read_opt_lines,
     read_opt_object,
     read_opt_str,
     read_str,
     refuse_unknown,
     wrong_type,
 )
+
+PROTOCOL_VERSION = 2
 
 
 class Record(Protocol):
@@ -76,9 +89,40 @@ def _declares(obj: Mapping[str, Any], record: str) -> dict[str, str] | None:
     return dict(declares)
 
 
+def _params(obj: Mapping[str, Any], record: str) -> dict[str, Any] | None:
+    """The parameters object: scalars only; the registry's schema is the
+    daemon's to check."""
+    params = read_opt_object(obj, record, "params", nullable=True)
+    if params is None:
+        return None
+    for key, value in params.items():
+        if value is None or not isinstance(value, (str, int, float, bool)):
+            raise wrong_type(record, f"params.{key}", "a string, a number or true/false", value)
+    return dict(params)
+
+
 _STRING_OR_NULL = {"type": ["string", "null"]}
 _INTEGER_OR_NULL = {"type": ["integer", "null"]}
 _DECLARES = {"type": ["object", "null"], "additionalProperties": {"type": "string"}}
+_PARAMS = {
+    "type": ["object", "null"],
+    "additionalProperties": {"type": ["string", "number", "boolean"]},
+}
+
+# The error object of section 7.1, as every refused reply carries it: the
+# code, its kind, the one-line message, the next step and the further lines
+# the command line prints after them (the claims table), the last two null
+# when the error has none.
+ERROR_SCHEMA = _schema(
+    {
+        "code": {"type": "string"},
+        "kind": {"type": "string", "enum": list(KINDS)},
+        "message": {"type": "string"},
+        "hint": _STRING_OR_NULL,
+        "detail": _STRING_OR_NULL,
+    },
+    ("code", "kind", "message", "hint", "detail"),
+)
 
 
 # --- the records ---------------------------------------------------------------
@@ -197,18 +241,22 @@ class ObserveResult:
         )
 
 
-_ACT_KEYS = frozenset({"action_token", "predict", "because", "at_event", "declares"})
+_ACT_KEYS = frozenset({"action", "params", "predict", "because", "at_event", "declares"})
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ActRequest:
-    """`act`: one action with its prediction. `action_token` is the
-    `NAME pname=value ...` line as typed (#13 splits it into `action` and
-    `params`); `predict` the claims text, null for a bare act under a
-    control arm; `because` the reason; `at_event` the event guard;
-    `declares` the structural declarations a gate or a module demanded."""
+    """`act`: one action with its prediction. `action` is the registered
+    name and `params` the object of its scalar parameters, or null for an
+    action without any (the client parses `NAME pname=value ...` with the
+    pinned registry; the daemon validates the object against the same
+    schema before any spend); `predict` the claims text, null for a bare
+    act under a control arm; `because` the reason; `at_event` the event
+    guard; `declares` the structural declarations a gate or a module
+    demanded."""
 
-    action_token: str
+    action: str
+    params: dict[str, Any] | None = None
     predict: str | None = None
     because: str | None = None
     at_event: int | None = None
@@ -219,7 +267,8 @@ class ActRequest:
         record = "act"
         refuse_unknown(obj, record, _ACT_KEYS)
         return cls(
-            action_token=read_str(obj, record, "action_token"),
+            action=read_str(obj, record, "action"),
+            params=_params(obj, record),
             predict=read_opt_str(obj, record, "predict", nullable=True),
             because=read_opt_str(obj, record, "because", nullable=True),
             at_event=read_opt_int(obj, record, "at_event", nullable=True),
@@ -228,7 +277,8 @@ class ActRequest:
 
     def to_json(self) -> dict[str, Any]:
         return {
-            "action_token": self.action_token,
+            "action": self.action,
+            "params": self.params,
             "predict": self.predict,
             "because": self.because,
             "at_event": self.at_event,
@@ -239,14 +289,61 @@ class ActRequest:
     def json_schema(cls) -> dict[str, Any]:
         return _schema(
             {
-                "action_token": {"type": "string"},
+                "action": {"type": "string"},
+                "params": _PARAMS,
                 "predict": _STRING_OR_NULL,
                 "because": _STRING_OR_NULL,
                 "at_event": _INTEGER_OR_NULL,
                 "declares": _DECLARES,
             },
-            ("action_token",),
+            ("action",),
         )
+
+
+_STEP_KEYS = frozenset({"action", "params", "predict"})
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class Step:
+    """One step of a hand-written batch: the registered name, its parameters
+    (an object of scalars, or null) and its prediction, null for a bare step
+    under a control arm (the client splits `NAME pname=value :: claims`)."""
+
+    action: str
+    params: dict[str, Any] | None = None
+    predict: str | None = None
+
+    @classmethod
+    def from_json(cls, obj: Mapping[str, Any]) -> Step:
+        record = "step"
+        refuse_unknown(obj, record, _STEP_KEYS)
+        return cls(
+            action=read_str(obj, record, "action"),
+            params=_params(obj, record),
+            predict=read_opt_str(obj, record, "predict", nullable=True),
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"action": self.action, "params": self.params, "predict": self.predict}
+
+    @classmethod
+    def json_schema(cls) -> dict[str, Any]:
+        return _schema(
+            {"action": {"type": "string"}, "params": _PARAMS, "predict": _STRING_OR_NULL},
+            ("action",),
+        )
+
+
+def _steps(obj: Mapping[str, Any], record: str) -> tuple[Step, ...]:
+    if "steps" not in obj:
+        return ()
+    values = read_list(obj, record, "steps")
+    steps: list[Step] = []
+    for value in values:
+        if not isinstance(value, Mapping):
+            raise wrong_type(record, "steps", "a list of steps", value)
+        steps.append(Step.from_json(value))
+    return tuple(steps)
 
 
 _COMMIT_KEYS = frozenset({"plan", "steps", "at_event", "declares"})
@@ -255,11 +352,11 @@ _COMMIT_KEYS = frozenset({"plan", "steps", "at_event", "declares"})
 @dataclasses.dataclass(frozen=True, slots=True)
 class CommitRequest:
     """`commit`: a model plan (`plan`, the file reference) or a hand-written
-    batch (`steps`, each `NAME pname=value :: claims`), with the event guard
-    and the declarations a module demanded for a step."""
+    batch (`steps`, each a `Step`), with the event guard and the
+    declarations a module demanded for a step."""
 
     plan: str | None = None
-    steps: tuple[str, ...] = ()
+    steps: tuple[Step, ...] = ()
     at_event: int | None = None
     declares: dict[str, str] | None = None
 
@@ -269,7 +366,7 @@ class CommitRequest:
         refuse_unknown(obj, record, _COMMIT_KEYS)
         return cls(
             plan=read_opt_str(obj, record, "plan", nullable=True),
-            steps=read_opt_lines(obj, record, "steps") or (),
+            steps=_steps(obj, record),
             at_event=read_opt_int(obj, record, "at_event", nullable=True),
             declares=_declares(obj, record),
         )
@@ -277,7 +374,7 @@ class CommitRequest:
     def to_json(self) -> dict[str, Any]:
         return {
             "plan": self.plan,
-            "steps": list(self.steps),
+            "steps": [step.to_json() for step in self.steps],
             "at_event": self.at_event,
             "declares": self.declares,
         }
@@ -287,7 +384,7 @@ class CommitRequest:
         return _schema(
             {
                 "plan": _STRING_OR_NULL,
-                "steps": {"type": "array", "items": {"type": "string"}},
+                "steps": {"type": "array", "items": Step.json_schema()},
                 "at_event": _INTEGER_OR_NULL,
                 "declares": _DECLARES,
             }
@@ -434,8 +531,12 @@ OPERATIONS: tuple[Operation[Any, Any], ...] = (PING, OBSERVE, ACT, COMMIT, RESET
 
 def daemon_operation(name: Any) -> Operation[Any, Any]:
     """The operation of this name; anything else, the retired `step`
-    included, is refused by name (#13 names the code)."""
+    included, is refused by name with `OPERATION_UNKNOWN`."""
     for operation in OPERATIONS:
         if operation.name == name:
             return operation
-    raise AssayError(f"unknown broker operation {name!r}")
+    raise AssayError(
+        f"unknown broker operation {name!r}",
+        code="OPERATION_UNKNOWN",
+        hint="the operations are " + ", ".join(operation.name for operation in OPERATIONS),
+    )

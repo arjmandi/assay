@@ -333,7 +333,8 @@ def view_text(run: Run, index: int, flags: Mapping[str, Any]) -> str:
             0 <= top < bottom <= array.shape[0] and 0 <= left < right <= array.shape[1]
         ):
             raise AssayError(
-                f"crop must fit rows 0..{array.shape[0] - 1}, cols 0..{array.shape[1] - 1}"
+                f"crop must fit rows 0..{array.shape[0] - 1}, cols 0..{array.shape[1] - 1}",
+                code="COMMAND_ARGS",
             )
         lines.extend(
             [
@@ -354,30 +355,33 @@ def parse_crop(value: str | None) -> tuple[int, int, int, int] | None:
         return top, bottom, left, right
     except (ValueError, TypeError):
         raise AssayError(
-            "crop format is R0:R1,C0:C1, using half-open bounds"
+            "crop format is R0:R1,C0:C1, using half-open bounds",
+            code="COMMAND_ARGS",
         ) from None
 
 
 def export_history(run: Run, destination: Path) -> Path:
     paths = run.paths
     if destination.suffix.lower() != ".npz":
-        raise AssayError("observation export filename must end in .npz")
+        raise AssayError("observation export filename must end in .npz", code="COMMAND_ARGS")
     try:
         destination.resolve().relative_to(paths.root.resolve())
     except ValueError as error:
         raise AssayError(
-            "observation export must stay inside the run directory"
+            "observation export must stay inside the run directory",
+            code="PATH_INVALID",
         ) from error
     try:
         destination.resolve().relative_to(paths.state.resolve())
     except ValueError:
         pass
     else:
-        raise AssayError("do not write analysis output inside .assay")
+        raise AssayError("do not write analysis output inside .assay", code="PATH_INVALID")
     events = run.events
     if events and events[-1].frames is None:
         raise AssayError(
-            "this run has dict observations; there is no grid history to export"
+            "this run has dict observations; there is no grid history to export",
+            code="COMMAND_ARGS",
         )
     frames: list[np.ndarray[Any, Any]] = []
     frame_events: list[int] = []

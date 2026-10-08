@@ -33,7 +33,12 @@ from typing import Any
 from .jobs import Job
 
 SOURCE = "files"
-GATE_OFF_REFUSAL = "AssayError: the prediction gate is off for this run"
+# The refusal of a prediction under `gate: off`: by its code from 1.2.0 on (the
+# command record carries `code`), by its text before that, when the daemon's
+# flattened error led with the exception's type.
+GATE_OFF_CODE = "GATE_OFF"
+GATE_OFF_REFUSAL = "the prediction gate is off for this run"
+OLD_TYPE_PREFIX = "AssayError: "
 TOKEN_FIELDS = {
     "input": "input_tokens",
     "output": "output_tokens",
@@ -77,6 +82,13 @@ def _jsonl(path: Path) -> list[dict[str, Any]]:
     return records
 
 
+def _gate_off_refusal(record: Mapping[str, Any]) -> bool:
+    if record.get("code") == GATE_OFF_CODE:
+        return True
+    error = str(record.get("error", ""))
+    return error.removeprefix(OLD_TYPE_PREFIX).startswith(GATE_OFF_REFUSAL)
+
+
 def read_run_files(run_dir: Path) -> RunFacts | None:
     """The facts from the files under `.assay/`, or None when the directory
     holds no journal yet."""
@@ -100,8 +112,7 @@ def read_run_files(run_dir: Path) -> RunFacts | None:
     refused = sum(
         1
         for record in _jsonl(state / "activity.jsonl")
-        if record.get("kind") == "command_end"
-        and str(record.get("error", "")).startswith(GATE_OFF_REFUSAL)
+        if record.get("kind") == "command_end" and _gate_off_refusal(record)
     )
     head: str | None = None
     try:

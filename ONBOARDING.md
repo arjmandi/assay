@@ -306,6 +306,17 @@ assay waive SIREN --token TOK --because "..."   # journaled waiver of a rehearsa
 assay module install PATH --token TOK           # add a behavior module mid-run
 ```
 
+Machine-readable output. Every command takes `--json`: exactly one JSON
+document on stdout and nothing on stderr. For `status`, `view`, `audit`,
+`act`, `commit`, `reset`, `channel list` and `module list` it is the
+command's result record (`docs/ARCHITECTURE.md` section 7.3: the `Status`
+record, the view record, the audit report, the receipt, the channel list, the
+module list); for every other command, `start` and `stop` included, it is
+`{"lines": [...]}` with the lines the command would have printed; on a
+refusal it is the error object `{"code", "kind", "message", "hint",
+"detail"}` alone, with the exit status the prose form would have given (2,
+3, 4 or 5 by kind). The prose output without the flag is unchanged.
+
 The spend feed. The kernel cannot see the LLM bill, so the launcher posts it:
 `assay spend report --usd 4.20 --tokens 91000 --id turn-7`. Entries are
 idempotent by `--id` (the last entry per id wins), and `budget.usd` is as
@@ -330,7 +341,8 @@ the daemon is alive and ours but does not answer (a slow world inside a step,
 or hung), start refuses rather than killing it:
 
 ```
-ERROR | the environment owner is busy or hung (pid N, started T); wait and rerun `assay start`, or run `assay stop` (it exits after the current step)
+ERROR | DAEMON_BUSY | the environment owner is busy or hung (pid N, started T)
+NEXT | wait and rerun `assay start`, or run `assay stop` (it exits after the current step)
 ```
 
 If `.assay` was removed by hand while the daemon lived, a fresh start refuses
@@ -605,9 +617,10 @@ registry sets `off`, `advise` or `block` per name:
 
 `assay module list` prints each active module with mode, origin,
 constitution paragraph and telemetry. In block mode an unmet demand refuses
-with `MODULE name | declaration demanded before this action: --declare f=...`,
-and the declaration always unlocks the action (`--declare "field=value"` on
-`act`, `commit` and `reset`).
+with `ERROR | MODULE_DEMAND | MODULE name | declaration demanded before this
+action: field: why` and `NEXT | repeat the command with --declare
+"field=<text>" (one flag per field); any named, non-empty text unlocks the
+action` (`--declare "field=value"` on `act`, `commit` and `reset`).
 
 Writing one. The contract, from the architecture document's section 2.5:
 
@@ -674,12 +687,20 @@ Display strings are not frozen, and `src/assay/words.py` is the law for them.
 
 ## 10. Troubleshooting
 
-Each item is the message you see and what to do.
+Each item is the message you see and what to do. Every refusal is one line on
+stderr, `ERROR | CODE | message`, followed by `NEXT | hint` when the error
+names a next step (and by the claims table when the error carries it); the
+exit status says what kind of error it was: 2 for a request that is wrong or
+refused by rule, 3 when the world failed or refused at the kernel boundary
+(`WORLD_ERROR`, the world's own refusal, or `OBSERVATION_INVALID`, an
+observation the kernel cannot read: the adapter is broken), 4 for a bug or a
+corrupt file, 5 when the run can no longer be scored or continued.
+`docs/ERRORS.md` lists every code with its kind and meaning.
 
 - A missing or mistyped adapter file:
 
   ```
-  ERROR | adapter file not found: X (looked in A and B); pass the file's path, absolute or relative to the run directory, as /path/file.py:factory
+  ERROR | ADAPTER_SPEC | adapter file not found: X (looked in A and B); pass the file's path, absolute or relative to the run directory, as /path/file.py:factory
   ```
 
   The file spec is resolved against the run directory, then the working
@@ -728,9 +749,10 @@ Each item is the message you see and what to do.
 - Interpreter drift. `WARNING | interpreter changed: ...` on resume means
   this shell's Python is not the one the run started with. Set
   `ASSAY_PYTHON` to the original if the adapter's dependencies live there.
-- `ERROR | internal: <type>: <message> (traceback in .assay/last_error.txt)`.
-  A bug or a corrupt file. The traceback is in that file. Report it with the
-  command that produced it.
+- `ERROR | INTERNAL | <type>: <message>` followed by `NEXT | traceback in
+  .assay/last_error.txt; report it with the command that produced it`, exit
+  4. A bug or a corrupt file. The traceback is in that file. Report it with
+  the command that produced it.
 - A contributor's first `pytest`. The suite redirects `ASSAY_ANCHOR_DIR` and
   `XDG_CACHE_HOME` under the pytest temp root and stops its own daemons when
   the session ends, so nothing lands under your home directory.

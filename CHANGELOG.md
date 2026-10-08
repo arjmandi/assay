@@ -75,6 +75,58 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- The error catalogue and `docs/ERRORS.md` (#13, design note 2 section 7.1).
+  `AssayError(message, *, code, kind, hint, detail)` in `core.py`; `errors.py`
+  lists 61 codes, each with its kind and a one-line meaning, and renders
+  `docs/ERRORS.md` with `python -m assay.errors --render` (a test asserts the
+  file is current). Every raise in `src/assay` and `src/assay_grid` names a
+  code (224 call sites; an AST test refuses one without a catalogued code), with
+  a hint where the message did not already say what to do. The daemon's
+  calls into the adapter (the factory, the observation, a step) wrap
+  whatever the world raised into `WORLD_ERROR`, and the kernel's own shape
+  checks on the observation are `OBSERVATION_INVALID` (a broken adapter,
+  not a refused action); a finalize failure stays the warning on the
+  receipt; anything else that is not an `AssayError` is `INTERNAL` with the
+  traceback saved. A request body that does not fit the operation's record
+  is `REQUEST_MALFORMED` (usage, naming the record's fields, no traceback)
+  and a reply the client cannot read `REPLY_MALFORMED`. The bench adapters
+  keep raising `AssayError` without a code (`UNSPECIFIED`, outside the
+  table). Where a message carried its next step after a semicolon, the step
+  is the hint now, and `ACTION_PARAMS` names the registered form; the
+  claims table rides as the error's `detail`, printed after the two lines,
+  so `message` stays one line. The `command_end` activity record of a
+  failed command carries `code` and `error_kind`, and `start` and `stop`
+  write `command_start` and `command_end` records when the run state
+  existed before them. The two unguarded `int` conversions in
+  `parse_claims` refuse an aggregate count past nine digits
+  (`CLAIM_SYNTAX`) instead of escaping as a `ValueError`.
+- `--json` (#13, section 7.3, as amended in review). Every command takes
+  the flag and prints exactly one JSON document on stdout, with stderr empty
+  on success: `status`, `view`, `audit`, `act`, `commit`, `reset`, `channel
+  list` and `module list` print their result record (`Status`, `View`,
+  `AuditReport`, `Receipt`, `ChannelList`, `ModuleList`), every other
+  command `{"lines": [...]}` with the lines it would have printed; on a
+  refusal the error object `{code, kind, message, hint, detail}` alone,
+  with the exit status by kind. The document is compact, with the journal's
+  separators and no NaN (`spend report` refuses a `--usd` that is not
+  finite). The `Status` record (section 7.4, `status.py`) holds every fact
+  a status line prints as a field, none of it rendered text, and
+  `render_status` derives the lines from it: the replay gate over the 25
+  published runs holds the rendering byte for byte. The audit report is a
+  record whose `to_json()` is the shape `.assay/audit.json` always had; the
+  view record is `{event, previous, lines}` plus `exported` when `--export`
+  wrote a file.
+- The versioned protocol (#13, section 7.2). Every request is `{"v": 2,
+  "token", "op", "args": {...}}` and every reply `{"v": 2, "ok": true,
+  "result": {...}}` or `{"v": 2, "ok": false, "error": {code, kind, message,
+  hint}}`; the daemon refuses a line without `v`, or with another value,
+  with `PROTOCOL_VERSION` before the token and the operation (the integer
+  2, not a float or boolean that compares equal), and the client refuses
+  such a reply the same way, with the hint to stop and start the daemon, so
+  a daemon that outlived an upgrade is never misread. A socket wait that
+  runs out is `DAEMON_BUSY` with the hint to read the last event before
+  acting again, never to resume under a step that may still land;
+  `DAEMON_UNAVAILABLE` is the daemon not running.
 - The typed records and the run model of design note 1 (#12). `records.py`
   holds the frozen dataclasses `Event`, `Claim`, `Grade`, `Receipt` with
   `ReceiptStep`, and `Mutation`: `from_json` validates the type of every
@@ -336,6 +388,35 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- The error voice and the exit codes (#13). The command line prints `ERROR |
+  CODE | message` on stderr (the code between the two bars), then `NEXT |
+  hint` when the error names a next step, then the claims table where one
+  followed before, and exits by the code's kind: 2 for `usage` and
+  `refused` (every exit 2 of 1.1.0 is one of these, so the manuals' "exit 2"
+  stays true), 3 for `world`, 4 for `internal` (`ERROR | INTERNAL | <type>:
+  <message>` replaces `ERROR | internal: ...`, which exited 2), 5 for
+  `invalid` (`CHAIN_DIVERGED`, `TAMPER_DETECTED`, `LOCAL_REPLAY_DIVERGED`
+  and the remote codes, which exited 2). The eleven refusals that led with
+  `CODE | ` carry the code beside the message instead, so their printed
+  line is unchanged. The daemon answers with the error object and the
+  client raises the same `AssayError`, so the `AssayError: ` prefix the
+  flattened string carried before the message is gone from every refusal
+  that crossed the socket. A world's refusal or failure inside a step was
+  exit 2 and is `WORLD_ERROR`, exit 3.
+- `action` and `params` on the wire (#13). `act` carries the registered
+  name and the parameters as an object of scalars (or null) instead of the
+  typed token `action_token`, and a commit step is `{action, params,
+  predict}` instead of the `NAME k=v :: claims` line: the command line
+  parses the token and the step syntax against the pinned registry
+  (`registry.parse_registry_action`, `live.split_step`), and the daemon
+  validates the object against the same schema before any spend
+  (`registry.validate_action`: the name folded, every registered parameter
+  present and no other, the scalar type, finiteness, the bounds and the
+  enum, with the token parser's refusals). The journal stores the validated
+  object under `data`, as it always did. `live.execute_action` and
+  `execute_steps` take the validated forms; the observation kind supplies
+  `history_change` (the change text of a history line) instead of
+  `history_line`.
 - The daemon is a dispatcher over the wire table (#24, design note 2
   section 7.2). `src/assay/ops.py` names the six daemon operations once,
   `Operation(name, request, result, paid, owner)`: `ping`, `observe`, `act`,

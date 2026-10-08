@@ -33,6 +33,7 @@ declarations (`channels.json`, written by the CLI) and the readings cache
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -105,35 +106,38 @@ def declare_channel(
     paths = run.paths
     if not _NAME.fullmatch(name or ""):
         raise AssayError(
-            f"channel name {name!r} must match {_NAME.pattern} (lowercase)"
+            f"channel name {name!r} must match {_NAME.pattern} (lowercase)",
+            code="CHANNEL_DECLARE",
         )
     if name in HOST_CHANNELS:
-        raise AssayError(f"{name!r} is a host channel and cannot be redeclared")
+        raise AssayError(f"{name!r} is a host channel and cannot be redeclared", code="CHANNEL_DECLARE")
     if bool(path) == bool(file):
-        raise AssayError("declare a channel with exactly one of --path or --file")
+        raise AssayError("declare a channel with exactly one of --path or --file", code="CHANNEL_DECLARE")
     declared = load_declared(paths)
     if path is not None:
         keys = [key for key in path.split(".") if key]
         if not keys:
-            raise AssayError("--path needs dotted keys like counters.red")
+            raise AssayError("--path needs dotted keys like counters.red", code="CHANNEL_DECLARE")
         spec: dict[str, Any] = {"form": "path", "path": ".".join(keys)}
     else:
         candidate = Path(str(file))
         if candidate.is_absolute():
             raise AssayError(
-                f"--file takes a path relative to the run directory, got {file!r}"
+                f"--file takes a path relative to the run directory, got {file!r}",
+                code="PATH_INVALID",
             )
         source = paths.root / candidate
         try:
             source.resolve().relative_to(paths.root.resolve())
         except ValueError as error:
             raise AssayError(
-                "extractor file must stay inside the run directory"
+                "extractor file must stay inside the run directory",
+                code="PATH_INVALID",
             ) from error
         try:
             body = source.read_bytes()
         except (FileNotFoundError, IsADirectoryError) as error:
-            raise AssayError(f"extractor file not found: {file}") from error
+            raise AssayError(f"extractor file not found: {file}", code="FILE_NOT_FOUND") from error
         digest = hashlib.sha256(body).hexdigest()
         extractor_dir(paths).mkdir(parents=True, exist_ok=True)
         stored = extractor_dir(paths) / f"{digest}.py"
@@ -144,11 +148,13 @@ def declare_channel(
     if existing is not None and existing != spec:
         raise AssayError(
             f"channel {name!r} is already declared with a different extractor; "
-            "declare a new name instead of silently redefining a referent"
+            "declare a new name instead of silently redefining a referent",
+            code="CHANNEL_REDEFINED",
         )
     if existing is None and len(declared) >= MAX_DECLARED_CHANNELS:
         raise AssayError(
-            f"at most {MAX_DECLARED_CHANNELS} declared channels per run"
+            f"at most {MAX_DECLARED_CHANNELS} declared channels per run",
+            code="CHANNEL_CAP",
         )
     declared[name] = spec
     atomic_json(channels_path(paths), declared)
@@ -174,8 +180,12 @@ def check_channel_references(run: Run, claims: Sequence[Claim]) -> None:
                 {"kind": "mis_reference", "channel": name, "claim": claim.text},
             )
             raise AssayError(
-                f"claim names unregistered channel {name!r}; registered channels: "
-                f"{known_channels(run)}; declare one with `assay channel declare`"
+                f"claim names unregistered channel {name!r}",
+                code="CHANNEL_UNKNOWN",
+                hint=(
+                    f"registered channels: {known_channels(run)}; declare one with "
+                    f"`assay channel declare {name} --path <dotted.path>` (or --file <extractor.py>)"
+                ),
             )
 
 
@@ -294,36 +304,144 @@ def _render(value: Any) -> str:
     return text if len(text) <= 40 else text[:39] + "…"
 
 
-def channel_lines(run: Run, event: Event, *, fresh: bool = False) -> list[str]:
+@dataclasses.dataclass(frozen=True, slots=True)
+class HostReading:
+    """One host channel's reading at the event: the value, or the reason it
+    could not be read."""
+
+    name: str
+    ok: bool
+    value: Any
+    problem: str | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class DeclaredReading:
+    """One declared channel's reading: read live from the event (a path
+    channel, or an extractor run fresh), taken from the daemon's cache with
+    the event it was graded on, or not yet graded."""
+
+    name: str
+    form: str
+    source: str  # live, cached or none
+    ok: bool
+    value: Any
+    problem: str | None
+    event: int | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ChannelReadings:
+    """The CHANNELS block's facts (docs/ARCHITECTURE.md section 7.4): the
+    registered names, the host values and the declared readings."""
+
+    registered: tuple[str, ...]
+    host: tuple[HostReading, ...]
+    declared: tuple[DeclaredReading, ...]
+
+
+def channel_readings(run: Run, event: Event, *, fresh: bool = False) -> ChannelReadings:
     """The CHANNELS block: host values, path values read from the event, and
     extractor values from the cache (or computed fresh when asked). Never
     spawns a subprocess unless fresh is true."""
     declared = load_declared(run.paths)
-    lines = ["CHANNELS | registered: " + " · ".join(known_channels(run))]
-    host = []
+    host: list[HostReading] = []
     for name in HOST_CHANNELS:
         ok, value = channel_value(run, name, event)
-        host.append(f"{name}={_render(value) if ok else 'n/a'}")
-    lines.append("CHANNELS | host: " + " · ".join(host))
-    if not declared:
-        return lines
+        host.append(HostReading(name, ok, value if ok else None, None if ok else str(value)))
     readings = load_readings(run.paths)
-    rendered = []
+    rendered: list[DeclaredReading] = []
     for name, spec in sorted(declared.items()):
-        if spec["form"] == "path" or fresh:
+        form = str(spec["form"])
+        if form == "path" or fresh:
             ok, value = channel_value(run, name, event)
             rendered.append(
-                f"{name}={_render(value) if ok else 'unreadable'} ({spec['form']})"
+                DeclaredReading(name, form, "live", ok, value if ok else None, None if ok else str(value), None)
             )
             continue
         last = readings.get(name)
         if isinstance(last, dict) and last.get("event") is not None:
             rendered.append(
-                f"{name}={_render(last.get('value'))} @e{last['event']} (extractor, last graded)"
+                DeclaredReading(name, form, "cached", True, last.get("value"), None, int(last["event"]))
             )
         else:
-            rendered.append(f"{name}=not yet graded (extractor)")
+            rendered.append(DeclaredReading(name, form, "none", False, None, None, None))
+    return ChannelReadings(
+        registered=tuple(known_channels(run)), host=tuple(host), declared=tuple(rendered)
+    )
+
+
+def channel_text(readings: ChannelReadings) -> list[str]:
+    lines = ["CHANNELS | registered: " + " · ".join(readings.registered)]
+    host = [f"{item.name}={_render(item.value) if item.ok else 'n/a'}" for item in readings.host]
+    lines.append("CHANNELS | host: " + " · ".join(host))
+    if not readings.declared:
+        return lines
+    rendered = []
+    for item in readings.declared:
+        if item.source == "live":
+            rendered.append(f"{item.name}={_render(item.value) if item.ok else 'unreadable'} ({item.form})")
+        elif item.source == "cached":
+            rendered.append(f"{item.name}={_render(item.value)} @e{item.event} (extractor, last graded)")
+        else:
+            rendered.append(f"{item.name}=not yet graded (extractor)")
     lines.append("CHANNELS | declared: " + " · ".join(rendered))
+    return lines
+
+
+def channel_lines(run: Run, event: Event, *, fresh: bool = False) -> list[str]:
+    return channel_text(channel_readings(run, event, fresh=fresh))
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class DeclaredChannel:
+    name: str
+    form: str
+    path: str | None
+    hash: str | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ChannelList:
+    """What `assay channel list` knows: the registered names, the readings
+    at the last event (None on a run without events) and the declarations
+    with their path or extractor hash."""
+
+    registered: tuple[str, ...]
+    readings: ChannelReadings | None
+    declared: tuple[DeclaredChannel, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        from .records import plain
+
+        return {
+            "registered": list(self.registered),
+            "readings": None if self.readings is None else plain(self.readings),
+            "declared": [plain(item) for item in self.declared],
+        }
+
+
+def channel_list_of(run: Run, *, fresh: bool = False) -> ChannelList:
+    events = run.events
+    declared = load_declared(run.paths)
+    return ChannelList(
+        registered=tuple(known_channels(run)),
+        readings=channel_readings(run, events[-1], fresh=fresh) if events else None,
+        declared=tuple(
+            DeclaredChannel(name, str(spec["form"]), spec.get("path"), spec.get("hash"))
+            for name, spec in sorted(declared.items())
+        ),
+    )
+
+
+def channel_list_text(listing: ChannelList) -> list[str]:
+    if listing.readings is not None:
+        lines = channel_text(listing.readings)
+    else:
+        lines = ["CHANNELS | " + " · ".join(listing.registered)]
+    for item in listing.declared:
+        detail = item.path or (item.hash or "")[:12]
+        lines.append(f"  {item.name}: {item.form} {detail}")
     return lines
 
 
@@ -401,7 +519,7 @@ def grade_channel_claim(
         if op == "sign":
             ok = delta > 0 if claim.sign == "+" else delta < 0
         elif target is None:  # pragma: no cover - parser guarantees a numeric value
-            raise AssayError(f"delta claim {claim.text!r} has no numeric value")
+            raise AssayError(f"delta claim {claim.text!r} has no numeric value", code="CLAIM_SYNTAX")
         elif op == "=":
             ok = delta == target
         elif op == ">=":
@@ -409,7 +527,7 @@ def grade_channel_claim(
         elif op == "<=":
             ok = delta <= target
         else:  # pragma: no cover - parser guarantees op
-            raise AssayError(f"unknown delta op {op!r}")
+            raise AssayError(f"unknown delta op {op!r}", code="INTERNAL")
         return Grade.of(
             claim,
             ok=bool(ok),
@@ -431,4 +549,4 @@ def grade_channel_claim(
             ok=bool(ok),
             actual=f"ch {name} went {before_number:g} -> {after_number:g} (threshold {threshold:g})",
         )
-    raise AssayError(f"unknown channel claim kind {kind!r}")  # pragma: no cover
+    raise AssayError(f"unknown channel claim kind {kind!r}", code="INTERNAL")  # pragma: no cover

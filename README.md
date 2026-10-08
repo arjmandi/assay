@@ -74,6 +74,11 @@ mkdir demo && cd demo
 "$ASSAY" audit                                      # chain + integrity verdict
 ```
 
+Every command takes `--json` and prints one JSON document: its result record
+(`status`, `view`, `audit`, `act`, `commit`, `reset`, `channel list`, `module
+list`), its lines otherwise; a refusal is one line, `ERROR | CODE | message`,
+with the codes listed in `docs/ERRORS.md`.
+
 That is one person at a terminal playing both roles; an evaluated agent does
 not start the run: the operator starts it with `--owner-token-file` and the
 agent's session begins at `assay status` (`GUIDE.md` section 5).
