@@ -11,9 +11,16 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
+      # Every Python on Linux, and one macOS cell at the floor: the macOS
+      # cells bill at ten times the Linux rate, the platform's own paths (the
+      # sandbox profile, the launcher's re-exec) do not depend on the Python
+      # version, and the owner's machine runs the newest Python on macOS.
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest]
         python: ["3.12", "3.13", "3.14"]
+        include:
+          - os: macos-latest
+            python: "3.12"
     steps:
       - uses: actions/checkout@v4
       # The suite spawns the real daemon and runs the launcher, which looks for
