@@ -54,11 +54,11 @@ from pathlib import Path
 
 from assay.broker import broker_gated
 from assay.core import RunPaths
-from assay.ops import ActRequest
+from assay.ops import ACT, ActRequest
 
 paths = RunPaths(Path(sys.argv[1]))
 for _ in range(int(sys.argv[2])):
-    receipt = broker_gated(paths, "act", ActRequest(action_token="NOOP", predict="noop", declares={}))
+    receipt = broker_gated(paths, ACT, ActRequest(action_token="NOOP", predict="noop", declares={}))
     assert receipt.outcome == "PREDICTED", receipt
 """
 
@@ -336,7 +336,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
     anchor is #10's."""
     from assay.broker import broker_gated
     from assay.core import AssayError, RunPaths
-    from assay.ops import ActRequest
+    from assay.ops import ACT, ActRequest
 
     run = tmp_path / "tamper"
     _prepare(run)
@@ -356,7 +356,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         # load cannot read a corrupt configuration): refused by name.
         with pytest.raises(AssayError) as caught:
             broker_gated(
-                RunPaths(run), "act", ActRequest(action_token="NOOP", predict="noop", declares={})
+                RunPaths(run), ACT, ActRequest(action_token="NOOP", predict="noop", declares={})
             )
         message = str(caught.value)
         assert message.startswith(f"AssayError: TAMPER_DETECTED | {what} (held "), message
@@ -455,3 +455,44 @@ def test_module_install_is_the_daemons_operation(tmp_path):
         assert _held(run).tampered is None
     finally:
         stop_run(run)
+
+
+def test_a_field_the_request_record_does_not_take_spends_nothing(tmp_path):
+    """An act carrying a key its record does not take is refused before any
+    spend, in the record's voice: no mutation, no event."""
+    from assay.broker import _request
+    from assay.core import AssayError, RunPaths, load_jsonl
+
+    run = tmp_path / "strict"
+    _prepare(run)
+    try:
+        assert _start(run).returncode == 0
+        paths = RunPaths(run)
+        before = (len(load_jsonl(paths.mutations)), len(load_jsonl(paths.events)))
+        with pytest.raises(AssayError, match="^TypeError: act.bogus is not a field of the record$"):
+            _request(
+                paths,
+                {"op": "act", "action_token": "NOOP", "predict": "noop", "bogus": 1},
+                timeout=10.0,
+            )
+        assert (len(load_jsonl(paths.mutations)), len(load_jsonl(paths.events))) == before
+        assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
+    finally:
+        stop_run(run)
+
+
+def test_a_connection_closed_without_a_line_is_a_malformed_request():
+    import socket
+
+    from assay.broker import _read_request
+    from assay.core import AssayError
+
+    left, right = socket.socketpair()
+    right.close()
+    with left, pytest.raises(AssayError, match="^malformed request$"):
+        _read_request(left)
+    left, right = socket.socketpair()
+    with right:
+        right.sendall(b"\n")
+    with left, pytest.raises(AssayError, match="^malformed request$"):
+        _read_request(left)

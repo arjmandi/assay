@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
 import json
 import os
 import shutil
 import sys
 import traceback
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -21,8 +23,6 @@ from .agenda import (
 )
 from .analysis import run_python
 from .broker import (
-    LOCAL_MODE,
-    REMOTE_MODE,
     broker_gated,
     broker_install_module,
     broker_matches_latest_event,
@@ -64,6 +64,8 @@ from .sandbox import (
     sandbox_text,
 )
 from .core import (
+    LOCAL_MODE,
+    REMOTE_MODE,
     AssayError,
     CommandStatus,
     RunPaths,
@@ -79,7 +81,19 @@ from .core import (
 )
 from .extras import require_kind
 from .inspect import result_text, status_text, view_text
-from .ops import ActRequest, Command, CommitRequest, Record, ResetRequest, command_operation, operations
+from .ops import (
+    ACT,
+    COMMIT,
+    INSTALL_MODULE,
+    RESET,
+    ActRequest,
+    CommitRequest,
+    Operation,
+    ReceiptResult,
+    Req,
+    ResetRequest,
+)
+from .predictions import claims_help
 from .registry import gate_mode, load_registry_file, spend_reports, validate_registry
 from .run import Run
 
@@ -100,40 +114,143 @@ class Parser(argparse.ArgumentParser):
         return super().format_help()
 
 
+# --- the command-line surface -------------------------------------------------
+#
+# Two tables at the end of this module, in the order the command line lists
+# them: `LIFECYCLE`, the commands that run before any run is loaded, and
+# `COMMANDS`, the commands over the loaded run, each the client of a daemon
+# operation of the wire table (`ops.py`) or an offline function. The parser
+# is assembled from them, and `assay --help` and every sub-command's help
+# render byte for byte as the hand-written parser rendered them
+# (tests/test_cli_help.py).
+
+LifecycleRun = Callable[[RunPaths, argparse.Namespace], int]
+CommandRun = Callable[[RunPaths, Run, CommandStatus, argparse.Namespace], None]
+
+
+@dataclasses.dataclass(frozen=True)
+class Argument:
+    """One `add_argument` call: the flags, then the keyword arguments exactly
+    as the parser spells them."""
+
+    flags: tuple[str, ...]
+    options: Mapping[str, Any]
+
+
+def arg(*flags: str, **options: Any) -> Argument:
+    return Argument(flags, options)
+
+
+@dataclasses.dataclass(frozen=True)
+class Group:
+    """A command that holds sub-commands (`assay channel declare`): its word,
+    its help and the namespace field the chosen sub-command lands in."""
+
+    name: str
+    help: str
+    dest: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Lifecycle:
+    """A command that runs before any run is loaded (start, stop, version,
+    doctor) and returns the exit status."""
+
+    name: str
+    help: str
+    run: LifecycleRun
+    arguments: tuple[Argument, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class Command:
+    """A command over the loaded run: its identifier, its path on the command
+    line (`channel declare`), its help, what it runs (the client of a daemon
+    operation, or the function of an offline command), the daemon operation
+    it is the client of, if any, its arguments, and the lazy epilog (the
+    claims table, rendered only when help is)."""
+
+    name: str
+    path: str
+    help: str
+    run: CommandRun
+    operation: Operation[Any, Any] | None = None
+    arguments: tuple[Argument, ...] = ()
+    epilog: Callable[[], str] | None = None
+
+
+GROUPS: Mapping[str, Group] = {
+    group.name: group
+    for group in (
+        Group(
+            "channel", "declare and list registered channels (named readings)", "channel_command"
+        ),
+        Group(
+            "model",
+            "the general world-model tier: replay-fit is trust; fit models earn batching",
+            "model_command",
+        ),
+        Group(
+            "module", "behavior modules: list the active set, install one (owner)", "module_command"
+        ),
+        Group("goal", "the standing goal: propose revisions (agent), ratify (owner)", "goal_command"),
+        Group("spend", "the external spend feed (the kernel cannot see the LLM bill)", "spend_command"),
+    )
+}
+
+
 def _parser() -> Parser:
-    """The command line, assembled from the operation table
-    (docs/ARCHITECTURE.md section 7.2): one sub-parser per command, in the
-    table's order, with the flags and the help text its `Command` spells."""
+    """The command line, assembled from the two tables: one sub-parser per
+    command in their order, with the flags and the help text each spells; a
+    path of two words puts the command under its group."""
     parser = Parser(
         prog="assay", description="ASSAY referee harness: look, predict, act, compare"
     )
     parser.add_argument("--run-dir", default=".", help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
-    groups: dict[str, Any] = {}
-    for operation in operations():
-        command = operation.command
-        if command is None:
+    for lifecycle in LIFECYCLE:
+        _add_command(commands, lifecycle.name, lifecycle.help, lifecycle.arguments)
+    holders: dict[str, Any] = {}
+    for command in COMMANDS:
+        words = command.path.split()
+        if len(words) == 1:
+            _add_command(commands, command.path, command.help, command.arguments, command.epilog)
             continue
-        if command.group is None:
-            _add_command(commands, command)
-            continue
-        if command.group.name not in groups:
-            holder = commands.add_parser(command.group.name, help=command.group.help)
-            groups[command.group.name] = holder.add_subparsers(
-                dest=command.group.dest, required=True
-            )
-        _add_command(groups[command.group.name], command)
+        group = GROUPS[words[0]]
+        if group.name not in holders:
+            holder = commands.add_parser(group.name, help=group.help)
+            holders[group.name] = holder.add_subparsers(dest=group.dest, required=True)
+        _add_command(holders[group.name], words[1], command.help, command.arguments, command.epilog)
     return parser
 
 
-def _add_command(commands: Any, command: Command) -> None:
-    options: dict[str, Any] = {"help": command.help}
-    if command.epilog is not None:
+def _add_command(
+    commands: Any,
+    name: str,
+    text: str,
+    arguments: tuple[Argument, ...],
+    epilog: Callable[[], str] | None = None,
+) -> None:
+    options: dict[str, Any] = {"help": text}
+    if epilog is not None:
         options["formatter_class"] = argparse.RawDescriptionHelpFormatter
-    parser = commands.add_parser(command.name, **options)
-    parser.lazy_epilog = command.epilog
-    for argument in command.arguments:
+    parser = commands.add_parser(name, **options)
+    parser.lazy_epilog = epilog
+    for argument in arguments:
         parser.add_argument(*argument.flags, **argument.options)
+
+
+def command_of(args: argparse.Namespace) -> Command:
+    """The command a parsed command line names: for a group, the
+    sub-command's (`channel declare`)."""
+    path = str(args.command)
+    group = GROUPS.get(path)
+    if group is not None:
+        path = f"{group.name} {getattr(args, group.dest)}"
+    for command in COMMANDS:
+        if command.path == path:
+            return command
+    raise AssayError(f"unsupported command {args.command}")
 
 
 def _parse_declares(raw: list[str]) -> dict[str, str]:
@@ -698,9 +815,6 @@ def _stop(paths: RunPaths) -> None:
     )
 
 
-# --- the lifecycle commands: before any run is loaded, returning the exit status
-
-
 def start_command(paths: RunPaths, args: argparse.Namespace) -> int:
     try:
         with run_lock(paths):
@@ -737,11 +851,11 @@ def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
 # --- the commands over the loaded run ------------------------------------------
 
 
-def status_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def status_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     print(status_text(run, history=args.history))
 
 
-def view_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     events = run.events
     flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
     print(view_text(run, event_id=args.event, history=args.history, flags=flags))
@@ -754,17 +868,22 @@ def view_command(paths: RunPaths, run: Run, command: CommandStatus, args: argpar
 
 
 def _paid(
-    paths: RunPaths, command: CommandStatus, operation: str, request: Record, *, steps: int = 1
+    paths: RunPaths,
+    status: CommandStatus,
+    operation: Operation[Req, ReceiptResult],
+    request: Req,
+    *,
+    steps: int = 1,
 ) -> None:
     """A paid command through the daemon, the gate enforced where the
     session lives; the run is reloaded for the receipt, since the daemon
     appended what the client does not hold."""
     receipt = broker_gated(paths, operation, request, steps=steps)
-    command.run = Run.load(paths, strict=False)
-    print(result_text(command.run, receipt))
+    status.run = Run.load(paths, strict=False)
+    print(result_text(status.run, receipt))
 
 
-def act_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     # `assay act NAME pname=value ...`: the extra tokens are typed
     # parameters; case is preserved (values may be case-sensitive).
     request = ActRequest(
@@ -774,10 +893,10 @@ def act_command(paths: RunPaths, run: Run, command: CommandStatus, args: argpars
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, command, "act", request)
+    _paid(paths, status, ACT, request)
 
 
-def commit_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     if bool(args.plan) == bool(args.step):
         raise AssayError(
             "commit takes either @plan.json (from `assay model solve`) "
@@ -789,19 +908,19 @@ def commit_command(paths: RunPaths, run: Run, command: CommandStatus, args: argp
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, command, "commit", request, steps=max(1, len(args.step)))
+    _paid(paths, status, COMMIT, request, steps=max(1, len(args.step)))
 
 
-def reset_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     request = ResetRequest(
         because=args.because,
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, command, "reset", request)
+    _paid(paths, status, RESET, request)
 
 
-def channel_declare(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     spec = declare_channel(run, args.name, path=args.path, file=args.file)
     print(
         f"CHANNEL | declared {args.name} ({spec['form']}); claims "
@@ -809,7 +928,7 @@ def channel_declare(paths: RunPaths, run: Run, command: CommandStatus, args: arg
     )
 
 
-def channel_list(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     declared = load_declared(paths)
     events = run.events
     if events:
@@ -821,16 +940,16 @@ def channel_list(paths: RunPaths, run: Run, command: CommandStatus, args: argpar
         print(f"  {name}: {spec['form']} {detail}")
 
 
-def model_init(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def model_init(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
 
 
-def model_replay(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def model_replay(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     record = replay_model(run)
     print("\n".join(fit_lines(record)))
 
 
-def model_solve(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def model_solve(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     result = solve_model(
         run,
         args.to,
@@ -857,7 +976,7 @@ def model_solve(paths: RunPaths, run: Run, command: CommandStatus, args: argpars
         )
 
 
-def module_list(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def module_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     origins = {
         str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest
     }
@@ -875,7 +994,7 @@ def module_list(paths: RunPaths, run: Run, command: CommandStatus, args: argpars
         print(line)
 
 
-def module_install(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def module_install(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     # The owner's install runs in the daemon, against the hash and
     # the manifest it holds; it refuses without a live daemon.
     record = broker_install_module(paths, args.path, args.token)
@@ -886,7 +1005,7 @@ def module_install(paths: RunPaths, run: Run, command: CommandStatus, args: argp
     )
 
 
-def goal_propose(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def goal_propose(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     record = propose_goal(run, args.text, args.because)
     print(
         f"GOAL | proposal #{record['id']} journaled, awaiting owner "
@@ -894,7 +1013,7 @@ def goal_propose(paths: RunPaths, run: Run, command: CommandStatus, args: argpar
     )
 
 
-def goal_list(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def goal_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     proposals = list_proposals(run)
     if not proposals:
         print("GOAL | no proposals")
@@ -905,7 +1024,7 @@ def goal_list(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.
         )
 
 
-def goal_ratify(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def goal_ratify(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     proposal = ratify_goal(run, args.id, args.token)
     print(
         f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
@@ -913,12 +1032,12 @@ def goal_ratify(paths: RunPaths, run: Run, command: CommandStatus, args: argpars
     )
 
 
-def export_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def export_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     target = export_knowledge(run, args.out)
     print(f"EXPORTED | {target}; import with `assay start WORLD_ID --import {target.name}`")
 
 
-def spend_report(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def spend_report(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     append_jsonl(
         paths.activity,
         {
@@ -932,11 +1051,11 @@ def spend_report(paths: RunPaths, run: Run, command: CommandStatus, args: argpar
     print(f"SPEND | recorded | cumulative ${usd:.2f} | {tokens} tokens")
 
 
-def audit_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def audit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     print("\n".join(audit_lines(audit(run))))
 
 
-def approve_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def approve_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     grant_approval(run, args.action, args.token)
     print(
         f"APPROVED | one use of {args.action.upper()} granted "
@@ -944,12 +1063,12 @@ def approve_command(paths: RunPaths, run: Run, command: CommandStatus, args: arg
     )
 
 
-def waive_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def waive_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     grant_waiver(run, args.action, args.token, args.because or "")
     print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
 
 
-def python_command(paths: RunPaths, run: Run, command: CommandStatus, args: argparse.Namespace) -> None:
+def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     if bool(args.source) == bool(args.file):
         raise AssayError(
             "provide exactly one Python source argument or --file"
@@ -977,22 +1096,19 @@ def main() -> None:
 
 
 def _run(paths: RunPaths, args: argparse.Namespace) -> int:
-    """One command, from the table: a lifecycle command runs before any run
+    """One command, from the tables: a lifecycle command runs before any run
     is loaded and returns the exit status; every other command loads the run
     once, lenient (the readers report what they find; only start and the
-    daemon load strict), and runs under the lock with its activity record,
-    through its handler or, for a daemon operation, its client."""
-    operation = command_operation(args)
-    command = operation.command
-    if command is None:
-        raise AssayError(f"unsupported command {args.command}")
-    if command.lifecycle:
-        return int(operation.handler(paths, args))
+    daemon load strict), and runs under the lock with its activity record."""
+    for lifecycle in LIFECYCLE:
+        if args.command == lifecycle.name:
+            return lifecycle.run(paths, args)
+    command = command_of(args)
     require_run(paths)
     with run_lock(paths):
         run = Run.load(paths, strict=False)
         with command_status(run, args.command) as status:
-            (command.run or operation.handler)(paths, run, status, args)
+            command.run(paths, run, status, args)
     return 0
 
 
@@ -1015,3 +1131,294 @@ def _report_internal_error(error: BaseException) -> int:
         file=sys.stderr,
     )
     return 2
+
+
+# --- the tables, in the order the command line lists them --------------------
+
+LIFECYCLE: tuple[Lifecycle, ...] = (
+    Lifecycle(
+        "start",
+        "start or resume the one persistent run",
+        start_command,
+        arguments=(
+            arg(
+                "game_id",
+                metavar="world_id",
+                help="a label for this run, kept as given: up to 64 characters with no whitespace, "
+                "control characters or path separators. A benchmark adapter may read it to pick the instance",
+            ),
+            arg("--seed", type=int, default=0, help=argparse.SUPPRESS),
+            arg(
+                "--adapter",
+                help="world adapter factory: module:factory or /path/file.py:factory",
+            ),
+            arg(
+                "--registry",
+                type=Path,
+                help="JSON file registering the actions, their parameter schemas and the action "
+                "budget; required for a fresh run, optional on resume (the pinned one is used)",
+            ),
+            arg(
+                "--mode",
+                choices=(LOCAL_MODE, REMOTE_MODE),
+                help="local simulator (default), or expiring remote competition validation",
+            ),
+            arg(
+                "--import",
+                dest="import_knowledge",
+                type=Path,
+                metavar="KNOWLEDGE.json",
+                help="import a prior run's exported knowledge (lands FOREIGN, demoted)",
+            ),
+            arg(
+                "--owner-token-file",
+                type=Path,
+                metavar="PATH",
+                help="write the owner token to this file (mode 0600, outside the run "
+                "directory) instead of printing it; ASSAY_OWNER_TOKEN_FILE does the same",
+            ),
+        ),
+    ),
+    Lifecycle(
+        "stop",
+        "stop this run's environment owner (the daemon) cleanly; "
+        "`assay start` resumes the run later",
+        stop_command,
+    ),
+    Lifecycle(
+        "version",
+        "the harness version, the journal spec it writes, the interpreter",
+        version_command,
+    ),
+    Lifecycle(
+        "doctor",
+        "check the interpreter, dependencies, anchors, socket path, run "
+        "state, daemon, adapter and registry; works with or without a run here",
+        doctor_command,
+    ),
+)
+
+COMMANDS: tuple[Command, ...] = (
+    Command(
+        "status",
+        "status",
+        "full picture: progress, image, actions, recent results, notes",
+        status_command,
+        arguments=(arg("--history", type=int, default=8),),
+    ),
+    Command(
+        "view",
+        "view",
+        "inspect one event: the observation, the delta since the previous one, history",
+        view_command,
+        arguments=(
+            arg("--event", type=int),
+            arg("--history", type=int, default=0),
+            # Frame worlds only; inert on a dict run, which says so.
+            arg(
+                "--grid", action="store_true", help="frame worlds: print the complete exact 0-f grid"
+            ),
+            arg(
+                "--frames", action="store_true", help="frame worlds: show causal animation frames"
+            ),
+            arg("--crop", metavar="R0:R1,C0:C1", help="frame worlds: print an exact half-open crop"),
+            arg(
+                "--export", type=Path, metavar="FILE.npz", help="frame worlds: export the grid history"
+            ),
+        ),
+    ),
+    Command(
+        "act",
+        "act",
+        "take one action with a prediction; the result is graded against it",
+        act_command,
+        operation=ACT,
+        arguments=(
+            arg("action"),
+            arg("params", nargs="*", metavar="pname=value", help=argparse.SUPPRESS),
+            arg(
+                "--predict",
+                required=False,
+                help='what this action does, e.g. "change; ch counter delta = 1" (see below); required '
+                "unless the registry sets gate: optional",
+            ),
+            arg("--because", help="short reason for choosing this action"),
+            arg("--at", type=int, dest="at_event"),
+            arg(
+                "--declare",
+                action="append",
+                default=[],
+                metavar='"field=value"',
+                help="structural declaration a gate or module demanded "
+                '(e.g. --declare "worst_case=..." --declare "recovery=...")',
+            ),
+        ),
+        epilog=claims_help,
+    ),
+    Command(
+        "commit",
+        "commit",
+        "run a prediction-checked batch or a model plan; halts on the first miss",
+        commit_command,
+        operation=COMMIT,
+        arguments=(
+            arg(
+                "plan",
+                nargs="?",
+                help="a plan file, e.g. @.assay/model_plan.json from `assay model solve`",
+            ),
+            arg(
+                "--step",
+                action="append",
+                default=[],
+                metavar='"ACTION :: CLAIMS"',
+                help="one action with its own prediction; repeat in execution order",
+            ),
+            arg("--at", type=int, dest="at_event"),
+            arg(
+                "--declare",
+                action="append",
+                default=[],
+                metavar='"field=value"',
+                help="structural declaration a module demanded for a step in this batch",
+            ),
+        ),
+        epilog=claims_help,
+    ),
+    Command(
+        "reset",
+        "reset",
+        "pay one action to rewind the current progress unit",
+        reset_command,
+        operation=RESET,
+        arguments=(
+            arg(
+                "--because", help="why the current state is worth abandoning (required unless GAME_OVER)"
+            ),
+            arg("--at", type=int, dest="at_event"),
+            arg(
+                "--declare",
+                action="append",
+                default=[],
+                metavar='"field=value"',
+                help="structural declaration a module demanded for this reset "
+                '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
+            ),
+        ),
+    ),
+    Command(
+        "python",
+        "python",
+        "run offline Python with the history, deltas, BFS and A* preloaded",
+        python_command,
+        arguments=(arg("source", nargs="?"), arg("--file", type=Path)),
+    ),
+    Command(
+        "channel_declare",
+        "channel declare",
+        "register a named reading of the observation",
+        channel_declare,
+        arguments=(
+            arg("name"),
+            arg("--path", help="dotted keys into the dict observation, e.g. counters.red"),
+            arg("--file", help="extractor file: def extract(obs) -> value (sandboxed)"),
+        ),
+    ),
+    Command(
+        "channel_list",
+        "channel list",
+        "list registered channels with their current readings",
+        channel_list,
+        arguments=(
+            arg(
+                "--read",
+                action="store_true",
+                help="compute extractor channels fresh (runs each extractor sandboxed) "
+                "instead of showing the last graded reading",
+            ),
+        ),
+    ),
+    Command("model_init", "model init", "create a model.py template", model_init),
+    Command(
+        "model_replay",
+        "model replay",
+        "grade model.py's declared channels over every recorded transition",
+        model_replay,
+    ),
+    Command(
+        "model_solve",
+        "model solve",
+        "search the model for a plan to a channel target",
+        model_solve,
+        arguments=(
+            arg("--to", required=True, metavar='"ch NAME = V"', help="the goal reading"),
+            arg("--seconds", type=float, default=15.0),
+            arg("--max-nodes", type=int, default=100_000),
+            arg("--max-depth", type=int, default=40),
+        ),
+    ),
+    Command(
+        "module_list",
+        "module list",
+        "active modules with mode and origin, plus ignored files",
+        module_list,
+    ),
+    Command(
+        "module_install",
+        "module install",
+        "owner: install a module file mid-run (journaled, manifest-pinned)",
+        module_install,
+        operation=INSTALL_MODULE,
+        arguments=(arg("path", type=Path), arg("--token")),
+    ),
+    Command(
+        "goal_propose",
+        "goal propose",
+        "propose a standing-goal revision (journaled, owner ratifies)",
+        goal_propose,
+        arguments=(arg("text"), arg("--because")),
+    ),
+    Command("goal_list", "goal list", "list goal proposals and their status", goal_list),
+    Command(
+        "goal_ratify",
+        "goal ratify",
+        "owner: ratify a proposal by id (requires the owner token)",
+        goal_ratify,
+        arguments=(arg("id", type=int), arg("--token")),
+    ),
+    Command(
+        "export",
+        "export",
+        "export this run's earned knowledge for a future import",
+        export_command,
+        arguments=(arg("--out", type=Path),),
+    ),
+    Command(
+        "spend_report",
+        "spend report",
+        "post cumulative usage (idempotent by --id; last entry wins)",
+        spend_report,
+        arguments=(
+            arg("--usd", type=float, required=True),
+            arg("--tokens", type=int, default=0),
+            arg("--id", dest="report_id", required=True),
+        ),
+    ),
+    Command(
+        "audit", "audit", "recompute journal integrity: chain, anchors, ungated events", audit_command
+    ),
+    Command(
+        "approve",
+        "approve",
+        "owner: grant one use of an approval-gated action",
+        approve_command,
+        arguments=(arg("action"), arg("--token")),
+    ),
+    Command(
+        "waive",
+        "waive",
+        "owner: waive a live actuator's rehearsal quota (journaled)",
+        waive_command,
+        arguments=(arg("action"), arg("--token"), arg("--because")),
+    ),
+)

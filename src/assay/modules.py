@@ -82,6 +82,7 @@ from .core import (
     import_path,
     read_json,
 )
+from .extras import kind_for
 from .meters import level_action_count, recent_predictions, sharpness, unit_indices
 from .records import Event
 from .registry import MODULE_MODES
@@ -372,8 +373,6 @@ def _event_changed(events: Sequence[Event], index: int) -> bool:
     previous event's: the object for dict worlds, and the observation kind's
     own signal for its shape (the settled frame, for frame worlds). Progress
     always counts as change."""
-    from .extras import kind_for
-
     event = events[index]
     if event.level_advanced:
         return True
@@ -414,8 +413,6 @@ def _format_move(move: tuple[str, tuple[tuple[str, str], ...]]) -> str:
 
 def _advertised(events: Sequence[Event]) -> list[str]:
     """The names the last event advertises, as the registry spells them."""
-    from .extras import kind_for
-
     last = events[-1]
     kind = kind_for(last)
     if kind is not None:
@@ -461,8 +458,6 @@ def coverage_ledger(events: Sequence[Event]) -> dict[str, Any]:
 
 
 def _gap_phrase(events: Sequence[Event], ledger: Mapping[str, Any]) -> str:
-    from .extras import kind_for
-
     parts: list[str] = []
     if ledger["dead"]:
         parts.append(f"never-productive actions [{', '.join(ledger['dead'])}]")
@@ -603,8 +598,6 @@ class _CoverageAudit:
             "dead": len(ledger["dead"]),
             "stalled": ledger["stalled"],
         }
-        from .extras import kind_for
-
         kind = kind_for(events[-1])
         extra = getattr(kind, "coverage_telemetry", None) if kind is not None else None
         if callable(extra):

@@ -100,6 +100,11 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+# The run modes `config.json` records: a local simulator, replayed from its
+# journal on resume, or an expiring remote competition session.
+LOCAL_MODE = "local"
+REMOTE_MODE = "competition"
+
 WORLD_ID_MAX = 64
 WORLD_ID_RULE = (
     f"a world id is any non-empty string up to {WORLD_ID_MAX} characters with no "

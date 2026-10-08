@@ -8,7 +8,7 @@ Every function here takes the run (docs/ARCHITECTURE.md section 6.3): the
 journal is the held `run.events`, the one writer is `run.append`, and the
 small files beside the journal are read from `run.paths` on demand. The
 public seam (paid_step, record_event, write_receipt, head_events,
-level_advanced, validate_batch_tokens) is what an observation kind's own
+validate_batch_tokens) is what an observation kind's own
 executor builds on (the frame world's solve-plan executor in assay_grid).
 """
 
@@ -262,10 +262,6 @@ def _grade_summary(
     else:
         predict_ok = True
     return missed, invalid_any, predict_ok
-
-
-def level_advanced(event: Event) -> bool:
-    return event.level_advanced
 
 
 _UNGATED_MARKER = {"optional": "gate_optional", "off": "gate_off"}

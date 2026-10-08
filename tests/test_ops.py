@@ -1,31 +1,54 @@
-"""The operation table (docs/ARCHITECTURE.md section 7.2): the operations
-named once, the daemon's six with their request and result records, each
-record round-tripping through the wire shape and describing itself with a
-schema that names its fields, and an unknown operation refused by name."""
+"""The wire table (docs/ARCHITECTURE.md section 7.2): the six daemon
+operations named once with their request and result records; each record
+round-trips through the wire shape, describes itself with a schema naming
+its fields, and refuses a wrong type, a missing required key and a key it
+does not take; the daemon binds a handler to every name and the command line
+a command to the ones it exposes; an unknown operation is refused by name."""
 
 from __future__ import annotations
+
+import argparse
 
 import pytest
 
 
-def _daemon_operations():
-    from assay.ops import operations
+def test_the_table_and_its_flags():
+    from assay.ops import OPERATIONS
 
-    return [operation for operation in operations() if not operation.offline]
+    assert [operation.name for operation in OPERATIONS] == [
+        "ping", "observe", "act", "commit", "reset", "install_module",
+    ]
+    assert {operation.name for operation in OPERATIONS if operation.paid} == {"act", "commit", "reset"}
+    assert {operation.name for operation in OPERATIONS if operation.owner} == {"install_module"}
 
 
-def test_the_daemon_operations_and_their_flags():
-    from assay.ops import operations
+def test_every_operation_has_a_handler_and_the_paid_ones_a_command():
+    from assay import broker, cli
+    from assay.ops import OPERATIONS
 
-    names = [operation.name for operation in operations()]
-    assert len(names) == len(set(names))
-    daemon = {operation.name: operation for operation in _daemon_operations()}
-    assert sorted(daemon) == ["act", "commit", "install_module", "observe", "ping", "reset"]
-    assert {name for name, operation in daemon.items() if operation.paid} == {"act", "commit", "reset"}
-    assert {name for name, operation in daemon.items() if operation.owner} == {"install_module"}
-    for operation in daemon.values():
-        assert operation.request is not None and operation.result is not None
-        assert callable(operation.handler)
+    assert set(broker.HANDLERS) == {operation.name for operation in OPERATIONS}
+    for operation in OPERATIONS:
+        assert broker.HANDLERS[operation.name].__name__ == f"serve_{operation.name}"
+    exposed = {command.operation.name for command in cli.COMMANDS if command.operation is not None}
+    assert exposed == {"act", "commit", "reset", "install_module"}
+
+
+def test_commands_are_identifiers_with_unique_paths():
+    from assay import cli
+    from assay.core import AssayError
+
+    names = [command.name for command in cli.COMMANDS] + [item.name for item in cli.LIFECYCLE]
+    assert all(name.isidentifier() for name in names) and len(names) == len(set(names))
+    paths = [command.path for command in cli.COMMANDS] + [item.name for item in cli.LIFECYCLE]
+    assert len(paths) == len(set(paths))
+    for command in cli.COMMANDS:
+        words = command.path.split()
+        assert len(words) in (1, 2) and (len(words) == 1 or words[0] in cli.GROUPS)
+    assert cli.command_of(argparse.Namespace(command="channel", channel_command="declare")).name == "channel_declare"
+    assert cli.command_of(argparse.Namespace(command="goal", goal_command="ratify")).name == "goal_ratify"
+    assert cli.command_of(argparse.Namespace(command="status")).name == "status"
+    with pytest.raises(AssayError, match="^unsupported command nope$"):
+        cli.command_of(argparse.Namespace(command="nope"))
 
 
 def test_an_unknown_operation_is_refused_by_name():
@@ -84,6 +107,9 @@ def test_records_round_trip_and_describe_themselves(record):
     assert set(schema["required"]) <= set(schema["properties"])
     for key in schema["required"]:
         assert key in wire
+    # The schema says no other property, and the record means it.
+    with pytest.raises(TypeError, match="\\.extra is not a field of the record$"):
+        type(record).from_json({**wire, "extra": 1})
 
 
 def test_request_records_read_the_wire_fields_of_today():
@@ -99,15 +125,26 @@ def test_request_records_read_the_wire_fields_of_today():
     assert ResetRequest.from_json({"because": "x"}) == ResetRequest(because="x")
     with pytest.raises(KeyError):
         ActRequest.from_json({"predict": "noop"})
-    with pytest.raises(TypeError, match="act.action_token must be a string, got int"):
+    with pytest.raises(TypeError, match="^act.action_token must be a string, got int$"):
         ActRequest.from_json({"action_token": 7})
-    with pytest.raises(TypeError, match="act.declares.k must be a string, got int"):
+    with pytest.raises(TypeError, match="^act.declares.k must be a string, got int$"):
         ActRequest.from_json({"action_token": "NOOP", "declares": {"k": 1}})
+    with pytest.raises(TypeError, match="^commit.steps must be a list of lines, got int$"):
+        CommitRequest.from_json({"steps": [1]})
+    with pytest.raises(TypeError, match="^act.bogus is not a field of the record$"):
+        ActRequest.from_json({"action_token": "NOOP", "bogus": 1})
 
 
-def test_the_table_imports_lazily_and_binds_the_broker():
-    from assay import broker
-    from assay.ops import daemon_operation
+def test_the_wire_table_imports_neither_the_daemon_nor_the_command_line():
+    import subprocess
+    import sys
 
-    assert daemon_operation("act").handler is broker.serve_act
-    assert daemon_operation("install_module").handler is broker.serve_install_module
+    from conftest import SRC_DIR
+
+    probe = (
+        "import sys, assay.ops; "
+        "print(sorted(name for name in sys.modules if name in ('assay.broker', 'assay.cli', 'argparse')))"
+    )
+    completed = subprocess.run([sys.executable, "-c", probe], capture_output=True, text=True, cwd=str(SRC_DIR), timeout=60)
+    assert completed.returncode == 0, completed.stderr
+    assert completed.stdout.strip() == "[]"

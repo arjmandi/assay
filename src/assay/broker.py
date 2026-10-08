@@ -12,11 +12,13 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from .core import (
+    LOCAL_MODE,
+    REMOTE_MODE,
     AssayError,
     RunPaths,
     append_jsonl,
@@ -32,25 +34,29 @@ from .adapters import Adapter, Session
 from .live import execute_action, execute_model_plan, execute_steps, reset_level
 from .modules import active_modules, install_module
 from .ops import (
+    ACT,
+    COMMIT,
+    INSTALL_MODULE,
+    OBSERVE,
+    PING,
+    RESET,
     ActRequest,
     CommitRequest,
     InstallModuleRequest,
     InstallModuleResult,
     ObserveRequest,
     ObserveResult,
+    Operation,
     PingRequest,
     PingResult,
     ReceiptResult,
-    Record,
+    Req,
+    Res,
     ResetRequest,
     daemon_operation,
 )
 from .records import Claim, Event, Mutation, Receipt
 from .run import Run
-
-
-LOCAL_MODE = "local"
-REMOTE_MODE = "competition"
 
 
 def is_remote_config(config: Mapping[str, Any]) -> bool:
@@ -287,33 +293,44 @@ def _ping_timeout() -> float:
     return min(PING_TIMEOUT_MAX, max(PING_TIMEOUT_MIN, _client_timeout(PING_TIMEOUT_MIN)))
 
 
+def call(
+    paths: RunPaths, operation: Operation[Req, Res], request: Req, *, timeout: float = 10.0
+) -> Res:
+    """One daemon operation over the socket: the request record's fields
+    under the operation's name, the reply decoded into the operation's
+    result record. The one place the client speaks the wire; #13's version
+    check lands here."""
+    response = _request(paths, {"op": operation.name, **request.to_json()}, timeout=timeout)
+    return operation.result.from_json(
+        {key: value for key, value in response.items() if key != "ok"}
+    )
+
+
 def broker_ping(paths: RunPaths) -> bool:
     try:
-        return PingResult.from_json(_request(paths, {"op": "ping"}, timeout=_ping_timeout())).pong
+        return call(paths, PING, PingRequest(), timeout=_ping_timeout()).pong
     except AssayError:
         return False
 
 
 def broker_observe(paths: RunPaths) -> tuple[dict[str, Any], dict[str, Any]]:
-    result = ObserveResult.from_json(_request(paths, {"op": "observe"}))
+    result = call(paths, OBSERVE, ObserveRequest())
     return _decode_observation(result.observation), dict(result.public_info)
 
 
-def broker_gated(paths: RunPaths, operation: str, request: Record, *, steps: int = 1) -> Receipt:
-    """Send one paid operation to the daemon, the request record on the
-    wire; returns the receipt, decoded at the socket boundary. The CLI is a
-    stateless display client on registry runs; enforcement happens where the
-    session and credentials live."""
+def broker_gated(
+    paths: RunPaths, operation: Operation[Req, ReceiptResult], request: Req, *, steps: int = 1
+) -> Receipt:
+    """One paid operation through the daemon; returns the receipt. The CLI
+    is a stateless display client on registry runs; enforcement happens
+    where the session and credentials live."""
     timeout = _client_timeout(60.0 + 30.0 * max(1, steps))
-    response = _request(paths, {"op": operation, **request.to_json()}, timeout=timeout)
-    if not isinstance(response.get("receipt"), dict):
-        raise AssayError("environment owner returned no receipt")
-    return ReceiptResult.from_json(response).receipt
+    return call(paths, operation, request, timeout=timeout).receipt
 
 
 def broker_state(paths: RunPaths) -> PingResult:
     """What a live daemon holds, read through `ping` (section 8.3)."""
-    return PingResult.from_json(_request(paths, {"op": "ping"}, timeout=_ping_timeout()))
+    return call(paths, PING, PingRequest(), timeout=_ping_timeout())
 
 
 def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str, Any]:
@@ -330,12 +347,7 @@ def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> d
         )
     # `token` on the wire is the daemon's own; the owner's rides apart.
     request = InstallModuleRequest(path=str(source.resolve()), owner_token=token)
-    response = _request(
-        paths, {"op": "install_module", **request.to_json()}, timeout=_client_timeout(60.0)
-    )
-    if not isinstance(response.get("record"), dict):
-        raise AssayError("environment owner returned no install record")
-    return InstallModuleResult.from_json(response).record
+    return call(paths, INSTALL_MODULE, request, timeout=_client_timeout(60.0)).record
 
 
 def broker_matches_latest_event(run: Run) -> bool:
@@ -635,7 +647,10 @@ def _read_request(connection: socket.socket) -> dict[str, Any]:
         if not chunk:
             break
         raw += chunk
-    request = json.loads(raw.splitlines()[0])
+    lines = raw.splitlines()
+    if not lines or not lines[0].strip():
+        raise AssayError("malformed request")
+    request = json.loads(lines[0])
     if not isinstance(request, dict):
         raise AssayError("malformed request")
     return request
@@ -648,8 +663,9 @@ class _Daemon:
     file changed under it (section 8.3), held as what differed, or None, the
     socket it serves with its token and its sandbox mode, and the two flags
     of a clean stop (inside a request; stop requested). `handle` is the
-    dispatcher over the operation table (`ops`, section 7.2); the handlers
-    are the `serve_*` functions below, one per operation."""
+    dispatcher over the wire table (`ops`, section 7.2); the handlers are
+    the `serve_*` functions below, one per operation, bound to the table's
+    names in `HANDLERS`."""
 
     def __init__(self, paths: RunPaths, run: Run, session: Session, *, fresh_level: bool) -> None:
         self.paths = paths
@@ -814,8 +830,10 @@ class _Daemon:
     def handle(self, request: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
         """One request line to its reply, and whether the run ended with it:
         the token checked, the operation looked up in the table, the request
-        record decoded, the handler called with the daemon and the held run,
-        the result encoded. An unknown operation is refused by name."""
+        record decoded (a field the record does not take is refused before
+        anything spends), the name's handler called with the daemon and the
+        held run, the result encoded. An unknown operation is refused by
+        name."""
         if not secrets.compare_digest(str(request.get("token", "")), self.token):
             raise AssayError("invalid environment owner token")
         operation = daemon_operation(request.get("op"))
@@ -825,7 +843,7 @@ class _Daemon:
             # every act, commit step, model-plan step and reset.
             self.refuse_if_tampered()
         fields = {key: value for key, value in request.items() if key not in {"token", "op"}}
-        result = operation.handler(self, self.run, operation.decode(fields))
+        result = HANDLERS[operation.name](self, self.run, operation.request.from_json(fields))
         terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
         return {"ok": True, **result.to_json()}, terminal
 
@@ -898,6 +916,20 @@ def serve_install_module(
     record = install_module(run, Path(request.path), request.owner_token)
     active_modules(run)
     return InstallModuleResult(record=record)
+
+
+Handler = Callable[["_Daemon", Run, Any], Any]
+
+# One function per operation (section 7.2), bound to the wire table's names
+# here and looked up by `handle`; `tests/test_ops.py` holds the two in step.
+HANDLERS: Mapping[str, Handler] = {
+    PING.name: serve_ping,
+    OBSERVE.name: serve_observe,
+    ACT.name: serve_act,
+    COMMIT.name: serve_commit,
+    RESET.name: serve_reset,
+    INSTALL_MODULE.name: serve_install_module,
+}
 
 
 def _open(paths: RunPaths) -> _Daemon:
