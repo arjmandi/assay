@@ -623,19 +623,28 @@ Left on the experiment branch, deliberately:
   daemon's readings cache instead of a marker file the extractor wrote.
 - The claim meter named sharpness is named specificity (#25). The CLAIMS
   line prints `specificity N/M (P%)` where it printed `sharpness N/M (P%)`,
-  the built-in module is `specificity` and its advisory reads `MODULE
-  specificity | specificity is N/M: ...`, the `claims` block of the `Status`
-  record carries `specific` where it carried `sharp`, and
-  `meters.specificity` is the one count behind both surfaces (the module
-  still reads it over the agent's own claims, as #24 left it). Specificity
-  is the share of graded claims that are not coerced free text; a claim
-  graded as `change` because the prediction was prose counts against it.
-  The word changed because sharpness means something else in forecasting,
-  the concentration of a predictive distribution, and the harness scores no
-  distributions: a grade is binary. A registry whose `module_modes` still
-  says `sharpness` is accepted and read as `specificity`
-  (`registry.module_modes`), so a run pinned under the old name keeps its
-  mode. The replay gate's vocabulary map carries the renamed CLAIMS line.
+  the built-in module is `specificity`, the `claims` block of the `Status`
+  record (`assay status --json`) carries `specific` where it carried
+  `sharp`, and `meters.specificity` is the one count behind both surfaces.
+  Specificity is the share of graded claims that are not coerced free text;
+  a claim graded as `change` because the prediction was prose counts
+  against it. The word changed because sharpness means something else in
+  forecasting, the concentration of a predictive distribution, and the
+  harness scores no distributions: a grade is binary. One formula is one
+  number for one word: the module's advisory now reads the count over every
+  grade of the run, the machine predictions of model-plan steps included,
+  where it read the agent's own claims, so `MODULE specificity |
+  specificity is N/M: over half the graded claims are coerced free text;
+  they earn nothing. State checkable claims.` carries the N/M the CLAIMS
+  line prints at that moment (the advisory fires on none of the 25
+  published runs, so the replay is unchanged). A registry whose
+  `module_modes` still says `sharpness` is accepted: validation pins it
+  under `specificity`, a copy pinned under the old name is read as
+  `specificity` (`registry.module_modes`; a registry naming both keeps the
+  current name's mode), and a resume with `--registry FILE` compares the
+  pinned copy under the current name, so a run pinned before the rename
+  resumes whether FILE says `sharpness` or `specificity`. The replay gate's
+  vocabulary map carries the renamed CLAIMS line.
 
 ### Removed
 

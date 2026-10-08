@@ -216,3 +216,28 @@ def test_sigterm_idle_daemon_exits_at_once(tmp_path):
         assert _broker(run)["status"] == "STOPPED"
     finally:
         stop_run(run)
+
+
+def test_resume_compares_the_pinned_registry_under_the_current_module_name(tmp_path):
+    run = tmp_path / "renamed"
+    _prepare(run)
+    try:
+        assert _start(run).returncode == 0
+        assert run_cli(run, "stop").returncode == 0
+        # A copy pinned before 1.2.0 names the module `sharpness`. A resume
+        # with --registry FILE compares it under the current name, so FILE
+        # may say either and the run is recovered, not refused.
+        pinned = run / ".assay" / "registry.json"
+        pinned.write_text(
+            json.dumps({**json.loads(pinned.read_text()), "module_modes": {"sharpness": "block"}})
+        )
+        for name in ("sharpness", "specificity"):
+            (run / "reg.json").write_text(
+                json.dumps({"actions": ACTIONS, "budget": {"actions": 30}, "module_modes": {name: "block"}})
+            )
+            resumed = _start(run)
+            assert resumed.returncode == 0, resumed.stderr
+            assert "RECOVERED" in resumed.stdout and "replayed 0 paid actions" in resumed.stdout
+            assert run_cli(run, "stop").returncode == 0
+    finally:
+        stop_run(run)

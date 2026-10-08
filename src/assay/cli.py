@@ -104,6 +104,7 @@ from .predictions import claims_help
 from .registry import (
     gate_mode,
     load_registry_file,
+    module_modes,
     parse_registry_action,
     require_registry,
     spend_reports,
@@ -388,7 +389,11 @@ def _check_resume(
             code="REGISTRY_MISSING",
             hint="it can be inspected (status, view, audit) but not resumed; start a new run in a fresh directory",
         )
-    if registry_spec is not None and registry_spec != read_json(paths.registry):
+    pinned = read_json(paths.registry)
+    if isinstance(pinned, dict) and "module_modes" in pinned:
+        # A copy pinned under a module's old name compares under its current one.
+        pinned = {**pinned, "module_modes": module_modes(pinned)}
+    if registry_spec is not None and registry_spec != pinned:
         raise AssayError(
             "this directory already owns a run with a different registry, which cannot change in place",
             code="RESUME_REFUSED",

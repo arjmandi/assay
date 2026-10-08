@@ -124,7 +124,7 @@ def test_graded_records_carry_kind_and_bucket(paths):
     assert record.to_json()["kind"] == "coerced" and record.to_json()["coerced"] is True
 
 
-def test_graded_records_sharp_and_gamble(paths):
+def test_graded_records_world_model_and_gamble(paths):
     won = _event({"counter": 3, "lamp": "off"}, state="WIN", levels=1)
     graded = grade_pending(
         run_of(paths, [START, won]), parse_claims("change; win"), START, won, elapsed_s=0.0

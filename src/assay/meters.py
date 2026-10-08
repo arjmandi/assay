@@ -41,41 +41,32 @@ def recent_predictions(events: Sequence[Event], window: int = 10) -> tuple[int, 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Specificity:
-    """The specificity counts over every grade of the run. `graded` is every
-    grade but a note; `coerced` the free-text claims coerced to `change`,
-    counted among the gradable grades as the CLAIMS line always counted
-    them; `machine` the kernel-generated predictions of model-plan steps.
-    The CLAIMS line reads `specific` over `graded`; the specificity module
-    reads the agent's own claims, `graded` less `machine`, since a machine
-    prediction is never the agent's vagueness."""
+    """The specificity counts over every grade of the run: `graded` is every
+    grade but a note, an invalid one included, as the CLAIMS line has always
+    counted them; `coerced` the free-text claims coerced to `change`. The
+    CLAIMS line and the specificity module both read `specific` over
+    `graded`, so the advisory's N/M is the CLAIMS line's."""
 
     graded: int
     coerced: int
-    machine: int
 
     @property
     def specific(self) -> int:
         return self.graded - self.coerced
-
-    @property
-    def agent_graded(self) -> int:
-        return self.graded - self.machine
 
 
 def specificity(events: Sequence[Event]) -> Specificity:
     """The one count behind the CLAIMS line's specificity and the
     specificity module's advisory: the share of graded claims that are not
     coerced free text."""
-    graded = coerced = machine = 0
+    graded = coerced = 0
     for event in events:
         for item in event.grade:
             if item.kind == "note":
                 continue
             graded += 1
-            if item.machine:
-                machine += 1
             if item.invalid or item.ungradable:
                 continue
             if item.kind == "coerced":
                 coerced += 1
-    return Specificity(graded=graded, coerced=coerced, machine=machine)
+    return Specificity(graded=graded, coerced=coerced)

@@ -296,7 +296,5 @@ verifiers: do you understand the mechanics?) versus **gamble** claims
 (win/level+1: are you converting understanding into progress?), plus your
 specificity and invalid-claim count. Specificity is the share of graded claims
 that are not coerced free text; a claim graded as `change` because the
-prediction was prose counts against it. It is not sharpness, which in
-forecasting means the concentration of a predictive distribution: your grades
-are binary. A rising world-model miss rate means your notes are wrong; fix the
-story before spending more.
+prediction was prose counts against it. A rising world-model miss rate means
+your notes are wrong; fix the story before spending more.

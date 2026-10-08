@@ -263,14 +263,13 @@ class _Specificity:
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        # The one count the CLAIMS line prints, over the agent's own claims:
-        # a model-plan step's machine prediction is never its vagueness.
+        # The one count the CLAIMS line prints, over the same grades: the
+        # advisory's N/M is the CLAIMS line's at this moment.
         counts = specificity(view.events)
-        graded = counts.agent_graded
-        if graded >= 20 and counts.coerced * 2 > graded:
+        if counts.graded >= 20 and counts.coerced * 2 > counts.graded:
             return (
-                f"specificity is {graded - counts.coerced}/{graded}: over half your claims "
-                "are coerced free text; they earn nothing. State checkable claims."
+                f"specificity is {counts.specific}/{counts.graded}: over half the graded "
+                "claims are coerced free text; they earn nothing. State checkable claims."
             )
         return None
 
