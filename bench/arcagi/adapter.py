@@ -2,7 +2,12 @@
 
 Wraps the `arc_agi` client library as an ASSAY session: local runs play a
 cached copy of the public game (downloaded once with ARC_API_KEY), and
-competition runs talk to the remote server. Start ARC runs with
+remote runs (`--mode remote`) talk to the competition server. The session
+rules of each are declared to the kernel through the `session` property
+(docs/ARCHITECTURE.md section 2.2), and the kernel implements them: the
+competition session's fifteen-minute action-idle lease and its single life
+(no replay), and the local run's opening RESET answered without rewinding
+the cached game. Start ARC runs with
 
     assay start <game_id> --adapter <repo>/bench/arcagi/adapter.py:factory \
         --registry <repo>/bench/arcagi/registry_200.json
@@ -22,8 +27,15 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
-from assay.broker import LOCAL_MODE, REMOTE_MODE
+from assay.adapters import SessionCapability
 from assay.core import AssayError
+
+# The modes the adapter reads from the run's config.json: the kernel's
+# `local` and `remote`, and the value runs before 1.2.0 carried for remote.
+LOCAL_MODE = "local"
+REMOTE_MODES = ("remote", "competition")
+# The competition server drops a session after fifteen idle minutes.
+REMOTE_LEASE_SECONDS = 15 * 60
 
 
 def _cache_base() -> Path:
@@ -76,9 +88,9 @@ class ArcSession:
             ) from error
 
         mode_name = str(config.get("mode", LOCAL_MODE)).lower()
-        if mode_name not in {LOCAL_MODE, REMOTE_MODE}:
+        if mode_name != LOCAL_MODE and mode_name not in REMOTE_MODES:
             raise AssayError(f"unsupported session mode {mode_name!r}")
-        self.remote = mode_name == REMOTE_MODE
+        self.remote = mode_name in REMOTE_MODES
 
         if self.remote:
             runtime = Path(tempfile.gettempdir()) / f"assay-{os.getuid()}" / "remote"
@@ -123,6 +135,23 @@ class ArcSession:
             )
 
     @property
+    def session(self) -> SessionCapability:
+        """The session rules the kernel implements for this world. A
+        competition session lives on the server, expires after fifteen idle
+        minutes and cannot be replayed; every action, the opening RESET
+        included, goes to the server. A local run plays the cached game and
+        replays from its journal; a RESET on a fresh level is answered by
+        the kernel with the current observation, so an opening reset never
+        rewinds the cached game."""
+        if self.remote:
+            return SessionCapability(
+                idle_lease_seconds=REMOTE_LEASE_SECONDS,
+                reset_on_fresh_unit="world",
+                replayable=False,
+            )
+        return SessionCapability(reset_on_fresh_unit="noop")
+
+    @property
     def observation(self) -> Any:
         observed = self.environment.observation_space
         if observed is None:
@@ -159,7 +188,7 @@ class ArcSession:
     def _missing_observation(self) -> None:
         if self.remote:
             raise AssayError(
-                "REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE | the competition server returned no observation. This remote run cannot be reconstructed; preserve its artifacts and use a fresh directory for another run"
+                "REMOTE_SESSION_UNAVAILABLE | the competition server returned no observation. This remote run cannot be reconstructed; preserve its artifacts and use a fresh directory for another run"
             )
         raise AssayError("the local simulator returned no observation")
 

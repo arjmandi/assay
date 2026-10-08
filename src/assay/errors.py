@@ -113,7 +113,7 @@ TAMPER_DETECTED = "TAMPER_DETECTED"
 LOCAL_REPLAY_DIVERGED = "LOCAL_REPLAY_DIVERGED"
 REMOTE_LEASE_EXPIRED = "REMOTE_LEASE_EXPIRED"
 REMOTE_STATE_DIVERGED = "REMOTE_STATE_DIVERGED"
-REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE = "REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE"
+REMOTE_SESSION_UNAVAILABLE = "REMOTE_SESSION_UNAVAILABLE"
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -191,7 +191,7 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(LOCAL_REPLAY_DIVERGED, "invalid", "the local world no longer reproduces the journal on replay."),
     ErrorCode(REMOTE_LEASE_EXPIRED, "invalid", "the remote session's action-idle lease has run out; the run is not recoverable."),
     ErrorCode(REMOTE_STATE_DIVERGED, "invalid", "the live remote observation differs from the journal."),
-    ErrorCode(REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE, "invalid", "the remote session returned nothing or is gone; the run cannot be reconstructed."),
+    ErrorCode(REMOTE_SESSION_UNAVAILABLE, "invalid", "the session of a world that declared no replay returned nothing or is gone; the run cannot be reconstructed."),
 )
 
 BY_CODE: Mapping[str, ErrorCode] = {entry.code: entry for entry in CATALOGUE}

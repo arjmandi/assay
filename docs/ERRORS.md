@@ -90,4 +90,4 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `LOCAL_REPLAY_DIVERGED` | invalid | the local world no longer reproduces the journal on replay. |
 | `REMOTE_LEASE_EXPIRED` | invalid | the remote session's action-idle lease has run out; the run is not recoverable. |
 | `REMOTE_STATE_DIVERGED` | invalid | the live remote observation differs from the journal. |
-| `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` | invalid | the remote session returned nothing or is gone; the run cannot be reconstructed. |
+| `REMOTE_SESSION_UNAVAILABLE` | invalid | the session of a world that declared no replay returned nothing or is gone; the run cannot be reconstructed. |

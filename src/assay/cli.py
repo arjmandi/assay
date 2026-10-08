@@ -34,7 +34,6 @@ from .broker import (
     broker_ping,
     check_adapter_spec,
     find_daemon,
-    is_remote_config,
     resolve_adapter_spec,
     reconcile_mutations,
     start_broker,
@@ -67,6 +66,7 @@ from .sandbox import (
     sandbox_mode,
     sandbox_text,
 )
+from .adapters import SessionCapability, recorded_capability
 from .core import (
     LOCAL_MODE,
     REMOTE_MODE,
@@ -82,6 +82,7 @@ from .core import (
     read_json,
     require_run,
     run_lock,
+    run_mode,
 )
 from .errors import exit_code
 from .extras import require_kind
@@ -111,7 +112,14 @@ from .registry import (
     validate_registry,
 )
 from .run import Run
-from .status import render_status, status_of
+from .status import (
+    idle_seconds,
+    lease_left,
+    lease_text,
+    remaining_text,
+    render_status,
+    status_of,
+)
 
 
 USAGE_HINT = "`assay --help` lists the commands and `assay COMMAND --help` a command's flags"
@@ -336,18 +344,13 @@ def _write_notes(paths: RunPaths, game_id: str) -> None:
     )
 
 
-def _remote_idle_seconds(run: Run) -> float:
-    mutations = run.mutations
-    timestamp = mutations[-1].timestamp if mutations else run.config.get("created_at")
-    if not timestamp:
-        return 0.0
-    try:
-        then = dt.datetime.fromisoformat(str(timestamp))
-        if then.tzinfo is None:
-            then = then.replace(tzinfo=dt.timezone.utc)
-        return max(0.0, (dt.datetime.now(dt.timezone.utc) - then).total_seconds())
-    except ValueError:
-        return 0.0
+def _mode_word(mode: str) -> str:
+    """The mode as the STARTED and RESUMED lines say it."""
+    return "REMOTE" if mode == REMOTE_MODE else "local simulator"
+
+
+def _lease_duration(seconds: int) -> str:
+    return f"{seconds // 60} minutes" if seconds % 60 == 0 else f"{seconds} seconds"
 
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
@@ -405,7 +408,7 @@ def _check_resume(
             code="RESUME_REFUSED",
             hint=f"use a fresh directory for {requested}",
         )
-    existing_mode = str(existing.get("mode", LOCAL_MODE)).lower()
+    existing_mode = run_mode(existing)
     if args.mode is not None and args.mode != existing_mode:
         raise AssayError(
             f"this directory already owns a {existing_mode} run, and the mode cannot change in place",
@@ -443,12 +446,15 @@ def _resume(
     # its own graded event.
     recovered = 0
     owner = read_json(paths.broker, {})
+    # The session rules the world declared at the run's start (docs/ARCHITECTURE.md
+    # section 2.2): a world without replay is resumed only through its live daemon.
+    capability = recorded_capability(existing)
     if owner.get("status") == "FINISHED":
         if find_daemon(paths) is None:
             recovered = reconcile_mutations(run)
         print(f"RESUMED | {requested} | completed run")
-    elif is_remote_config(existing):
-        _resume_remote(paths, run, requested)
+    elif not capability.replayable:
+        _resume_remote(paths, run, requested, capability)
     else:
         recovered = _resume_local(paths, run, requested)
     if recovered:
@@ -459,33 +465,42 @@ def _resume(
 REMOTE_HINT = "preserve this directory and use a fresh one for another run"
 
 
-def _resume_remote(paths: RunPaths, run: Run, requested: str) -> None:
-    idle = _remote_idle_seconds(run)
-    if idle >= 15 * 60:
+def _resume_remote(
+    paths: RunPaths, run: Run, requested: str, capability: SessionCapability
+) -> None:
+    """Resume a run whose world declared no replay: the session lives one
+    daemon long, so the daemon must still be alive and answering, within the
+    action-idle lease the world declared when it declared one, and its live
+    observation must match the last event; nothing is ever reconstructed."""
+    idle = idle_seconds(run)
+    lease = capability.idle_lease_seconds
+    if lease is not None and idle is not None and idle >= lease:
         raise AssayError(
-            "no live action was recorded for at least 15 minutes; the remote competition "
-            "run is not recoverable",
+            f"no live action was recorded for at least {_lease_duration(lease)}; the "
+            "world's action-idle lease has run out and the run is not recoverable",
             code="REMOTE_LEASE_EXPIRED",
             hint=REMOTE_HINT,
         )
     if not broker_ping(paths):
         if find_daemon(paths) is None:
-            # Real spends against the remote world: journal them
-            # before refusing, so the record is complete.
+            # Real spends against the world: journal them before refusing,
+            # so the record is complete.
             reconcile_mutations(run)
         raise AssayError(
-            "the remote competition owner is unavailable and cannot be reconstructed",
-            code="REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE",
+            "the run's environment owner is gone and the world declared no replay, "
+            "so the run cannot be reconstructed",
+            code="REMOTE_SESSION_UNAVAILABLE",
             hint=REMOTE_HINT,
         )
     if not broker_matches_latest_event(run):
         raise AssayError(
-            "the live remote observation differs from the append-only timeline",
+            "the live observation differs from the append-only timeline",
             code="REMOTE_STATE_DIVERGED",
             hint="stop using this run; " + REMOTE_HINT,
         )
     print(
-        f"RESUMED | {requested} | REMOTE competition | action-idle lease about {max(0, 15 - int(idle // 60))}m"
+        f"RESUMED | {requested} | {_mode_word(run_mode(run.config))} | "
+        f"{remaining_text(lease, lease_left(capability, idle))}"
     )
 
 
@@ -686,13 +701,16 @@ def _print_started(
             "the launcher/owner keeps it OUTSIDE the run directory (ratifications, "
             "approvals, waivers require it; the agent proposes, never self-ratifies)"
         )
-    if mode == REMOTE_MODE:
-        print(
-            f"STARTED | {requested} | REMOTE competition | single run | ~15m action-idle lease | no replay recovery"
-        )
+    # The session rules the world declared, recorded by the daemon before
+    # READY (docs/ARCHITECTURE.md section 2.2); the mode is the operator's
+    # word to the adapter and decides nothing here.
+    capability = recorded_capability(run.config)
+    lease = lease_text(capability.idle_lease_seconds)
+    if capability.replayable:
+        print(f"STARTED | {requested} | {_mode_word(mode)} | {lease} | replay recovery enabled")
     else:
         print(
-            f"STARTED | {requested} | local simulator | competition accounting | replay recovery enabled"
+            f"STARTED | {requested} | {_mode_word(mode)} | single run | {lease} | no replay recovery"
         )
     if not anchor_status(paths, run.config)["writable"]:
         print(
@@ -1333,7 +1351,8 @@ LIFECYCLE: tuple[Lifecycle, ...] = (
             arg(
                 "--mode",
                 choices=(LOCAL_MODE, REMOTE_MODE),
-                help="local simulator (default), or expiring remote competition validation",
+                help="local simulator (default) or remote; the adapter reads the mode and "
+                "declares the session rules the kernel applies",
             ),
             arg(
                 "--import",

@@ -36,6 +36,12 @@ outside the run directory, and the agent's session begins at `assay status`
 - `finalize()` runs once when `state` becomes `WIN`. It writes its own file
   under `.assay/`, and the kernel never reads it.
 - `public_info` is stored in `config.json` at start, for humans and tools.
+- `session` (optional) declares the session rules the kernel applies: an
+  action-idle lease, whether a reset on a fresh progress unit is answered by
+  the kernel without reaching the world, and whether the run replays;
+  `replay(transitions)` (optional) receives the recorded transitions at a
+  resume. The template declares neither and gets local semantics
+  (`docs/ARCHITECTURE.md` section 2.2).
 - Determinism: the code of each door comes from the seed. A local run resumes
   by replaying its journal through a fresh session, so the same actions must
   give the same observations.

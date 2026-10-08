@@ -174,10 +174,24 @@ OBSERVATION_HINT = (
     "(docs/ARCHITECTURE.md section 2.2 gives the shape) and resume with `assay start WORLD_ID`"
 )
 
-# The run modes `config.json` records: a local simulator, replayed from its
-# journal on resume, or an expiring remote competition session.
+# The run modes `config.json` records and `--mode` takes: a local simulator
+# or a remote world. The mode is the operator's word to the adapter, which
+# reads it from the config; the session rules the kernel applies (the lease,
+# replay, a reset on a fresh unit) come from the adapter's declaration
+# (`adapters.SessionCapability`), not from the mode.
 LOCAL_MODE = "local"
-REMOTE_MODE = "competition"
+REMOTE_MODE = "remote"
+# The value config.json carried for a remote run before 1.2.0, read as
+# REMOTE_MODE by `run_mode`; the one line of the kernel the conformance
+# test's word rule allows by name.
+LEGACY_REMOTE_MODE = "competition"
+
+
+def run_mode(config: Mapping[str, Any]) -> str:
+    """The run's mode as the kernel reads it, `LOCAL_MODE` or `REMOTE_MODE`;
+    the value runs before 1.2.0 recorded is read as remote."""
+    mode = str(config.get("mode", LOCAL_MODE)).lower()
+    return REMOTE_MODE if mode in {REMOTE_MODE, LEGACY_REMOTE_MODE} else LOCAL_MODE
 
 WORLD_ID_MAX = 64
 WORLD_ID_RULE = (
