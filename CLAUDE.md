@@ -44,7 +44,11 @@ src/assay/           the kernel: cli.py (the command line), broker.py (daemon
                       sandbox.py (the one place agent code runs),
                       modules.py, integrity.py (chain, anchors, audit, redaction),
                       agenda.py, carryover.py, aggregates.py, extras.py (the
-                      observation-kind hook), words.py (the display vocabulary)
+                      observation-kind hook), words.py (the display vocabulary),
+                      ops.py (the operation table: the daemon operations with
+                      their records, the commands of the command line),
+                      meters.py (the journal meters the status lines and the
+                      modules share)
 src/assay_grid/      the frame-world extra: perception, grid claims, rendering,
                       views
 src/assay_cli.py     PEP 723 entry point for the zero-install launcher
