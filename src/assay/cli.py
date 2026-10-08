@@ -120,7 +120,6 @@ from .status import (
     lease_left,
     lease_text,
     remaining_text,
-    render_status,
     status_of,
     status_within,
 )
