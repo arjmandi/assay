@@ -225,6 +225,25 @@ and hold the owner token, and the agent's session begins after that.
 3. Ratify, approve and waive from your shell with the token (section 6); a
    resume is yours too, the same `start` command in the same directory.
 
+In a Claude Code session, install the hooks of `docs/ARCHITECTURE.md`
+section 8.4 right after `start`, from your shell, with `ASSAY` exported to
+the launcher: `"$ASSAY" hooks install --policy <tokens>/WORLD.hooks.json
+--owner-token-file <tokens>/WORLD.token --deny PATTERN ...`, then `"$ASSAY"
+hooks install --check` (ONBOARDING section 7 has the whole form). What
+the agent sees when a hook refuses is
+one line in the tool result, `HOOK | REFUSED | <rule>; <allowed form>`, and
+the tool call does not run: a Write or Edit under `.assay/` (except
+`.assay/NOTES.md`) or `.claude/`, a shell command that names them, the
+anchor directory or the token file other than as a single `"$ASSAY"`
+command, a command that changes `ASSAY` or `PATH`, and a command matching
+one of your deny patterns. Every tool use is one `tool_use` record in
+`.assay/activity.jsonl` with the receipt's `end_event` when the output
+carried one, so a journal event joins to the transcript that produced it.
+The policy is a text match, not a sandbox: section 8.4 says what it does not
+see (a path built at run time, an interpreter one-liner, a script the agent
+wrote, a hook that cannot start) and names the strong form, the managed
+settings file with `allowManagedHooksOnly` plus the separate-user setup.
+
 See `bench/arcagi/PROTOCOL.md` for a real one. The published benchmark runs
 were played before this order existed, with the agent running `start` itself.
 

@@ -31,7 +31,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, append_jsonl, atomic_json, read_json
+from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
 from .modules import hazards_path, load_hazards
 
 if TYPE_CHECKING:
@@ -177,6 +177,7 @@ def export_knowledge(run: Run, out: Path | None = None) -> Path:
         "model": model_entry,
     }
     target = out or (paths.root / "assay_knowledge.json")
+    _refuse_state_target(paths, target)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(knowledge, indent=1, sort_keys=True) + "\n")
     append_jsonl(
@@ -190,6 +191,24 @@ def export_knowledge(run: Run, out: Path | None = None) -> Path:
         },
     )
     return target
+
+
+def _refuse_state_target(paths: RunPaths, target: Path) -> None:
+    """A kernel command never writes under the run's `.assay` or `.claude`
+    where the agent says (docs/ARCHITECTURE.md section 8.4): the export's
+    `--out` is refused there, hooks or no hooks, since the journal lives
+    under one and the session's hooks under the other."""
+    resolved = (target if target.is_absolute() else Path.cwd() / target).resolve()
+    for directory in (paths.state, paths.root / ".claude"):
+        try:
+            resolved.relative_to(directory.resolve())
+        except ValueError:
+            continue
+        raise AssayError(
+            f"--out must not point under {directory.name}, got {target}",
+            code="PATH_INVALID",
+            hint="export the knowledge to a file in the run directory outside .assay and .claude, or elsewhere",
+        )
 
 
 def import_knowledge(run: Run, source: Path) -> dict[str, Any]:

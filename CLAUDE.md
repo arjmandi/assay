@@ -14,18 +14,18 @@ code. `AGENTS.md` is the short version of this file for any coding agent.
 ```sh
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/      # full suite
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/test_registry.py  # one file
-uv run --with ruff ruff check src tests                                       # the linter
-uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid  # strict typing, the kernel and the extra
+uv run --with ruff ruff check src tests hooks                                 # the linter
+uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks  # strict typing, the kernel, the extra and the hook script
 ```
 
 Or, in a venv with the editable install: `pip install -e '.[grid,dev]'` then
 `pytest tests/`. The suite isolates anchors and caches under the pytest temp
 root and stops every daemon it started. ruff is configured in `pyproject.toml`
-with its default rule set, and `uv run --with ruff ruff check src tests` must
-pass; mypy is configured there too, strict over `src/assay` and
-`src/assay_grid` and checked as Python 3.12, and `uv run --with mypy --with
-numpy --with pillow mypy --strict src/assay src/assay_grid` must be clean (a
-plain `mypy` from the root is the same run).
+with its default rule set, and `uv run --with ruff ruff check src tests hooks`
+must pass; mypy is configured there too, strict over `src/assay`,
+`src/assay_grid` and `hooks` and checked as Python 3.12, and `uv run --with
+mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks`
+must be clean (a plain `mypy` from the root is the same run).
 `tests/test_hygiene.py` enforces the writing rule (no em dash and no
 arrow in the source or the docs, no machine path, the old manual name gone
 from the code). `.pre-commit-config.yaml` runs the same ruff and mypy commands
@@ -53,6 +53,9 @@ src/assay_grid/      the frame-world extra: perception, grid claims, rendering,
                       views
 src/assay_cli.py     PEP 723 entry point for the zero-install launcher
 bin/assay            the launcher (ASSAY_PYTHON pins the interpreter)
+hooks/               the Claude Code hooks: pre_tool_use.py, the PreToolUse
+                      script (standard library only, imports nothing from
+                      assay), installed by `assay hooks install`
 examples/            counter_world.py and example_registry.json (the quickstart),
                       new_world/ (the template a new world copies)
 tests/               pytest; e2e tests drive the real CLI and daemon through the

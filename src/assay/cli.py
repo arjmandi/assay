@@ -90,6 +90,7 @@ from .core import (
 )
 from .errors import exit_code
 from .extras import require_kind
+from .hooks import check_install, default_launcher, install_hooks, installed_hooks, read_policy, record_tool_use
 from .inspect import result_text, status_text, view_lines_text, view_of
 from .live import split_step
 from .ops import (
@@ -209,9 +210,12 @@ class Group:
 @dataclasses.dataclass(frozen=True)
 class Lifecycle:
     """A command that runs before any run is loaded (start, stop, version,
-    doctor) and returns the exit status."""
+    doctor, the hooks) and returns the exit status: its identifier, its path
+    on the command line (`hooks install`), its help, what it runs, its
+    arguments."""
 
     name: str
+    path: str
     help: str
     run: LifecycleRun
     arguments: tuple[Argument, ...] = ()
@@ -250,6 +254,11 @@ GROUPS: Mapping[str, Group] = {
         ),
         Group("goal", "the standing goal: propose revisions (agent), ratify (owner)", "goal_command"),
         Group("spend", "the external spend feed (the kernel cannot see the LLM bill)", "spend_command"),
+        Group(
+            "hooks",
+            "the Claude Code hooks: install them for a run directory (operator), record a tool use",
+            "hooks_command",
+        ),
     )
 }
 
@@ -263,19 +272,28 @@ def _parser() -> Parser:
     )
     parser.add_argument("--run-dir", default=".", help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
-    for lifecycle in LIFECYCLE:
-        _add_command(commands, lifecycle.name, lifecycle.help, lifecycle.arguments)
     holders: dict[str, Any] = {}
-    for command in COMMANDS:
-        words = command.path.split()
+
+    def place(
+        path: str,
+        text: str,
+        arguments: tuple[Argument, ...],
+        epilog: Callable[[], str] | None = None,
+    ) -> None:
+        words = path.split()
         if len(words) == 1:
-            _add_command(commands, command.path, command.help, command.arguments, command.epilog)
-            continue
+            _add_command(commands, path, text, arguments, epilog)
+            return
         group = GROUPS[words[0]]
         if group.name not in holders:
             holder = commands.add_parser(group.name, help=group.help)
             holders[group.name] = holder.add_subparsers(dest=group.dest, required=True)
-        _add_command(holders[group.name], words[1], command.help, command.arguments, command.epilog)
+        _add_command(holders[group.name], words[1], text, arguments, epilog)
+
+    for lifecycle in LIFECYCLE:
+        place(lifecycle.path, lifecycle.help, lifecycle.arguments)
+    for command in COMMANDS:
+        place(command.path, command.help, command.arguments, command.epilog)
     return parser
 
 
@@ -295,13 +313,19 @@ def _add_command(
         parser.add_argument(*argument.flags, **argument.options)
 
 
-def command_of(args: argparse.Namespace) -> Command:
-    """The command a parsed command line names: for a group, the
-    sub-command's (`channel declare`)."""
+def path_of(args: argparse.Namespace) -> str:
+    """The path a parsed command line names: for a group, with the
+    sub-command's word (`channel declare`, `hooks install`)."""
     path = str(args.command)
     group = GROUPS.get(path)
     if group is not None:
         path = f"{group.name} {getattr(args, group.dest)}"
+    return path
+
+
+def command_of(args: argparse.Namespace) -> Command:
+    """The command a parsed command line names."""
+    path = path_of(args)
     for command in COMMANDS:
         if command.path == path:
             return command
@@ -927,6 +951,19 @@ def _doctor(paths: RunPaths) -> int:
                 note("ok", f"registry valid, {len(spec['actions'])} actions")
             except AssayError as error:
                 note("FAIL", f"registry: {error}")
+    # The Claude Code hooks installed here, if any (section 8.4): a hook
+    # that cannot start is a non-blocking error to Claude Code, so the
+    # pinned interpreter and the script are run on a benign event.
+    try:
+        installed = installed_hooks(paths)
+    except AssayError as error:
+        installed = None
+        note("FAIL", f"hooks | {error}")
+    if installed is not None:
+        try:
+            note("ok", f"hooks | {check_install(paths)}")
+        except AssayError as error:
+            note("FAIL", f"hooks | {error}")
     for level, text in lines:
         print(f"DOCTOR | {level} | {text}")
     failed = sum(1 for level, _ in lines if level == "FAIL")
@@ -1043,6 +1080,61 @@ def version_command(paths: RunPaths, args: argparse.Namespace) -> int:
 
 def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
     return _doctor(paths)
+
+
+def hooks_install_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    """`assay hooks install`: the policy file outside the run directory and
+    the hook entries in the run directory's `.claude/settings.json`
+    (docs/ARCHITECTURE.md section 8.4). The launcher pinned is the one
+    running this command unless `--launcher` names it; the token file comes
+    from `--owner-token-file` or ASSAY_OWNER_TOKEN_FILE, as at `start`; the
+    anchor directory is the environment's. `--check` writes nothing: it
+    verifies that the hooks installed here can run."""
+    if args.check:
+        if args.deny or args.launcher is not None or args.owner_token_file is not None:
+            raise AssayError(
+                "--check takes no flag but --policy: it verifies the hooks installed in this run directory",
+                code="COMMAND_ARGS",
+            )
+        checked = None if args.policy is None else Path(args.policy).expanduser().resolve()
+        print(f"HOOKS | ok | {check_install(paths, checked)}")
+        return 0
+    if args.policy is None:
+        raise AssayError(
+            "hooks install needs --policy FILE, the policy's place outside the run directory",
+            code="COMMAND_ARGS",
+            hint="`assay hooks install --policy FILE [--deny PATTERN ...]`, or `--check` to verify an install",
+        )
+    policy_file = _outside_run(paths, args.policy, "--policy")
+    token_file = _owner_token_file(paths, args)
+    launcher = args.launcher if args.launcher is not None else default_launcher()
+    if launcher is None:
+        raise AssayError(
+            f"the launcher cannot be pinned from this entry point ({sys.argv[0]})",
+            code="COMMAND_ARGS",
+            hint="pass --launcher PATH, the absolute path of bin/assay or of the installed assay entry point",
+        )
+    launcher = _outside_run(paths, launcher, "--launcher")
+    if not launcher.is_file() or not os.access(launcher, os.X_OK):
+        raise AssayError(f"--launcher {launcher} is not an executable file", code="FILE_NOT_FOUND")
+    installed = install_hooks(
+        paths, policy_file=policy_file, deny=list(args.deny), launcher=launcher, token_file=token_file
+    )
+    print(
+        f"HOOKS | installed {installed.entries} entries in {installed.settings}; "
+        f"policy {installed.policy}"
+    )
+    return 0
+
+
+def hooks_post_tool_use_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    """`assay hooks post-tool-use`: the PostToolUse hook, run by the pinned
+    launcher with the policy file's path; the run directory is the policy's,
+    never this process's, since the hook commands read nothing the agent
+    can write."""
+    policy = read_policy(Path(args.policy).expanduser().resolve())
+    record_tool_use(policy, sys.stdin.read())
+    return 0
 
 
 # --- the commands over the loaded run ------------------------------------------
@@ -1484,8 +1576,9 @@ def _run(paths: RunPaths, args: argparse.Namespace) -> int:
     is loaded and returns the exit status; every other command loads the run
     once, lenient (the readers report what they find; only start and the
     daemon load strict), and runs under the lock with its activity record."""
+    path = path_of(args)
     for lifecycle in LIFECYCLE:
-        if args.command == lifecycle.name:
+        if path == lifecycle.path:
             return lifecycle.run(paths, args)
     command = command_of(args)
     require_run(paths)
@@ -1542,6 +1635,7 @@ def _report_internal_error(error: BaseException, *, machine: bool) -> int:
 LIFECYCLE: tuple[Lifecycle, ...] = (
     Lifecycle(
         "start",
+        "start",
         "start or resume the one persistent run",
         start_command,
         arguments=(
@@ -1586,20 +1680,86 @@ LIFECYCLE: tuple[Lifecycle, ...] = (
     ),
     Lifecycle(
         "stop",
+        "stop",
         "stop this run's environment owner (the daemon) cleanly; "
         "`assay start` resumes the run later",
         stop_command,
     ),
     Lifecycle(
         "version",
+        "version",
         "the harness version, the journal spec it writes, the interpreter",
         version_command,
     ),
     Lifecycle(
         "doctor",
+        "doctor",
         "check the interpreter, dependencies, anchors, socket path, run "
         "state, daemon, adapter and registry; works with or without a run here",
         doctor_command,
+    ),
+    Lifecycle(
+        "hooks_install",
+        "hooks install",
+        "operator: install the Claude Code hooks for this run directory; the policy goes "
+        "to FILE, outside it",
+        hooks_install_command,
+        arguments=(
+            arg(
+                "--policy",
+                type=Path,
+                metavar="FILE",
+                help="where the policy is written (mode 0600, outside the run directory); the "
+                "hook commands carry this path",
+            ),
+            arg(
+                "--deny",
+                action="append",
+                default=[],
+                metavar="PATTERN",
+                help="a regular expression over a Bash command the hook refuses: the world's "
+                "client libraries, hosts and commands, so the agent reaches the world only "
+                "through assay; repeat for each",
+            ),
+            arg(
+                "--launcher",
+                type=Path,
+                metavar="PATH",
+                help="the absolute path of bin/assay or of the installed assay entry point, the "
+                "one first word trusted on a command that names .assay; defaults to the one "
+                "running this install",
+            ),
+            arg(
+                "--owner-token-file",
+                type=Path,
+                metavar="PATH",
+                help="the owner token file (outside the run directory), refused to the agent by "
+                "path; ASSAY_OWNER_TOKEN_FILE does the same",
+            ),
+            arg(
+                "--check",
+                action="store_true",
+                help="write nothing: verify that the hooks installed here can run (the policy "
+                "reads, the pinned interpreter runs the script, the launcher is there); with "
+                "--policy FILE, that policy instead of the one the settings name",
+            ),
+        ),
+    ),
+    Lifecycle(
+        "hooks_post_tool_use",
+        "hooks post-tool-use",
+        "the PostToolUse hook: read the hook JSON on stdin and append the tool_use record "
+        "to the run's activity log",
+        hooks_post_tool_use_command,
+        arguments=(
+            arg(
+                "--policy",
+                type=Path,
+                required=True,
+                metavar="FILE",
+                help="the policy file hooks install wrote; its run directory is the one recorded",
+            ),
+        ),
     ),
 )
 

@@ -75,6 +75,66 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- The Claude Code hooks (#11, design note 3 section 8.4). `hooks/pre_tool_use.py`
+  in the repository, standard library only, is the PreToolUse script, and
+  `assay hooks install --policy FILE [--deny PATTERN ...] [--launcher PATH]
+  [--owner-token-file PATH]` installs it for a run directory: the policy
+  (version 1: the run directory, the anchor directory, the token file, the
+  policy file's own path, the launcher's absolute path, the `ASSAY` the
+  operator exported, the deny patterns, the interpreter) goes into FILE
+  outside the run directory with mode 0600, and eleven hook entries into
+  `<run dir>/.claude/settings.json`, PreToolUse on `Bash`, `Write`, `Edit`,
+  `MultiEdit` and `NotebookEdit`, PostToolUse on those and `mcp__assay__.*`,
+  merged into the file as it is (a foreign entry stays, the harness's own
+  are replaced by their command text, a second install is idempotent); a
+  policy path, a launcher or a hook script inside the run directory is
+  `PATH_INVALID`. The hook refuses with exit status 2 and one line on
+  stderr, `HOOK | REFUSED | <rule>; <allowed form>`, which Claude Code shows
+  to the agent as the denial reason: a write whose resolved path has the
+  component `.assay` or `.claude` under the run directory (except
+  `.assay/NOTES.md`), lies under the anchor directory, or is the token or
+  policy file; a Bash command naming any of those (the path component, a
+  glob that expands to it, a word resolving to them) unless it is a single
+  simple command whose first word is the pinned launcher, or `"$ASSAY"`
+  when the policy pins the exported value, with a compound command, a
+  redirection or an unparsable command naming one refused whatever it
+  begins with; a command that assigns, exports, unsets or aliases `ASSAY`
+  or `PATH`, or defines a function named `assay`; and a command matching a
+  deny pattern. Everything else is exit status 0 with no output. `assay
+  hooks post-tool-use --policy FILE` appends one `tool_use` record to the
+  activity log of the policy's run directory under the file lock,
+  `{"kind": "tool_use", "tool_use_id", "session_id", "tool",
+  "command_prefix", "end_event", "timestamp"}`, with `end_event` from the
+  receipt's `EVENT | e<id>` line, the `end_event` field of a `--json`
+  receipt or the record an `mcp__assay__` tool returned, null otherwise; a
+  malformed event is `HOOK_INPUT_MALFORMED` and an unreadable policy
+  `HOOK_POLICY_INVALID`, two new usage codes. Both are lifecycle commands
+  (no run loaded, no command records of their own) under the `hooks` group,
+  take `--json`, and are in the help fixture. ONBOARDING section 7 shows the
+  install in the launcher pattern and the separate-user form, GUIDE section
+  5 what the agent sees, CONSTITUTION that the hooks exist; ruff and strict
+  mypy cover `hooks/`, and the world-name rule of the conformance test too.
+  Hardened in review (122 Bash and 28 editor cases): the components are
+  compared lowered, since the default macOS filesystem folds case, and
+  refused wherever the path lies, `.claude.json` included; the operators are
+  tested outside quotes, a bare `&` among them, so a two-claim prediction is
+  not compound; the launcher's `python` and `export` sub-commands are never
+  exempt, and `export --out` under `.assay` or `.claude` is `PATH_INVALID` in
+  the kernel; the shell-state rule covers `ASSAY*`, `PYTHON*`, `PATH`,
+  `BASH_ENV`, `ENV`, `PROMPT_COMMAND`, `LD_PRELOAD`, `DYLD_*`, `printf -v`,
+  `mapfile` and a function named as the launcher; `eval`, `source`, `exec`,
+  `xargs`, `trap`, `find -delete` and `-exec`, `git clean`, `rsync --delete`,
+  `base64` decoding, `$'...'` and byte escapes are refused; the run directory
+  and its ancestors are protected from `rm`, `mv`, `chmod` and their kind
+  with `cd` followed; the policy protects the installation's own paths; the
+  interpreter is pinned unresolved and `hooks install --check` and an `assay
+  doctor` line run it on the script (`HOOK_CHECK_FAILED`), since a hook that
+  cannot start fails open; a symlinked `.claude` refuses the install;
+  `end_event` comes from the outermost receipt document only; an editor
+  call without a path is refused; the NOTES.md exception matches the name
+  exactly; `hooks install --check --policy FILE` checks a given policy, exit
+  status 2 on failure; the 8.4 status paragraph says what the policy does
+  not see and names the strong form.
 - Token-aware output (#23, design note 2 section 7.6). `--json` on `status`,
   `act`, `commit` and `reset` carries `estimated_tokens`, the prose the call
   would have printed (without its final newline) in characters over four, an

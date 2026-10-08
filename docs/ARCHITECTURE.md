@@ -1506,7 +1506,9 @@ are stored as lines, the two exceptions the rule allows.
 - The hooks (#11): section 8.4.
 - Activity command records gain `surface` (`cli` or `mcp`); the PostToolUse record of
   section 8.4 joins to them by the receipt's `end_event` when the tool output carries one,
-  and by order and command text otherwise.
+  and by order and command text otherwise. The join is the agent's own output, a hint the
+  reader checks against the journal, not an authority: `end_event` is taken only from the
+  receipt's `EVENT` line or the top level of an act, commit or reset document.
 
 ### 7.6 Token-aware output (#23)
 
@@ -1562,8 +1564,8 @@ Status: a design note, implemented by #10, #11, #19 and #31, and stated to users
 README paragraph of section 8.8. What #10 landed: the owner operations in the daemon
 (8.1, 7.2), the start-time seal and manifest checks (8.2), the sealing record, audit's
 reading of it, the `RUN_SEALED` refusal and the remedy (8.3), the admission rule behind
-8.7, the README section (8.8), and the tests of 8.10 that are its; the hooks are #11's,
-the sandbox #19's, the operator protocol #31's.
+8.7, the README section (8.8), and the tests of 8.10 that are its; #11 landed the hooks
+(8.4); the sandbox is #19's, the operator protocol #31's.
 
 ### 8.1 The parties and what each may write
 
@@ -1702,8 +1704,8 @@ before the following action.
 `assay hooks install --policy FILE [--deny PATTERN ...]`, which writes the hook entries
 into `.claude/settings.json` and the policy (the refused paths, the deny patterns, the
 anchor directory and the token file path from the operator) into FILE, outside the run
-directory, whose path the hook commands carry; the hook scripts read nothing the agent can
-write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for the join,
+directory, whose path the hook commands carry; the hook scripts read nothing the agent is
+meant to write (under one uid the installation itself is writable, 8.9). Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for the join,
 `mcp__assay__.*`. Paths are resolved against `CLAUDE_PROJECT_DIR` and realpath'd.
 
 - PreToolUse: refuse a `Write`, `Edit`, `MultiEdit` or `NotebookEdit` whose resolved path
@@ -1733,6 +1735,110 @@ write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for t
 - A test drives the hook scripts directly on synthetic hook input: a refused write under
   `.assay/`, an allowed edit of `NOTES.md`, a refused compound command, a refused direct
   world call, an allowed `assay act`, and the `tool_use` record with its `end_event`.
+
+Status (#11): landed as written, then hardened in review against 122 Bash and 28 editor
+cases driven at the script. `hooks/pre_tool_use.py` at the repository root is the
+PreToolUse script, standard library only: it imports nothing from `assay`, since it runs
+under the interpreter pinned at install, in Claude Code's own process environment,
+whatever the agent did to its shell; `src/assay/hooks.py` is the operator's side. The
+block mechanism is the exit status 2 with the one refusal line on stderr, `HOOK |
+REFUSED | <rule>; <allowed form>`, which the hooks reference documents beside the JSON
+decision (`hookSpecificOutput.permissionDecision: "deny"`) as routing the same way:
+Claude sees the stderr line as the reason the call was denied, and the exit status blocks
+whatever stdout holds, so nothing else is printed; an allowed call is exit status 0 with
+no output. `assay hooks install --policy FILE [--deny PATTERN ...] [--launcher PATH]
+[--owner-token-file PATH]` refuses a policy path, a launcher or the hook script inside the
+run directory and a `.claude` or `settings.json` that is a symlink (`PATH_INVALID`),
+writes the policy file with mode 0600 and the eleven hook entries into `<run
+dir>/.claude/settings.json`, one per matcher, merged into the file as it is (only the
+entries whose command text is the harness's own are replaced, so a second install is
+idempotent and a foreign hook stays), and prints `HOOKS | installed 11 entries in
+<settings>; policy <FILE>`. `assay hooks install --check` (`--check --policy FILE` for a
+given policy file), and `assay doctor` in a run directory that has the entries, run the
+pinned interpreter and the script on a benign event and report `HOOK_CHECK_FAILED`
+(kind usage, exit status 2, so `hooks install --check && ...` stops; `DOCTOR | FAIL |
+hooks | ...`) when they cannot: a hook that cannot start is a non-blocking error by
+Claude Code's rule, so without the check the mechanism would fail open without a word. The policy file is one JSON object,
+version 2: `run_dir`, `anchor_dir` (the environment's resolution at install,
+`ASSAY_ANCHOR_DIR` or the default), `token_file` (`--owner-token-file` or
+`ASSAY_OWNER_TOKEN_FILE`, or null), `policy_file`, `launcher` (absolute: `--launcher`,
+else the entry point running the install, the `bin/assay` beside the `src/assay_cli.py`
+it ran or the installed `assay` console script), `assay_value` (the `ASSAY` exported in
+the installing shell, which must be the launcher, or null: the hook trusts `"$ASSAY"` and
+`$ASSAY` as the first word only when it is pinned), `deny` (the patterns, each compiled
+at install), `protected` (the installation's own paths: the hook script, the launcher,
+the interpreter as pinned and as resolved, the harness's package directory, the
+interpreter's library directories) and `python` (the interpreter the PreToolUse command
+runs under, `sys.executable` as it is, so the check can tell when it is gone). The
+PreToolUse command is `<python> <repo>/hooks/pre_tool_use.py --policy FILE`, the
+PostToolUse command `<launcher> hooks post-tool-use --policy FILE`.
+
+The rules as the script applies them. An editor's path is resolved against
+`CLAUDE_PROJECT_DIR`, then the hook's `cwd`, then realpath, and refused when any
+component, compared lowered since the default macOS filesystem folds case, is `.assay`,
+`.claude` or `.claude.json`, wherever the path lies (Claude Code reloads settings edits
+live, hooks included, so one write to `~/.claude/settings.json` or `~/.claude.json` could
+disable every non-managed hook of the running session), when it lies under the anchor
+directory, or when it is the token file, the policy file or a protected path; the run's
+own `.assay/NOTES.md` is the exception, its directory compared lowered and its name
+exactly, so that on a case-sensitive filesystem a literal `notes.md` is not taken for
+it; a call without a path is refused. A Bash command is read with its quoted strings blanked for the operators and the
+shell-state rules, so a prediction with two claims (`--predict "change; ch counter delta =
+1"`) is not compound, and with its words seen both raw and through shlex for the paths, so
+a path inside a quoted string is still seen; a word names `.assay`, `.claude` or
+`.claude.json` when the component is there once the `@` of `@FILE` and the `KEY=` of a
+`KEY=VALUE` word are dropped, when a dot-leading glob component would expand to it
+(`.a*`), or when the word resolves under the run's own `.assay` or `.claude` (a planted
+symlink), under the anchor directory, or to the token file, the policy file or a
+protected path; running the launcher or the interpreter as the command word is not naming
+it. Refused outright: `$'...'` quoting and a `\x` or octal escape in a word (a `\1`
+backreference reads as one, the cost of the rule); an assignment, export, unset, declare,
+read, `printf -v` or `mapfile` of `ASSAY*`, `PYTHON*`, `PATH`, `BASH_ENV`, `ENV`,
+`PROMPT_COMMAND`, `LD_PRELOAD` or `DYLD_*`, an alias of `assay`, a function named `assay`,
+ending in `/assay` or named as the launcher; `eval`, `source`, `. FILE`, `exec`, `xargs`
+and `trap` as a command; `find -delete` or `-exec`, `git clean` and `rsync --delete`;
+`base64` decoding; a deny pattern; and `rm`, `rmdir`, `mv`, `chmod`, `chown` or `chgrp` of
+a word that resolves to the run directory or a directory above it, with `cd` followed
+from one simple command to the next. A command naming a refused path is then refused
+beside a redirection (`> .assay/events.jsonl` after the launcher would otherwise pass as a
+simple command), when shlex cannot parse it, when it is compound (`;`, `&`, `&&`, `|`,
+`||`, a newline, `$(`, a backtick), when its first word is not the launcher, and when the
+launcher's sub-command is `python` or `export`, which run code or write a file where the
+agent says; in the kernel, `export --out` under `.assay` or `.claude` is `PATH_INVALID`
+whatever the hooks, since a kernel command must not overwrite the journal. A policy file
+that cannot be read fails closed, every call refused with the line naming the file.
+`assay hooks post-tool-use --policy FILE` reads the event on stdin and appends the
+`tool_use` record to the activity log of the policy's run directory, never this process's
+(`RUN_MISSING` when there is no run there), and refuses a malformed event with
+`HOOK_INPUT_MALFORMED` and an unreadable or malformed policy with `HOOK_POLICY_INVALID`,
+both kind usage; `command_prefix` is the first 80 characters of the Bash command, the file
+path for the editors, the tool name for the `mcp__assay__` tools; `end_event` is read from
+the last `EVENT | e<id>` line of the output, or from the top level of an act, commit or
+reset document (a `--json` receipt, or the record an `mcp__assay__` tool returned, under
+`receipt` as the wire's result shape has it, whole or inside a text block), never from a
+field nested elsewhere. Both commands are lifecycle commands: they load no run and write
+no `command_start` or `command_end` record, so a tool use is one activity line. The
+tests are `tests/test_hooks.py`.
+
+What an operator needs to know, beyond "a text match, not a sandbox". The launcher trust
+is textual over a shell the agent owns: the hook checks the first word's spelling, not
+what the shell will run. A path built at run time (`"$(printf '.ass%s' ay)"`), an
+interpreter one-liner (`python3 -c`, `perl -e`, `node -e`, `bash -c`, and `assay python`
+itself, which runs code in the harness's own process), a heredoc, and a script the agent
+wrote and runs are not seen; refusing them would cost the agent its ordinary work, so they
+stay. The run directory's own deletion is refused only for the named verbs and the named
+paths: `rm -rf *` inside it is not. The installation is writable under one uid: the policy
+refuses the writes it can see to the hook script, the launcher, the interpreter and the
+package, and nothing else protects them (8.9). A hook that cannot start fails open by
+Claude Code's rule, which is what `assay doctor` and `hooks install --check` are for. The
+policy file is readable by the agent's user, so the agent can learn the token file's path,
+the anchor directory and the deny patterns from it: a deny pattern is a speed bump, not a
+wall; `cat "$(printenv ASSAY_OWNER_TOKEN_FILE)"` is not seen, and the token is unreadable
+only in the separate-user setup. `cat .assay/NOTES.md` is refused like any other command
+naming `.assay` (the Read tool and `assay status` read it). The strong form, for stakes
+that warrant it: the hook entries in the managed settings file with
+`allowManagedHooksOnly`, the one file the agent cannot edit, together with the
+separate-user setup (8.1, ONBOARDING section 7).
 
 ### 8.5 The sandbox (#19)
 
@@ -1890,7 +1996,9 @@ agent-writable, so a `liveness_waived` record or a `module_installed` record wri
 into it while the daemon is stopped is admitted at the next start (8.1, 8.2), a
 `tamper_detected` record can be removed from it, and the seal is as safe as the anchor
 file, which a Claude Code session's hooks refuse to write (8.4) and a separate uid puts
-out of reach (8.1); the start checks that `config.json` still names the environment's
+out of reach (8.1); the hooks' own installation (the script, the launcher, the
+interpreter, the package) is the agent's to rewrite under one uid, the policy refusing
+only the writes it can see, and the separate-user setup is what protects it; the start checks that `config.json` still names the environment's
 anchor file and the audit reads one inside the run directory as no evidence (8.2), which
 is a check on the file's place, not on its content; isolation of agent code beyond the
 sandbox's stated limits, which

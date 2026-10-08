@@ -14,7 +14,7 @@ The run is started by the operator, who holds the owner token; you never run
 already up. Set the launcher once and begin with `status`:
 
 ```bash
-ASSAY="<repo>/bin/assay"                    # absolute path
+ASSAY="<repo>/bin/assay"                    # absolute path (already exported in a Claude Code session: use it, do not set it)
 "$ASSAY" status                             # your first command, in the run directory
 ```
 
@@ -23,7 +23,12 @@ started: say so and stop; do not start one. After any interruption the
 operator resumes the run with the same `start` command and it resumes
 exactly; you begin again at `status`. Never start a run or create a second
 one for the same environment, never inspect the environment's source or
-private state, and never edit `.assay/` by hand except `NOTES.md`.
+private state, and never edit `.assay/` by hand except `NOTES.md`. In a
+Claude Code session the operator's hooks refuse a write under `.assay/` or
+`.claude/`, a direct call to the world, and a change to `ASSAY` or `PATH`,
+each with one line, `HOOK | REFUSED | <rule>; <allowed form>`.
+`.assay/NOTES.md` stays yours; `"$ASSAY"` is the launcher the operator
+exported, so use it rather than setting it.
 
 ## What you see
 

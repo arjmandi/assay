@@ -56,6 +56,9 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `REQUEST_MALFORMED` | usage | the request line on the socket is empty, longer than 1,000,000 bytes, not JSON, not a JSON object, repeats a key, nests more than 64 containers deep, or its body does not fit the operation's request record. |
 | `OPERATION_UNKNOWN` | usage | the daemon operation is not in the wire table (the retired `step` included); nothing is written. |
 | `PROTOCOL_VERSION` | usage | the request or the reply carries no `v`, or another version than this package speaks. |
+| `HOOK_POLICY_INVALID` | usage | the hook policy file `hooks install` wrote cannot be read, is not JSON, or has another shape or version; the hooks are reinstalled from the operator's shell. |
+| `HOOK_INPUT_MALFORMED` | usage | the hook JSON on stdin is empty, not a JSON object, or lacks the fields a tool event carries (`tool_name`, `tool_input`, `tool_use_id`, `session_id`). |
+| `HOOK_CHECK_FAILED` | usage | the installed hooks cannot run: no harness entry in the settings, or the pinned interpreter, the script or the launcher is missing or refuses a benign event; a hook that cannot start fails open. |
 | `BUDGET_EXHAUSTED` | refused | the action budget or the reported spend cap is reached; act, commit and reset are refused. |
 | `PREDICTION_REQUIRED` | refused | the gate: a paid action or a batch step came without a prediction. |
 | `GATE_OFF` | refused | the registry's gate is off and a prediction was supplied; nothing is graded on this run. |

@@ -70,6 +70,9 @@ ANCHOR_DIR_UNWRITABLE = "ANCHOR_DIR_UNWRITABLE"
 REQUEST_MALFORMED = "REQUEST_MALFORMED"
 OPERATION_UNKNOWN = "OPERATION_UNKNOWN"
 PROTOCOL_VERSION = "PROTOCOL_VERSION"
+HOOK_POLICY_INVALID = "HOOK_POLICY_INVALID"
+HOOK_INPUT_MALFORMED = "HOOK_INPUT_MALFORMED"
+HOOK_CHECK_FAILED = "HOOK_CHECK_FAILED"
 
 # refused: a well-formed request the kernel refuses by rule, or the harness's
 # own state refuses
@@ -157,6 +160,9 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(REQUEST_MALFORMED, "usage", "the request line on the socket is empty, longer than 1,000,000 bytes, not JSON, not a JSON object, repeats a key, nests more than 64 containers deep, or its body does not fit the operation's request record."),
     ErrorCode(OPERATION_UNKNOWN, "usage", "the daemon operation is not in the wire table (the retired `step` included); nothing is written."),
     ErrorCode(PROTOCOL_VERSION, "usage", "the request or the reply carries no `v`, or another version than this package speaks."),
+    ErrorCode(HOOK_POLICY_INVALID, "usage", "the hook policy file `hooks install` wrote cannot be read, is not JSON, or has another shape or version; the hooks are reinstalled from the operator's shell."),
+    ErrorCode(HOOK_INPUT_MALFORMED, "usage", "the hook JSON on stdin is empty, not a JSON object, or lacks the fields a tool event carries (`tool_name`, `tool_input`, `tool_use_id`, `session_id`)."),
+    ErrorCode(HOOK_CHECK_FAILED, "usage", "the installed hooks cannot run: no harness entry in the settings, or the pinned interpreter, the script or the launcher is missing or refuses a benign event; a hook that cannot start fails open."),
     # refused
     ErrorCode(BUDGET_EXHAUSTED, "refused", "the action budget or the reported spend cap is reached; act, commit and reset are refused."),
     ErrorCode(PREDICTION_REQUIRED, "refused", "the gate: a paid action or a batch step came without a prediction."),
