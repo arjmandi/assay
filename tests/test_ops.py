@@ -45,11 +45,14 @@ def test_commands_are_identifiers_with_unique_paths():
 
     names = [command.name for command in cli.COMMANDS] + [item.name for item in cli.LIFECYCLE]
     assert all(name.isidentifier() for name in names) and len(names) == len(set(names))
-    paths = [command.path for command in cli.COMMANDS] + [item.name for item in cli.LIFECYCLE]
+    paths = [command.path for command in cli.COMMANDS] + [item.path for item in cli.LIFECYCLE]
     assert len(paths) == len(set(paths))
-    for command in cli.COMMANDS:
-        words = command.path.split()
+    for path in paths:
+        words = path.split()
         assert len(words) in (1, 2) and (len(words) == 1 or words[0] in cli.GROUPS)
+    assert cli.path_of(argparse.Namespace(command="hooks", hooks_command="install")) == "hooks install"
+    assert cli.path_of(argparse.Namespace(command="hooks", hooks_command="post-tool-use")) == "hooks post-tool-use"
+    assert cli.path_of(argparse.Namespace(command="status")) == "status"
     assert cli.command_of(argparse.Namespace(command="channel", channel_command="declare")).name == "channel_declare"
     assert cli.command_of(argparse.Namespace(command="goal", goal_command="ratify")).name == "goal_ratify"
     assert cli.command_of(argparse.Namespace(command="status")).name == "status"

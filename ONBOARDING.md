@@ -418,9 +418,42 @@ and holds the owner token, and the agent's session begins after that.
    The token file lies outside the run directory (`start` refuses a path
    inside it) and outside anything the agent's session reads, with mode
    0600; the line printed is `OWNER TOKEN | written to PATH (mode 0600)`,
-   never the token. In a Claude Code session the hooks of section 8.4 (#11)
-   are installed at this point, with the token file and the policy file
-   among the refused paths.
+   never the token. In a Claude Code session the hooks of
+   `docs/ARCHITECTURE.md` section 8.4 are installed at this point, from the
+   same shell, once per run directory, with the policy file outside the run
+   directory beside the token file and the world's client libraries, hosts
+   and commands as deny patterns:
+
+   ```bash
+   export ASSAY=<repo>/bin/assay          # the launcher the agent is told to use
+   assay hooks install --policy <tokens>/WORLD_ID.hooks.json \
+       --owner-token-file <tokens>/WORLD_ID.token \
+       --deny 'python3? .*world_client' --deny 'curl .*world[.]example'
+   ```
+
+   The command writes the policy into the file (mode 0600): the run
+   directory, the anchor directory, the token file, the file's own path, the
+   deny patterns, the launcher's absolute path (the `bin/assay` or the
+   installed `assay` that ran the install, or `--launcher PATH`), the
+   `ASSAY` exported in this shell, and the interpreter the hooks run under;
+   and the hook entries into `<run-dir>/.claude/settings.json`, PreToolUse
+   on `Bash`, `Write`, `Edit`, `MultiEdit` and `NotebookEdit`, PostToolUse
+   on those and `mcp__assay__.*`, merged into whatever the file holds. It
+   prints `HOOKS | installed 11 entries in <run-dir>/.claude/settings.json;
+   policy <tokens>/WORLD_ID.hooks.json`. From then on, in that directory, a
+   write under `.assay/` or `.claude/` (`.assay/NOTES.md` excepted), a shell
+   command that names them, the anchor directory, the token file or the
+   policy file other than as a single `"$ASSAY"` or `<repo>/bin/assay`
+   command, a command that changes `ASSAY` or `PATH`, and a command matching
+   a deny pattern are refused before they run, with one line that names the
+   rule and the allowed form (`HOOK | REFUSED | ...`); and every tool use is
+   recorded in `.assay/activity.jsonl` as a `tool_use` record with the
+   receipt's `end_event` when the output carried one, which joins the
+   journal to the transcript. Keep `ASSAY` exported in the shell that starts
+   the agent's session: the hook trusts `"$ASSAY"` as the launcher because
+   the install pinned the value, and refuses any command that changes it.
+   The policy is a text match over the command, the operator's tool policy
+   made explicit, not a sandbox.
 2. The agent's session starts in `<run-dir>`, with the daemon already up.
    The integration is one prompt with four parts: read `CONSTITUTION.md`
    completely, begin with `assay status` in the run directory, solve for the
@@ -601,6 +634,20 @@ named in brackets; the suite does not run them.
    read from its file: `sudo -u assayd assay goal ratify N --token-file
    /opt/assay/tokens/WORLD_ID.token`. The first four are daemon operations
    and need the daemon alive.
+7. In a Claude Code session, the hooks of chapter 7 run under `agent`, so
+   the policy file must be readable by the group while the token file stays
+   the daemon user's alone: install from the run directory as the daemon's
+   user, with the policy under a directory the group reads, then open the
+   file to the group (it names the token file's path and holds no secret):
+
+   ```bash
+   sudo install -d -o assayd -g assay -m 2750 /opt/assay/hooks
+   cd <run-dir>
+   sudo -u assayd env ASSAY=<repo>/bin/assay assay hooks install \
+       --policy /opt/assay/hooks/WORLD_ID.json \
+       --owner-token-file /opt/assay/tokens/WORLD_ID.token --deny ...
+   sudo -u assayd chmod 640 /opt/assay/hooks/WORLD_ID.json
+   ```
 
 What it gives, and what it does not. The journal, the chain, the mutation
 log, the pinned registry and configuration, the owner hash, the module

@@ -1562,8 +1562,8 @@ Status: a design note, implemented by #10, #11, #19 and #31, and stated to users
 README paragraph of section 8.8. What #10 landed: the owner operations in the daemon
 (8.1, 7.2), the start-time seal and manifest checks (8.2), the sealing record, audit's
 reading of it, the `RUN_SEALED` refusal and the remedy (8.3), the admission rule behind
-8.7, the README section (8.8), and the tests of 8.10 that are its; the hooks are #11's,
-the sandbox #19's, the operator protocol #31's.
+8.7, the README section (8.8), and the tests of 8.10 that are its; #11 landed the hooks
+(8.4); the sandbox is #19's, the operator protocol #31's.
 
 ### 8.1 The parties and what each may write
 
@@ -1733,6 +1733,59 @@ write. Matchers: `Bash`, `Write`, `Edit`, `MultiEdit`, `NotebookEdit` and, for t
 - A test drives the hook scripts directly on synthetic hook input: a refused write under
   `.assay/`, an allowed edit of `NOTES.md`, a refused compound command, a refused direct
   world call, an allowed `assay act`, and the `tool_use` record with its `end_event`.
+
+Status (#11): landed as written. `hooks/pre_tool_use.py` at the repository root is the
+PreToolUse script, standard library only: it imports nothing from `assay`, since it runs
+under the interpreter pinned at install, in Claude Code's own process environment,
+whatever the agent did to its shell; `src/assay/hooks.py` is the operator's side. The
+block mechanism is the exit status 2 with the one refusal line on stderr, `HOOK |
+REFUSED | <rule>; <allowed form>`, which the hooks reference documents beside the JSON
+decision (`hookSpecificOutput.permissionDecision: "deny"`) as routing the same way:
+Claude sees the stderr line as the reason the call was denied, and the exit status blocks
+whatever stdout holds, so nothing else is printed; an allowed call is exit status 0 with
+no output. `assay hooks install --policy FILE [--deny PATTERN ...] [--launcher PATH]
+[--owner-token-file PATH]` refuses a policy path, a launcher or a hook script inside the
+run directory (`PATH_INVALID`), writes the policy file with mode 0600 and the eleven hook
+entries into `<run dir>/.claude/settings.json`, one per matcher, merged into the file as
+it is (only the entries whose command text is the harness's own are replaced, so a second
+install is idempotent and a foreign hook stays), and prints `HOOKS | installed 11 entries
+in <settings>; policy <FILE>`. The policy file is one JSON object, version 1: `run_dir`,
+`anchor_dir` (the environment's resolution at install, `ASSAY_ANCHOR_DIR` or the
+default), `token_file` (`--owner-token-file` or `ASSAY_OWNER_TOKEN_FILE`, or null),
+`policy_file`, `launcher` (absolute: `--launcher`, else the entry point running the
+install, the `bin/assay` beside the `src/assay_cli.py` it ran or the installed `assay`
+console script), `assay_value` (the `ASSAY` exported in the installing shell, which must
+be the launcher, or null: the hook trusts `"$ASSAY"` and `$ASSAY` as the first word only
+when it is pinned), `deny` (the patterns, each compiled at install) and `python` (the
+interpreter the PreToolUse command runs under, `sys.executable` resolved). The
+PreToolUse command is `<python> <repo>/hooks/pre_tool_use.py --policy FILE`, the
+PostToolUse command `<launcher> hooks post-tool-use --policy FILE`. The rules as the
+script applies them: an editor's path is resolved against `CLAUDE_PROJECT_DIR`, then the
+hook's `cwd`, then realpath; a Bash command's words are read twice, the raw text split on
+whitespace, the shell's operators and quotes, and shlex's reading when it parses, so a
+path inside a quoted string is still seen; a word names `.assay` or `.claude` when the
+component is there once the `@` of `@FILE` and the `KEY=` of a `KEY=VALUE` word are
+dropped, or when a dot-leading glob component would expand to it (`.a*`); a word that
+resolves (relative to the cwd) under the anchor directory or to the token or policy file
+names that; a command naming a refused path is refused beside a redirection as well (`>
+.assay/events.jsonl` after the launcher would otherwise pass as a simple command) and
+when shlex cannot parse it; a policy file that cannot be read fails closed, every call
+refused with the line naming the file. `assay hooks post-tool-use --policy FILE` reads the
+event on stdin and appends the `tool_use` record to the activity log of the policy's run
+directory, never this process's (`RUN_MISSING` when there is no run there), and refuses a
+malformed event with `HOOK_INPUT_MALFORMED` and an unreadable or malformed policy with
+`HOOK_POLICY_INVALID`, both kind usage; `command_prefix` is the first 80 characters of the
+Bash command, the file path for the editors, the tool name for the `mcp__assay__` tools;
+`end_event` is read from the last `EVENT | e<id>` line of the output, from the `end_event`
+field of a `--json` receipt document, or from the record an `mcp__assay__` tool returned,
+whole or inside a text block. Both commands are lifecycle commands: they load no run and
+write no `command_start` or `command_end` record, so a tool use is one activity line. The
+tests are `tests/test_hooks.py`. What stays as the note says: the policy is a text match
+over the command, so a path built at run time, a glob without the leading dot, `find
+-delete`, and `source` or `eval` of a file the agent wrote are not caught; `cat
+.assay/NOTES.md` is refused like any other command naming `.assay` (the Read tool and
+`assay status` read it); and in the separate-user setup the hooks run under the agent's
+user, so the policy file needs group read (ONBOARDING section 7).
 
 ### 8.5 The sandbox (#19)
 

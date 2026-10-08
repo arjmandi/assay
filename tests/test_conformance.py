@@ -67,8 +67,10 @@ def test_kernel_imports_nothing_from_a_world_or_the_extra_at_module_level():
 
 
 def test_kernel_names_no_world():
+    # The Claude Code hook script (hooks/, section 8.4) is held to the same
+    # rule: it is the harness's voice in the agent's session.
     offenders = []
-    for path in sorted(KERNEL.glob("*.py")):
+    for path in sorted((*KERNEL.glob("*.py"), *(REPO / "hooks").glob("*.py"))):
         for number, line in enumerate(path.read_text().splitlines(), 1):
             if (path.name, line.strip()) in ALLOWED_LINES:
                 continue
