@@ -621,6 +621,21 @@ Left on the experiment branch, deliberately:
   the run's creation and `broker.json` the daemon's own, and `doctor` warns
   when they differ. The channels test counts extractor runs through the
   daemon's readings cache instead of a marker file the extractor wrote.
+- The claim meter named sharpness is named specificity (#25). The CLAIMS
+  line prints `specificity N/M (P%)` where it printed `sharpness N/M (P%)`,
+  the built-in module is `specificity` and its advisory reads `MODULE
+  specificity | specificity is N/M: ...`, the `claims` block of the `Status`
+  record carries `specific` where it carried `sharp`, and
+  `meters.specificity` is the one count behind both surfaces (the module
+  still reads it over the agent's own claims, as #24 left it). Specificity
+  is the share of graded claims that are not coerced free text; a claim
+  graded as `change` because the prediction was prose counts against it.
+  The word changed because sharpness means something else in forecasting,
+  the concentration of a predictive distribution, and the harness scores no
+  distributions: a grade is binary. A registry whose `module_modes` still
+  says `sharpness` is accepted and read as `specificity`
+  (`registry.module_modes`), so a run pinned under the old name keeps its
+  mode. The replay gate's vocabulary map carries the renamed CLAIMS line.
 
 ### Removed
 

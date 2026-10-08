@@ -133,9 +133,9 @@ Frame worlds (grid observations) declare extractor channels instead:
 
 Free text that is not a claim is kept as commentary; if nothing gradable
 remains it is coerced to `change`, journaled as its own **coerced** kind,
-excluded from the capability meter, and it lowers your sharpness ratio. The
+excluded from the capability meter, and it lowers your specificity. The
 gate blocks emptiness, not vagueness. But vagueness earns nothing. Prefer a
-verifier: it is the sharpest claim available.
+verifier: it is the most specific claim available.
 
 ### The verifier contract (exact)
 
@@ -294,5 +294,9 @@ question, check whether the journal already answers it.
 `assay status` shows split miss rates: **world-model** claims (noop/change and
 verifiers: do you understand the mechanics?) versus **gamble** claims
 (win/level+1: are you converting understanding into progress?), plus your
-sharpness ratio and invalid-claim count. A rising world-model miss rate means
-your notes are wrong; fix the story before spending more.
+specificity and invalid-claim count. Specificity is the share of graded claims
+that are not coerced free text; a claim graded as `change` because the
+prediction was prose counts against it. It is not sharpness, which in
+forecasting means the concentration of a predictive distribution: your grades
+are binary. A rising world-model miss rate means your notes are wrong; fix the
+story before spending more.

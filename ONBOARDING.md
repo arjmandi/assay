@@ -605,7 +605,8 @@ registry sets `off`, `advise` or `block` per name:
 - `null_forensics`: a predicted change that observed nothing wants the raw
   observation read before the hypothesis is closed.
 - `park_with_test`: a reset should leave a re-entry test in the notes.
-- `sharpness`: a majority of coerced free-text claims earns nothing.
+- `specificity`: a majority of coerced free-text claims earns nothing (named
+  `sharpness` before 1.2.0; `module_modes` still accepts that name).
 - `hazard`: an action class whose outcome entered a loss state or dropped
   progress demands `worst_case=` and `recovery=` on its next use.
 - `coverage_audit`: the untried and never-productive actions on this unit, a

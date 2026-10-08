@@ -1,8 +1,8 @@
 """The journal meters live once (`assay.meters`) and the two surfaces that
 print them, the status lines and the module advisories, read the same
-counts. The sharpness counts are held to the two formulas they replaced:
+counts. The specificity counts are held to the two formulas they replaced:
 the CLAIMS line's, kept byte for byte on the published runs, and the
-sharpness module's, which reads the agent's own claims."""
+specificity module's, which reads the agent's own claims."""
 
 from __future__ import annotations
 
@@ -41,7 +41,8 @@ def test_recent_predictions_window():
 
 
 def _claims_line_formula(events) -> tuple[int, int]:
-    """The CLAIMS line's sharpness as inspect.py computed it before #24."""
+    """The CLAIMS line's specificity as inspect.py computed it before #24,
+    under the meter's old name, sharpness."""
     graded_total = coerced = 0
     for event in events:
         for item in event.grade:
@@ -56,7 +57,8 @@ def _claims_line_formula(events) -> tuple[int, int]:
 
 
 def _module_formula(events) -> tuple[int, int]:
-    """The sharpness module's ratio as modules.py computed it before #24."""
+    """The specificity module's ratio as modules.py computed it before #24,
+    under the module's old name, sharpness."""
     graded = coerced = 0
     for event in events:
         for item in event.grade:
@@ -68,8 +70,8 @@ def _module_formula(events) -> tuple[int, int]:
     return graded - coerced, graded
 
 
-def test_sharpness_counts_reproduce_both_formulas():
-    from assay.meters import sharpness
+def test_specificity_counts_reproduce_both_formulas():
+    from assay.meters import specificity
 
     events = [event_of(id=0, action="START", counts_action=False, level_before=None)]
     for index in range(1, 12):
@@ -79,12 +81,12 @@ def test_sharpness_counts_reproduce_both_formulas():
     events.append(_graded(20, {"kind": "verify", "ok": False, "invalid": True}))
     for index in range(21, 30):
         events.append(_graded(index, {"kind": "plan_step", "ok": True, "machine": True}))
-    counts = sharpness(events)
+    counts = specificity(events)
     assert (counts.graded, counts.coerced, counts.machine) == (29, 11, 9)
-    assert (counts.sharp, counts.graded) == _claims_line_formula(events) == (18, 29)
+    assert (counts.specific, counts.graded) == _claims_line_formula(events) == (18, 29)
     assert (counts.agent_graded - counts.coerced, counts.agent_graded) == _module_formula(events) == (9, 20)
-    assert sharpness([]) == sharpness(events[:1])
-    assert sharpness([]).graded == 0
+    assert specificity([]) == specificity(events[:1])
+    assert specificity([]).graded == 0
 
 
 def test_claims_line_and_advisory_read_the_same_counts(paths):
@@ -103,13 +105,13 @@ def test_claims_line_and_advisory_read_the_same_counts(paths):
     run = run_of(paths, events, registry={"actions": []})
     assert _claim_meter_lines(run)[0] == (
         "CLAIMS | world-model misses 0/9 (0.0%) | gamble misses 0/0 | "
-        "sharpness 29/40 (72%) | invalid 0"
+        "specificity 29/40 (72%) | invalid 0"
     )
-    module = next(item for item in BUILTINS if item.NAME == "sharpness")
+    module = next(item for item in BUILTINS if item.NAME == "specificity")
     # Twenty of the agent's own claims, eleven coerced: the advisory fires on
     # the agent's ratio, and the machine predictions do not dilute it.
     assert module.trigger(ModuleView(run), None) == (
-        "sharpness is 9/20: over half your claims are coerced free text; "
+        "specificity is 9/20: over half your claims are coerced free text; "
         "they earn nothing. State checkable claims."
     )
 

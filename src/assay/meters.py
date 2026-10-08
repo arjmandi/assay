@@ -1,6 +1,6 @@
 """The journal meters the display and the behavior modules share: the events
 of the current progress unit and the paid actions among them, the recent
-prediction window, and the sharpness counts. Pure functions over the held
+prediction window, and the specificity counts. Pure functions over the held
 events: `inspect` renders them on the status lines and `modules` reads them
 for its advisories, so each exists once and the two surfaces cannot drift."""
 
@@ -40,13 +40,13 @@ def recent_predictions(events: Sequence[Event], window: int = 10) -> tuple[int, 
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class Sharpness:
-    """The sharpness counts over every grade of the run. `graded` is every
+class Specificity:
+    """The specificity counts over every grade of the run. `graded` is every
     grade but a note; `coerced` the free-text claims coerced to `change`,
     counted among the gradable grades as the CLAIMS line always counted
     them; `machine` the kernel-generated predictions of model-plan steps.
-    The CLAIMS line reads `sharp` over `graded`; the sharpness module reads
-    the agent's own claims, `graded` less `machine`, since a machine
+    The CLAIMS line reads `specific` over `graded`; the specificity module
+    reads the agent's own claims, `graded` less `machine`, since a machine
     prediction is never the agent's vagueness."""
 
     graded: int
@@ -54,7 +54,7 @@ class Sharpness:
     machine: int
 
     @property
-    def sharp(self) -> int:
+    def specific(self) -> int:
         return self.graded - self.coerced
 
     @property
@@ -62,9 +62,10 @@ class Sharpness:
         return self.graded - self.machine
 
 
-def sharpness(events: Sequence[Event]) -> Sharpness:
-    """The one count behind the CLAIMS line's sharpness and the sharpness
-    module's advisory."""
+def specificity(events: Sequence[Event]) -> Specificity:
+    """The one count behind the CLAIMS line's specificity and the
+    specificity module's advisory: the share of graded claims that are not
+    coerced free text."""
     graded = coerced = machine = 0
     for event in events:
         for item in event.grade:
@@ -77,4 +78,4 @@ def sharpness(events: Sequence[Event]) -> Sharpness:
                 continue
             if item.kind == "coerced":
                 coerced += 1
-    return Sharpness(graded=graded, coerced=coerced, machine=machine)
+    return Specificity(graded=graded, coerced=coerced, machine=machine)

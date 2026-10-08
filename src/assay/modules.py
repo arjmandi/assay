@@ -47,7 +47,7 @@ Built-ins (the standing nudge table plus the first structural module):
 - null_forensics: a predicted-change/observed-nothing verdict flags the raw
                   observation for inspection before the hypothesis is closed
 - park_with_test: a reset should leave a re-entry test in the notes
-- sharpness:      a low sharp-claim ratio earns nothing
+- specificity:    a majority of coerced free-text claims earns nothing
 - hazard:         effect-signature hazard tags: entered-loss-state
                   and milestone-drop transitions tag the action class; a tagged
                   class gets the worst-case + recovery declaration demand on
@@ -85,9 +85,9 @@ from .core import (
     read_json,
 )
 from .extras import kind_for
-from .meters import level_action_count, recent_predictions, sharpness, unit_indices
+from .meters import level_action_count, recent_predictions, specificity, unit_indices
 from .records import Event
-from .registry import MODULE_MODES
+from .registry import MODULE_MODES, module_modes
 
 if TYPE_CHECKING:
     from .run import Run
@@ -254,8 +254,8 @@ class _ParkWithTest:
         return {}
 
 
-class _Sharpness:
-    NAME = "sharpness"
+class _Specificity:
+    NAME = "specificity"
     CONSTITUTION = (
         "Coerced free-text claims are excluded from every meter and promotion; "
         "vagueness earns nothing."
@@ -265,11 +265,11 @@ class _Sharpness:
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         # The one count the CLAIMS line prints, over the agent's own claims:
         # a model-plan step's machine prediction is never its vagueness.
-        counts = sharpness(view.events)
+        counts = specificity(view.events)
         graded = counts.agent_graded
         if graded >= 20 and counts.coerced * 2 > graded:
             return (
-                f"sharpness is {graded - counts.coerced}/{graded}: over half your claims "
+                f"specificity is {graded - counts.coerced}/{graded}: over half your claims "
                 "are coerced free text; they earn nothing. State checkable claims."
             )
         return None
@@ -612,7 +612,7 @@ BUILTINS: tuple[Module, ...] = (
     _MissStreak(),
     _NullForensics(),
     _ParkWithTest(),
-    _Sharpness(),
+    _Specificity(),
     _Hazard(),
     _CoverageAudit(),
 )
@@ -913,7 +913,7 @@ def active_modules(run: Run) -> list[tuple[Module, str]]:
     """(module, effective_mode) for every non-off module, loaded once per run
     object from the held manifest."""
     if run.modules is None:
-        modes = (run.registry or {}).get("module_modes") or {}
+        modes = module_modes(run.registry)
         output: list[tuple[Module, str]] = []
         for module in (*BUILTINS, *_load_external(run)):
             mode = str(modes.get(module.NAME, module.MODE))

@@ -36,7 +36,7 @@ def _observation_lines(event: Event, max_lines: int = 48) -> list[str]:
 
 
 def _claim_meter_lines(run: Run) -> list[str]:
-    """Claim meters: split miss rates, sharpness, invalid count, VACUOUS under
+    """Claim meters: split miss rates, specificity, invalid count, VACUOUS under
     the rule the run's stats file is under, and the never-failed advisory."""
     from .status import _claims_blocks
 

@@ -34,7 +34,7 @@ from .core import AssayError, load_jsonl, read_json
 from .evidence import RecentLine, history_text, recent_lines
 from .extras import kind_for
 from .integrity import anchor_status, anchor_text, ungated_events, ungated_permitted
-from .meters import level_action_count, recent_predictions, sharpness
+from .meters import level_action_count, recent_predictions, specificity
 from .model import batching_rights, fit_path, model_source
 from .modules import advisory_lines, ignored_modules, ignored_text, load_hazards
 from .records import Event, plain_fields
@@ -294,7 +294,7 @@ class ClaimsBlock:
     world_model_missed: int
     gamble_graded: int
     gamble_missed: int
-    sharp: int
+    specific: int
     graded: int
     invalid: int
 
@@ -603,7 +603,7 @@ def _anchors_block(run: Run) -> AnchorsBlock:
 
 
 def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
-    """The claim meters: split miss rates, sharpness, the invalid count, and
+    """The claim meters: split miss rates, specificity, the invalid count, and
     the verifiers flagged VACUOUS under the rule the run's stats file is
     under, with the never-failed advisory. None until something is
     graded."""
@@ -619,7 +619,7 @@ def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
     rule = stats_rule(stats)
     entries = stats_entries(stats)
     vacuous = vacuous_hashes(stats)
-    sharp = sharpness(run.events)
+    meter = specificity(run.events)
     invalid = 0
     counts: dict[str, list[int]] = {
         "world_model": [0, 0],
@@ -649,15 +649,15 @@ def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
             slot[0] += 1
             if not item.ok:
                 slot[1] += 1
-    if not sharp.graded:
+    if not meter.graded:
         return None, None
     claims = ClaimsBlock(
         world_model_graded=counts["world_model"][0],
         world_model_missed=counts["world_model"][1],
         gamble_graded=counts["gamble"][0],
         gamble_missed=counts["gamble"][1],
-        sharp=sharp.sharp,
-        graded=sharp.graded,
+        specific=meter.specific,
+        graded=meter.graded,
         invalid=invalid,
     )
     verifiers = [
@@ -892,7 +892,7 @@ def claims_text(claims: ClaimsBlock, vacuous: VacuousBlock | None) -> list[str]:
     lines = [
         f"CLAIMS | world-model misses {rate(claims.world_model_graded, claims.world_model_missed)} | "
         f"gamble misses {rate(claims.gamble_graded, claims.gamble_missed)} | "
-        f"sharpness {claims.sharp}/{claims.graded} ({100 * claims.sharp / claims.graded:.0f}%) | "
+        f"specificity {claims.specific}/{claims.graded} ({100 * claims.specific / claims.graded:.0f}%) | "
         f"invalid {claims.invalid}"
     ]
     if vacuous is None:

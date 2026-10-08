@@ -151,3 +151,22 @@ def test_budget_refusal_embeds_code_and_remaining():
 def test_budget_absent_without_registry_or_cap():
     check_budget(_paid(1000), None, planned=1)
     check_budget(_paid(1000), {"actions": []}, planned=1)
+
+
+def test_module_modes_accept_the_specificity_module_under_its_old_name(paths):
+    from conftest import run_of
+
+    from assay.modules import active_modules
+    from assay.registry import module_modes
+
+    # The module was named `sharpness` before 1.2.0. A registry written under
+    # that name validates to the current one, a registry pinned under it is
+    # read the same way, and the mode reaches the module either way.
+    spec = validate_registry({**REGISTRY, "module_modes": {"sharpness": "off", "hazard": "block"}})
+    assert spec["module_modes"] == {"specificity": "off", "hazard": "block"}
+    assert module_modes({"module_modes": {"sharpness": "block", "specificity": "off"}}) == {"specificity": "off"}
+    assert module_modes(None) == {} and module_modes({"actions": []}) == {}
+    pinned = run_of(paths, registry={"actions": [], "module_modes": {"sharpness": "block"}})
+    assert {module.NAME: mode for module, mode in active_modules(pinned)}["specificity"] == "block"
+    silenced = run_of(paths, registry={"actions": [], "module_modes": {"sharpness": "off"}})
+    assert {module.NAME for module, _ in active_modules(silenced)}.isdisjoint({"sharpness", "specificity"})

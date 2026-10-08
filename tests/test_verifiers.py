@@ -256,7 +256,7 @@ def test_status_lines_follow_the_rule_of_the_stats_file(paths):
     atomic_json(paths.verifier_stats, {"rule": "identity", "verifiers": counters})
     assert _claim_meter_lines(run) == [
         "CLAIMS | world-model misses 0/1 (0.0%) | gamble misses 0/0 | "
-        "sharpness 2/2 (100%) | invalid 0",
+        "specificity 2/2 (100%) | invalid 0",
         f"VACUOUS | verifier {vacuous[:12]} graded 5, identity verdict matched the "
         "real verdict every time; it does not use the transition, its passes are "
         "excluded from the meter",
@@ -270,7 +270,7 @@ def test_status_lines_follow_the_rule_of_the_stats_file(paths):
     lines = _claim_meter_lines(run)
     assert lines == [
         "CLAIMS | world-model misses 0/0 | gamble misses 0/0 | "
-        "sharpness 2/2 (100%) | invalid 0",
+        "specificity 2/2 (100%) | invalid 0",
         f"VACUOUS | verifier {vacuous[:12]} graded 5 failed 0: a verifier that "
         "never fails proves nothing; its passes are excluded from the meter",
         f"VACUOUS | verifier {held[:12]} graded 5 failed 0: a verifier that "
