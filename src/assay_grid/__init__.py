@@ -89,6 +89,9 @@ class FrameKind:
 
     # -- the coverage audit's frame part ------------------------------------------
 
+    def changed(self, previous: Event, event: Event) -> bool:
+        return coverage.changed(previous, event)
+
     def coverage_gap(self, events: Sequence[Event], paid_indices: Sequence[int]) -> str | None:
         return coverage.coverage_gap(events, paid_indices)
 

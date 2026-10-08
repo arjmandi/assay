@@ -12,11 +12,13 @@ import socket
 import subprocess
 import sys
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
 from .core import (
+    LOCAL_MODE,
+    REMOTE_MODE,
     AssayError,
     RunPaths,
     append_jsonl,
@@ -29,12 +31,32 @@ from .core import (
 )
 from .sandbox import sandbox_mode
 from .adapters import Adapter, Session
+from .live import execute_action, execute_model_plan, execute_steps, reset_level
+from .modules import active_modules, install_module
+from .ops import (
+    ACT,
+    COMMIT,
+    INSTALL_MODULE,
+    OBSERVE,
+    PING,
+    RESET,
+    ActRequest,
+    CommitRequest,
+    InstallModuleRequest,
+    InstallModuleResult,
+    ObserveRequest,
+    ObserveResult,
+    Operation,
+    PingRequest,
+    PingResult,
+    ReceiptResult,
+    Req,
+    Res,
+    ResetRequest,
+    daemon_operation,
+)
 from .records import Claim, Event, Mutation, Receipt
 from .run import Run
-
-
-LOCAL_MODE = "local"
-REMOTE_MODE = "competition"
 
 
 def is_remote_config(config: Mapping[str, Any]) -> bool:
@@ -271,78 +293,44 @@ def _ping_timeout() -> float:
     return min(PING_TIMEOUT_MAX, max(PING_TIMEOUT_MIN, _client_timeout(PING_TIMEOUT_MIN)))
 
 
+def call(
+    paths: RunPaths, operation: Operation[Req, Res], request: Req, *, timeout: float = 10.0
+) -> Res:
+    """One daemon operation over the socket: the request record's fields
+    under the operation's name, the reply decoded into the operation's
+    result record. The one place the client speaks the wire; #13's version
+    check lands here."""
+    response = _request(paths, {"op": operation.name, **request.to_json()}, timeout=timeout)
+    return operation.result.from_json(
+        {key: value for key, value in response.items() if key != "ok"}
+    )
+
+
 def broker_ping(paths: RunPaths) -> bool:
     try:
-        return bool(_request(paths, {"op": "ping"}, timeout=_ping_timeout()).get("pong"))
+        return call(paths, PING, PingRequest(), timeout=_ping_timeout()).pong
     except AssayError:
         return False
 
 
 def broker_observe(paths: RunPaths) -> tuple[dict[str, Any], dict[str, Any]]:
-    response = _request(paths, {"op": "observe"})
-    return _decode_observation(response["observation"]), dict(
-        response.get("public_info") or {}
-    )
-
-
-def broker_step(
-    run: Run,
-    action: str,
-    data: dict[str, Any] | None,
-    reasoning: Mapping[str, Any] | None = None,
-    *,
-    claims: Sequence[Claim] | None = None,
-) -> tuple[dict[str, Any], int, str | None]:
-    """The client-side `Stepper`: the bare `step` operation, which every
-    registry daemon refuses (#24 retires it). The claims stay with the
-    caller; the record is the daemon's to write."""
-    response = _request(
-        run.paths,
-        {"op": "step", "action": action, "data": data, "reasoning": reasoning},
-        timeout=_client_timeout(30.0),
-    )
-    return (
-        _decode_observation(response["observation"]),
-        int(response["mutation_id"]),
-        response.get("finalization_warning"),
-    )
+    result = call(paths, OBSERVE, ObserveRequest())
+    return _decode_observation(result.observation), dict(result.public_info)
 
 
 def broker_gated(
-    paths: RunPaths, payload: Mapping[str, Any], *, steps: int = 1
+    paths: RunPaths, operation: Operation[Req, ReceiptResult], request: Req, *, steps: int = 1
 ) -> Receipt:
-    """Send one gated operation to the daemon; returns the receipt, decoded
-    at the socket boundary. The CLI is a stateless display client on registry
-    runs; enforcement happens where the session and credentials live."""
+    """One paid operation through the daemon; returns the receipt. The CLI
+    is a stateless display client on registry runs; enforcement happens
+    where the session and credentials live."""
     timeout = _client_timeout(60.0 + 30.0 * max(1, steps))
-    response = _request(paths, payload, timeout=timeout)
-    receipt = response.get("receipt")
-    if not isinstance(receipt, dict):
-        raise AssayError("environment owner returned no receipt")
-    return Receipt.from_json(receipt)
+    return call(paths, operation, request, timeout=timeout).receipt
 
 
-@dataclasses.dataclass(frozen=True)
-class DaemonState:
-    """What a live daemon holds, read through `ping`: the chain event and
-    head of the run in its memory, and the differences it refused a paid
-    action over (section 8.3), or None while nothing changed under it. A
-    fresh load from disk must agree with the first two at every quiescent
-    point."""
-
-    chain_event: int
-    chain_head: str
-    tampered: str | None
-
-
-def broker_state(paths: RunPaths) -> DaemonState:
-    response = _request(paths, {"op": "ping"}, timeout=_ping_timeout())
-    tampered = response.get("tampered")
-    return DaemonState(
-        chain_event=int(response["chain_event"]),
-        chain_head=str(response["chain_head"]),
-        tampered=None if tampered is None else str(tampered),
-    )
+def broker_state(paths: RunPaths) -> PingResult:
+    """What a live daemon holds, read through `ping` (section 8.3)."""
+    return call(paths, PING, PingRequest(), timeout=_ping_timeout())
 
 
 def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> dict[str, Any]:
@@ -358,15 +346,8 @@ def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> d
             "is not running; resume it with `assay start WORLD_ID`, then install again"
         )
     # `token` on the wire is the daemon's own; the owner's rides apart.
-    response = _request(
-        paths,
-        {"op": "install_module", "path": str(source.resolve()), "owner_token": token},
-        timeout=_client_timeout(60.0),
-    )
-    record = response.get("record")
-    if not isinstance(record, dict):
-        raise AssayError("environment owner returned no install record")
-    return record
+    request = InstallModuleRequest(path=str(source.resolve()), owner_token=token)
+    return call(paths, INSTALL_MODULE, request, timeout=_client_timeout(60.0)).record
 
 
 def broker_matches_latest_event(run: Run) -> bool:
@@ -653,11 +634,38 @@ def _tamper_message(detail: str) -> str:
     )
 
 
+class _StopRequested(Exception):
+    """Raised into the accept loop by the stop signal while the daemon is
+    idle."""
+
+
+def _read_request(connection: socket.socket) -> dict[str, Any]:
+    """One request line from the connection, as a JSON object."""
+    raw = b""
+    while b"\n" not in raw:
+        chunk = connection.recv(1 << 20)
+        if not chunk:
+            break
+        raw += chunk
+    lines = raw.splitlines()
+    if not lines or not lines[0].strip():
+        raise AssayError("malformed request")
+    request = json.loads(lines[0])
+    if not isinstance(request, dict):
+        raise AssayError("malformed request")
+    return request
+
+
 class _Daemon:
     """What the daemon holds for its life and the operations over it: the one
     run (docs/ARCHITECTURE.md section 6.3), the world session, the local
-    replay's flag for a freshly entered progress unit, and the refusal once a
-    file changed under it (section 8.3), held as what differed, or None."""
+    replay's flag for a freshly entered progress unit, the refusal once a
+    file changed under it (section 8.3), held as what differed, or None, the
+    socket it serves with its token and its sandbox mode, and the two flags
+    of a clean stop (inside a request; stop requested). `handle` is the
+    dispatcher over the wire table (`ops`, section 7.2); the handlers are
+    the `serve_*` functions below, one per operation, bound to the table's
+    names in `HANDLERS`."""
 
     def __init__(self, paths: RunPaths, run: Run, session: Session, *, fresh_level: bool) -> None:
         self.paths = paths
@@ -665,6 +673,81 @@ class _Daemon:
         self.session = session
         self.fresh_level = fresh_level
         self.tampered: str | None = None
+        self.token = ""
+        self.server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sandbox = ""
+        self.in_request = False
+        self.stop_requested = False
+
+    def listen(self) -> None:
+        """Bind the socket and report READY. The daemon's own sandbox mode is
+        decided (one probe) before it reports and recorded beside the pid, so
+        the mode every grade of this life runs under is on disk and `assay
+        doctor` can hold it against the one config.json recorded at the run's
+        creation."""
+        paths = self.paths
+        self.token = (paths.state / "broker.token").read_text().strip()
+        try:
+            paths.socket.unlink()
+        except FileNotFoundError:
+            pass
+        paths.socket.parent.mkdir(parents=True, exist_ok=True)
+        self.server.bind(str(paths.socket))
+        paths.socket.chmod(0o600)
+        self.server.listen(4)
+        self.sandbox = sandbox_mode()
+        self.publish("READY", replayed_mutations=len(self.run.mutations), started_at=time.time())
+
+    def publish(self, status: str, **stamp: Any) -> None:
+        """The descriptor, `broker.json`, as the daemon's own: its status,
+        pid, mode and sandbox mode, and the stamp of this transition."""
+        atomic_json(
+            self.paths.broker,
+            {
+                "status": status,
+                "pid": os.getpid(),
+                "mode": self.run.config.get("mode", LOCAL_MODE),
+                "sandbox": self.sandbox,
+                **stamp,
+            },
+        )
+
+    def close(self, status: str) -> None:
+        """Leave: STOPPED on the stop signal, FINISHED on the WIN that ends
+        the run; the socket closed and unlinked."""
+        stamp = "stopped_at" if status == "STOPPED" else "finished_at"
+        self.publish(status, **{stamp: time.time()})
+        self.server.close()
+        self.paths.socket.unlink(missing_ok=True)
+
+    def on_terminate(self, signum: int, frame: Any) -> None:
+        # Idle: leave now. Inside a request: finish it, reply, then leave. A
+        # paid action is never cut between spend and record by a plain stop.
+        self.stop_requested = True
+        if not self.in_request:
+            raise _StopRequested
+
+    def serve_one(self, connection: socket.socket) -> bool:
+        """One connection: the line read, handled and answered; whether the
+        run ended with it. A client that hung up before the reply (its socket
+        timeout fired on a slow operation) loses the reply and nothing else:
+        the action is already journaled, and the daemon keeps serving so the
+        client can re-read state on its next call."""
+        self.in_request = True
+        terminal = False
+        with connection:
+            try:
+                response, terminal = self.handle(_read_request(connection))
+            except Exception as error:  # noqa: BLE001 - isolate arbitrary adapter failures
+                response = {"ok": False, "error": f"{type(error).__name__}: {error}"}
+            try:
+                connection.sendall(
+                    json.dumps(response, separators=(",", ":")).encode() + b"\n"
+                )
+            except OSError as error:
+                print(f"broker: client gone before reply ({error}); continuing", flush=True)
+        self.in_request = False
+        return terminal
 
     def refuse_if_tampered(self) -> None:
         if self.tampered is not None:
@@ -745,151 +828,142 @@ class _Daemon:
         return _decode_observation(encoded), mutation_id, warning
 
     def handle(self, request: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
-        """One authenticated request to its reply, and whether the run ended
-        with it."""
-        operation = request.get("op")
-        run = self.run
-        if operation == "ping":
-            # Liveness, and the held state for whoever compares the disk
-            # with the daemon's view (`broker_state`).
-            return {
-                "ok": True,
-                "pong": True,
-                "chain_event": run.chain_event,
-                "chain_head": run.chain_head,
-                "tampered": self.tampered,
-            }, False
-        if operation == "observe":
-            return {
-                "ok": True,
-                "observation": _encode_observation(self.session.observation),
-                "public_info": getattr(self.session, "public_info", {}),
-            }, False
-        if operation in {"gated_act", "gated_commit", "gated_reset"}:
+        """One request line to its reply, and whether the run ended with it:
+        the token checked, the operation looked up in the table, the request
+        record decoded (a field the record does not take is refused before
+        anything spends), the name's handler called with the daemon and the
+        held run, the result encoded. An unknown operation is refused by
+        name."""
+        if not secrets.compare_digest(str(request.get("token", "")), self.token):
+            raise AssayError("invalid environment owner token")
+        operation = daemon_operation(request.get("op"))
+        if operation.paid or operation.owner:
             # A tampered daemon refuses before any pre-spend work; the
-            # verification itself runs in the stepper, before the world step
-            # of every act, commit step, model-plan step and reset.
+            # verification itself runs in `spend`, before the world step of
+            # every act, commit step, model-plan step and reset.
             self.refuse_if_tampered()
-            from .live import execute_action, execute_model_plan, execute_steps, reset_level
+        fields = {key: value for key, value in request.items() if key not in {"token", "op"}}
+        result = HANDLERS[operation.name](self, self.run, operation.request.from_json(fields))
+        terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
+        return {"ok": True, **result.to_json()}, terminal
 
-            if operation == "gated_act":
-                receipt = execute_action(
-                    run,
-                    str(request["action_token"]),
-                    predict=str(request.get("predict") or ""),
-                    because=request.get("because"),
-                    at_event=request.get("at_event"),
-                    declares=request.get("declares"),
-                    stepper=self.spend,
-                )
-            elif operation == "gated_commit":
-                if request.get("plan"):
-                    receipt = execute_model_plan(
-                        run,
-                        str(request["plan"]),
-                        at_event=request.get("at_event"),
-                        stepper=self.spend,
-                    )
-                else:
-                    receipt = execute_steps(
-                        run,
-                        [str(item) for item in request.get("steps") or ()],
-                        at_event=request.get("at_event"),
-                        declares=request.get("declares"),
-                        stepper=self.spend,
-                    )
-            else:
-                receipt = reset_level(
-                    run,
-                    because=request.get("because"),
-                    at_event=request.get("at_event"),
-                    declares=request.get("declares"),
-                    stepper=self.spend,
-                )
-            terminal = bool(run.events) and run.events[-1].state == "WIN"
-            return {"ok": True, "receipt": receipt.to_json()}, terminal
-        if operation == "install_module":
-            # The owner's install, against the held hash (section 6.4): the
-            # file pinned, the held manifest updated and written,
-            # `module_installed` recorded, and the held set reloaded so the
-            # module runs from the next action. Refused once a file changed
-            # under the daemon, so the install never rewrites a changed
-            # manifest.
-            self.refuse_if_tampered()
-            from .modules import active_modules, install_module
 
-            owner = request.get("owner_token")
-            record = install_module(
-                run,
-                Path(str(request.get("path") or "")),
-                None if owner is None else str(owner),
-            )
-            active_modules(run)
-            return {"ok": True, "record": record}, False
-        if operation == "step":
-            # Every run the daemon serves has a registry, so the bare step is
-            # always a gate bypass; #24 retires the operation.
-            raise AssayError(
-                "UNGATED_STEP_REFUSED | this registry run is daemon-gated: "
-                "paid actions go through `assay act/commit/reset` (which "
-                "carry graded predictions); a bare step is a gate bypass "
-                "and is refused"
-            )
-        raise AssayError(f"unknown broker operation {operation!r}")
+def serve_ping(daemon: _Daemon, run: Run, request: PingRequest) -> PingResult:
+    """Liveness, and the held state for whoever compares the disk with the
+    daemon's view (`broker_state`)."""
+    return PingResult(
+        pong=True, chain_event=run.chain_event, chain_head=run.chain_head, tampered=daemon.tampered
+    )
+
+
+def serve_observe(daemon: _Daemon, run: Run, request: ObserveRequest) -> ObserveResult:
+    return ObserveResult(
+        observation=_encode_observation(daemon.session.observation),
+        public_info=dict(getattr(daemon.session, "public_info", {}) or {}),
+    )
+
+
+def serve_act(daemon: _Daemon, run: Run, request: ActRequest) -> ReceiptResult:
+    return ReceiptResult(
+        execute_action(
+            run,
+            request.action_token,
+            predict=request.predict or "",
+            because=request.because,
+            at_event=request.at_event,
+            declares=request.declares,
+            stepper=daemon.spend,
+        )
+    )
+
+
+def serve_commit(daemon: _Daemon, run: Run, request: CommitRequest) -> ReceiptResult:
+    if request.plan:
+        return ReceiptResult(
+            execute_model_plan(run, request.plan, at_event=request.at_event, stepper=daemon.spend)
+        )
+    return ReceiptResult(
+        execute_steps(
+            run,
+            list(request.steps),
+            at_event=request.at_event,
+            declares=request.declares,
+            stepper=daemon.spend,
+        )
+    )
+
+
+def serve_reset(daemon: _Daemon, run: Run, request: ResetRequest) -> ReceiptResult:
+    return ReceiptResult(
+        reset_level(
+            run,
+            because=request.because,
+            at_event=request.at_event,
+            declares=request.declares,
+            stepper=daemon.spend,
+        )
+    )
+
+
+def serve_install_module(
+    daemon: _Daemon, run: Run, request: InstallModuleRequest
+) -> InstallModuleResult:
+    """The owner's install, against the held hash (section 6.4): the file
+    pinned, the held manifest updated and written, `module_installed`
+    recorded, and the held set reloaded so the module runs from the next
+    action. Refused once a file changed under the daemon (the dispatcher's
+    check), so the install never rewrites a changed manifest."""
+    record = install_module(run, Path(request.path), request.owner_token)
+    active_modules(run)
+    return InstallModuleResult(record=record)
+
+
+Handler = Callable[["_Daemon", Run, Any], Any]
+
+# One function per operation (section 7.2), bound to the wire table's names
+# here and looked up by `handle`; `tests/test_ops.py` holds the two in step.
+HANDLERS: Mapping[str, Handler] = {
+    PING.name: serve_ping,
+    OBSERVE.name: serve_observe,
+    ACT.name: serve_act,
+    COMMIT.name: serve_commit,
+    RESET.name: serve_reset,
+    INSTALL_MODULE.name: serve_install_module,
+}
+
+
+def _open(paths: RunPaths) -> _Daemon:
+    """Everything before READY. The one strict load of the daemon's life: a
+    contiguity problem or a diverged chain refuses the start with
+    CHAIN_DIVERGED and rewrites nothing, and the run is held from here on,
+    appended and chained in memory, and checked against the disk before
+    every paid action (docs/ARCHITECTURE.md sections 6.3 and 8.3). Then the
+    world session, the local replay, event 0 on a fresh run, the modules
+    from the manifest the run holds (loaded once; the consults and the
+    outcome observations use the held objects), the socket and READY."""
+    run = Run.load(paths, strict=True)
+    session = _create_session(paths.root, run.config)
+    if is_remote_config(run.config):
+        fresh_level = False
+    else:
+        _, fresh_level = _replay_local_session(session, run)
+    if not run.events:
+        _open_run(run, session)
+    active_modules(run)
+    daemon = _Daemon(paths, run, session, fresh_level=fresh_level)
+    daemon.listen()
+    return daemon
 
 
 def serve(paths: RunPaths) -> None:
+    """The daemon's life: the setup (`_open`), then the accept loop until the
+    stop signal, or the WIN that ends the run. A failure before READY goes
+    into the descriptor for `assay start` to report."""
     config = read_json(paths.config)
     if not isinstance(config, dict):
         return
     try:
-        # Strict: a contiguity problem or a diverged chain refuses the start
-        # with CHAIN_DIVERGED and rewrites nothing. This is the one load of
-        # the daemon's life: the run is held from here on, appended and
-        # chained in memory, and checked against the disk before every
-        # paid action (docs/ARCHITECTURE.md sections 6.3 and 8.3).
-        run = Run.load(paths, strict=True)
-        config = run.config
-        session = _create_session(paths.root, config)
-        if is_remote_config(config):
-            fresh_level = False
-        else:
-            _, fresh_level = _replay_local_session(session, run)
-        if not run.events:
-            _open_run(run, session)
-            config = run.config
-        # The modules load once, here, from the manifest the run holds; the
-        # consults and the outcome observations use the held objects.
-        from .modules import active_modules
-
-        active_modules(run)
-        daemon = _Daemon(paths, run, session, fresh_level=fresh_level)
-        token = (paths.state / "broker.token").read_text().strip()
-        try:
-            paths.socket.unlink()
-        except FileNotFoundError:
-            pass
-        paths.socket.parent.mkdir(parents=True, exist_ok=True)
-        server = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        server.bind(str(paths.socket))
-        paths.socket.chmod(0o600)
-        server.listen(4)
-        # The daemon's own sandbox mode, decided (one probe) before it
-        # reports READY and recorded beside the pid, so the mode every grade
-        # of this life runs under is on disk and `assay doctor` can hold it
-        # against the one config.json recorded at the run's creation.
-        sandbox = sandbox_mode()
-        atomic_json(
-            paths.broker,
-            {
-                "status": "READY",
-                "pid": os.getpid(),
-                "mode": config.get("mode", LOCAL_MODE),
-                "sandbox": sandbox,
-                "replayed_mutations": len(run.mutations),
-                "started_at": time.time(),
-            },
-        )
+        daemon = _open(paths)
     except Exception as error:  # noqa: BLE001 - broker persists arbitrary adapter failures
         atomic_json(
             paths.broker,
@@ -900,84 +974,16 @@ def serve(paths: RunPaths) -> None:
             },
         )
         return
-
-    class _StopRequested(Exception):
-        pass
-
-    lifecycle = {"in_request": False, "stop": False}
-
-    def _on_terminate(signum: int, frame: Any) -> None:
-        # Idle: leave now. Inside a request: finish it, reply, then leave. A
-        # paid action is never cut between spend and record by a plain stop.
-        lifecycle["stop"] = True
-        if not lifecycle["in_request"]:
-            raise _StopRequested
-
-    signal.signal(signal.SIGTERM, _on_terminate)
-
-    def _stopped() -> None:
-        atomic_json(
-            paths.broker,
-            {
-                "status": "STOPPED",
-                "pid": os.getpid(),
-                "mode": config.get("mode", LOCAL_MODE),
-                "sandbox": sandbox,
-                "stopped_at": time.time(),
-            },
-        )
-        server.close()
-        paths.socket.unlink(missing_ok=True)
-
+    signal.signal(signal.SIGTERM, daemon.on_terminate)
     while True:
-        if lifecycle["stop"]:
-            _stopped()
+        if daemon.stop_requested:
+            daemon.close("STOPPED")
             return
         try:
-            connection, _ = server.accept()
+            connection, _ = daemon.server.accept()
         except _StopRequested:
-            _stopped()
+            daemon.close("STOPPED")
             return
-        lifecycle["in_request"] = True
-        terminal = False
-        with connection:
-            try:
-                raw = b""
-                while b"\n" not in raw:
-                    chunk = connection.recv(1 << 20)
-                    if not chunk:
-                        break
-                    raw += chunk
-                request = json.loads(raw.splitlines()[0])
-                if not isinstance(request, dict):
-                    raise AssayError("malformed request")
-                if not secrets.compare_digest(str(request.get("token", "")), token):
-                    raise AssayError("invalid environment owner token")
-                response, terminal = daemon.handle(request)
-            except Exception as error:  # noqa: BLE001 - isolate arbitrary adapter failures
-                response = {"ok": False, "error": f"{type(error).__name__}: {error}"}
-            try:
-                connection.sendall(
-                    json.dumps(response, separators=(",", ":")).encode() + b"\n"
-                )
-            except OSError as error:
-                # The client hung up (e.g. its socket timeout fired on a slow
-                # operation) before we could reply. The action is already
-                # journaled; a lost response must never take down the owner.
-                # Keep serving so the client can re-read state on its next call.
-                print(f"broker: client gone before reply ({error}); continuing", flush=True)
-        lifecycle["in_request"] = False
-        if terminal:
-            atomic_json(
-                paths.broker,
-                {
-                    "status": "FINISHED",
-                    "pid": os.getpid(),
-                    "mode": config.get("mode", LOCAL_MODE),
-                    "sandbox": sandbox,
-                    "finished_at": time.time(),
-                },
-            )
-            server.close()
-            paths.socket.unlink(missing_ok=True)
+        if daemon.serve_one(connection):
+            daemon.close("FINISHED")
             return

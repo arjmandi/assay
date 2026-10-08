@@ -95,7 +95,9 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
         assert acted.returncode == 0, acted.stderr
         assert "OUTCOME | PREDICTED" in acted.stdout
         # The bypass channel: speaking the socket protocol directly with the
-        # bare step op. The daemon refuses; no mutation is journaled.
+        # bare step op, retired with the operation table (docs/ARCHITECTURE.md
+        # section 7.2): the daemon knows no such operation and refuses it by
+        # name (#13 names the code); no mutation is journaled.
         import sys
 
         sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -104,7 +106,7 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
 
         paths = RunPaths(run)
         mutations_before = len(load_jsonl(paths.mutations))
-        with pytest.raises(AssayError, match="UNGATED_STEP_REFUSED"):
+        with pytest.raises(AssayError, match="^AssayError: unknown broker operation 'step'$"):
             _request(paths, {"op": "step", "action": "NOOP", "data": None}, timeout=5.0)
         assert len(load_jsonl(paths.mutations)) == mutations_before
         # The chain is live and the audit is clean.
@@ -234,6 +236,18 @@ def test_model_tier_promotion_and_plan(tmp_path):
         committed = run_cli(run, "commit", "@.assay/model_plan.json")
         assert committed.returncode == 0, committed.stderr
         assert "OUTCOME | GAME_COMPLETE" in committed.stdout
+        # The modules' advisories ride on a model-plan receipt like on every
+        # other paid receipt (#24; before, the plan consulted them and
+        # discarded what they said): forty paid actions on this unit is
+        # past the wall_spend threshold.
+        wall = (
+            "MODULE wall_spend | 40 paid actions on this unit; stop manual probing; "
+            "model the mechanics offline (`assay python`, or the `assay model` tier: "
+            "replay-verified models earn batching rights)"
+        )
+        assert wall in committed.stdout.splitlines()
+        receipt = json.loads(sorted((run / ".assay" / "receipts").glob("*.json"))[-1].read_text())
+        assert receipt["plan"] == "model" and receipt["modules"] == [wall]
         # Machine plan steps are gated (predict_ok set) and marked machine.
         events = _events(run)
         assert events[-1]["state"] == "WIN"

@@ -37,13 +37,25 @@ it (`core.RunPaths`). Two processes touch that state:
   before every paid action it verifies the files on disk against the copies
   it holds (`run.verify_disk`, section 8.3), refusing with `TAMPER_DETECTED`
   on a difference, for that action and every later one until it is stopped.
+  It is a dispatcher over the wire table (`ops.py`, section 7.2; #24): each
+  request line is authenticated, looked up in the table, decoded into the
+  operation's request record (a field the record does not take is refused
+  before anything spends), handled by the function bound to the name
+  (`broker.HANDLERS`: `serve_act` and its siblings) called with the daemon
+  and the held run, and answered with the result record encoded; an
+  operation the table does not name is refused by name.
 - the **CLI**, `assay.cli.main`, a stateless display client on registry runs. At
   `start` it writes `config.json`, the registry copy, the owner file and the
   notes file before it spawns the daemon, and never writes `config.json` after.
   Every other command loads the run once, lenient (the readers report what the
   loader finds), validates what it can before talking to the daemon, sends the
   gated operation over a Unix socket (`broker.broker_gated`), and prints the
-  receipt. Its one append to the journal is `reconcile` at start, with no
+  receipt. Its parser is assembled from its command tables (`cli.COMMANDS`,
+  `cli.LIFECYCLE`), where a paid command names its operation in the wire
+  table, and the parsed command is looked up there and run: an offline
+  function over the loaded run, or the client of a daemon operation
+  (`broker.call`, the one place the client speaks the wire). Its one
+  append to the journal is `reconcile` at start, with no
   daemon alive, which recovers a spend the daemon journaled but never recorded,
   with its prediction regraded from the record (section 6.5).
 
@@ -661,12 +673,17 @@ The hook is one kernel module, `extras.py`: the `ObservationKind` protocol
 (`applies`, `claim_patterns`, `claim_fields`, `claims_help`, `grade_claims`,
 `after_record`, `status_head_lines`, `status_lines`, `result_lines`,
 `view_text`, `history_line`, `canonical_action`, `advertised_names`,
-`python_namespace`, `export_history`) and the functions
+`python_namespace`, `export_history`, and `changed`, the coverage audit's
+change signal for the kind's shape) and the functions
 `kind_for(event)` (imports `assay_grid` lazily and only when an event has
 frames), `all_kinds()` (every importable kind, used when help is rendered) and
-`require_kind`. `assay_grid.KIND` is the one implementation. A dict run never
+`require_kind`, plus the table `FRAME_FORMS`: the frame claim forms by name
+and shape, the one home of their patterns, which the kernel refuses by name
+on a dict run without importing the extra and which `assay_grid.claims` reads
+back (#24). `assay_grid.KIND` is the one implementation. A dict run never
 imports `assay_grid` or pillow, and `import assay.live, assay.inspect,
-assay.cli` imports neither (the conformance tests pin both).
+assay.cli` imports neither (the conformance tests pin both, and a probe
+through `parse_claims` pins the refusal with the extra blocked).
 
 Behavior preserved, proven by the replay diff over the 25 published run
 directories (zero differences in `status`, `audit`, `view` and `channel list`
@@ -784,9 +801,12 @@ refuses every later paid action until it is stopped (the sealing record in the a
 file and audit's reading of it are #10's); the modules load once at `serve`;
 `install_module` is the daemon operation of 6.4. What #16 landed: the claims on the
 mutation record at spend time and the regrade at recovery of 6.5, with
-`predictions.grade_pending` the one grader of the live path and of recovery. One thing
-6.3 describes still waits:
-approvals and waivers stay files until #24 moves the owner operations into the daemon.
+`predictions.grade_pending` the one grader of the live path and of recovery. What #24
+landed: the operation table and the dispatcher of 7.2, and the request handlers as one
+function per operation, each receiving the daemon and the held run. One thing 6.3
+describes still waits: approvals and waivers stay files until #13 moves the owner
+operations into the daemon (7.2 lists them among the daemon operations; the table and
+the dispatcher they land in are #24's).
 `core.load_events` and `core.append_event` are gone rather than kept: `analysis`
 builds the agent's namespace from the held records (the journal still reaches the agent
 as plain JSON objects), and the AST test still refuses `load_events(` outside `run.py`,
@@ -929,7 +949,7 @@ the daemon alive.
   The id of the next event is the held count, never the line count on disk, and the next
   mutation id is one past the held log's last. `ping` answers with the held chain event
   and head and what the daemon refused over, if anything (`broker.broker_state`, a
-  `DaemonState` record); a fresh load from disk must match the head at every quiescent
+  `ops.PingResult` record); a fresh load from disk must match the head at every quiescent
   point.
 - The manifest is reconstructed for a pre-manifest run only at `start`, never from a status
   call.
@@ -1014,7 +1034,22 @@ work plus the graders and one verification pass over the files.
 
 ## 7. The protocol, the errors and the surfaces (1.2.0, design note 2)
 
-Status: a design note, implemented by #13, #14, #15, #11 and #23.
+Status: a design note, implemented by #24, #13, #14, #15, #11 and #23.
+
+What #24 landed: the wire table of 7.2 (`src/assay/ops.py`: `Operation(name, request,
+result, paid, owner)` for the daemon operations `ping`, `observe`, `act`, `commit`,
+`reset` and `install_module`, with their request and result records: `from_json`,
+`to_json`, `json_schema()`, and a key a record does not take refused before anything
+spends), the daemon as a dispatcher over it (`broker._Daemon.handle`, one `serve_*`
+function per operation bound by name in `broker.HANDLERS`), one client for every
+operation (`broker.call`), the command line's own tables (`cli.COMMANDS`,
+`cli.LIFECYCLE`, every command an identifier with its path) from which the parser and
+the dispatch are assembled, and the `step` operation retired, refused as an unknown
+operation by name. The wire fields are today's (`action_token`, `predict`, `because`,
+`at_event`, `declares`, `steps`, `plan`, `path`, `owner_token`), the line is
+unversioned and an error is today's plain string; `approve`, `waive` and `goal_ratify`
+are offline commands of the command line. #13 adds the version, the error object,
+`action` and `params` as JSON, and moves the owner operations into the daemon.
 
 ### 7.1 The error model
 
@@ -1062,12 +1097,17 @@ Status: a design note, implemented by #13, #14, #15, #11 and #23.
 
 ### 7.2 The operation table and the protocol
 
-- `src/assay/ops.py`: `Operation(name, request, result, handler, paid, owner, offline)`.
+- `src/assay/ops.py`: `Operation(name, request, result, paid, owner)`, the wire table.
   `request` and `result` are record classes with `from_json`, `to_json` and a
-  `json_schema()` classmethod (hand-written per record, no dependency). `paid` marks the
+  `json_schema()` classmethod (hand-written per record, no dependency); `paid` marks the
   operations that spend, `owner` the ones that need the owner token (checked by the daemon
-  against the held hash), `offline` the ones the client runs from disk without the daemon.
-  #24 builds the argparse parser from this table; the list below is complete.
+  against the held hash). The table holds the names, the records and the flags and nothing
+  that runs: the daemon binds one handler per name beside its handlers
+  (`broker.HANDLERS`), the command line binds a command to each operation it exposes and
+  lists its offline commands in its own tables (`cli.COMMANDS`, `cli.LIFECYCLE`), from
+  which its parser is built (#24), and a test holds the three in step. The note's draft
+  signature carried `handler` and `offline`; they left the table because binding
+  functions there made the daemon import the command line. The list below is complete.
 - Daemon operations, over the socket: `ping`, `observe`, `act` (`action`, `params` as an
   object or null, `predict`, `because`, `at_event`, `declares`), `commit` (`steps` as a list
   of `{action, params, predict}`, or `plan`, with `at_event` and `declares`), `reset`
@@ -1139,9 +1179,9 @@ drops blocks under the budget.
 
 ### 7.5 The surfaces
 
-- The CLI: a parser built from the operation table (#24); each command is either an
-  offline function over `Run.load` or a daemon operation through the client; the
-  agent-facing lines are unchanged.
+- The CLI: a parser built from its command tables (#24), where a paid command names its
+  operation in the wire table; each command is either an offline function over `Run.load`
+  or the client of a daemon operation; the agent-facing lines are unchanged.
 - The tool server (#15): the module `assay.server`, shipped as the optional extra
   `server` (the `mcp` package), started per run by the operator (`assay serve-tools
   --run-dir DIR`, over stdio). One tool per operation in the table: daemon operations are

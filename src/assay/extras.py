@@ -11,13 +11,16 @@ run directories carry no such key.
 
 A dict run never imports `assay_grid`, so the kernel can be loaded without
 pillow and without the extra at all: the parser declares the frame-only
-`view` flags itself, and the claim help lists the extra's forms only
-when help is rendered. A frame run that cannot import the extra gets one clear
-refusal instead of a traceback.
+`view` flags itself, the claim help lists the extra's forms only
+when help is rendered, and the extra's claim forms are known here by name
+and shape (`FRAME_FORMS`), so a dict run refuses one before any spend
+whether or not the extra is installed. A frame run that cannot import the
+extra gets one clear refusal instead of a traceback.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import re
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -61,9 +64,73 @@ class ObservationKind(Protocol):
     def advertised_names(self, event: Event) -> list[str]: ...
     def python_namespace(self, events: Sequence[Event]) -> dict[str, Any]: ...
 
+    # The coverage audit's change signal for this shape: did the settled
+    # observation change between two consecutive events?
+    def changed(self, previous: Event, event: Event) -> bool: ...
+
     # CLI: the kernel declares the frame-only view flags (inert on a dict
     # run); the kind exports the grid history.
     def export_history(self, run: Run, destination: Path) -> Path: ...
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ClaimForm:
+    """A claim form an observation kind owns: the kind's name, the claim
+    kind and the pattern, known to the kernel so a run of another shape
+    refuses the form by name without importing the kind."""
+
+    kind: str
+    name: str
+    pattern: re.Pattern[str]
+
+
+FRAME_KIND = "frames"
+
+# The frame world's forms (verify/CLAIM_GRAMMAR.md), the one home of their
+# patterns: `assay_grid.claims` reads them back for its own parsing and
+# grading. Only the exact shape names a form, so prose that opens with one of
+# the words (`move on`, `cell division`) stays commentary, as it always did.
+FRAME_FORMS: tuple[ClaimForm, ...] = (
+    ClaimForm(
+        FRAME_KIND,
+        "cell",
+        re.compile(r"^cell\s+(\d+)\s*,\s*(\d+)\s*=\s*([0-9a-fA-F])$", re.IGNORECASE),
+    ),
+    ClaimForm(
+        FRAME_KIND,
+        "move",
+        re.compile(
+            r"^move\s+(\d+)\s*,\s*(\d+)\s+([+-]?\d+)\s*,\s*([+-]?\d+)$", re.IGNORECASE
+        ),
+    ),
+    ClaimForm(FRAME_KIND, "vanish", re.compile(r"^vanish\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)),
+    ClaimForm(
+        FRAME_KIND,
+        "region",
+        re.compile(r"^region\s+(\d+)\s*:\s*(\d+)\s*,\s*(\d+)\s*:\s*(\d+)$", re.IGNORECASE),
+    ),
+)
+
+
+def foreign_form(part: str, kind: ObservationKind | None) -> ClaimForm | None:
+    """The form of another observation kind that `part` spells, if any: what
+    a run refuses by name before any spend (`predictions.parse_claims`).
+    Reads the table above and imports nothing."""
+    for form in FRAME_FORMS:
+        if kind is not None and kind.name == form.kind:
+            continue
+        if form.pattern.match(part):
+            return form
+    return None
+
+
+def refusal_text(form: ClaimForm, part: str) -> str:
+    """The refusal of a claim in another kind's form, as the published
+    journals' rule words it."""
+    return (
+        f"claim {part!r} is a {form.kind}-world form and this run does "
+        "not admit it (frame-world forms are not admitted in 1.2.0)"
+    )
 
 
 _MISSING = (

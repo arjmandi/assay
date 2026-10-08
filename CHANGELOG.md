@@ -116,7 +116,8 @@ Left on the experiment branch, deliberately:
   journals `module_installed` and loads the module, which speaks on the next
   action; without a live daemon (none in the process table) the command
   refuses and names `assay start`. `broker.broker_state` reads the daemon's
-  held chain event, head and refusal as a `DaemonState` record.
+  held chain event, head and refusal as a record (`DaemonState`, the
+  `ops.PingResult` of #24).
 - The 1.2.0 design notes, sections 6 to 8 of `docs/ARCHITECTURE.md`: the run
   model with typed records, the protocol with its error model and surfaces, and
   the trust model; `verify/JOURNAL_SPEC.md` states that `data` may hold any JSON
@@ -335,6 +336,58 @@ Left on the experiment branch, deliberately:
 
 ### Changed
 
+- The daemon is a dispatcher over the wire table (#24, design note 2
+  section 7.2). `src/assay/ops.py` names the six daemon operations once,
+  `Operation(name, request, result, paid, owner)`: `ping`, `observe`, `act`,
+  `commit`, `reset` and `install_module`, each with its request and result
+  record (small frozen classes with `from_json`, `to_json` and a
+  hand-written `json_schema()`, carrying today's wire fields and refusing a
+  key they do not take, so the daemon spends on nothing it did not read
+  whole). The table holds nothing that runs: the daemon binds one `serve_*`
+  function per name (`broker.HANDLERS`) and the command line its commands,
+  so `ops.py` imports neither and the tool server (#15) reads it alone.
+  `broker.serve` is the setup and the accept loop, `_Daemon.handle` the
+  dispatcher (the token checked, the operation looked up, the request
+  decoded, the name's handler called with the daemon and the held run, the
+  result encoded), and the daemon's state is the `_Daemon` attributes; the
+  closures and the dict cells are gone. One client, `broker.call(paths,
+  operation, request)`, sends every operation and decodes its result record;
+  `broker_ping`, `broker_observe`, `broker_gated`, `broker_state` and
+  `broker_install_module` are wrappers over it. The `step` operation is
+  retired: it was refused on every registry run, and the daemon now refuses
+  it as an unknown operation, by name (#13 names the code); `broker_step`
+  goes with it, and the stepper of every paid-action function is the
+  daemon's. The wire op names are the table's (`act`, not `gated_act`); the
+  client and the daemon ship together. `LOCAL_MODE` and `REMOTE_MODE` live
+  in `core`; `assay.broker` still exports them.
+- The command line is built from its own tables (#24): `cli.LIFECYCLE`, the
+  four commands that run before any run is loaded, typed to return the exit
+  status, and `cli.COMMANDS`, every command over the loaded run as an
+  identifier (`channel_declare`, `goal_ratify`) with its path on the command
+  line, its help, its arguments as `add_argument` spells them, the lazy
+  claims epilog, and for a paid command the operation of the wire table it
+  is the client of. `cli._parser` assembles the sub-parsers from them in
+  their order and renders `assay --help` and every sub-command's help byte
+  for byte as before (`tests/test_cli_help.py` holds it to a fixture
+  rendered from the hand-written parser); the parsed command is looked up
+  and run. `_parser`, `_start` and `main` are 23, 16 and 11 lines where they
+  were 268, 260 and 46, and the 201-line `_dispatch` is a 15-line lookup;
+  `serve` and `handle` are 32 and 19 where they were 143 and 92.
+- The helpers that existed twice exist once (#24). `meters.py` holds the
+  unit walk, the paid-action count of the current progress unit, the recent
+  prediction window and the one `sharpness(events)` count, read by the
+  status lines and by the modules; `registry.MODULE_MODES` is the one
+  module-mode list; the sharpness module reads the count the CLAIMS line
+  prints, over the agent's own claims (the machine predictions of model-plan
+  steps left out, as before; the CLAIMS line's formula is unchanged); the
+  coverage audit's frame change signal lives behind the observation-kind
+  hook (`ObservationKind.changed`, `assay_grid.coverage.changed`); the
+  frame claim forms live in the kernel's table `extras.FRAME_FORMS`, which
+  `assay_grid.claims` reads back for its own patterns; and the decoding kit
+  of `records.py` is public (`read_str`, `read_opt_int`, `wrong_type`,
+  `refuse_unknown` and the rest), the one kit the journal records and the
+  wire records decode through. `live.level_advanced`, a re-export with no
+  caller, is gone: `Event.level_advanced` is the one predicate.
 - Recovery keeps the prediction (#16, design note 1 section 6.5). The daemon
   writes the parsed claims of an act and of each commit step, their admitted
   verifier hashes included, into the mutation record at spend time
@@ -533,6 +586,19 @@ Left on the experiment branch, deliberately:
 
 ### Fixed
 
+- A grid claim on a dict run is refused by name whether or not the extra and
+  pillow are installed (#24). `parse_claims` recognized the frame forms
+  through `extras.all_kinds()`, which imported `assay_grid`, and so pillow,
+  on a dict run, against the stated invariant, and when pillow was absent
+  the import failed silently and the claim became a note. The kernel holds
+  the four forms by name and shape (`extras.FRAME_FORMS`) and refuses from
+  there, with the same text; `all_kinds()` is left to the claim help. The
+  pin that a dict run never imports the extra gains its runtime form through
+  `parse_claims`, with the extra importable and with it blocked.
+- A model plan's receipt reports the module advisories (#24). `assay commit
+  @.assay/model_plan.json` consulted the modules and discarded their
+  advisory lines; they now ride on the receipt and print after the outcome,
+  as on an act, a hand batch and a reset. The one behavior change of #24.
 - Daemon lifecycle (ranked fix 1). The daemon is identified by process, not by
   the pid stored in `broker.json`: a live process running `broker_server.py`
   with `--run-dir` naming the directory. A stale descriptor (pid reuse after a

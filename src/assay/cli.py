@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import dataclasses
 import datetime as dt
 import json
 import os
 import shutil
 import sys
 import traceback
+from collections.abc import Callable, Mapping
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -21,8 +23,6 @@ from .agenda import (
 )
 from .analysis import run_python
 from .broker import (
-    LOCAL_MODE,
-    REMOTE_MODE,
     broker_gated,
     broker_install_module,
     broker_matches_latest_event,
@@ -41,7 +41,7 @@ from .carryover import (
     import_knowledge,
     registry_hash_of,
 )
-from .channels import declare_channel, known_channels, load_declared
+from .channels import channel_lines, declare_channel, known_channels, load_declared
 from .integrity import anchor_line, anchor_status, audit, audit_lines, environment_anchor_file
 from .model import (
     fit_lines,
@@ -64,7 +64,10 @@ from .sandbox import (
     sandbox_text,
 )
 from .core import (
+    LOCAL_MODE,
+    REMOTE_MODE,
     AssayError,
+    CommandStatus,
     RunPaths,
     append_jsonl,
     atomic_json,
@@ -78,8 +81,20 @@ from .core import (
 )
 from .extras import require_kind
 from .inspect import result_text, status_text, view_text
+from .ops import (
+    ACT,
+    COMMIT,
+    INSTALL_MODULE,
+    RESET,
+    ActRequest,
+    CommitRequest,
+    Operation,
+    ReceiptResult,
+    Req,
+    ResetRequest,
+)
 from .predictions import claims_help
-from .registry import gate_mode, load_registry_file
+from .registry import gate_mode, load_registry_file, spend_reports, validate_registry
 from .run import Run
 
 
@@ -99,274 +114,143 @@ class Parser(argparse.ArgumentParser):
         return super().format_help()
 
 
+# --- the command-line surface -------------------------------------------------
+#
+# Two tables at the end of this module, in the order the command line lists
+# them: `LIFECYCLE`, the commands that run before any run is loaded, and
+# `COMMANDS`, the commands over the loaded run, each the client of a daemon
+# operation of the wire table (`ops.py`) or an offline function. The parser
+# is assembled from them, and `assay --help` and every sub-command's help
+# render byte for byte as the hand-written parser rendered them
+# (tests/test_cli_help.py).
+
+LifecycleRun = Callable[[RunPaths, argparse.Namespace], int]
+CommandRun = Callable[[RunPaths, Run, CommandStatus, argparse.Namespace], None]
+
+
+@dataclasses.dataclass(frozen=True)
+class Argument:
+    """One `add_argument` call: the flags, then the keyword arguments exactly
+    as the parser spells them."""
+
+    flags: tuple[str, ...]
+    options: Mapping[str, Any]
+
+
+def arg(*flags: str, **options: Any) -> Argument:
+    return Argument(flags, options)
+
+
+@dataclasses.dataclass(frozen=True)
+class Group:
+    """A command that holds sub-commands (`assay channel declare`): its word,
+    its help and the namespace field the chosen sub-command lands in."""
+
+    name: str
+    help: str
+    dest: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Lifecycle:
+    """A command that runs before any run is loaded (start, stop, version,
+    doctor) and returns the exit status."""
+
+    name: str
+    help: str
+    run: LifecycleRun
+    arguments: tuple[Argument, ...] = ()
+
+
+@dataclasses.dataclass(frozen=True)
+class Command:
+    """A command over the loaded run: its identifier, its path on the command
+    line (`channel declare`), its help, what it runs (the client of a daemon
+    operation, or the function of an offline command), the daemon operation
+    it is the client of, if any, its arguments, and the lazy epilog (the
+    claims table, rendered only when help is)."""
+
+    name: str
+    path: str
+    help: str
+    run: CommandRun
+    operation: Operation[Any, Any] | None = None
+    arguments: tuple[Argument, ...] = ()
+    epilog: Callable[[], str] | None = None
+
+
+GROUPS: Mapping[str, Group] = {
+    group.name: group
+    for group in (
+        Group(
+            "channel", "declare and list registered channels (named readings)", "channel_command"
+        ),
+        Group(
+            "model",
+            "the general world-model tier: replay-fit is trust; fit models earn batching",
+            "model_command",
+        ),
+        Group(
+            "module", "behavior modules: list the active set, install one (owner)", "module_command"
+        ),
+        Group("goal", "the standing goal: propose revisions (agent), ratify (owner)", "goal_command"),
+        Group("spend", "the external spend feed (the kernel cannot see the LLM bill)", "spend_command"),
+    )
+}
+
+
 def _parser() -> Parser:
+    """The command line, assembled from the two tables: one sub-parser per
+    command in their order, with the flags and the help text each spells; a
+    path of two words puts the command under its group."""
     parser = Parser(
         prog="assay", description="ASSAY referee harness: look, predict, act, compare"
     )
     parser.add_argument("--run-dir", default=".", help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest="command", required=True)
-
-    start = commands.add_parser(
-        "start", help="start or resume the one persistent run"
-    )
-    start.add_argument(
-        "game_id",
-        metavar="world_id",
-        help="a label for this run, kept as given: up to 64 characters with no whitespace, "
-        "control characters or path separators. A benchmark adapter may read it to pick the instance",
-    )
-    start.add_argument("--seed", type=int, default=0, help=argparse.SUPPRESS)
-    start.add_argument(
-        "--adapter",
-        help="world adapter factory: module:factory or /path/file.py:factory",
-    )
-    start.add_argument(
-        "--registry",
-        type=Path,
-        help="JSON file registering the actions, their parameter schemas and the action "
-        "budget; required for a fresh run, optional on resume (the pinned one is used)",
-    )
-    start.add_argument(
-        "--mode",
-        choices=(LOCAL_MODE, REMOTE_MODE),
-        help="local simulator (default), or expiring remote competition validation",
-    )
-    start.add_argument(
-        "--import",
-        dest="import_knowledge",
-        type=Path,
-        metavar="KNOWLEDGE.json",
-        help="import a prior run's exported knowledge (lands FOREIGN, demoted)",
-    )
-    start.add_argument(
-        "--owner-token-file",
-        type=Path,
-        metavar="PATH",
-        help="write the owner token to this file (mode 0600, outside the run "
-        "directory) instead of printing it; ASSAY_OWNER_TOKEN_FILE does the same",
-    )
-
-    commands.add_parser(
-        "stop",
-        help="stop this run's environment owner (the daemon) cleanly; "
-        "`assay start` resumes the run later",
-    )
-
-    commands.add_parser(
-        "version", help="the harness version, the journal spec it writes, the interpreter"
-    )
-
-    commands.add_parser(
-        "doctor",
-        help="check the interpreter, dependencies, anchors, socket path, run "
-        "state, daemon, adapter and registry; works with or without a run here",
-    )
-
-    status = commands.add_parser(
-        "status",
-        help="full picture: progress, image, actions, recent results, notes",
-    )
-    status.add_argument("--history", type=int, default=8)
-
-    view = commands.add_parser(
-        "view", help="inspect one event: the observation, the delta since the previous one, history"
-    )
-    view.add_argument("--event", type=int)
-    view.add_argument("--history", type=int, default=0)
-    # Frame worlds only; inert on a dict run, which says so.
-    view.add_argument(
-        "--grid", action="store_true", help="frame worlds: print the complete exact 0-f grid"
-    )
-    view.add_argument(
-        "--frames", action="store_true", help="frame worlds: show causal animation frames"
-    )
-    view.add_argument(
-        "--crop", metavar="R0:R1,C0:C1", help="frame worlds: print an exact half-open crop"
-    )
-    view.add_argument(
-        "--export", type=Path, metavar="FILE.npz", help="frame worlds: export the grid history"
-    )
-
-    act = commands.add_parser(
-        "act",
-        help="take one action with a prediction; the result is graded against it",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    act.lazy_epilog = claims_help
-    act.add_argument("action")
-    act.add_argument("params", nargs="*", metavar="pname=value", help=argparse.SUPPRESS)
-    act.add_argument(
-        "--predict",
-        required=False,
-        help='what this action does, e.g. "change; ch counter delta = 1" (see below); required '
-        "unless the registry sets gate: optional",
-    )
-    act.add_argument("--because", help="short reason for choosing this action")
-    act.add_argument("--at", type=int, dest="at_event")
-    act.add_argument(
-        "--declare",
-        action="append",
-        default=[],
-        metavar='"field=value"',
-        help="structural declaration a gate or module demanded "
-        '(e.g. --declare "worst_case=..." --declare "recovery=...")',
-    )
-
-    commit = commands.add_parser(
-        "commit",
-        help="run a prediction-checked batch or a model plan; halts on the first miss",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-    )
-    commit.lazy_epilog = claims_help
-    commit.add_argument(
-        "plan",
-        nargs="?",
-        help="a plan file, e.g. @.assay/model_plan.json from `assay model solve`",
-    )
-    commit.add_argument(
-        "--step",
-        action="append",
-        default=[],
-        metavar='"ACTION :: CLAIMS"',
-        help="one action with its own prediction; repeat in execution order",
-    )
-    commit.add_argument("--at", type=int, dest="at_event")
-    commit.add_argument(
-        "--declare",
-        action="append",
-        default=[],
-        metavar='"field=value"',
-        help="structural declaration a module demanded for a step in this batch",
-    )
-
-    reset = commands.add_parser(
-        "reset", help="pay one action to rewind the current progress unit"
-    )
-    reset.add_argument(
-        "--because", help="why the current state is worth abandoning (required unless GAME_OVER)"
-    )
-    reset.add_argument("--at", type=int, dest="at_event")
-    reset.add_argument(
-        "--declare",
-        action="append",
-        default=[],
-        metavar='"field=value"',
-        help="structural declaration a module demanded for this reset "
-        '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
-    )
-
-    python = commands.add_parser(
-        "python",
-        help="run offline Python with the history, deltas, BFS and A* preloaded",
-    )
-    python.add_argument("source", nargs="?")
-    python.add_argument("--file", type=Path)
-
-    channel = commands.add_parser(
-        "channel", help="declare and list registered channels (named readings)"
-    )
-    channel_commands = channel.add_subparsers(dest="channel_command", required=True)
-    channel_declare = channel_commands.add_parser(
-        "declare", help="register a named reading of the observation"
-    )
-    channel_declare.add_argument("name")
-    channel_declare.add_argument(
-        "--path", help="dotted keys into the dict observation, e.g. counters.red"
-    )
-    channel_declare.add_argument(
-        "--file", help="extractor file: def extract(obs) -> value (sandboxed)"
-    )
-    channel_list = channel_commands.add_parser(
-        "list", help="list registered channels with their current readings"
-    )
-    channel_list.add_argument(
-        "--read",
-        action="store_true",
-        help="compute extractor channels fresh (runs each extractor sandboxed) "
-        "instead of showing the last graded reading",
-    )
-
-    model = commands.add_parser(
-        "model",
-        help="the general world-model tier: replay-fit is trust; fit models earn batching",
-    )
-    model_commands = model.add_subparsers(dest="model_command", required=True)
-    model_commands.add_parser("init", help="create a model.py template")
-    model_commands.add_parser(
-        "replay", help="grade model.py's declared channels over every recorded transition"
-    )
-    model_solve = model_commands.add_parser(
-        "solve", help="search the model for a plan to a channel target"
-    )
-    model_solve.add_argument(
-        "--to", required=True, metavar='"ch NAME = V"', help="the goal reading"
-    )
-    model_solve.add_argument("--seconds", type=float, default=15.0)
-    model_solve.add_argument("--max-nodes", type=int, default=100_000)
-    model_solve.add_argument("--max-depth", type=int, default=40)
-
-    module = commands.add_parser(
-        "module", help="behavior modules: list the active set, install one (owner)"
-    )
-    module_commands = module.add_subparsers(dest="module_command", required=True)
-    module_commands.add_parser(
-        "list", help="active modules with mode and origin, plus ignored files"
-    )
-    module_install = module_commands.add_parser(
-        "install", help="owner: install a module file mid-run (journaled, manifest-pinned)"
-    )
-    module_install.add_argument("path", type=Path)
-    module_install.add_argument("--token")
-
-    goal = commands.add_parser(
-        "goal", help="the standing goal: propose revisions (agent), ratify (owner)"
-    )
-    goal_commands = goal.add_subparsers(dest="goal_command", required=True)
-    goal_propose = goal_commands.add_parser(
-        "propose", help="propose a standing-goal revision (journaled, owner ratifies)"
-    )
-    goal_propose.add_argument("text")
-    goal_propose.add_argument("--because")
-    goal_commands.add_parser("list", help="list goal proposals and their status")
-    goal_ratify = goal_commands.add_parser(
-        "ratify", help="owner: ratify a proposal by id (requires the owner token)"
-    )
-    goal_ratify.add_argument("id", type=int)
-    goal_ratify.add_argument("--token")
-
-    export = commands.add_parser(
-        "export", help="export this run's earned knowledge for a future import"
-    )
-    export.add_argument("--out", type=Path)
-
-    spend = commands.add_parser(
-        "spend", help="the external spend feed (the kernel cannot see the LLM bill)"
-    )
-    spend_commands = spend.add_subparsers(dest="spend_command", required=True)
-    spend_report = spend_commands.add_parser(
-        "report", help="post cumulative usage (idempotent by --id; last entry wins)"
-    )
-    spend_report.add_argument("--usd", type=float, required=True)
-    spend_report.add_argument("--tokens", type=int, default=0)
-    spend_report.add_argument("--id", dest="report_id", required=True)
-
-    commands.add_parser(
-        "audit", help="recompute journal integrity: chain, anchors, ungated events"
-    )
-
-    approve = commands.add_parser(
-        "approve", help="owner: grant one use of an approval-gated action"
-    )
-    approve.add_argument("action")
-    approve.add_argument("--token")
-
-    waive = commands.add_parser(
-        "waive", help="owner: waive a live actuator's rehearsal quota (journaled)"
-    )
-    waive.add_argument("action")
-    waive.add_argument("--token")
-    waive.add_argument("--because")
+    for lifecycle in LIFECYCLE:
+        _add_command(commands, lifecycle.name, lifecycle.help, lifecycle.arguments)
+    holders: dict[str, Any] = {}
+    for command in COMMANDS:
+        words = command.path.split()
+        if len(words) == 1:
+            _add_command(commands, command.path, command.help, command.arguments, command.epilog)
+            continue
+        group = GROUPS[words[0]]
+        if group.name not in holders:
+            holder = commands.add_parser(group.name, help=group.help)
+            holders[group.name] = holder.add_subparsers(dest=group.dest, required=True)
+        _add_command(holders[group.name], words[1], command.help, command.arguments, command.epilog)
     return parser
+
+
+def _add_command(
+    commands: Any,
+    name: str,
+    text: str,
+    arguments: tuple[Argument, ...],
+    epilog: Callable[[], str] | None = None,
+) -> None:
+    options: dict[str, Any] = {"help": text}
+    if epilog is not None:
+        options["formatter_class"] = argparse.RawDescriptionHelpFormatter
+    parser = commands.add_parser(name, **options)
+    parser.lazy_epilog = epilog
+    for argument in arguments:
+        parser.add_argument(*argument.flags, **argument.options)
+
+
+def command_of(args: argparse.Namespace) -> Command:
+    """The command a parsed command line names: for a group, the
+    sub-command's (`channel declare`)."""
+    path = str(args.command)
+    group = GROUPS.get(path)
+    if group is not None:
+        path = f"{group.name} {getattr(args, group.dest)}"
+    for command in COMMANDS:
+        if command.path == path:
+            return command
+    raise AssayError(f"unsupported command {args.command}")
 
 
 def _parse_declares(raw: list[str]) -> dict[str, str]:
@@ -436,6 +320,8 @@ def _remote_idle_seconds(run: Run) -> float:
 
 
 def _start(paths: RunPaths, args: argparse.Namespace) -> None:
+    """`assay start`: resume the run this directory owns, or start a fresh
+    one. Every refusal happens before anything is spawned or written."""
     forced_sandbox = os.getenv(FORCE_VARIABLE)
     if forced_sandbox is not None and forced_sandbox != PROCESS_ISOLATION_ONLY:
         raise AssayError(
@@ -446,128 +332,166 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     registry_spec = load_registry_file(args.registry) if args.registry is not None else None
     existing = read_json(paths.config)
     if isinstance(existing, dict):
-        if getattr(args, "import_knowledge", None) is not None:
-            raise AssayError(
-                "knowledge imports happen at run start; this directory already "
-                "owns a run"
-            )
-        if read_json(paths.registry, None) is None:
-            raise AssayError(
-                "this directory owns a run without a registry, from before 1.2.0: "
-                "it can be inspected (status, view, audit) but not resumed"
-            )
-        if registry_spec is not None and registry_spec != read_json(paths.registry):
-            raise AssayError(
-                "this directory already owns a run with a different registry; "
-                "the registry cannot change in place"
-            )
-        if existing.get("game_id") != requested:
-            raise AssayError(
-                f"this directory already owns {existing.get('game_id')}; use a fresh directory for {requested}"
-            )
-        existing_mode = str(existing.get("mode", LOCAL_MODE)).lower()
-        if args.mode is not None and args.mode != existing_mode:
-            raise AssayError(
-                f"this directory already owns a {existing_mode} run; mode cannot be changed in place"
-            )
-        recorded_python = existing.get("python")
-        if isinstance(recorded_python, str) and recorded_python != sys.executable:
-            print(
-                f"WARNING | interpreter changed: the run started with {recorded_python}, "
-                f"this resume uses {sys.executable}; the daemon inherits this one, so "
-                "set ASSAY_PYTHON to the original if the adapter's dependencies live there"
-            )
-        # A run pinned before the manifest existed has it rebuilt once, here
-        # and never from a status call.
-        reconstruct_manifest(paths)
-        # Strict: a contiguity problem or a diverged chain refuses the resume
-        # with CHAIN_DIVERGED and rewrites nothing.
-        run = Run.load(paths, strict=True)
-        # Orphan recovery (a spend the daemon journaled in mutations.jsonl
-        # before anyone appended its event) runs here and only here, and only
-        # once the daemon is confirmed dead or absent. While the daemon lives,
-        # a mutation without an event is a step in flight: recovering it from
-        # another process would double-count it the moment the daemon appends
-        # its own graded event.
-        recovered = 0
-        owner = read_json(paths.broker, {})
-        if owner.get("status") == "FINISHED":
-            if find_daemon(paths) is None:
-                recovered = reconcile_mutations(run)
-            print(f"RESUMED | {requested} | completed run")
-            if recovered:
-                print(f"JOURNAL | recovered {recovered} paid action(s) into timeline")
-            print(status_text(run))
-            return
-        if is_remote_config(existing):
-            idle = _remote_idle_seconds(run)
-            if idle >= 15 * 60:
-                raise AssayError(
-                    "REMOTE_LEASE_EXPIRED | no live action was recorded for at least 15 minutes. The remote competition run is not recoverable; preserve this directory and use a fresh one"
-                )
-            if not broker_ping(paths):
-                if find_daemon(paths) is None:
-                    # Real spends against the remote world: journal them
-                    # before refusing, so the record is complete.
-                    reconcile_mutations(run)
-                raise AssayError(
-                    "the remote competition owner is unavailable and cannot be reconstructed; preserve this directory and use a fresh one"
-                )
-            if not broker_matches_latest_event(run):
-                raise AssayError(
-                    "REMOTE_STATE_DIVERGED | the live remote observation differs from the append-only timeline; stop using this run"
-                )
-            print(
-                f"RESUMED | {requested} | REMOTE competition | action-idle lease about {max(0, 15 - int(idle // 60))}m"
-            )
-        else:
-            restarted = False
-            if not broker_ping(paths):
-                daemon = find_daemon(paths)
-                if daemon is not None and paths.socket.exists():
-                    # Alive, identified as ours, socket present, not answering:
-                    # it is inside a step (slow world) or hung. Killing it here
-                    # could leave a paid action applied and unjournaled.
-                    started_at = read_json(paths.broker, {}).get("started_at")
-                    when = (
-                        dt.datetime.fromtimestamp(float(started_at), dt.timezone.utc).isoformat(
-                            timespec="seconds"
-                        )
-                        if isinstance(started_at, (int, float))
-                        else "unknown time"
-                    )
-                    raise AssayError(
-                        f"the environment owner is busy or hung (pid {daemon.pid}, "
-                        f"started {when}); wait and rerun `assay start`, or run "
-                        "`assay stop` (it exits after the current step)"
-                    )
-                if daemon is not None:
-                    # Alive but unreachable (its socket is gone): stop it
-                    # cleanly before replaying a fresh one.
-                    result = stop_broker(paths)
-                    if not result["stopped"]:
-                        raise AssayError(
-                            f"the environment owner (pid {daemon.pid}) is "
-                            f"{result['reason']}; wait and rerun `assay start`"
-                        )
-                # Confirmed dead or absent: safe to recover orphaned spends.
-                recovered = reconcile_mutations(run)
-                paths.socket.unlink(missing_ok=True)
-                start_broker(paths)
-                restarted = True
-            if not broker_matches_latest_event(run):
-                raise AssayError(
-                    "LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the latest timeline event"
-                )
-            verb = "RECOVERED" if restarted else "RESUMED"
-            print(
-                f"{verb} | {requested} | local simulator | replayed {len(run.events) - 1} paid actions"
-            )
-        if recovered:
-            print(f"JOURNAL | recovered {recovered} paid action(s) into timeline")
-        print(status_text(run))
-        return
+        _resume(paths, args, existing, requested, registry_spec)
+    else:
+        _fresh_start(paths, args, requested, registry_spec)
 
+
+def _check_resume(
+    paths: RunPaths,
+    args: argparse.Namespace,
+    existing: dict[str, Any],
+    requested: str,
+    registry_spec: dict[str, Any] | None,
+) -> None:
+    """The refusals of a resume, and the interpreter warning."""
+    if getattr(args, "import_knowledge", None) is not None:
+        raise AssayError(
+            "knowledge imports happen at run start; this directory already "
+            "owns a run"
+        )
+    if read_json(paths.registry, None) is None:
+        raise AssayError(
+            "this directory owns a run without a registry, from before 1.2.0: "
+            "it can be inspected (status, view, audit) but not resumed"
+        )
+    if registry_spec is not None and registry_spec != read_json(paths.registry):
+        raise AssayError(
+            "this directory already owns a run with a different registry; "
+            "the registry cannot change in place"
+        )
+    if existing.get("game_id") != requested:
+        raise AssayError(
+            f"this directory already owns {existing.get('game_id')}; use a fresh directory for {requested}"
+        )
+    existing_mode = str(existing.get("mode", LOCAL_MODE)).lower()
+    if args.mode is not None and args.mode != existing_mode:
+        raise AssayError(
+            f"this directory already owns a {existing_mode} run; mode cannot be changed in place"
+        )
+    recorded_python = existing.get("python")
+    if isinstance(recorded_python, str) and recorded_python != sys.executable:
+        print(
+            f"WARNING | interpreter changed: the run started with {recorded_python}, "
+            f"this resume uses {sys.executable}; the daemon inherits this one, so "
+            "set ASSAY_PYTHON to the original if the adapter's dependencies live there"
+        )
+
+
+def _resume(
+    paths: RunPaths,
+    args: argparse.Namespace,
+    existing: dict[str, Any],
+    requested: str,
+    registry_spec: dict[str, Any] | None,
+) -> None:
+    _check_resume(paths, args, existing, requested, registry_spec)
+    # A run pinned before the manifest existed has it rebuilt once, here
+    # and never from a status call.
+    reconstruct_manifest(paths)
+    # Strict: a contiguity problem or a diverged chain refuses the resume
+    # with CHAIN_DIVERGED and rewrites nothing.
+    run = Run.load(paths, strict=True)
+    # Orphan recovery (a spend the daemon journaled in mutations.jsonl
+    # before anyone appended its event) runs here and only here, and only
+    # once the daemon is confirmed dead or absent. While the daemon lives,
+    # a mutation without an event is a step in flight: recovering it from
+    # another process would double-count it the moment the daemon appends
+    # its own graded event.
+    recovered = 0
+    owner = read_json(paths.broker, {})
+    if owner.get("status") == "FINISHED":
+        if find_daemon(paths) is None:
+            recovered = reconcile_mutations(run)
+        print(f"RESUMED | {requested} | completed run")
+    elif is_remote_config(existing):
+        _resume_remote(paths, run, requested)
+    else:
+        recovered = _resume_local(paths, run, requested)
+    if recovered:
+        print(f"JOURNAL | recovered {recovered} paid action(s) into timeline")
+    print(status_text(run))
+
+
+def _resume_remote(paths: RunPaths, run: Run, requested: str) -> None:
+    idle = _remote_idle_seconds(run)
+    if idle >= 15 * 60:
+        raise AssayError(
+            "REMOTE_LEASE_EXPIRED | no live action was recorded for at least 15 minutes. The remote competition run is not recoverable; preserve this directory and use a fresh one"
+        )
+    if not broker_ping(paths):
+        if find_daemon(paths) is None:
+            # Real spends against the remote world: journal them
+            # before refusing, so the record is complete.
+            reconcile_mutations(run)
+        raise AssayError(
+            "the remote competition owner is unavailable and cannot be reconstructed; preserve this directory and use a fresh one"
+        )
+    if not broker_matches_latest_event(run):
+        raise AssayError(
+            "REMOTE_STATE_DIVERGED | the live remote observation differs from the append-only timeline; stop using this run"
+        )
+    print(
+        f"RESUMED | {requested} | REMOTE competition | action-idle lease about {max(0, 15 - int(idle // 60))}m"
+    )
+
+
+def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
+    """Resume a local run: a daemon that answers is kept, a dead or absent
+    one is replaced after the orphaned spends are recovered. Returns the
+    recovered count."""
+    recovered = 0
+    restarted = False
+    if not broker_ping(paths):
+        daemon = find_daemon(paths)
+        if daemon is not None and paths.socket.exists():
+            # Alive, identified as ours, socket present, not answering:
+            # it is inside a step (slow world) or hung. Killing it here
+            # could leave a paid action applied and unjournaled.
+            started_at = read_json(paths.broker, {}).get("started_at")
+            when = (
+                dt.datetime.fromtimestamp(float(started_at), dt.timezone.utc).isoformat(
+                    timespec="seconds"
+                )
+                if isinstance(started_at, (int, float))
+                else "unknown time"
+            )
+            raise AssayError(
+                f"the environment owner is busy or hung (pid {daemon.pid}, "
+                f"started {when}); wait and rerun `assay start`, or run "
+                "`assay stop` (it exits after the current step)"
+            )
+        if daemon is not None:
+            # Alive but unreachable (its socket is gone): stop it
+            # cleanly before replaying a fresh one.
+            result = stop_broker(paths)
+            if not result["stopped"]:
+                raise AssayError(
+                    f"the environment owner (pid {daemon.pid}) is "
+                    f"{result['reason']}; wait and rerun `assay start`"
+                )
+        # Confirmed dead or absent: safe to recover orphaned spends.
+        recovered = reconcile_mutations(run)
+        paths.socket.unlink(missing_ok=True)
+        start_broker(paths)
+        restarted = True
+    if not broker_matches_latest_event(run):
+        raise AssayError(
+            "LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the latest timeline event"
+        )
+    verb = "RECOVERED" if restarted else "RESUMED"
+    print(
+        f"{verb} | {requested} | local simulator | replayed {len(run.events) - 1} paid actions"
+    )
+    return recovered
+
+
+def _fresh_start(
+    paths: RunPaths,
+    args: argparse.Namespace,
+    requested: str,
+    registry_spec: dict[str, Any] | None,
+) -> None:
     if registry_spec is None:
         raise AssayError(
             "a fresh run needs --registry FILE: the registry names the actions, "
@@ -595,9 +519,32 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
         adapter_spec = resolve_adapter_spec(str(args.adapter), paths.root)
         check_adapter_spec(adapter_spec, paths.root)
     paths.root.mkdir(parents=True, exist_ok=True)
+    config = _fresh_config(paths, requested, args.seed, mode, adapter_spec, registry_spec)
+    paths.state.mkdir(parents=True, exist_ok=True)
+    atomic_json(paths.config, config)
+    atomic_json(paths.registry, registry_spec)
+    (paths.state / "python").write_text(sys.executable + "\n")
+    owner_token = mint_owner_token(paths)
+    try:
+        run = _open_fresh_run(paths, args, requested, registry_spec, owner_token, token_file)
+    except Exception:
+        stop_broker(paths)
+        shutil.rmtree(paths.state, ignore_errors=True)
+        raise
+    _print_started(paths, run, requested, mode, registry_spec, owner_token, token_file)
+
+
+def _fresh_config(
+    paths: RunPaths,
+    requested: str,
+    seed: int,
+    mode: str,
+    adapter_spec: str | None,
+    registry_spec: dict[str, Any],
+) -> dict[str, Any]:
     config: dict[str, Any] = {
         "game_id": requested,
-        "seed": args.seed,
+        "seed": seed,
         "mode": mode,
         "adapter": adapter_spec,
         "registry": True,
@@ -613,40 +560,54 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     # Pinned at start so every later command, whatever its environment,
     # anchors to and audits the same file.
     config["anchor_file"] = str(environment_anchor_file(paths))
-    paths.state.mkdir(parents=True, exist_ok=True)
-    atomic_json(paths.config, config)
-    atomic_json(paths.registry, registry_spec)
-    (paths.state / "python").write_text(sys.executable + "\n")
-    owner_token = mint_owner_token(paths)
-    try:
-        if token_file is not None:
-            _write_owner_token(token_file, owner_token)
-        _write_notes(paths, requested)
-        # Module files are loaded once here to check their contract; a
-        # refusal must leave no half-initialized run behind.
-        pin_external_modules(paths, registry_spec)
-        run = Run.load(paths, strict=True)
-        if getattr(args, "import_knowledge", None) is not None:
-            summary = import_knowledge(run, args.import_knowledge)
-            print(
-                f"IMPORTED | knowledge from source world {summary['source_game']} | "
-                f"{summary['verifiers']} verifier candidate(s) | hazards active "
-                f"{summary['hazards_active']} (foreign-inactive "
-                f"{summary['hazards_foreign_inactive']}) | everything FOREIGN, "
-                "demoted until re-earned (see status)"
-            )
-        # Event 0 is the daemon's: it takes the first observation, writes
-        # public_info into config.json and appends START before it reports
-        # READY. This process wrote config.json, the registry copy, the owner
-        # file and the notes before the spawn and never writes config.json
-        # after it; the status below is read from the journal the daemon
-        # opened.
-        start_broker(paths)
-        run = Run.load(paths, strict=False)
-    except Exception:
-        stop_broker(paths)
-        shutil.rmtree(paths.state, ignore_errors=True)
-        raise
+    return config
+
+
+def _open_fresh_run(
+    paths: RunPaths,
+    args: argparse.Namespace,
+    requested: str,
+    registry_spec: dict[str, Any],
+    owner_token: str | None,
+    token_file: Path | None,
+) -> Run:
+    """The files of a fresh run, then the daemon; a refusal must leave no
+    half-initialized run behind, which the caller sees to."""
+    if owner_token is not None and token_file is not None:
+        _write_owner_token(token_file, owner_token)
+    _write_notes(paths, requested)
+    # Module files are loaded once here to check their contract; a
+    # refusal must leave no half-initialized run behind.
+    pin_external_modules(paths, registry_spec)
+    run = Run.load(paths, strict=True)
+    if getattr(args, "import_knowledge", None) is not None:
+        summary = import_knowledge(run, args.import_knowledge)
+        print(
+            f"IMPORTED | knowledge from source world {summary['source_game']} | "
+            f"{summary['verifiers']} verifier candidate(s) | hazards active "
+            f"{summary['hazards_active']} (foreign-inactive "
+            f"{summary['hazards_foreign_inactive']}) | everything FOREIGN, "
+            "demoted until re-earned (see status)"
+        )
+    # Event 0 is the daemon's: it takes the first observation, writes
+    # public_info into config.json and appends START before it reports
+    # READY. This process wrote config.json, the registry copy, the owner
+    # file and the notes before the spawn and never writes config.json
+    # after it; the status below is read from the journal the daemon
+    # opened.
+    start_broker(paths)
+    return Run.load(paths, strict=False)
+
+
+def _print_started(
+    paths: RunPaths,
+    run: Run,
+    requested: str,
+    mode: str,
+    registry_spec: dict[str, Any],
+    owner_token: str | None,
+    token_file: Path | None,
+) -> None:
     if owner_token is not None and token_file is not None:
         print(
             f"OWNER TOKEN | written to {token_file} (mode 0600) | only its hash is "
@@ -674,27 +635,30 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
             "directory before the first anchor is due"
         )
     print(status_text(run))
+    print(_use_line(registry_spec))
+
+
+def _use_line(registry_spec: dict[str, Any]) -> str:
     if gate_mode(registry_spec) == "optional":
-        print(
+        return (
             "USE | gate: optional; `assay act` runs with or without --predict "
             "(an unpredicted act is journaled UNGATED; the audit marks the run "
             "invalid for scoring); parameters go as `assay act NAME pname=value ...`; "
             "schemas are in REGISTRY above, semantics are never given: learn them by acting"
         )
-    elif gate_mode(registry_spec) == "off":
-        print(
+    if gate_mode(registry_spec) == "off":
+        return (
             "USE | gate: off; `assay act NAME pname=value ...` with no --predict "
             "(predictions are not accepted on this run and nothing is graded; every "
             "paid action is journaled UNGATED and the audit marks the run invalid "
             "for scoring); schemas are in REGISTRY above, semantics are never given: "
             "learn them by acting"
         )
-    else:
-        print(
-            'USE | every `assay act` needs --predict "<claims>"; parameters go as '
-            "`assay act NAME pname=value ...`; schemas are in REGISTRY above, "
-            "semantics are never given: learn them by acting"
-        )
+    return (
+        'USE | every `assay act` needs --predict "<claims>"; parameters go as '
+        "`assay act NAME pname=value ...`; schemas are in REGISTRY above, "
+        "semantics are never given: learn them by acting"
+    )
 
 
 def _doctor(paths: RunPaths) -> int:
@@ -808,8 +772,6 @@ def _doctor(paths: RunPaths) -> int:
             note("WARN", "no adapter recorded")
         if paths.registry.exists():
             try:
-                from .registry import validate_registry
-
                 spec = validate_registry(read_json(paths.registry))
                 note("ok", f"registry valid, {len(spec['actions'])} actions")
             except AssayError as error:
@@ -853,47 +815,279 @@ def _stop(paths: RunPaths) -> None:
     )
 
 
+def start_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    try:
+        with run_lock(paths):
+            _start(paths, args)
+    except AssayError:
+        _discard_empty_state(paths)
+        raise
+    return 0
+
+
+def stop_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    if paths.state.is_dir():
+        with run_lock(paths):
+            _stop(paths)
+    else:
+        # No run state here (an orphaned daemon after a hand-deleted
+        # `.assay`): stop without creating state as a side effect.
+        _stop(paths)
+    return 0
+
+
+def version_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    print(
+        f"assay {__version__} | journal spec {JOURNAL_SPEC} | python "
+        f"{'.'.join(str(part) for part in sys.version_info[:3])} at {sys.executable}"
+    )
+    return 0
+
+
+def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    return _doctor(paths)
+
+
+# --- the commands over the loaded run ------------------------------------------
+
+
+def status_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    print(status_text(run, history=args.history))
+
+
+def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    events = run.events
+    flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
+    print(view_text(run, event_id=args.event, history=args.history, flags=flags))
+    export = args.export
+    if export:
+        destination = export if export.is_absolute() else paths.root / export
+        print(
+            f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(run, destination)}"
+        )
+
+
+def _paid(
+    paths: RunPaths,
+    status: CommandStatus,
+    operation: Operation[Req, ReceiptResult],
+    request: Req,
+    *,
+    steps: int = 1,
+) -> None:
+    """A paid command through the daemon, the gate enforced where the
+    session lives; the run is reloaded for the receipt, since the daemon
+    appended what the client does not hold."""
+    receipt = broker_gated(paths, operation, request, steps=steps)
+    status.run = Run.load(paths, strict=False)
+    print(result_text(status.run, receipt))
+
+
+def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    # `assay act NAME pname=value ...`: the extra tokens are typed
+    # parameters; case is preserved (values may be case-sensitive).
+    request = ActRequest(
+        action_token=" ".join([args.action, *args.params]),
+        predict=args.predict,
+        because=args.because,
+        at_event=args.at_event,
+        declares=_parse_declares(args.declare),
+    )
+    _paid(paths, status, ACT, request)
+
+
+def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    if bool(args.plan) == bool(args.step):
+        raise AssayError(
+            "commit takes either @plan.json (from `assay model solve`) "
+            'or one or more --step "NAME pname=value :: claims"'
+        )
+    request = CommitRequest(
+        plan=args.plan,
+        steps=tuple(args.step),
+        at_event=args.at_event,
+        declares=_parse_declares(args.declare),
+    )
+    _paid(paths, status, COMMIT, request, steps=max(1, len(args.step)))
+
+
+def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    request = ResetRequest(
+        because=args.because,
+        at_event=args.at_event,
+        declares=_parse_declares(args.declare),
+    )
+    _paid(paths, status, RESET, request)
+
+
+def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    spec = declare_channel(run, args.name, path=args.path, file=args.file)
+    print(
+        f"CHANNEL | declared {args.name} ({spec['form']}); claims "
+        f'like `ch {args.name} = V` now parse and grade'
+    )
+
+
+def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    declared = load_declared(paths)
+    events = run.events
+    if events:
+        print("\n".join(channel_lines(run, events[-1], fresh=args.read)))
+    else:
+        print("CHANNELS | " + " · ".join(known_channels(run)))
+    for name, spec in sorted(declared.items()):
+        detail = spec.get("path") or spec.get("hash", "")[:12]
+        print(f"  {name}: {spec['form']} {detail}")
+
+
+def model_init(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
+
+
+def model_replay(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    record = replay_model(run)
+    print("\n".join(fit_lines(record)))
+
+
+def model_solve(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    result = solve_model(
+        run,
+        args.to,
+        seconds=args.seconds,
+        max_nodes=args.max_nodes,
+        max_depth=args.max_depth,
+    )
+    if result["actions"]:
+        print(
+            f"SOLVE | plan found | {len(result['actions'])} steps | "
+            f"nodes {result['nodes']}"
+        )
+        print("ACTIONS | " + " -> ".join(result["actions"]))
+        print(
+            "PLAN | .assay/model_plan.json; execute with "
+            "`assay commit @.assay/model_plan.json` (needs replay-fit "
+            "promotion on the current journal)"
+        )
+    else:
+        print(
+            f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
+            "actions() or next() are too narrow, or the goal needs "
+            "something unmodeled"
+        )
+
+
+def module_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    origins = {
+        str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest
+    }
+    view = ModuleView(run)
+    print("MODULES | active (name, mode, origin), constitution, telemetry")
+    for item, mode in active_modules(run):
+        print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
+        print(f"    constitution: {item.CONSTITUTION}")
+        try:
+            telemetry = item.telemetry(view)
+        except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
+            telemetry = {"error": f"{type(error).__name__}: {error}"}
+        print(f"    telemetry: {json.dumps(telemetry, sort_keys=True, default=str)}")
+    for line in unlisted_lines(run):
+        print(line)
+
+
+def module_install(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    # The owner's install runs in the daemon, against the hash and
+    # the manifest it holds; it refuses without a live daemon.
+    record = broker_install_module(paths, args.path, args.token)
+    print(
+        f"MODULE | installed {record['name']} from {record['source']} "
+        f"(sha256 {record['sha256'][:12]}) | journaled | active from the "
+        "next action"
+    )
+
+
+def goal_propose(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    record = propose_goal(run, args.text, args.because)
+    print(
+        f"GOAL | proposal #{record['id']} journaled, awaiting owner "
+        "ratification (`assay goal ratify ID --token ...`)"
+    )
+
+
+def goal_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    proposals = list_proposals(run)
+    if not proposals:
+        print("GOAL | no proposals")
+    for entry in proposals:
+        print(
+            f"  #{entry['id']} [{entry['status']}] {entry['text']}"
+            + (f"; {entry['because']}" if entry.get("because") else "")
+        )
+
+
+def goal_ratify(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    proposal = ratify_goal(run, args.id, args.token)
+    print(
+        f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
+        "re-presents it as the standing goal"
+    )
+
+
+def export_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    target = export_knowledge(run, args.out)
+    print(f"EXPORTED | {target}; import with `assay start WORLD_ID --import {target.name}`")
+
+
+def spend_report(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    append_jsonl(
+        paths.activity,
+        {
+            "kind": "spend_report",
+            "id": args.report_id,
+            "usd": args.usd,
+            "tokens": args.tokens,
+        },
+    )
+    usd, tokens = spend_reports(load_jsonl(paths.activity))
+    print(f"SPEND | recorded | cumulative ${usd:.2f} | {tokens} tokens")
+
+
+def audit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    print("\n".join(audit_lines(audit(run))))
+
+
+def approve_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    grant_approval(run, args.action, args.token)
+    print(
+        f"APPROVED | one use of {args.action.upper()} granted "
+        "(expires in 10 minutes, consumed on use)"
+    )
+
+
+def waive_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    grant_waiver(run, args.action, args.token, args.because or "")
+    print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
+
+
+def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    if bool(args.source) == bool(args.file):
+        raise AssayError(
+            "provide exactly one Python source argument or --file"
+        )
+    source = (
+        args.source if args.source is not None else args.file.read_text()
+    )
+    run_python(run, source)
+
+
+# --- the entry point -----------------------------------------------------------
+
+
 def main() -> None:
     try:
         args = _parser().parse_args()
         paths = RunPaths(Path(args.run_dir).resolve())
         os.environ["ASSAY_RUN_DIR"] = str(paths.root)
-        if args.command == "start":
-            try:
-                with run_lock(paths):
-                    _start(paths, args)
-            except AssayError:
-                _discard_empty_state(paths)
-                raise
-            raise SystemExit(0)
-        if args.command == "version":
-            from . import JOURNAL_SPEC, __version__
-
-            print(
-                f"assay {__version__} | journal spec {JOURNAL_SPEC} | python "
-                f"{'.'.join(str(part) for part in sys.version_info[:3])} at {sys.executable}"
-            )
-            raise SystemExit(0)
-        if args.command == "doctor":
-            raise SystemExit(_doctor(paths))
-        if args.command == "stop":
-            if paths.state.is_dir():
-                with run_lock(paths):
-                    _stop(paths)
-            else:
-                # No run state here (an orphaned daemon after a hand-deleted
-                # `.assay`): stop without creating state as a side effect.
-                _stop(paths)
-            raise SystemExit(0)
-
-        require_run(paths)
-        with run_lock(paths):
-            # One load per command, lenient: the readers report what they
-            # find; only start and the daemon load strict.
-            run = Run.load(paths, strict=False)
-            with command_status(run, args.command) as command:
-                _dispatch(paths, run, command, args)
-        raise SystemExit(0)
+        raise SystemExit(_run(paths, args))
     except AssayError as error:
         print(f"ERROR | {error}", file=sys.stderr)
         raise SystemExit(2)
@@ -901,207 +1095,21 @@ def main() -> None:
         raise SystemExit(_report_internal_error(error))
 
 
-def _dispatch(paths: RunPaths, run: Run, command: Any, args: argparse.Namespace) -> None:
-    """The offline commands over the loaded run, and the paid ones through the
-    daemon; a paid command reloads the run for its receipt, since the daemon
-    appended what the client does not hold."""
-    if args.command == "status":
-        print(status_text(run, history=args.history))
-    elif args.command == "view":
-        events = run.events
-        flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
-        print(view_text(run, event_id=args.event, history=args.history, flags=flags))
-        export = args.export
-        if export:
-            destination = export if export.is_absolute() else paths.root / export
-            print(
-                f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(run, destination)}"
-            )
-    elif args.command == "act":
-        # `assay act NAME pname=value ...`: the extra tokens are typed
-        # parameters; case is preserved (values may be case-sensitive).
-        # Daemon-side gate: enforcement where the session lives.
-        receipt = broker_gated(
-            paths,
-            {
-                "op": "gated_act",
-                "action_token": " ".join([args.action, *args.params]),
-                "predict": args.predict,
-                "because": args.because,
-                "at_event": args.at_event,
-                "declares": _parse_declares(args.declare),
-            },
-        )
-        command.run = run = Run.load(paths, strict=False)
-        print(result_text(run, receipt))
-    elif args.command == "commit":
-        if bool(args.plan) == bool(args.step):
-            raise AssayError(
-                "commit takes either @plan.json (from `assay model solve`) "
-                'or one or more --step "NAME pname=value :: claims"'
-            )
-        receipt = broker_gated(
-            paths,
-            {
-                "op": "gated_commit",
-                "plan": args.plan,
-                "steps": args.step,
-                "at_event": args.at_event,
-                "declares": _parse_declares(args.declare),
-            },
-            steps=max(1, len(args.step)),
-        )
-        command.run = run = Run.load(paths, strict=False)
-        print(result_text(run, receipt))
-    elif args.command == "reset":
-        receipt = broker_gated(
-            paths,
-            {
-                "op": "gated_reset",
-                "because": args.because,
-                "at_event": args.at_event,
-                "declares": _parse_declares(args.declare),
-            },
-        )
-        command.run = run = Run.load(paths, strict=False)
-        print(result_text(run, receipt))
-    elif args.command == "channel":
-        if args.channel_command == "declare":
-            spec = declare_channel(run, args.name, path=args.path, file=args.file)
-            print(
-                f"CHANNEL | declared {args.name} ({spec['form']}); claims "
-                f'like `ch {args.name} = V` now parse and grade'
-            )
-        else:
-            from .channels import channel_lines
-
-            declared = load_declared(paths)
-            events = run.events
-            if events:
-                print("\n".join(channel_lines(run, events[-1], fresh=args.read)))
-            else:
-                print("CHANNELS | " + " · ".join(known_channels(run)))
-            for name, spec in sorted(declared.items()):
-                detail = spec.get("path") or spec.get("hash", "")[:12]
-                print(f"  {name}: {spec['form']} {detail}")
-    elif args.command == "model":
-        if args.model_command == "init":
-            print(f"CREATED | {init_model(paths)}; declare CHANNELS, define next()")
-        elif args.model_command == "replay":
-            record = replay_model(run)
-            print("\n".join(fit_lines(record)))
-        else:
-            result = solve_model(
-                run,
-                args.to,
-                seconds=args.seconds,
-                max_nodes=args.max_nodes,
-                max_depth=args.max_depth,
-            )
-            if result["actions"]:
-                print(
-                    f"SOLVE | plan found | {len(result['actions'])} steps | "
-                    f"nodes {result['nodes']}"
-                )
-                print("ACTIONS | " + " -> ".join(result["actions"]))
-                print(
-                    "PLAN | .assay/model_plan.json; execute with "
-                    "`assay commit @.assay/model_plan.json` (needs replay-fit "
-                    "promotion on the current journal)"
-                )
-            else:
-                print(
-                    f"SOLVE | no plan inside the model | nodes {result['nodes']}; "
-                    "actions() or next() are too narrow, or the goal needs "
-                    "something unmodeled"
-                )
-    elif args.command == "module":
-        if args.module_command == "install":
-            # The owner's install runs in the daemon, against the hash and
-            # the manifest it holds; it refuses without a live daemon.
-            record = broker_install_module(paths, args.path, args.token)
-            print(
-                f"MODULE | installed {record['name']} from {record['source']} "
-                f"(sha256 {record['sha256'][:12]}) | journaled | active from the "
-                "next action"
-            )
-        else:
-            origins = {
-                str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest
-            }
-            view = ModuleView(run)
-            print("MODULES | active (name, mode, origin), constitution, telemetry")
-            for item, mode in active_modules(run):
-                print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
-                print(f"    constitution: {item.CONSTITUTION}")
-                try:
-                    telemetry = item.telemetry(view)
-                except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
-                    telemetry = {"error": f"{type(error).__name__}: {error}"}
-                print(f"    telemetry: {json.dumps(telemetry, sort_keys=True, default=str)}")
-            for line in unlisted_lines(run):
-                print(line)
-    elif args.command == "goal":
-        if args.goal_command == "propose":
-            record = propose_goal(run, args.text, args.because)
-            print(
-                f"GOAL | proposal #{record['id']} journaled, awaiting owner "
-                "ratification (`assay goal ratify ID --token ...`)"
-            )
-        elif args.goal_command == "list":
-            proposals = list_proposals(run)
-            if not proposals:
-                print("GOAL | no proposals")
-            for entry in proposals:
-                print(
-                    f"  #{entry['id']} [{entry['status']}] {entry['text']}"
-                    + (f"; {entry['because']}" if entry.get("because") else "")
-                )
-        else:
-            proposal = ratify_goal(run, args.id, args.token)
-            print(
-                f"GOAL | ratified #{args.id}: {proposal['text']}; status now "
-                "re-presents it as the standing goal"
-            )
-    elif args.command == "export":
-        target = export_knowledge(run, args.out)
-        print(f"EXPORTED | {target}; import with `assay start WORLD_ID --import {target.name}`")
-    elif args.command == "spend":
-        append_jsonl(
-            paths.activity,
-            {
-                "kind": "spend_report",
-                "id": args.report_id,
-                "usd": args.usd,
-                "tokens": args.tokens,
-            },
-        )
-        from .registry import spend_reports
-
-        usd, tokens = spend_reports(load_jsonl(paths.activity))
-        print(f"SPEND | recorded | cumulative ${usd:.2f} | {tokens} tokens")
-    elif args.command == "audit":
-        print("\n".join(audit_lines(audit(run))))
-    elif args.command == "approve":
-        grant_approval(run, args.action, args.token)
-        print(
-            f"APPROVED | one use of {args.action.upper()} granted "
-            "(expires in 10 minutes, consumed on use)"
-        )
-    elif args.command == "waive":
-        grant_waiver(run, args.action, args.token, args.because or "")
-        print(f"WAIVED | rehearsal quota for {args.action.upper()} (journaled)")
-    elif args.command == "python":
-        if bool(args.source) == bool(args.file):
-            raise AssayError(
-                "provide exactly one Python source argument or --file"
-            )
-        source = (
-            args.source if args.source is not None else args.file.read_text()
-        )
-        run_python(run, source)
-    else:
-        raise AssayError(f"unsupported command {args.command}")
+def _run(paths: RunPaths, args: argparse.Namespace) -> int:
+    """One command, from the tables: a lifecycle command runs before any run
+    is loaded and returns the exit status; every other command loads the run
+    once, lenient (the readers report what they find; only start and the
+    daemon load strict), and runs under the lock with its activity record."""
+    for lifecycle in LIFECYCLE:
+        if args.command == lifecycle.name:
+            return lifecycle.run(paths, args)
+    command = command_of(args)
+    require_run(paths)
+    with run_lock(paths):
+        run = Run.load(paths, strict=False)
+        with command_status(run, args.command) as status:
+            command.run(paths, run, status, args)
+    return 0
 
 
 def _report_internal_error(error: BaseException) -> int:
@@ -1123,3 +1131,294 @@ def _report_internal_error(error: BaseException) -> int:
         file=sys.stderr,
     )
     return 2
+
+
+# --- the tables, in the order the command line lists them --------------------
+
+LIFECYCLE: tuple[Lifecycle, ...] = (
+    Lifecycle(
+        "start",
+        "start or resume the one persistent run",
+        start_command,
+        arguments=(
+            arg(
+                "game_id",
+                metavar="world_id",
+                help="a label for this run, kept as given: up to 64 characters with no whitespace, "
+                "control characters or path separators. A benchmark adapter may read it to pick the instance",
+            ),
+            arg("--seed", type=int, default=0, help=argparse.SUPPRESS),
+            arg(
+                "--adapter",
+                help="world adapter factory: module:factory or /path/file.py:factory",
+            ),
+            arg(
+                "--registry",
+                type=Path,
+                help="JSON file registering the actions, their parameter schemas and the action "
+                "budget; required for a fresh run, optional on resume (the pinned one is used)",
+            ),
+            arg(
+                "--mode",
+                choices=(LOCAL_MODE, REMOTE_MODE),
+                help="local simulator (default), or expiring remote competition validation",
+            ),
+            arg(
+                "--import",
+                dest="import_knowledge",
+                type=Path,
+                metavar="KNOWLEDGE.json",
+                help="import a prior run's exported knowledge (lands FOREIGN, demoted)",
+            ),
+            arg(
+                "--owner-token-file",
+                type=Path,
+                metavar="PATH",
+                help="write the owner token to this file (mode 0600, outside the run "
+                "directory) instead of printing it; ASSAY_OWNER_TOKEN_FILE does the same",
+            ),
+        ),
+    ),
+    Lifecycle(
+        "stop",
+        "stop this run's environment owner (the daemon) cleanly; "
+        "`assay start` resumes the run later",
+        stop_command,
+    ),
+    Lifecycle(
+        "version",
+        "the harness version, the journal spec it writes, the interpreter",
+        version_command,
+    ),
+    Lifecycle(
+        "doctor",
+        "check the interpreter, dependencies, anchors, socket path, run "
+        "state, daemon, adapter and registry; works with or without a run here",
+        doctor_command,
+    ),
+)
+
+COMMANDS: tuple[Command, ...] = (
+    Command(
+        "status",
+        "status",
+        "full picture: progress, image, actions, recent results, notes",
+        status_command,
+        arguments=(arg("--history", type=int, default=8),),
+    ),
+    Command(
+        "view",
+        "view",
+        "inspect one event: the observation, the delta since the previous one, history",
+        view_command,
+        arguments=(
+            arg("--event", type=int),
+            arg("--history", type=int, default=0),
+            # Frame worlds only; inert on a dict run, which says so.
+            arg(
+                "--grid", action="store_true", help="frame worlds: print the complete exact 0-f grid"
+            ),
+            arg(
+                "--frames", action="store_true", help="frame worlds: show causal animation frames"
+            ),
+            arg("--crop", metavar="R0:R1,C0:C1", help="frame worlds: print an exact half-open crop"),
+            arg(
+                "--export", type=Path, metavar="FILE.npz", help="frame worlds: export the grid history"
+            ),
+        ),
+    ),
+    Command(
+        "act",
+        "act",
+        "take one action with a prediction; the result is graded against it",
+        act_command,
+        operation=ACT,
+        arguments=(
+            arg("action"),
+            arg("params", nargs="*", metavar="pname=value", help=argparse.SUPPRESS),
+            arg(
+                "--predict",
+                required=False,
+                help='what this action does, e.g. "change; ch counter delta = 1" (see below); required '
+                "unless the registry sets gate: optional",
+            ),
+            arg("--because", help="short reason for choosing this action"),
+            arg("--at", type=int, dest="at_event"),
+            arg(
+                "--declare",
+                action="append",
+                default=[],
+                metavar='"field=value"',
+                help="structural declaration a gate or module demanded "
+                '(e.g. --declare "worst_case=..." --declare "recovery=...")',
+            ),
+        ),
+        epilog=claims_help,
+    ),
+    Command(
+        "commit",
+        "commit",
+        "run a prediction-checked batch or a model plan; halts on the first miss",
+        commit_command,
+        operation=COMMIT,
+        arguments=(
+            arg(
+                "plan",
+                nargs="?",
+                help="a plan file, e.g. @.assay/model_plan.json from `assay model solve`",
+            ),
+            arg(
+                "--step",
+                action="append",
+                default=[],
+                metavar='"ACTION :: CLAIMS"',
+                help="one action with its own prediction; repeat in execution order",
+            ),
+            arg("--at", type=int, dest="at_event"),
+            arg(
+                "--declare",
+                action="append",
+                default=[],
+                metavar='"field=value"',
+                help="structural declaration a module demanded for a step in this batch",
+            ),
+        ),
+        epilog=claims_help,
+    ),
+    Command(
+        "reset",
+        "reset",
+        "pay one action to rewind the current progress unit",
+        reset_command,
+        operation=RESET,
+        arguments=(
+            arg(
+                "--because", help="why the current state is worth abandoning (required unless GAME_OVER)"
+            ),
+            arg("--at", type=int, dest="at_event"),
+            arg(
+                "--declare",
+                action="append",
+                default=[],
+                metavar='"field=value"',
+                help="structural declaration a module demanded for this reset "
+                '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
+            ),
+        ),
+    ),
+    Command(
+        "python",
+        "python",
+        "run offline Python with the history, deltas, BFS and A* preloaded",
+        python_command,
+        arguments=(arg("source", nargs="?"), arg("--file", type=Path)),
+    ),
+    Command(
+        "channel_declare",
+        "channel declare",
+        "register a named reading of the observation",
+        channel_declare,
+        arguments=(
+            arg("name"),
+            arg("--path", help="dotted keys into the dict observation, e.g. counters.red"),
+            arg("--file", help="extractor file: def extract(obs) -> value (sandboxed)"),
+        ),
+    ),
+    Command(
+        "channel_list",
+        "channel list",
+        "list registered channels with their current readings",
+        channel_list,
+        arguments=(
+            arg(
+                "--read",
+                action="store_true",
+                help="compute extractor channels fresh (runs each extractor sandboxed) "
+                "instead of showing the last graded reading",
+            ),
+        ),
+    ),
+    Command("model_init", "model init", "create a model.py template", model_init),
+    Command(
+        "model_replay",
+        "model replay",
+        "grade model.py's declared channels over every recorded transition",
+        model_replay,
+    ),
+    Command(
+        "model_solve",
+        "model solve",
+        "search the model for a plan to a channel target",
+        model_solve,
+        arguments=(
+            arg("--to", required=True, metavar='"ch NAME = V"', help="the goal reading"),
+            arg("--seconds", type=float, default=15.0),
+            arg("--max-nodes", type=int, default=100_000),
+            arg("--max-depth", type=int, default=40),
+        ),
+    ),
+    Command(
+        "module_list",
+        "module list",
+        "active modules with mode and origin, plus ignored files",
+        module_list,
+    ),
+    Command(
+        "module_install",
+        "module install",
+        "owner: install a module file mid-run (journaled, manifest-pinned)",
+        module_install,
+        operation=INSTALL_MODULE,
+        arguments=(arg("path", type=Path), arg("--token")),
+    ),
+    Command(
+        "goal_propose",
+        "goal propose",
+        "propose a standing-goal revision (journaled, owner ratifies)",
+        goal_propose,
+        arguments=(arg("text"), arg("--because")),
+    ),
+    Command("goal_list", "goal list", "list goal proposals and their status", goal_list),
+    Command(
+        "goal_ratify",
+        "goal ratify",
+        "owner: ratify a proposal by id (requires the owner token)",
+        goal_ratify,
+        arguments=(arg("id", type=int), arg("--token")),
+    ),
+    Command(
+        "export",
+        "export",
+        "export this run's earned knowledge for a future import",
+        export_command,
+        arguments=(arg("--out", type=Path),),
+    ),
+    Command(
+        "spend_report",
+        "spend report",
+        "post cumulative usage (idempotent by --id; last entry wins)",
+        spend_report,
+        arguments=(
+            arg("--usd", type=float, required=True),
+            arg("--tokens", type=int, default=0),
+            arg("--id", dest="report_id", required=True),
+        ),
+    ),
+    Command(
+        "audit", "audit", "recompute journal integrity: chain, anchors, ungated events", audit_command
+    ),
+    Command(
+        "approve",
+        "approve",
+        "owner: grant one use of an approval-gated action",
+        approve_command,
+        arguments=(arg("action"), arg("--token")),
+    ),
+    Command(
+        "waive",
+        "waive",
+        "owner: waive a live actuator's rehearsal quota (journaled)",
+        waive_command,
+        arguments=(arg("action"), arg("--token"), arg("--because")),
+    ),
+)

@@ -1,10 +1,12 @@
 """The frame-world claim forms and their grader.
 
 `cell`, `move`, `vanish` and `region` are coordinate claims over a grid, with
-x = column and y = row. The kernel recognizes them and refuses them by name
-before any spend, which is the rule every published journal was recorded
-under. Whether frame worlds should admit them is a decision the owner has not
-made; until then no caller passes a kind to the parser.
+x = column and y = row. Their patterns live in the kernel's table of the forms
+(`assay.extras.FRAME_FORMS`), which recognizes them and refuses them by name
+before any spend without importing this package, the rule every published
+journal was recorded under; this module reads the table back for the fields
+and the grader. Whether frame worlds should admit them is a decision the
+owner has not made; until then no caller passes a kind to the parser.
 
 `grade_claims` grades every plain claim of a frame event, the general forms
 included, by cell comparison of the settled frames, exactly as the kernel did
@@ -20,26 +22,13 @@ from typing import Any
 import numpy as np
 
 from assay.core import frame_at
+from assay.extras import FRAME_FORMS
 from assay.records import Claim, Event, Grade
 
-GRID_KINDS = ("cell", "move", "vanish", "region")
+GRID_KINDS = tuple(form.name for form in FRAME_FORMS)
 
-PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
-    (
-        "cell",
-        re.compile(r"^cell\s+(\d+)\s*,\s*(\d+)\s*=\s*([0-9a-fA-F])$", re.IGNORECASE),
-    ),
-    (
-        "move",
-        re.compile(
-            r"^move\s+(\d+)\s*,\s*(\d+)\s+([+-]?\d+)\s*,\s*([+-]?\d+)$", re.IGNORECASE
-        ),
-    ),
-    ("vanish", re.compile(r"^vanish\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)),
-    (
-        "region",
-        re.compile(r"^region\s+(\d+)\s*:\s*(\d+)\s*,\s*(\d+)\s*:\s*(\d+)$", re.IGNORECASE),
-    ),
+PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
+    (form.name, form.pattern) for form in FRAME_FORMS
 )
 
 HELP = """\

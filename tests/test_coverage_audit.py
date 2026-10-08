@@ -10,6 +10,8 @@ import gzip
 import json
 from pathlib import Path
 
+import pytest
+
 from conftest import FAKE_ADAPTER, event_of, run_cli, run_of, stop_run
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "lf52_prefix.jsonl.gz"
@@ -97,6 +99,20 @@ def test_change_signal_prefers_the_grade_then_the_observation():
     progressed = _event(1, "INC", level=1, observation={"counter": 0})
     progressed["level_before"] = 0
     assert _event_changed(_records([base[0], progressed]), 1) is True
+
+
+def test_frame_change_signal_comes_from_the_observation_kind():
+    """The frame branch of the change signal lives behind the kind hook: the
+    settled frame against the previous event's, as the kernel compared them
+    before the branch moved."""
+    pytest.importorskip("PIL")
+    from assay.modules import _event_changed
+
+    start = event_of(id=0, action="START", counts_action=False, level_before=None, frames=[["00", "00"]])
+    moved = event_of(id=1, action="ACTION1", data=None, frames=[["00", "00"], ["01", "00"]])
+    assert _event_changed([start, moved], 1) is True
+    settled = event_of(id=1, action="ACTION1", data=None, frames=[["11", "11"], ["00", "00"]])
+    assert _event_changed([start, settled], 1) is False
 
 
 def test_reissue_loop_and_conclusion_triggers_and_demands():
