@@ -19,16 +19,19 @@ from .textobs import changed_count
 class RecentLine:
     """One history line's facts: the event, the paid-action counter after
     it, the progress unit it was on, the action as the receipt names it,
-    the grade mark (a check, a cross, or None when nothing was graded),
-    what changed since the previous event, the animation frame count on a
-    frame world (None on a dict world), and the state."""
+    whether the prediction held (None when nothing was graded), how much
+    changed since the previous event (None at the start, else a count in
+    `changed_unit`, the noun the observation kind supplies: keys on a dict
+    world, cells on a frame world), the animation frame count on a frame
+    world (None on a dict world), and the state."""
 
     event: int
     paid: int
     unit: int
     action: str
-    mark: str | None
-    change: str
+    predict_ok: bool | None
+    changed: int | None
+    changed_unit: str
     frames: int | None
     state: str
 
@@ -42,23 +45,18 @@ def recent_lines(events: Sequence[Event], count: int = 8) -> list[RecentLine]:
         paid_at[event.id] = paid
     lines: list[RecentLine] = []
     for event in events[-max(1, count) :]:
-        if event.predict_ok is True:
-            mark: str | None = "✓"
-        elif event.predict_ok is False:
-            mark = "✗"
-        else:
-            mark = None
         kind = kind_for(event)
         if kind is not None:
-            change = kind.history_change(events, event)
+            changed, changed_unit = kind.history_change(events, event)
             frames: int | None = len(event.frames or ())
         else:
             previous = events[event.id - 1] if event.id else None
-            change = (
-                "start"
+            changed = (
+                None
                 if previous is None or previous.frames is not None
-                else f"{changed_count(previous.observation, event.observation)} keys"
+                else changed_count(previous.observation, event.observation)
             )
+            changed_unit = "keys"
             frames = None
         lines.append(
             RecentLine(
@@ -66,8 +64,9 @@ def recent_lines(events: Sequence[Event], count: int = 8) -> list[RecentLine]:
                 paid=paid_at[event.id],
                 unit=min(event.win_levels, event.levels_completed + 1),
                 action=canonical_action(event),
-                mark=mark,
-                change=change,
+                predict_ok=event.predict_ok,
+                changed=changed,
+                changed_unit=changed_unit,
                 frames=frames,
                 state=str(event.state),
             )
@@ -78,11 +77,17 @@ def recent_lines(events: Sequence[Event], count: int = 8) -> list[RecentLine]:
 def history_text(lines: Sequence[RecentLine]) -> list[str]:
     rendered: list[str] = []
     for line in lines:
-        mark = f" {line.mark}" if line.mark else ""
+        if line.predict_ok is True:
+            mark = " ✓"
+        elif line.predict_ok is False:
+            mark = " ✗"
+        else:
+            mark = ""
+        change = "start" if line.changed is None else f"{line.changed} {line.changed_unit}"
         frames = f"frames={line.frames} | " if line.frames is not None else ""
         rendered.append(
             f"  e{line.event:04d} a{line.paid:04d} "
-            f"L{line.unit} {line.action}{mark} | {line.change} | {frames}{line.state}"
+            f"L{line.unit} {line.action}{mark} | {change} | {frames}{line.state}"
         )
     return rendered
 

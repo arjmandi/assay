@@ -85,13 +85,15 @@ def anchor_status(paths: RunPaths, config: Mapping[str, Any] | None) -> dict[str
     target = anchor_file(paths, config)
     anchors = load_jsonl(target) if target.exists() else []
     last_event = int(anchors[-1]["event_id"]) if anchors else None
-    failed: str | None = None
+    failed_event: int | None = None
+    failed_error: str | None = None
     for record in load_jsonl(paths.activity):
         if record.get("kind") != "anchor_failed":
             continue
         event = record.get("event")
         if last_event is None or (isinstance(event, int) and event > last_event):
-            failed = f"e{event}: {record.get('error')}"
+            failed_event = event if isinstance(event, int) else None
+            failed_error = str(record.get("error"))
     # Writability without side effects: the nearest existing ancestor must be
     # a writable directory (a file in the way is the common failure).
     ancestor = target.parent
@@ -102,23 +104,31 @@ def anchor_status(paths: RunPaths, config: Mapping[str, Any] | None) -> dict[str
         "file": target,
         "count": len(anchors),
         "last_event": last_event,
-        "failed": failed,
+        "failed_event": failed_event,
+        "failed_error": failed_error,
         "writable": writable,
     }
 
 
 def anchor_text(
-    file: str, count: int, last_event: int | None, failed: str | None, writable: bool
+    file: str,
+    count: int,
+    last_event: int | None,
+    failed_event: int | None,
+    failed_error: str | None,
+    writable: bool,
 ) -> str:
-    """The ANCHORS line from its facts."""
+    """The ANCHORS line from its facts: the file, the count and the last
+    anchored event, the last failed write (its event and error) when newer
+    than the last anchor, and whether the directory can be written now."""
     line = f"ANCHORS | {file} | "
     line += (
         f"{count} anchor(s), last e{last_event}"
         if count
         else "none yet (every 25 events and on WIN)"
     )
-    if failed:
-        line += f" | last write FAILED at {failed}"
+    if failed_error is not None:
+        line += f" | last write FAILED at e{failed_event}: {failed_error}"
     elif not writable:
         line += " | directory NOT WRITABLE, heads stay chain-only until fixed"
     return line
@@ -127,7 +137,12 @@ def anchor_text(
 def anchor_line(paths: RunPaths, config: Mapping[str, Any] | None) -> str:
     status = anchor_status(paths, config)
     return anchor_text(
-        str(status["file"]), status["count"], status["last_event"], status["failed"], status["writable"]
+        str(status["file"]),
+        status["count"],
+        status["last_event"],
+        status["failed_event"],
+        status["failed_error"],
+        status["writable"],
     )
 
 

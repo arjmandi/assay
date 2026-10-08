@@ -20,6 +20,7 @@ from typing import Any
 
 from .core import (
     LOCAL_MODE,
+    OBSERVATION_HINT,
     REMOTE_MODE,
     AssayError,
     RunPaths,
@@ -167,17 +168,29 @@ def _import_factory(spec: str, root: Path) -> Adapter:
     candidate = Path(module_name)
     if not candidate.is_absolute():
         candidate = root / candidate
-    if candidate.suffix == ".py" and candidate.exists():
-        info = importlib.util.spec_from_file_location(
-            f"_assay_adapter_{time.time_ns()}", candidate
-        )
-        if info is None or info.loader is None:
-            raise AssayError(f"cannot import adapter {candidate}", code="ADAPTER_SPEC")
-        module = importlib.util.module_from_spec(info)
-        sys.modules[info.name] = module
-        info.loader.exec_module(module)
-    else:
-        module = importlib.import_module(module_name)
+    try:
+        if candidate.suffix == ".py" and candidate.exists():
+            info = importlib.util.spec_from_file_location(
+                f"_assay_adapter_{time.time_ns()}", candidate
+            )
+            if info is None or info.loader is None:
+                raise AssayError(f"cannot import adapter {candidate}", code="ADAPTER_SPEC")
+            module = importlib.util.module_from_spec(info)
+            sys.modules[info.name] = module
+            info.loader.exec_module(module)
+        else:
+            module = importlib.import_module(module_name)
+    except AssayError:
+        raise
+    except Exception as error:  # noqa: BLE001 - whatever the import raised is the adapter's problem
+        raise AssayError(
+            f"adapter {spec!r} failed to import: {type(error).__name__}: {error}",
+            code="ADAPTER_SPEC",
+            hint=(
+                "install the adapter's dependencies into the daemon's interpreter (ASSAY_PYTHON "
+                "pins it); `assay doctor` dry-imports the adapter"
+            ),
+        ) from error
     factory = getattr(module, attribute, None)
     if not callable(factory):
         raise AssayError(f"adapter factory {spec!r} is not callable", code="ADAPTER_SPEC")
@@ -200,7 +213,9 @@ def _create_session(root: Path, config: Mapping[str, Any]) -> Session:
 
 def _encode_observation(value: Any) -> dict[str, Any]:
     if value is None:
-        raise AssayError("environment returned no observation", code="WORLD_ERROR")
+        raise AssayError(
+            "environment returned no observation", code="OBSERVATION_INVALID", hint=OBSERVATION_HINT
+        )
     return normalize_observation(value)
 
 
@@ -252,6 +267,13 @@ def _version_refusal(found: Any, *, side: str) -> AssayError:
     )
 
 
+def _versioned(line: Mapping[str, Any]) -> bool:
+    """Whether the line carries this package's protocol version: the integer
+    2, not a float or a boolean that happens to compare equal."""
+    version = line.get("v")
+    return type(version) is int and version == PROTOCOL_VERSION
+
+
 def _decode_reply(raw: bytes) -> dict[str, Any]:
     """The daemon's reply line (docs/ARCHITECTURE.md section 7.2) to the
     result it carries: the version checked before anything else, so a
@@ -259,21 +281,21 @@ def _decode_reply(raw: bytes) -> dict[str, Any]:
     error object raised as the same AssayError the daemon raised."""
     if not raw.strip():
         raise AssayError(
-            "empty response from environment owner", code="PROTOCOL_MALFORMED", hint=RESTART_HINT
+            "empty response from environment owner", code="REPLY_MALFORMED", hint=RESTART_HINT
         )
     try:
         response = json.loads(raw.splitlines()[0])
     except ValueError as error:
         raise AssayError(
             f"malformed response from environment owner: {error}",
-            code="PROTOCOL_MALFORMED",
+            code="REPLY_MALFORMED",
             hint=RESTART_HINT,
         ) from error
     if not isinstance(response, dict):
         raise AssayError(
-            "malformed response from environment owner", code="PROTOCOL_MALFORMED", hint=RESTART_HINT
+            "malformed response from environment owner", code="REPLY_MALFORMED", hint=RESTART_HINT
         )
-    if response.get("v") != PROTOCOL_VERSION:
+    if not _versioned(response):
         raise _version_refusal(response.get("v"), side="environment owner")
     if not response.get("ok"):
         raise AssayError.from_json(response.get("error", "environment owner error"))
@@ -281,7 +303,7 @@ def _decode_reply(raw: bytes) -> dict[str, Any]:
     if not isinstance(result, dict):
         raise AssayError(
             "malformed response from environment owner: no result object",
-            code="PROTOCOL_MALFORMED",
+            code="REPLY_MALFORMED",
             hint=RESTART_HINT,
         )
     return result
@@ -306,7 +328,9 @@ def _request(
         else "a remote competition run cannot be reconstructed"
     )
     if not isinstance(descriptor, dict) or descriptor.get("status") != "READY":
-        raise AssayError(f"the environment owner is unavailable; {recovery}", code="DAEMON_UNAVAILABLE")
+        raise AssayError(
+            "the environment owner (the daemon) is not running", code="DAEMON_UNAVAILABLE", hint=recovery
+        )
     token_path = paths.state / "broker.token"
     try:
         token = token_path.read_text().strip()
@@ -331,8 +355,24 @@ def _request(
                 chunks.append(chunk)
                 if b"\n" in chunk:
                     break
-    except (OSError, TimeoutError) as error:
-        raise AssayError(f"the environment owner stopped responding; {recovery}", code="DAEMON_UNAVAILABLE") from error
+    except TimeoutError as error:
+        # The daemon is alive and inside the step, or hung: the one thing the
+        # client must not say is "resume", which would replay under a step
+        # that may still land.
+        raise AssayError(
+            f"the environment owner did not answer within {timeout:g}s; it may still be inside the step",
+            code="DAEMON_BUSY",
+            hint=(
+                "the step may still land; run `assay status` and read the last event before "
+                "acting again (ASSAY_BROKER_TIMEOUT raises the wait)"
+            ),
+        ) from error
+    except OSError as error:
+        raise AssayError(
+            "the environment owner is not answering on its socket",
+            code="DAEMON_UNAVAILABLE",
+            hint=recovery,
+        ) from error
     return _decode_reply(b"".join(chunks))
 
 
@@ -400,9 +440,9 @@ def broker_install_module(paths: RunPaths, source: Path, token: str | None) -> d
     adopt; a daemon inside a step is waited for like any paid command."""
     if find_daemon(paths) is None:
         raise AssayError(
-            "module install is a daemon operation and this run's environment owner "
-            "is not running; resume it with `assay start WORLD_ID`, then install again",
+            "module install is a daemon operation and this run's environment owner is not running",
             code="DAEMON_UNAVAILABLE",
+            hint="resume it with `assay start WORLD_ID`, then install again",
         )
     # `token` on the wire is the daemon's own; the owner's rides apart.
     request = InstallModuleRequest(path=str(source.resolve()), owner_token=token)
@@ -509,7 +549,7 @@ def start_broker(paths: RunPaths) -> None:
             break
         time.sleep(0.05)
     raise AssayError(
-        "environment owner did not start; see .assay/broker.log",
+        "environment owner did not start",
         code="DAEMON_UNAVAILABLE",
         hint="the daemon's log is .assay/broker.log; `assay doctor` checks the interpreter and the adapter",
     )
@@ -704,22 +744,21 @@ def _tamper_error(detail: str) -> AssayError:
     )
 
 
-REPLAY_HINT = (
-    "the world no longer reproduces this journal; preserve the directory and "
-    "start another run in a fresh one"
-)
+REPLAY_HINT = "preserve the directory and start another run in a fresh one"
 
 
 @contextlib.contextmanager
 def world_boundary(what: str) -> Iterator[None]:
     """The adapter boundary (docs/ARCHITECTURE.md section 7.1): anything the
     session raises inside the daemon's call into it, an AssayError or not,
-    becomes `WORLD_ERROR` carrying the text. A finalize failure is not
-    wrapped here: it stays the warning on the receipt."""
+    becomes `WORLD_ERROR` carrying the text; the kernel's own shape checks
+    on what the session returned pass through as `OBSERVATION_INVALID`. A
+    finalize failure is not wrapped here: it stays the warning on the
+    receipt."""
     try:
         yield
     except AssayError as error:
-        if error.code == "WORLD_ERROR":
+        if error.code in _WORLD_CODES:
             raise
         raise AssayError(error.message, code="WORLD_ERROR", hint=error.hint or _WORLD_HINTS[what]) from error
     except Exception as error:  # noqa: BLE001 - the world's failure, whatever it raised
@@ -728,10 +767,20 @@ def world_boundary(what: str) -> Iterator[None]:
         ) from error
 
 
+_WORLD_CODES = frozenset({"WORLD_ERROR", "OBSERVATION_INVALID"})
 _WORLD_HINTS = {
-    "factory": "the adapter's factory raised; the daemon's log is .assay/broker.log",
-    "observation": "the adapter's observation raised or has a shape the kernel does not take",
-    "step": "the world refused or failed this action; no event was journaled for it",
+    "factory": (
+        "fix the adapter and run `assay start WORLD_ID` again; the daemon's log is "
+        ".assay/broker.log"
+    ),
+    "observation": (
+        "fix the adapter so its observation reads cleanly, then resume with "
+        "`assay start WORLD_ID`"
+    ),
+    "step": (
+        "nothing was journaled for it; choose another action or other parameters, "
+        "or read the state again with `assay status`"
+    ),
 }
 
 
@@ -775,11 +824,46 @@ def _read_request(connection: socket.socket) -> dict[str, Any]:
         raw += chunk
     lines = raw.splitlines()
     if not lines or not lines[0].strip():
-        raise AssayError("malformed request", code="MALFORMED_REQUEST")
-    request = json.loads(lines[0])
+        raise AssayError("malformed request: no line", code="REQUEST_MALFORMED", hint=REQUEST_HINT)
+    try:
+        request = json.loads(lines[0])
+    except ValueError as error:
+        raise AssayError(
+            f"malformed request: not JSON ({error})", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+        ) from error
     if not isinstance(request, dict):
-        raise AssayError("malformed request", code="MALFORMED_REQUEST")
+        raise AssayError(
+            "malformed request: not a JSON object", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+        )
     return request
+
+
+REQUEST_HINT = (
+    'a request is one JSON line, {"v": 2, "token": ..., "op": NAME, "args": {...}} '
+    "(docs/ARCHITECTURE.md section 7.2)"
+)
+
+
+def _request_refusal(operation: Operation[Any, Any], error: TypeError | KeyError) -> AssayError:
+    """A body that does not fit the operation's request record: the kit's
+    message (a wrong type, a key the record does not take) or the missing
+    required key, with the record's fields as the next step."""
+    if isinstance(error, KeyError):
+        message = f"{operation.name}.{error.args[0]} is required"
+    else:
+        message = str(error)
+    schema = operation.request.json_schema()
+    fields = ", ".join(schema["properties"]) or "no fields"
+    required = ", ".join(schema["required"])
+    return AssayError(
+        message,
+        code="REQUEST_MALFORMED",
+        hint=(
+            f"the {operation.name} request takes {fields}"
+            + (f" (required: {required})" if required else "")
+            + f", the fields of ops.{operation.request.__name__}.json_schema()"
+        ),
+    )
 
 
 class _Daemon:
@@ -964,10 +1048,14 @@ class _Daemon:
         anything spends), the name's handler called with the daemon and the
         held run, the result encoded under `result`. An unknown operation is
         refused by name."""
-        if request.get("v") != PROTOCOL_VERSION:
+        if not _versioned(request):
             raise _version_refusal(request.get("v"), side="client")
         if not secrets.compare_digest(str(request.get("token", "")), self.token):
-            raise AssayError("invalid environment owner token", code="BROKER_TOKEN")
+            raise AssayError(
+                "invalid environment owner token",
+                code="DAEMON_TOKEN",
+                hint="the token is .assay/broker.token, written by `assay start` with the daemon",
+            )
         operation = daemon_operation(request.get("op"))
         if operation.paid or operation.owner:
             # A tampered daemon refuses before any pre-spend work; the
@@ -978,8 +1066,14 @@ class _Daemon:
         if args is None:
             args = {}
         if not isinstance(args, dict):
-            raise AssayError("malformed request: args is not an object", code="MALFORMED_REQUEST")
-        result = HANDLERS[operation.name](self, self.run, operation.request.from_json(args))
+            raise AssayError(
+                "malformed request: args is not an object", code="REQUEST_MALFORMED", hint=REQUEST_HINT
+            )
+        try:
+            decoded = operation.request.from_json(args)
+        except (TypeError, KeyError) as error:
+            raise _request_refusal(operation, error) from error
+        result = HANDLERS[operation.name](self, self.run, decoded)
         terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
         return {"v": PROTOCOL_VERSION, "ok": True, "result": result.to_json()}, terminal
 

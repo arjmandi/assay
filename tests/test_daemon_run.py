@@ -428,10 +428,10 @@ def test_module_install_is_the_daemons_operation(tmp_path):
         assert run_cli(run, "stop").returncode == 0
         refused = run_cli(run, "module", "install", str(tmp_path / "probe.py"), "--token", token)
         assert refused.returncode == 2
-        assert (
+        assert refused.stderr == (
             "ERROR | DAEMON_UNAVAILABLE | module install is a daemon operation and this run's environment "
-            "owner is not running; resume it with `assay start WORLD_ID`, then install again"
-        ) in refused.stderr
+            "owner is not running\nNEXT | resume it with `assay start WORLD_ID`, then install again\n"
+        )
         assert not (run / ".assay" / "modules").exists()
         assert not _activity(run, "module_installed")
         assert _start(run).returncode == 0
@@ -471,14 +471,15 @@ def test_a_field_the_request_record_does_not_take_spends_nothing(tmp_path):
         assert _start(run).returncode == 0
         paths = RunPaths(run)
         before = (len(load_jsonl(paths.mutations)), len(load_jsonl(paths.events)))
-        with pytest.raises(AssayError, match="^TypeError: act.bogus is not a field of the record$") as bug:
+        with pytest.raises(AssayError, match="^act.bogus is not a field of the record$") as bug:
             _request(
                 paths,
                 "act",
                 {"action": "NOOP", "params": None, "predict": "noop", "bogus": 1},
                 timeout=10.0,
             )
-        assert bug.value.code == "INTERNAL" and bug.value.kind == "internal"
+        assert bug.value.code == "REQUEST_MALFORMED" and bug.value.kind == "usage"
+        assert bug.value.hint is not None and bug.value.hint.startswith("the act request takes action, params, ")
         assert (len(load_jsonl(paths.mutations)), len(load_jsonl(paths.events))) == before
         assert run_cli(run, "act", "NOOP", "--predict", "noop").returncode == 0
     finally:
@@ -493,10 +494,17 @@ def test_a_connection_closed_without_a_line_is_a_malformed_request():
 
     left, right = socket.socketpair()
     right.close()
-    with left, pytest.raises(AssayError, match="^malformed request$"):
+    with left, pytest.raises(AssayError, match="^malformed request: no line$") as caught:
         _read_request(left)
+    assert caught.value.code == "REQUEST_MALFORMED"
     left, right = socket.socketpair()
     with right:
         right.sendall(b"\n")
-    with left, pytest.raises(AssayError, match="^malformed request$"):
+    with left, pytest.raises(AssayError, match="^malformed request: no line$"):
         _read_request(left)
+    left, right = socket.socketpair()
+    with right:
+        right.sendall(b"{not json\n")
+    with left, pytest.raises(AssayError, match="^malformed request: not JSON") as caught:
+        _read_request(left)
+    assert caught.value.code == "REQUEST_MALFORMED" and caught.value.kind == "usage"

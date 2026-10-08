@@ -254,9 +254,12 @@ def _channel_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
             specs[name] = entry
         else:
             raise AssayError(
-                f"model declares unregistered channel {name!r}; declare it with "
-                "`assay channel declare` first (referents are registered, never assumed)",
+                f"model declares unregistered channel {name!r}",
                 code="CHANNEL_UNKNOWN",
+                hint=(
+                    f"declare it with `assay channel declare {name} ...` first (referents are "
+                    "registered, never assumed)"
+                ),
             )
     return specs
 
@@ -308,7 +311,9 @@ def _declared_channels(run: Run) -> list[str]:
     paths = run.paths
     source = model_source(paths)
     if not source.exists():
-        raise AssayError("no model.py in the run root; `assay model init` creates one", code="MODEL_INVALID")
+        raise AssayError(
+            "no model.py in the run root", code="MODEL_INVALID", hint="`assay model init` creates one"
+        )
     payload = {
         "mode": "replay",
         "model_path": str(source.resolve()),
@@ -319,9 +324,12 @@ def _declared_channels(run: Run) -> list[str]:
     declared = [str(name) for name in result.get("declared", [])]
     if not declared:
         raise AssayError(
-            "model.py declares no CHANNELS; a model without declared channels "
-            "grades nothing and earns nothing",
+            "model.py declares no CHANNELS",
             code="MODEL_INVALID",
+            hint=(
+                "name the channels the model predicts in CHANNELS; a model without declared "
+                "channels grades nothing and earns nothing"
+            ),
         )
     return declared
 
@@ -539,6 +547,7 @@ def solve_model(
             f"solve goal channel {goal['channel']!r} is not in the model's declared "
             f"channels {declared}",
             code="MODEL_INVALID",
+            hint="add it to model.py's CHANNELS, or solve toward one of the declared channels",
         )
     specs = _channel_specs_for_sandbox(run, declared)
     events = run.events

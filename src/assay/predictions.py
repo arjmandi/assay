@@ -238,9 +238,10 @@ def parse_claims(
     help_text = GENERAL_CLAIMS_HELP + (("\n" + kind.claims_help()) if kind is not None else "")
     if not text or not text.strip():
         raise AssayError(
-            f"an empty prediction predicts nothing; say what you expect\n{help_text}",
+            "an empty prediction predicts nothing; say what you expect",
             code="PREDICTION_REQUIRED",
-            hint='add --predict "<claims>"; the forms are listed below and in `assay act --help`',
+            hint='add --predict "<claims>" (for example --predict "change"); `assay act --help` lists the forms',
+            detail=help_text,
         )
     claims: list[Claim] = []
     for raw in text.split(";"):
@@ -279,9 +280,13 @@ def parse_claims(
         if not matched:
             foreign = foreign_form(part, kind)
             if foreign is not None:
-                raise AssayError(f"{refusal_text(foreign, part)}\n{help_text}", code="CLAIM_SYNTAX")
+                raise AssayError(
+                    refusal_text(foreign, part), code="CLAIM_SYNTAX", hint=CLAIMS_HINT, detail=help_text
+                )
             if _KEYWORD.match(part):
-                raise AssayError(f"malformed claim {part!r}\n{help_text}", code="CLAIM_SYNTAX")
+                raise AssayError(
+                    f"malformed claim {part!r}", code="CLAIM_SYNTAX", hint=CLAIMS_HINT, detail=help_text
+                )
             claims.append(Claim(kind="note", text=part))
     mechanical = [
         claim for claim in claims if claim.kind not in {"note", "aggregate"}
@@ -289,9 +294,10 @@ def parse_claims(
     if any(claim.kind == "aggregate" for claim in claims) and not mechanical:
         # Statistical claims are additive, never substitutive.
         raise AssayError(
-            "aggregate claims are additive: this action still needs a mechanical "
-            f"claim of its own\n{help_text}",
+            "aggregate claims are additive: this action still needs a mechanical claim of its own",
             code="CLAIM_SYNTAX",
+            hint=CLAIMS_HINT,
+            detail=help_text,
         )
     if not mechanical:
         # A prose prediction still commits to a visible effect. Coerced claims

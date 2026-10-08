@@ -70,7 +70,7 @@ class FrameKind:
     def view_text(self, run: Run, index: int, flags: Mapping[str, Any]) -> str:
         return views.view_text(run, index, flags)
 
-    def history_change(self, events: Sequence[Event], event: Event) -> str:
+    def history_change(self, events: Sequence[Event], event: Event) -> tuple[int | None, str]:
         return render.history_change(events, event)
 
     def canonical_action(self, event: Event) -> str | None:

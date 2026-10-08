@@ -934,13 +934,15 @@ def consult_modules(run: Run, pending: Mapping[str, Any] | None) -> list[str]:
     for module, mode in active_modules(run):
         demands = module.demand(view, pending)
         if demands and mode == "block":
-            wanted = ", ".join(f"--declare {field}=..." for field in sorted(demands))
+            wanted = " ".join(f'--declare "{field}=<text>"' for field in sorted(demands))
             reasons = "; ".join(f"{field}: {why}" for field, why in sorted(demands.items()))
             raise AssayError(
-                f"MODULE {module.NAME} | declaration demanded before this action: "
-                f"{wanted} ({reasons}); the demand is structural; it never bans",
+                f"MODULE {module.NAME} | declaration demanded before this action: {reasons}",
                 code="MODULE_DEMAND",
-                hint=f"repeat the command with {wanted}; declaring always unlocks the action",
+                hint=(
+                    f"repeat the command with {wanted} (one flag per field); any named, "
+                    "non-empty text unlocks the action"
+                ),
             )
         message = module.trigger(view, pending)
         if message:

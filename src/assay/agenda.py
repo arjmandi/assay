@@ -87,7 +87,7 @@ def require_owner(run: Run, token: str | None) -> None:
             "owner authority required: pass --token <the token printed at start>. "
             "The agent proposes; the owner ratifies.",
             code="OWNER_TOKEN",
-            hint="the operator holds the token (or the file --owner-token-file wrote); the agent never does",
+            hint="ask the operator to run this command with --token; the agent never holds the token",
         )
 
 
@@ -178,16 +178,17 @@ def consume_approval(run: Run, action: str) -> None:
     entry = state.get(action.upper()) if isinstance(state, dict) else None
     if not isinstance(entry, dict) or entry.get("used"):
         raise AssayError(
-            f"{action} is approval-gated (default-deny): the owner grants one use "
-            f"with `assay approve {action} --token ...`",
+            f"{action} is approval-gated (default-deny) and has no fresh approval",
             code="APPROVAL_REQUIRED",
+            hint=f"ask the operator to grant one use with `assay approve {action} --token ...`",
         )
     age = time.time() - float(entry.get("granted_at", 0))
     if age > APPROVAL_EXPIRY_SECONDS:
         raise AssayError(
             f"{action}'s approval expired after {int(APPROVAL_EXPIRY_SECONDS)}s "
-            "(default-deny with timeout); ask the owner to approve again",
+            "(default-deny with timeout)",
             code="APPROVAL_REQUIRED",
+            hint=f"ask the operator to run `assay approve {action} --token ...` again",
         )
     entry["used"] = True
     entry["used_at"] = time.time()
@@ -246,11 +247,13 @@ def check_rehearsal(run: Run, action: str) -> None:
         if same_registry and different_binding and attempts >= quota:
             return
     raise AssayError(
-        f"{action} is a LIVE actuator with a rehearsal quota of {quota}: import a "
-        "sim-binding run's knowledge (same registry, different binding) with "
-        f">= {quota} graded attempts, or the owner journals "
-        f"`assay waive {action} --token ... --because ...` (default-deny)",
+        f"{action} is a LIVE actuator with a rehearsal quota of {quota} that is not met",
         code="REHEARSAL_REQUIRED",
+        hint=(
+            "import a sim-binding run's knowledge (same registry, different binding) with "
+            f">= {quota} graded attempts, or ask the operator to journal "
+            f"`assay waive {action} --token ... --because ...` (default-deny)"
+        ),
     )
 
 

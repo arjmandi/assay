@@ -21,6 +21,7 @@ them with the record's fields.
 from __future__ import annotations
 
 import dataclasses
+import math
 import sys
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
@@ -55,6 +56,7 @@ if TYPE_CHECKING:
 OBSERVATION_LINES = 48
 NOTES_LINES = 120
 NOTES_LINE_WIDTH = 240
+LEASE_SECONDS = 15 * 60
 
 
 # --- the blocks ------------------------------------------------------------------
@@ -78,18 +80,20 @@ class RunBlock:
 @dataclasses.dataclass(frozen=True, slots=True)
 class ModeBlock:
     """The MODE line: `local` or `competition`, and for a remote run the
-    lease text as computed when the status was built."""
+    seconds left on the action-idle lease when the status was built (0 once
+    it ran out, None when the run's timestamps do not say)."""
 
     mode: str
-    lease: str | None
+    lease_seconds: int | None
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ObservationBlock:
-    """The dict observation as recorded and how many of its pretty-printed
-    lines the status leaves out."""
+    """The dict observation as recorded, the number of pretty-printed lines
+    the renderer shows at most, and how many it leaves out."""
 
     observation: Any
+    max_lines: int
     omitted_lines: int
 
 
@@ -124,17 +128,17 @@ class RegistryAction:
 @dataclasses.dataclass(frozen=True, slots=True)
 class RegistryBlock:
     """The REGISTRY lines: the actions with their schemas, flags and
-    descriptions (withheld under zero_prior), the action budget cap, the
-    gate and the mode note."""
+    descriptions (withheld under zero_prior), the gate and the mode note;
+    the action budget cap is the budget block's."""
 
     actions: tuple[RegistryAction, ...]
-    budget_cap: int | None
     gate: str
     mode_note: str | None
     zero_prior: bool
 
-    def as_registry(self) -> dict[str, Any]:
-        """The canonical registry shape `registry_lines` renders."""
+    def as_registry(self, budget_cap: int | None) -> dict[str, Any]:
+        """The canonical registry shape `registry_lines` renders, with the
+        budget block's cap for the header."""
         actions: list[dict[str, Any]] = []
         for action in self.actions:
             item: dict[str, Any] = {"name": action.name, "params": dict(action.params)}
@@ -148,8 +152,8 @@ class RegistryBlock:
                 item["description"] = action.description
             actions.append(item)
         registry: dict[str, Any] = {"actions": actions, "gate": self.gate, "zero_prior": self.zero_prior}
-        if self.budget_cap is not None:
-            registry["budget"] = {"actions": self.budget_cap}
+        if budget_cap is not None:
+            registry["budget"] = {"actions": budget_cap}
         if self.mode_note is not None:
             registry["mode_note"] = self.mode_note
         return registry
@@ -164,8 +168,9 @@ class BudgetBlock:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class GateBlock:
-    """The GATE line of a control-arm run: the mode and the count of the
-    actions it permitted without a prediction."""
+    """The registry's gate mode and the count of the paid actions it
+    permitted without a prediction; the GATE line is printed under the two
+    control arms (`optional`, `off`) and not under `required`."""
 
     mode: str
     unpredicted: int
@@ -251,10 +256,15 @@ class IntegrityBlock:
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class AnchorsBlock:
+    """The ANCHORS line: the file, the count, the last anchored event, the
+    last failed write (its event and error) when newer than the last
+    anchor, and whether the directory can be written now."""
+
     file: str
     count: int
     last_event: int | None
-    failed: str | None
+    failed_event: int | None
+    failed_error: str | None
     writable: bool
 
 
@@ -309,13 +319,17 @@ class VacuousBlock:
 @dataclasses.dataclass(frozen=True, slots=True)
 class NotesBlock:
     """The notes file: its path, text (None when missing), size, the cap the
-    registry sets, and the demotion banner's facts: the unit whose archive
-    the notes are compared with, and whether they changed since it ended."""
+    registry sets, the renderer's limits (the lines it shows at most, keeping
+    both ends, and the width it cuts a line to), and the demotion banner's
+    facts: the unit whose archive the notes are compared with, and whether
+    they changed since it ended."""
 
     path: str
     text: str | None
     size: int | None
     cap: int | None
+    max_lines: int
+    line_width: int
     archived_unit: int | None
     changed_since_archive: bool | None
 
@@ -414,10 +428,10 @@ def _mode_block(run: Run) -> ModeBlock:
     config = run.config
     mode = str(config.get("mode", "local"))
     if mode != "competition":
-        return ModeBlock(mode=mode, lease=None)
+        return ModeBlock(mode=mode, lease_seconds=None)
     mutations = run.mutations
     last = mutations[-1].timestamp if mutations else config.get("created_at")
-    lease = "unknown"
+    lease: int | None = None
     if last:
         try:
             then = dt.datetime.fromisoformat(str(last))
@@ -427,20 +441,17 @@ def _mode_block(run: Run) -> ModeBlock:
                 0.0,
                 (dt.datetime.now(dt.timezone.utc) - then).total_seconds(),
             )
-            lease = (
-                "expired/unavailable"
-                if idle >= 15 * 60
-                else f"about {max(0, 15 - int(idle // 60))}m action-idle remaining"
-            )
+            lease = 0 if idle >= LEASE_SECONDS else math.ceil(LEASE_SECONDS - idle)
         except ValueError:
             pass
-    return ModeBlock(mode=mode, lease=lease)
+    return ModeBlock(mode=mode, lease_seconds=lease)
 
 
 def _observation_block(event: Event) -> ObservationBlock:
     total = len(pretty_lines(event.observation, sys.maxsize))
     return ObservationBlock(
         observation=event.observation,
+        max_lines=OBSERVATION_LINES,
         omitted_lines=total - OBSERVATION_LINES if total > OBSERVATION_LINES else 0,
     )
 
@@ -468,7 +479,6 @@ def _registry_block(registry: Mapping[str, Any]) -> RegistryBlock:
     note = registry.get("mode_note")
     return RegistryBlock(
         actions=actions,
-        budget_cap=(registry.get("budget") or {}).get("actions"),
         gate=gate_mode(registry),
         mode_note=str(note) if note else None,
         zero_prior=hidden,
@@ -481,11 +491,8 @@ def _budget_block(registry: Mapping[str, Any], spent: int) -> BudgetBlock:
     return BudgetBlock(cap=cap, spent=spent, remaining=remaining)
 
 
-def _gate_block(registry: Mapping[str, Any], events: Sequence[Event]) -> GateBlock | None:
-    mode = gate_mode(registry)
-    if mode == "required":
-        return None
-    return GateBlock(mode=mode, unpredicted=len(ungated_permitted(events)))
+def _gate_block(registry: Mapping[str, Any], events: Sequence[Event]) -> GateBlock:
+    return GateBlock(mode=gate_mode(registry), unpredicted=len(ungated_permitted(events)))
 
 
 def _agenda_block(run: Run) -> AgendaBlock:
@@ -589,7 +596,8 @@ def _anchors_block(run: Run) -> AnchorsBlock:
         file=str(status["file"]),
         count=int(status["count"]),
         last_event=status["last_event"],
-        failed=status["failed"],
+        failed_event=status["failed_event"],
+        failed_error=status["failed_error"],
         writable=bool(status["writable"]),
     )
 
@@ -692,6 +700,8 @@ def _notes_block(run: Run, event: Event) -> NotesBlock:
         text=text,
         size=None if text is None else len(text),
         cap=notes_cap(run.registry) if run.registry else None,
+        max_lines=NOTES_LINES,
+        line_width=NOTES_LINE_WIDTH,
         archived_unit=archived_unit,
         changed_since_archive=changed,
     )
@@ -707,20 +717,23 @@ def render_status(status: Status) -> str:
     lines = [
         f"STATUS | {run.world} | event {run.event} | {run.progress_label} "
         f"{min(total, run.progress_completed + 1)}/{total} | paid actions {run.paid} | {run.state}",
-        mode_text(status.mode.mode, status.mode.lease),
+        mode_text(status.mode.mode, status.mode.lease_seconds),
     ]
     if status.kind is not None:
         lines.extend(status.kind.lines)
     else:
         if status.observation is not None:
-            lines.extend(observation_text(status.observation.observation, OBSERVATION_LINES))
+            lines.extend(
+                observation_text(status.observation.observation, status.observation.max_lines)
+            )
         if status.actions is not None:
             lines.append(actions_text(status.actions.advertised, status.actions.registered))
     if status.registry is not None:
-        lines.extend(registry_lines(status.registry.as_registry()))
+        cap = status.budget.cap if status.budget is not None else None
+        lines.extend(registry_lines(status.registry.as_registry(cap)))
     if status.budget is not None:
         lines.append(budget_text(status.budget.spent, status.budget.cap))
-    if status.gate is not None:
+    if status.gate is not None and status.gate.mode != "required":
         lines.append(gate_text(status.gate.mode, status.gate.unpredicted))
     if status.agenda is not None:
         agenda = status.agenda
@@ -759,7 +772,14 @@ def render_status(status: Status) -> str:
     if status.anchors is not None:
         anchors = status.anchors
         lines.append(
-            anchor_text(anchors.file, anchors.count, anchors.last_event, anchors.failed, anchors.writable)
+            anchor_text(
+                anchors.file,
+                anchors.count,
+                anchors.last_event,
+                anchors.failed_event,
+                anchors.failed_error,
+                anchors.writable,
+            )
         )
     if status.emergence is not None:
         lines.append(emergence_text(**dataclasses.asdict(status.emergence)))
@@ -773,13 +793,19 @@ def render_status(status: Status) -> str:
     return "\n".join(lines)
 
 
-def mode_text(mode: str, lease: str | None) -> str:
+def mode_text(mode: str, lease_seconds: int | None) -> str:
     if mode != "competition":
         return (
             "MODE | LOCAL SIMULATOR | competition action/reset accounting | "
             "exact replay recovery enabled"
         )
-    return f"MODE | REMOTE COMPETITION | {lease or 'unknown'} | exact replay recovery unavailable"
+    if lease_seconds is None:
+        lease = "unknown"
+    elif lease_seconds <= 0:
+        lease = "expired/unavailable"
+    else:
+        lease = f"about {math.ceil(lease_seconds / 60)}m action-idle remaining"
+    return f"MODE | REMOTE COMPETITION | {lease} | exact replay recovery unavailable"
 
 
 def observation_text(observation: Any, max_lines: int = OBSERVATION_LINES) -> list[str]:
@@ -917,9 +943,9 @@ def notes_text(notes: NotesBlock, win_levels: int) -> list[str]:
     if notes.text is None:
         lines.append("NOTES | missing; create .assay/NOTES.md and keep it current")
         return lines
-    content = [f"  {line[:NOTES_LINE_WIDTH]}" for line in notes.text.splitlines()]
+    content = [f"  {line[:notes.line_width]}" for line in notes.text.splitlines()]
     lines.append(f"NOTES | {notes.path} (edit the file directly; shown in full)")
-    lines.extend(_bounded(content, NOTES_LINES, preserve_ends=True))
+    lines.extend(_bounded(content, notes.max_lines, preserve_ends=True))
     cap = notes.cap
     size = notes.size or 0
     if cap is not None and size > 2 * cap:

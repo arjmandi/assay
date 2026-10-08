@@ -57,7 +57,7 @@ def test_an_unknown_operation_is_refused_by_name():
 
     with pytest.raises(AssayError, match="^unknown broker operation 'step'$") as refused:
         daemon_operation("step")
-    assert refused.value.code == "UNKNOWN_OPERATION" and refused.value.kind == "usage"
+    assert refused.value.code == "OPERATION_UNKNOWN" and refused.value.kind == "usage"
     with pytest.raises(AssayError, match="^unknown broker operation None$"):
         daemon_operation(None)
     assert daemon_operation("act").name == "act"
@@ -160,7 +160,7 @@ def test_the_error_object_schema_names_the_kinds():
     from assay.ops import ERROR_SCHEMA, PROTOCOL_VERSION
 
     assert PROTOCOL_VERSION == 2
-    assert set(ERROR_SCHEMA["properties"]) == set(AssayError("x").to_json()) == {"code", "kind", "message", "hint"}
+    assert set(ERROR_SCHEMA["properties"]) == set(AssayError("x").to_json()) == {"code", "kind", "message", "hint", "detail"}
     assert ERROR_SCHEMA["properties"]["kind"]["enum"] == list(KINDS)
 
 

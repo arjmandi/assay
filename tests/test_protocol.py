@@ -74,6 +74,11 @@ def test_the_client_refuses_a_reply_without_the_version_before_reading_it():
     with pytest.raises(AssayError, match="speaks protocol version 3; this package speaks 2") as caught:
         _decode_reply(b'{"v": 3, "ok": false, "error": "x"}\n')
     assert caught.value.code == "PROTOCOL_VERSION"
+    # The version is the integer 2: a float or a boolean that compares equal is not.
+    for raw in (b'{"v": 2.0, "ok": true, "result": {}}\n', b'{"v": true, "ok": true, "result": {}}\n'):
+        with pytest.raises(AssayError) as caught:
+            _decode_reply(raw)
+        assert caught.value.code == "PROTOCOL_VERSION", raw
     # The error object is raised as the same AssayError.
     with pytest.raises(AssayError, match="^guard failed$") as caught:
         _decode_reply(
@@ -85,7 +90,7 @@ def test_the_client_refuses_a_reply_without_the_version_before_reading_it():
     for raw in (b"", b"\n", b"not json\n", b"[1]\n", b'{"v": 2, "ok": true}\n'):
         with pytest.raises(AssayError) as caught:
             _decode_reply(raw)
-        assert caught.value.code == "PROTOCOL_MALFORMED" and caught.value.kind == "internal", raw
+        assert caught.value.code == "REPLY_MALFORMED" and caught.value.kind == "internal", raw
 
 
 def test_the_daemon_checks_the_version_before_the_token_and_the_operation(tmp_path):
@@ -97,6 +102,7 @@ def test_the_daemon_checks_the_version_before_the_token_and_the_operation(tmp_pa
             {"op": "ping", "args": {}},
             {"v": 1, "op": "ping", "args": {}},
             {"v": "2", "op": "ping", "args": {}},
+            {"v": 2.0, "op": "ping", "args": {}},
             {"v": 1, "op": "nope", "token": "wrong"},
             {"v": 1, "op": "act", "args": {"action": "NOOP", "predict": "noop"}},
         ):
@@ -117,11 +123,22 @@ def test_the_daemon_checks_the_version_before_the_token_and_the_operation(tmp_pa
         # No args is an empty record; args of another shape are refused.
         assert _raw(run, {"v": 2, "op": "ping"})["ok"] is True
         malformed = _raw(run, {"v": 2, "op": "ping", "args": [1]})
-        assert malformed["error"]["code"] == "MALFORMED_REQUEST"
+        assert malformed["error"]["code"] == "REQUEST_MALFORMED" and malformed["error"]["kind"] == "usage"
+        # A body that does not fit the record: the kit's message, the
+        # record's fields as the next step, no traceback in the log.
+        body = _raw(run, {"v": 2, "op": "act", "args": {"predict": "noop"}})
+        assert body["error"]["code"] == "REQUEST_MALFORMED" and body["error"]["message"] == "act.action is required"
+        assert body["error"]["hint"] == (
+            "the act request takes action, params, predict, because, at_event, declares "
+            "(required: action), the fields of ops.ActRequest.json_schema()"
+        )
+        typed = _raw(run, {"v": 2, "op": "act", "args": {"action": 7}})
+        assert typed["error"]["message"] == "act.action must be a string, got int"
+        assert "Traceback" not in (run / ".assay" / "broker.log").read_text()
         wrong = _raw(run, {"v": 2, "op": "ping", "token": "nope"})
-        assert wrong["error"]["code"] == "BROKER_TOKEN" and wrong["error"]["kind"] == "usage"
+        assert wrong["error"]["code"] == "DAEMON_TOKEN" and wrong["error"]["kind"] == "refused"
         unknown = _raw(run, {"v": 2, "op": "step", "args": {}})
-        assert unknown["error"]["code"] == "UNKNOWN_OPERATION"
+        assert unknown["error"]["code"] == "OPERATION_UNKNOWN"
         assert unknown["error"]["hint"] == "the operations are ping, observe, act, commit, reset, install_module"
         assert len(_events(run)) == 1
         assert not (run / ".assay" / "mutations.jsonl").exists()
@@ -153,7 +170,7 @@ def test_the_daemon_validates_the_params_object_against_the_registry(tmp_path):
             ({"action": "SET_LAMP", "params": {"state": 1}, "predict": "change"}, "ACTION_PARAMS", "SET_LAMP state=1 is not a string"),
             ({"action": "BOGUS", "params": None, "predict": "change"}, "ACTION_UNKNOWN", "unknown action 'BOGUS'; registered actions: ['INC', 'NOOP', 'SET_LAMP'] (plus built-in RESET)"),
             ({"action": "RESET", "params": {"x": 1}, "predict": "change"}, "ACTION_PARAMS", "RESET takes no parameters"),
-            ({"action": "RESET", "params": None, "predict": "change"}, "BATCH_FORBIDDEN", "use `assay reset`; reset cannot hide inside a batch"),
+            ({"action": "RESET", "params": None, "predict": "change"}, "BATCH_FORBIDDEN", "reset cannot hide inside a batch"),
             ({"action": "", "params": None, "predict": "change"}, "ACTION_PARAMS", "empty action name"),
         ]
         for args, code, message in refusals:
@@ -214,7 +231,9 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         assert _events(run)[-1]["data"] == {"amount": 1}
         refused = run_cli(run, "act", "INC", "amount=9", "--predict", "change")
         assert refused.returncode == 2
-        assert refused.stderr == "ERROR | ACTION_PARAMS | INC amount='9' is above max 2\n"
+        assert refused.stderr == (
+            "ERROR | ACTION_PARAMS | INC amount='9' is above max 2\nNEXT | the form is `INC amount=<int 1..2>`\n"
+        )
         unknown = run_cli(run, "act", "BOGUS", "--predict", "change")
         assert unknown.returncode == 2
         assert unknown.stderr.startswith("ERROR | ACTION_UNKNOWN | unknown action 'BOGUS'; registered actions: ")
@@ -227,6 +246,7 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         assert bare.returncode == 2
         assert bare.stderr == (
             'ERROR | PREDICTION_REQUIRED | each step needs its own prediction: --step "NAME pname=value :: <claims>"\n'
+            "NEXT | `assay act --help` lists the claim forms\n"
         )
         empty = run_cli(run, "commit", "--step", ":: noop")
         assert empty.returncode == 2 and empty.stderr.startswith("ERROR | PREDICTION_REQUIRED | each step needs")

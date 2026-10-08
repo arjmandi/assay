@@ -154,7 +154,7 @@ def declare_channel(
     if existing is None and len(declared) >= MAX_DECLARED_CHANNELS:
         raise AssayError(
             f"at most {MAX_DECLARED_CHANNELS} declared channels per run",
-            code="CHANNEL_LIMIT",
+            code="CHANNEL_CAP",
         )
     declared[name] = spec
     atomic_json(channels_path(paths), declared)
@@ -180,9 +180,12 @@ def check_channel_references(run: Run, claims: Sequence[Claim]) -> None:
                 {"kind": "mis_reference", "channel": name, "claim": claim.text},
             )
             raise AssayError(
-                f"claim names unregistered channel {name!r}; registered channels: "
-                f"{known_channels(run)}; declare one with `assay channel declare`",
+                f"claim names unregistered channel {name!r}",
                 code="CHANNEL_UNKNOWN",
+                hint=(
+                    f"registered channels: {known_channels(run)}; declare one with "
+                    f"`assay channel declare {name} --path <dotted.path>` (or --file <extractor.py>)"
+                ),
             )
 
 

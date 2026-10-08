@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import datetime as dt
+import io
 import json
+import math
 import os
 import shutil
 import sys
+import time
 import traceback
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterator, Mapping
 from pathlib import Path
 from typing import Any, NoReturn
 
@@ -23,6 +27,7 @@ from .agenda import (
 )
 from .analysis import run_python
 from .broker import (
+    REPLAY_HINT,
     broker_gated,
     broker_install_module,
     broker_matches_latest_event,
@@ -155,8 +160,9 @@ def arg(*flags: str, **options: Any) -> Argument:
     return Argument(flags, options)
 
 
-# Every command with a result record takes it (docs/ARCHITECTURE.md section
-# 7.3): exactly one JSON document on stdout, the record or the error object.
+# Every command takes it (docs/ARCHITECTURE.md section 7.3): exactly one JSON
+# document on stdout, the result record where the command has one, the lines
+# as `{"lines": [...]}` where it has none, the error object on failure.
 JSON_FLAG = arg(
     "--json",
     action="store_true",
@@ -259,7 +265,7 @@ def _add_command(
         options["formatter_class"] = argparse.RawDescriptionHelpFormatter
     parser = commands.add_parser(name, **options)
     parser.lazy_epilog = epilog
-    for argument in arguments:
+    for argument in (*arguments, JSON_FLAG):
         parser.add_argument(*argument.flags, **argument.options)
 
 
@@ -372,32 +378,34 @@ def _check_resume(
     """The refusals of a resume, and the interpreter warning."""
     if getattr(args, "import_knowledge", None) is not None:
         raise AssayError(
-            "knowledge imports happen at run start; this directory already "
-            "owns a run",
+            "this directory already owns a run, and knowledge imports happen at run start",
             code="RESUME_REFUSED",
+            hint="import into a fresh directory with `assay start WORLD_ID --import FILE ...`",
         )
     if read_json(paths.registry, None) is None:
         raise AssayError(
-            "this directory owns a run without a registry, from before 1.2.0: "
-            "it can be inspected (status, view, audit) but not resumed",
+            "this directory owns a run without a registry, from before 1.2.0",
             code="REGISTRY_MISSING",
+            hint="it can be inspected (status, view, audit) but not resumed; start a new run in a fresh directory",
         )
     if registry_spec is not None and registry_spec != read_json(paths.registry):
         raise AssayError(
-            "this directory already owns a run with a different registry; "
-            "the registry cannot change in place",
+            "this directory already owns a run with a different registry, which cannot change in place",
             code="RESUME_REFUSED",
+            hint="resume without --registry (the pinned one is used), or start a new run in a fresh directory",
         )
     if existing.get("game_id") != requested:
         raise AssayError(
-            f"this directory already owns {existing.get('game_id')}; use a fresh directory for {requested}",
+            f"this directory already owns {existing.get('game_id')}",
             code="RESUME_REFUSED",
+            hint=f"use a fresh directory for {requested}",
         )
     existing_mode = str(existing.get("mode", LOCAL_MODE)).lower()
     if args.mode is not None and args.mode != existing_mode:
         raise AssayError(
-            f"this directory already owns a {existing_mode} run; mode cannot be changed in place",
+            f"this directory already owns a {existing_mode} run, and the mode cannot change in place",
             code="RESUME_REFUSED",
+            hint=f"resume without --mode, or use a fresh directory for a {args.mode} run",
         )
     recorded_python = existing.get("python")
     if isinstance(recorded_python, str) and recorded_python != sys.executable:
@@ -443,13 +451,17 @@ def _resume(
     print(status_text(run))
 
 
+REMOTE_HINT = "preserve this directory and use a fresh one for another run"
+
+
 def _resume_remote(paths: RunPaths, run: Run, requested: str) -> None:
     idle = _remote_idle_seconds(run)
     if idle >= 15 * 60:
         raise AssayError(
-            "no live action was recorded for at least 15 minutes. The remote competition "
-            "run is not recoverable; preserve this directory and use a fresh one",
+            "no live action was recorded for at least 15 minutes; the remote competition "
+            "run is not recoverable",
             code="REMOTE_LEASE_EXPIRED",
+            hint=REMOTE_HINT,
         )
     if not broker_ping(paths):
         if find_daemon(paths) is None:
@@ -457,15 +469,15 @@ def _resume_remote(paths: RunPaths, run: Run, requested: str) -> None:
             # before refusing, so the record is complete.
             reconcile_mutations(run)
         raise AssayError(
-            "the remote competition owner is unavailable and cannot be reconstructed; "
-            "preserve this directory and use a fresh one",
+            "the remote competition owner is unavailable and cannot be reconstructed",
             code="REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE",
+            hint=REMOTE_HINT,
         )
     if not broker_matches_latest_event(run):
         raise AssayError(
-            "the live remote observation differs from the append-only timeline; stop using this run",
+            "the live remote observation differs from the append-only timeline",
             code="REMOTE_STATE_DIVERGED",
-            hint="preserve this directory and use a fresh one for another run",
+            hint="stop using this run; " + REMOTE_HINT,
         )
     print(
         f"RESUMED | {requested} | REMOTE competition | action-idle lease about {max(0, 15 - int(idle // 60))}m"
@@ -493,10 +505,9 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
                 else "unknown time"
             )
             raise AssayError(
-                f"the environment owner is busy or hung (pid {daemon.pid}, "
-                f"started {when}); wait and rerun `assay start`, or run "
-                "`assay stop` (it exits after the current step)",
+                f"the environment owner is busy or hung (pid {daemon.pid}, started {when})",
                 code="DAEMON_BUSY",
+                hint="wait and rerun `assay start`, or run `assay stop` (it exits after the current step)",
             )
         if daemon is not None:
             # Alive but unreachable (its socket is gone): stop it
@@ -504,21 +515,26 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
             result = stop_broker(paths)
             if not result["stopped"]:
                 raise AssayError(
-                    f"the environment owner (pid {daemon.pid}) is "
-                    f"{result['reason']}; wait and rerun `assay start`",
+                    f"the environment owner (pid {daemon.pid}) is {result['reason']}",
                     code="DAEMON_BUSY",
+                    hint="wait and rerun `assay start`",
                 )
         # Confirmed dead or absent: safe to recover orphaned spends.
         recovered = reconcile_mutations(run)
         paths.socket.unlink(missing_ok=True)
+        # The adapter dry-imported in this interpreter before the spawn, as at
+        # a fresh start, so a missing dependency is the same ADAPTER_SPEC
+        # refusal here and not a daemon that never comes up.
+        adapter = run.config.get("adapter")
+        if adapter:
+            check_adapter_spec(str(adapter), paths.root)
         start_broker(paths)
         restarted = True
     if not broker_matches_latest_event(run):
         raise AssayError(
             "reconstructed simulator state differs from the latest timeline event",
             code="LOCAL_REPLAY_DIVERGED",
-            hint="the world no longer reproduces this journal; preserve the directory and "
-            "start another run in a fresh one",
+            hint=REPLAY_HINT,
         )
     verb = "RECOVERED" if restarted else "RESUMED"
     print(
@@ -536,17 +552,17 @@ def _fresh_start(
     if registry_spec is None:
         raise AssayError(
             "a fresh run needs --registry FILE: the registry names the actions, "
-            "their parameter schemas and the action budget (examples/example_registry.json "
-            "is the smallest one)",
+            "their parameter schemas and the action budget",
             code="COMMAND_ARGS",
+            hint="pass --registry FILE; examples/example_registry.json is the smallest one",
         )
     orphan = find_daemon(paths)
     if orphan is not None:
         raise AssayError(
             f"a live environment owner (pid {orphan.pid}) still serves this "
-            "directory but its run state is missing (was `.assay` removed by "
-            "hand?); run `assay stop` here first, then start again",
-            code="RESUME_REFUSED",
+            "directory but its run state is missing (was `.assay` removed by hand?)",
+            code="DAEMON_ORPHANED",
+            hint="run `assay stop` here first, then start again",
         )
     token_file = _owner_token_file(paths, args)
     mode = str(args.mode or os.getenv("ASSAY_MODE", LOCAL_MODE)).lower()
@@ -769,7 +785,7 @@ def _doctor(paths: RunPaths) -> int:
         if config.get("registry"):
             status = anchor_status(paths, config)
             note(
-                "ok" if status["writable"] and not status["failed"] else "WARN",
+                "ok" if status["writable"] and status["failed_error"] is None else "WARN",
                 anchor_line(paths, config)[len("ANCHORS | "):],
             )
         daemon = find_daemon(paths)
@@ -854,30 +870,75 @@ def _stop(paths: RunPaths) -> None:
         print(f"STOP | {result['reason']} for {paths.root}")
         return
     raise AssayError(
-        f"the environment owner (pid {result['pid']}) is {result['reason']}; "
-        "rerun `assay stop` after it, or wait",
+        f"the environment owner (pid {result['pid']}) is {result['reason']}",
         code="DAEMON_BUSY",
+        hint="rerun `assay stop` after it, or wait",
     )
 
 
-def start_command(paths: RunPaths, args: argparse.Namespace) -> int:
+@contextlib.contextmanager
+def _lifecycle_status(paths: RunPaths, command: str) -> Iterator[None]:
+    """The activity record of start and stop, the commands that run before
+    any run is loaded: `command_start` and `command_end` like the other
+    commands', with the code and the kind of a refusal, written when the
+    run state existed before the command, so a refused resume (a diverged
+    chain or replay, a remote lease) leaves its record. A fresh start, which
+    creates the state, writes none: a refused one leaves nothing behind."""
+    existed = paths.state.is_dir()
+    started = time.monotonic()
+    record: dict[str, Any] = {
+        "command": command,
+        "risk": "offline",
+        "started_at": now_iso(),
+        "pid": os.getpid(),
+    }
+    if existed:
+        append_jsonl(paths.activity, {"kind": "command_start", "status": "RUNNING", **record})
     try:
-        with run_lock(paths):
-            _start(paths, args)
-    except AssayError:
-        _discard_empty_state(paths)
+        yield
+    except Exception as error:
+        if existed:
+            failure = AssayError.wrap(error)
+            record.update(
+                status="ERROR",
+                finished_at=now_iso(),
+                elapsed_seconds=time.monotonic() - started,
+                error=failure.message[:500],
+                code=failure.code,
+                error_kind=failure.kind,
+            )
+            append_jsonl(paths.activity, {"kind": "command_end", **record})
         raise
+    else:
+        if existed:
+            record.update(
+                status="FINISHED",
+                finished_at=now_iso(),
+                elapsed_seconds=time.monotonic() - started,
+            )
+            append_jsonl(paths.activity, {"kind": "command_end", **record})
+
+
+def start_command(paths: RunPaths, args: argparse.Namespace) -> int:
+    with _lifecycle_status(paths, "start"):
+        try:
+            with run_lock(paths):
+                _start(paths, args)
+        except AssayError:
+            _discard_empty_state(paths)
+            raise
     return 0
 
 
 def stop_command(paths: RunPaths, args: argparse.Namespace) -> int:
-    if paths.state.is_dir():
-        with run_lock(paths):
+    with _lifecycle_status(paths, "stop"):
+        if paths.state.is_dir():
+            with run_lock(paths):
+                _stop(paths)
+        else:
+            # No run state here (an orphaned daemon after a hand-deleted
+            # `.assay`): stop without creating state as a side effect.
             _stop(paths)
-    else:
-        # No run state here (an orphaned daemon after a hand-deleted
-        # `.assay`): stop without creating state as a side effect.
-        _stop(paths)
     return 0
 
 
@@ -913,14 +974,25 @@ def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpars
     _emit(args, view, view_lines_text(view))
 
 
+# The result record the running command emitted under --json, at most one,
+# printed by `_machine_run` once the command returns.
+_RESULT: list[Any] = []
+
+
 def _emit(args: argparse.Namespace, record: Any, text: str) -> None:
     """The one printer of a result record (docs/ARCHITECTURE.md section
-    7.3): the record as exactly one JSON document under `--json`, its
-    rendering otherwise."""
+    7.3): the record, held for the one JSON document under `--json`, its
+    rendering printed otherwise."""
     if getattr(args, "json", False):
-        print(json.dumps(record.to_json(), ensure_ascii=False))
+        _RESULT.append(record)
     else:
         print(text)
+
+
+def _document(value: Any) -> str:
+    """One JSON document, compact like the journal's lines; a leaf that is
+    not a number JSON has (a NaN) is a bug, not a document."""
+    return json.dumps(value, ensure_ascii=False, allow_nan=False, separators=(",", ":"))
 
 
 def _paid(
@@ -1087,6 +1159,8 @@ def export_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
 
 
 def spend_report(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    if not math.isfinite(args.usd):
+        raise AssayError(f"--usd must be a finite number, got {args.usd}", code="COMMAND_ARGS")
     append_jsonl(
         paths.activity,
         {
@@ -1133,19 +1207,39 @@ def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
 # --- the entry point -----------------------------------------------------------
 
 
+def _wants_json(argv: list[str]) -> bool:
+    """Whether the command line asks for the JSON document: the flag before
+    a `--`, decided before the parse so a line argparse refuses still
+    answers in the form it asked for."""
+    head = argv[: argv.index("--")] if "--" in argv else argv
+    return "--json" in head
+
+
 def main() -> None:
-    # Decided before the parse, so a command line that does not parse still
-    # answers in the form it asked for.
-    machine = "--json" in sys.argv[1:]
+    machine = _wants_json(sys.argv[1:])
     try:
         args = _parser().parse_args()
         paths = RunPaths(Path(args.run_dir).resolve())
         os.environ["ASSAY_RUN_DIR"] = str(paths.root)
-        raise SystemExit(_run(paths, args))
+        raise SystemExit(_machine_run(paths, args) if machine else _run(paths, args))
     except AssayError as error:
         raise SystemExit(_report_error(error, machine=machine))
     except Exception as error:  # noqa: BLE001 - one error voice, traceback saved
         raise SystemExit(_report_internal_error(error, machine=machine))
+
+
+def _machine_run(paths: RunPaths, args: argparse.Namespace) -> int:
+    """`--json`: the command runs with its lines captured; the result record
+    it emitted is the document, or, for a command without one, the lines as
+    `{"lines": [...]}`. A refusal leaves the lines unprinted: the error
+    object is the only output."""
+    _RESULT.clear()
+    buffer = io.StringIO()
+    with contextlib.redirect_stdout(buffer):
+        code = _run(paths, args)
+    document = _RESULT[-1].to_json() if _RESULT else {"lines": buffer.getvalue().splitlines()}
+    print(_document(document))
+    return code
 
 
 def _run(paths: RunPaths, args: argparse.Namespace) -> int:
@@ -1168,10 +1262,10 @@ def _run(paths: RunPaths, args: argparse.Namespace) -> int:
 def _report_error(error: AssayError, *, machine: bool) -> int:
     """The error voice (docs/ARCHITECTURE.md section 7.1): `ERROR | CODE |
     message` on stderr, `NEXT | hint` when the error names a next step, then
-    the message's further lines (the claims table); under `--json` the
-    error object alone, on stdout. The exit status follows the kind."""
+    the error's detail (the claims table); under `--json` the error object
+    alone, on stdout. The exit status follows the kind."""
     if machine:
-        print(json.dumps(error.to_json(), ensure_ascii=False))
+        print(_document(error.to_json()))
     else:
         head, _, tail = error.message.partition("\n")
         print(f"ERROR | {error.code} | {head}", file=sys.stderr)
@@ -1179,6 +1273,8 @@ def _report_error(error: AssayError, *, machine: bool) -> int:
             print(f"NEXT | {error.hint}", file=sys.stderr)
         if tail:
             print(tail, file=sys.stderr)
+        if error.detail:
+            print(error.detail, file=sys.stderr)
     return exit_code(error.kind)
 
 
@@ -1275,7 +1371,7 @@ COMMANDS: tuple[Command, ...] = (
         "status",
         "full picture: progress, image, actions, recent results, notes",
         status_command,
-        arguments=(arg("--history", type=int, default=8), JSON_FLAG),
+        arguments=(arg("--history", type=int, default=8),),
     ),
     Command(
         "view",
@@ -1296,7 +1392,6 @@ COMMANDS: tuple[Command, ...] = (
             arg(
                 "--export", type=Path, metavar="FILE.npz", help="frame worlds: export the grid history"
             ),
-            JSON_FLAG,
         ),
     ),
     Command(
@@ -1324,7 +1419,6 @@ COMMANDS: tuple[Command, ...] = (
                 help="structural declaration a gate or module demanded "
                 '(e.g. --declare "worst_case=..." --declare "recovery=...")',
             ),
-            JSON_FLAG,
         ),
         epilog=claims_help,
     ),
@@ -1355,7 +1449,6 @@ COMMANDS: tuple[Command, ...] = (
                 metavar='"field=value"',
                 help="structural declaration a module demanded for a step in this batch",
             ),
-            JSON_FLAG,
         ),
         epilog=claims_help,
     ),
@@ -1378,7 +1471,6 @@ COMMANDS: tuple[Command, ...] = (
                 help="structural declaration a module demanded for this reset "
                 '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
             ),
-            JSON_FLAG,
         ),
     ),
     Command(
@@ -1411,7 +1503,6 @@ COMMANDS: tuple[Command, ...] = (
                 help="compute extractor channels fresh (runs each extractor sandboxed) "
                 "instead of showing the last graded reading",
             ),
-            JSON_FLAG,
         ),
     ),
     Command("model_init", "model init", "create a model.py template", model_init),
@@ -1438,7 +1529,6 @@ COMMANDS: tuple[Command, ...] = (
         "module list",
         "active modules with mode and origin, plus ignored files",
         module_list,
-        arguments=(JSON_FLAG,),
     ),
     Command(
         "module_install",
@@ -1486,7 +1576,6 @@ COMMANDS: tuple[Command, ...] = (
         "audit",
         "recompute journal integrity: chain, anchors, ungated events",
         audit_command,
-        arguments=(JSON_FLAG,),
     ),
     Command(
         "approve",

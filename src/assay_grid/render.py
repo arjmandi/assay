@@ -51,7 +51,7 @@ def render_grid(grid: np.ndarray[Any, Any], destination: Path, *, scale: int = 8
     if array.ndim != 2 or (
         array.size and (int(array.min()) < 0 or int(array.max()) > 15)
     ):
-        raise AssayError("cannot render a grid with colors outside 0..15", code="CORRUPT_RECORD")
+        raise AssayError("cannot render a grid with colors outside 0..15", code="RECORD_CORRUPT")
     destination.parent.mkdir(parents=True, exist_ok=True)
     image = Image.fromarray(PALETTE[array].astype(np.uint8), mode="RGB")
     image = image.resize(
@@ -82,13 +82,12 @@ def current_image(run: Run) -> Path:
     return destination.resolve()
 
 
-def history_change(events: Sequence[Event], event: Event) -> str:
-    """The frame form of a history line's change: the cells that differ
-    from the previous settled frame."""
+def history_change(events: Sequence[Event], event: Event) -> tuple[int | None, str]:
+    """The frame form of a history line's change: the count of cells that
+    differ from the previous settled frame (None at the start, or when the
+    shape changed), in cells."""
     grid = frame_at(event)
     previous = frame_at(events[event.id - 1]) if event.id else None
-    return (
-        "start"
-        if previous is None or previous.shape != grid.shape
-        else f"{int(np.count_nonzero(previous != grid))} cells"
-    )
+    if previous is None or previous.shape != grid.shape:
+        return None, "cells"
+    return int(np.count_nonzero(previous != grid)), "cells"

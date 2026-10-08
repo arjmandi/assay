@@ -27,12 +27,14 @@ if TYPE_CHECKING:
 
 
 class AssayError(RuntimeError):
-    """A refusal (docs/ARCHITECTURE.md section 7.1): the message, a code from
-    the catalogue (`errors.py`), the kind the code has there (`usage`,
-    `refused`, `world`, `internal` or `invalid`, which decides the exit
-    status), and the next step in one sentence, or None. `str(error)` is the
-    message alone; the code rides beside it. A raise without a code, an
-    adapter's or a module's, is `UNSPECIFIED` with the kind it asks for."""
+    """A refusal (docs/ARCHITECTURE.md section 7.1): the message, one line,
+    a code from the catalogue (`errors.py`), the kind the code has there
+    (`usage`, `refused`, `world`, `internal` or `invalid`, which decides the
+    exit status), the next step in one sentence, or None, and `detail`, the
+    further lines the command line prints after the first two (the claims
+    table), or None. `str(error)` is the message alone; the code rides
+    beside it. A raise without a code, an adapter's or a module's, is
+    `UNSPECIFIED`, outside the table, with the kind it asks for."""
 
     def __init__(
         self,
@@ -41,19 +43,27 @@ class AssayError(RuntimeError):
         code: str = UNSPECIFIED,
         kind: str = "refused",
         hint: str | None = None,
+        detail: str | None = None,
     ) -> None:
         super().__init__(message)
         self.message = str(message)
         self.code = str(code)
         self.kind = kind_of(self.code, str(kind))
         self.hint = hint
+        self.detail = detail
 
     def __str__(self) -> str:
         return self.message
 
     def to_json(self) -> dict[str, Any]:
         """The error object of the socket and of `--json`."""
-        return {"code": self.code, "kind": self.kind, "message": self.message, "hint": self.hint}
+        return {
+            "code": self.code,
+            "kind": self.kind,
+            "message": self.message,
+            "hint": self.hint,
+            "detail": self.detail,
+        }
 
     @classmethod
     def from_json(cls, obj: Any) -> AssayError:
@@ -64,15 +74,17 @@ class AssayError(RuntimeError):
         if not isinstance(obj, Mapping) or not isinstance(obj.get("message"), str):
             return cls(
                 "malformed error object from environment owner",
-                code="PROTOCOL_MALFORMED",
+                code="REPLY_MALFORMED",
                 hint="stop the daemon with `assay stop` and start it again with `assay start WORLD_ID`",
             )
         hint = obj.get("hint")
+        detail = obj.get("detail")
         return cls(
             obj["message"],
             code=str(obj.get("code") or UNSPECIFIED),
             kind=str(obj.get("kind") or "refused"),
             hint=hint if isinstance(hint, str) else None,
+            detail=detail if isinstance(detail, str) else None,
         )
 
     @classmethod
@@ -155,6 +167,13 @@ def now_iso() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+# The hint of every observation the kernel cannot read (`OBSERVATION_INVALID`,
+# kind world): the adapter is broken, not the action.
+OBSERVATION_HINT = (
+    "the adapter returned an observation the kernel cannot read; fix the adapter "
+    "(docs/ARCHITECTURE.md section 2.2 gives the shape) and resume with `assay start WORLD_ID`"
+)
+
 # The run modes `config.json` records: a local simulator, replayed from its
 # journal on resume, or an expiring remote competition session.
 LOCAL_MODE = "local"
@@ -213,7 +232,7 @@ def read_json(path: Path, default: Any = None) -> Any:
     except FileNotFoundError:
         return default
     except json.JSONDecodeError as error:
-        raise AssayError(f"corrupt JSON in {path}: {error}", code="CORRUPT_RECORD") from error
+        raise AssayError(f"corrupt JSON in {path}: {error}", code="RECORD_CORRUPT") from error
 
 
 def append_jsonl(path: Path, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -247,7 +266,7 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
         except json.JSONDecodeError as error:
             raise AssayError(
                 f"corrupt JSONL in {path} line {line_number}: {error}",
-                code="CORRUPT_RECORD",
+                code="RECORD_CORRUPT",
             ) from error
     return output
 
@@ -320,8 +339,9 @@ def require_run(paths: RunPaths) -> dict[str, Any]:
     config = read_json(paths.config)
     if not isinstance(config, dict):
         raise AssayError(
-            f"{paths.root} is not initialized; run `assay start WORLD_ID`",
+            f"{paths.root} is not initialized",
             code="RUN_MISSING",
+            hint="run `assay start WORLD_ID` here",
         )
     return config
 
@@ -329,24 +349,28 @@ def require_run(paths: RunPaths) -> dict[str, Any]:
 def grid_to_rows(grid: Any) -> list[str]:
     array = np.asarray(grid, dtype=np.int16)
     if array.ndim != 2:
-        raise AssayError(f"frame must be 2-D, got {array.shape}", code="WORLD_ERROR")
+        raise AssayError(
+            f"frame must be 2-D, got {array.shape}", code="OBSERVATION_INVALID", hint=OBSERVATION_HINT
+        )
     if array.size and (int(array.min()) < 0 or int(array.max()) > 15):
-        raise AssayError("grid colors must be in 0..15", code="WORLD_ERROR")
+        raise AssayError(
+            "grid colors must be in 0..15", code="OBSERVATION_INVALID", hint=OBSERVATION_HINT
+        )
     return ["".join(format(int(cell), "x") for cell in row) for row in array]
 
 
 def rows_to_grid(rows: Sequence[str]) -> np.ndarray[Any, Any]:
     if not rows:
-        raise AssayError("empty frame", code="CORRUPT_RECORD")
+        raise AssayError("empty frame", code="RECORD_CORRUPT")
     width = len(rows[0])
     if width == 0 or any(len(row) != width for row in rows):
-        raise AssayError("ragged frame encoding", code="CORRUPT_RECORD")
+        raise AssayError("ragged frame encoding", code="RECORD_CORRUPT")
     try:
         return np.asarray(
             [[int(cell, 16) for cell in row] for row in rows], dtype=np.int16
         )
     except ValueError as error:
-        raise AssayError("invalid frame encoding", code="CORRUPT_RECORD") from error
+        raise AssayError("invalid frame encoding", code="RECORD_CORRUPT") from error
 
 
 def normalize_state(value: Any) -> str:
@@ -377,13 +401,18 @@ def normalize_observation(response: Any) -> dict[str, Any]:
         # General (non-grid) adapter observation: a JSON object under "data".
         data = response["data"]
         if not isinstance(data, Mapping):
-            raise AssayError("adapter observation 'data' must be a JSON object", code="WORLD_ERROR")
+            raise AssayError(
+                "adapter observation 'data' must be a JSON object",
+                code="OBSERVATION_INVALID",
+                hint=OBSERVATION_HINT,
+            )
         try:
             payload = json.loads(json.dumps(data, sort_keys=True))
         except (TypeError, ValueError) as error:
             raise AssayError(
                 f"adapter observation is not JSON-serializable: {error}",
-                code="WORLD_ERROR",
+                code="OBSERVATION_INVALID",
+                hint=OBSERVATION_HINT,
             ) from error
         available = sorted(
             {
@@ -412,7 +441,9 @@ def normalize_observation(response: Any) -> dict[str, Any]:
         available = response.available_actions
     frames = [np.asarray(frame, dtype=np.int16) for frame in raw_frames]
     if not frames:
-        raise AssayError("environment returned no frames", code="WORLD_ERROR")
+        raise AssayError(
+            "environment returned no frames", code="OBSERVATION_INVALID", hint=OBSERVATION_HINT
+        )
     return {
         "state": normalize_state(state),
         "levels_completed": int(completed),

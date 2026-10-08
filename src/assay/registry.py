@@ -99,10 +99,10 @@ _GATES = ("required", "optional", "off")
 DEFAULT_HAND_CAP = 3       # the batching law's kernel default; registry-overridable
 DEFAULT_NOTES_CAP = 16_000  # chars; generous enough that compliant runs never see it
 BUDGET_HINT = (
-    "the run takes no more paid actions; `assay audit` gives the verdict and "
-    "`assay export` the knowledge file for the next run"
+    "`assay audit` gives the verdict and `assay export` the knowledge file for the next run"
 )
 SCHEMA_HINT = "the REGISTRY block of `assay status` lists the actions and their schemas"
+TOKEN_FORM_HINT = "the form is `NAME pname=value ...`"
 
 
 def load_registry_file(path: Path | str) -> dict[str, Any]:
@@ -388,42 +388,62 @@ def require_registry(run: Run) -> dict[str, Any]:
     registry = run.registry
     if registry is None:
         raise AssayError(
-            "this run has no registry: runs without one are not supported since "
-            "1.2.0 (`assay start` takes --registry)",
+            "this run has no registry: runs without one are not supported since 1.2.0",
             code="REGISTRY_MISSING",
+            hint="start a new run in a fresh directory with `assay start WORLD_ID --registry FILE`",
         )
     return registry
 
 
-def _check_value(action: str, pname: str, schema: Mapping[str, Any], value: Any, shown: str) -> Any:
+def action_form(name: str, schemas: Mapping[str, Any]) -> str:
+    """The action as the REGISTRY block prints it: the name, then every
+    parameter with its schema."""
+    rendered = " ".join(f"{pname}={_schema_text(schema)}" for pname, schema in schemas.items())
+    return f"{name} {rendered}" if rendered else name
+
+
+def _form_hint(form: str) -> str:
+    return f"the form is `{form}`"
+
+
+def _check_value(
+    action: str, pname: str, schema: Mapping[str, Any], value: Any, shown: str, form: str
+) -> Any:
     """One parameter value against its schema: the scalar type, finiteness,
     the enum and the bounds. `shown` is the value as the refusal names it
-    (the token as typed, or the JSON value's repr)."""
+    (the token as typed, or the JSON value's repr); `form` the action's
+    whole form, the refusal's next step."""
+    hint = _form_hint(form)
     kind = schema["type"]
     if kind == "int":
         if isinstance(value, bool) or not isinstance(value, int):
-            raise AssayError(f"{action} {pname}={shown} is not an integer", code="ACTION_PARAMS")
+            raise AssayError(f"{action} {pname}={shown} is not an integer", code="ACTION_PARAMS", hint=hint)
     elif kind == "float":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise AssayError(f"{action} {pname}={shown} is not a number", code="ACTION_PARAMS")
+            raise AssayError(f"{action} {pname}={shown} is not a number", code="ACTION_PARAMS", hint=hint)
         value = float(value)
         if math.isnan(value) or math.isinf(value):
-            raise AssayError(f"{action} {pname}={shown} must be finite", code="ACTION_PARAMS")
+            raise AssayError(f"{action} {pname}={shown} must be finite", code="ACTION_PARAMS", hint=hint)
     elif not isinstance(value, str):
-        raise AssayError(f"{action} {pname}={shown} is not a string", code="ACTION_PARAMS")
+        raise AssayError(f"{action} {pname}={shown} is not a string", code="ACTION_PARAMS", hint=hint)
     if "enum" in schema and value not in schema["enum"]:
         raise AssayError(
             f"{action} {pname}={shown} is not one of {schema['enum']}",
             code="ACTION_PARAMS",
+            hint=hint,
         )
     if "min" in schema and value < schema["min"]:
-        raise AssayError(f"{action} {pname}={shown} is below min {schema['min']}", code="ACTION_PARAMS")
+        raise AssayError(
+            f"{action} {pname}={shown} is below min {schema['min']}", code="ACTION_PARAMS", hint=hint
+        )
     if "max" in schema and value > schema["max"]:
-        raise AssayError(f"{action} {pname}={shown} is above max {schema['max']}", code="ACTION_PARAMS")
+        raise AssayError(
+            f"{action} {pname}={shown} is above max {schema['max']}", code="ACTION_PARAMS", hint=hint
+        )
     return value
 
 
-def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str) -> Any:
+def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str, form: str) -> Any:
     """A typed token's value: the string read as the schema's type, then
     checked like a value that arrived as JSON."""
     kind = schema["type"]
@@ -435,15 +455,18 @@ def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str) -> Any
             raise AssayError(
                 f"{action} {pname}={raw!r} is not an integer",
                 code="ACTION_PARAMS",
+                hint=_form_hint(form),
             ) from None
     elif kind == "float":
         try:
             value = float(raw)
         except ValueError:
-            raise AssayError(f"{action} {pname}={raw!r} is not a number", code="ACTION_PARAMS") from None
+            raise AssayError(
+                f"{action} {pname}={raw!r} is not a number", code="ACTION_PARAMS", hint=_form_hint(form)
+            ) from None
     else:
         value = raw
-    return _check_value(action, pname, schema, value, repr(raw))
+    return _check_value(action, pname, schema, value, repr(raw), form)
 
 
 def validate_action(
@@ -458,11 +481,11 @@ def validate_action(
     value where the token stood."""
     name = str(action).strip().upper()
     if not name:
-        raise AssayError("empty action name", code="ACTION_PARAMS")
+        raise AssayError("empty action name", code="ACTION_PARAMS", hint=TOKEN_FORM_HINT)
     supplied_raw = dict(params or {})
     if name == "RESET":
         if supplied_raw:
-            raise AssayError("RESET takes no parameters", code="ACTION_PARAMS")
+            raise AssayError("RESET takes no parameters", code="ACTION_PARAMS", hint=_form_hint("RESET"))
         return name, None
     by_name = {item["name"]: item for item in registry.get("actions", ())}
     spec = by_name.get(name)
@@ -474,17 +497,21 @@ def validate_action(
             hint=SCHEMA_HINT,
         )
     schemas: Mapping[str, Any] = spec.get("params", {})
+    form = action_form(name, schemas)
     supplied: dict[str, Any] = {}
     for pname, value in supplied_raw.items():
         if pname not in schemas:
             raise AssayError(
                 f"{name} has no parameter {pname!r}; it takes {sorted(schemas) or 'none'}",
                 code="ACTION_PARAMS",
+                hint=_form_hint(form),
             )
-        supplied[pname] = _check_value(name, pname, schemas[pname], value, repr(value))
+        supplied[pname] = _check_value(name, pname, schemas[pname], value, repr(value), form)
     missing = [pname for pname in schemas if pname not in supplied]
     if missing:
-        raise AssayError(f"{name} is missing parameter(s): {missing}", code="ACTION_PARAMS")
+        raise AssayError(
+            f"{name} is missing parameter(s): {missing}", code="ACTION_PARAMS", hint=_form_hint(form)
+        )
     return name, supplied or None
 
 
@@ -499,11 +526,11 @@ def parse_registry_action(
     """
     parts = token.strip().split()
     if not parts:
-        raise AssayError("empty action token", code="ACTION_PARAMS")
+        raise AssayError("empty action token", code="ACTION_PARAMS", hint=TOKEN_FORM_HINT)
     name = parts[0].upper()
     if name == "RESET":
         if len(parts) > 1:
-            raise AssayError("RESET takes no parameters", code="ACTION_PARAMS")
+            raise AssayError("RESET takes no parameters", code="ACTION_PARAMS", hint=_form_hint("RESET"))
         return name, None
     by_name = {item["name"]: item for item in registry.get("actions", ())}
     spec = by_name.get(name)
@@ -515,6 +542,7 @@ def parse_registry_action(
             hint=SCHEMA_HINT,
         )
     schemas: Mapping[str, Any] = spec.get("params", {})
+    form = action_form(name, schemas)
     supplied: dict[str, Any] = {}
     for part in parts[1:]:
         pname, separator, raw = part.partition("=")
@@ -522,18 +550,24 @@ def parse_registry_action(
             raise AssayError(
                 f"parameters are supplied as pname=value, got {part!r}",
                 code="ACTION_PARAMS",
+                hint=_form_hint(form),
             )
         if pname in supplied:
-            raise AssayError(f"{name} parameter {pname!r} supplied twice", code="ACTION_PARAMS")
+            raise AssayError(
+                f"{name} parameter {pname!r} supplied twice", code="ACTION_PARAMS", hint=_form_hint(form)
+            )
         if pname not in schemas:
             raise AssayError(
                 f"{name} has no parameter {pname!r}; it takes {sorted(schemas) or 'none'}",
                 code="ACTION_PARAMS",
+                hint=_form_hint(form),
             )
-        supplied[pname] = _coerce(name, pname, schemas[pname], raw)
+        supplied[pname] = _coerce(name, pname, schemas[pname], raw, form)
     missing = [pname for pname in schemas if pname not in supplied]
     if missing:
-        raise AssayError(f"{name} is missing parameter(s): {missing}", code="ACTION_PARAMS")
+        raise AssayError(
+            f"{name} is missing parameter(s): {missing}", code="ACTION_PARAMS", hint=_form_hint(form)
+        )
     return name, supplied or None
 
 
@@ -649,8 +683,19 @@ def spend_reports(
     for record in activity:
         if record.get("kind") == "spend_report" and record.get("id"):
             latest[str(record["id"])] = record
-    usd = sum(float(record.get("usd") or 0.0) for record in latest.values())
-    tokens = sum(int(record.get("tokens") or 0) for record in latest.values())
+    usd = 0.0
+    tokens = 0
+    for record in latest.values():
+        # A figure that is not a finite number (a NaN a launcher once
+        # posted) counts nothing, so the totals stay numbers.
+        try:
+            amount = float(record.get("usd") or 0.0)
+            count = int(record.get("tokens") or 0)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(amount):
+            usd += amount
+        tokens += count
     return round(usd, 6), tokens
 
 

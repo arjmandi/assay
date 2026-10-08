@@ -13,8 +13,10 @@ operation crosses the socket as one JSON line, `{"v": 2, "token": ...,
 object of section 7.1 (`ERROR_SCHEMA`). Both sides check `v` before anything
 else and refuse a line without it, or with another value, with
 `PROTOCOL_VERSION`. `broker.call` sends a request record and decodes the
-result record; `broker._Daemon.handle` decodes the request record, calls the
-name's handler with the daemon and the held run, and encodes the result.
+result record; `broker._Daemon.handle` decodes the request record (a body
+that does not fit it is refused with `REQUEST_MALFORMED`, kind usage, before
+anything spends), calls the name's handler with the daemon and the held run,
+and encodes the result.
 
 An action travels as its registered name and its parameters as an object of
 scalars (`action`, `params`), never as the typed token: the client parses
@@ -25,9 +27,9 @@ a batch step is `{action, params, predict}`.
 The records are small frozen classes with `from_json`, `to_json` and a
 hand-written `json_schema()`, the tool server's `inputSchema`. They decode
 through the kit of `records.py`: a wrong type, a missing required key and a
-key the record does not take are refused in the internal-error voice, since
-a malformed line is a client's bug, never a refusal, and the daemon spends
-on nothing it did not read whole.
+key the record does not take raise the kit's `TypeError` or `KeyError`, which
+the daemon turns into the `REQUEST_MALFORMED` refusal naming the record's
+fields; the daemon spends on nothing it did not read whole.
 """
 
 from __future__ import annotations
@@ -107,15 +109,19 @@ _PARAMS = {
     "additionalProperties": {"type": ["string", "number", "boolean"]},
 }
 
-# The error object of section 7.1, as every refused reply carries it.
+# The error object of section 7.1, as every refused reply carries it: the
+# code, its kind, the one-line message, the next step and the further lines
+# the command line prints after them (the claims table), the last two null
+# when the error has none.
 ERROR_SCHEMA = _schema(
     {
         "code": {"type": "string"},
         "kind": {"type": "string", "enum": list(KINDS)},
         "message": {"type": "string"},
         "hint": _STRING_OR_NULL,
+        "detail": _STRING_OR_NULL,
     },
-    ("code", "kind", "message", "hint"),
+    ("code", "kind", "message", "hint", "detail"),
 )
 
 
@@ -525,12 +531,12 @@ OPERATIONS: tuple[Operation[Any, Any], ...] = (PING, OBSERVE, ACT, COMMIT, RESET
 
 def daemon_operation(name: Any) -> Operation[Any, Any]:
     """The operation of this name; anything else, the retired `step`
-    included, is refused by name with `UNKNOWN_OPERATION`."""
+    included, is refused by name with `OPERATION_UNKNOWN`."""
     for operation in OPERATIONS:
         if operation.name == name:
             return operation
     raise AssayError(
         f"unknown broker operation {name!r}",
-        code="UNKNOWN_OPERATION",
+        code="OPERATION_UNKNOWN",
         hint="the operations are " + ", ".join(operation.name for operation in OPERATIONS),
     )

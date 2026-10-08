@@ -55,7 +55,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     status = status_of(run)
     assert status.run.world == "test" and status.run.event == 2 and status.run.paid == 2
     assert status.run.progress_total == 1 and status.run.progress_label == "progress"
-    assert status.mode.mode == "local" and status.mode.lease is None
+    assert status.mode.mode == "local" and status.mode.lease_seconds is None
     assert status.observation is not None and status.observation.observation == {"counter": 2}
     assert status.observation.omitted_lines == 0
     assert status.actions is not None and status.actions.advertised == ("INC", "NOOP")
@@ -63,9 +63,9 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert status.registry is not None
     assert [action.name for action in status.registry.actions] == ["INC", "NOOP"]
     assert status.registry.actions[1].description == "does nothing"
-    assert status.registry.budget_cap == 20 and status.registry.gate == "required"
+    assert status.registry.gate == "required" and not hasattr(status.registry, "budget_cap")
     assert status.budget is not None and (status.budget.cap, status.budget.spent, status.budget.remaining) == (20, 2, 18)
-    assert status.gate is None
+    assert status.gate is not None and (status.gate.mode, status.gate.unpredicted) == ("required", 0)
     assert status.agenda is not None and status.agenda.goal_text == "reach 3"
     assert status.agenda.goal_source == "registry" and status.agenda.achieved is False
     assert status.channels is not None and status.channels.registered == ("goal", "level", "budget_remaining")
@@ -74,15 +74,17 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert status.mis_references == 0
     assert status.integrity is not None and status.integrity.ungated == () and status.integrity.refused is None
     assert status.anchors is not None and status.anchors.count == 0
+    assert status.anchors.failed_event is None and status.anchors.failed_error is None
     assert status.emergence is not None and status.emergence.verifiers == 0
     assert (status.unit.paid, status.unit.hits, status.unit.total) == (2, 1, 2)
     assert status.claims is not None
     assert (status.claims.world_model_graded, status.claims.world_model_missed) == (2, 1)
     assert status.claims.sharp == 2 and status.claims.graded == 2 and status.claims.invalid == 0
     assert status.vacuous is not None and status.vacuous.verifiers == ()
-    assert [(line.event, line.mark, line.change) for line in status.recent] == [
-        (0, None, "start"), (1, "✓", "1 keys"), (2, "✗", "1 keys"),
+    assert [(line.event, line.predict_ok, line.changed, line.changed_unit) for line in status.recent] == [
+        (0, None, None, "keys"), (1, True, 1, "keys"), (2, False, 1, "keys"),
     ]
+    assert status.observation.max_lines == 48 and (status.notes.max_lines, status.notes.line_width) == (120, 240)
     assert status.notes.text is not None and status.notes.size == len(status.notes.text)
     assert status.notes.cap == 16_000 and status.notes.archived_unit is None
     text = render_status(status)
@@ -126,9 +128,28 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
         "world": "test", "event": 2, "progress_completed": 0, "progress_total": 1,
         "progress_label": "progress", "paid": 2, "state": "NOT_FINISHED",
     }
-    assert data["kind"] is None and data["gate"] is None and data["recent"][1]["mark"] == "✓"
+    assert data["kind"] is None and data["gate"] == {"mode": "required", "unpredicted": 0}
+    assert data["recent"][1]["predict_ok"] is True and data["recent"][0]["changed"] is None
+    assert "budget_cap" not in data["registry"] and data["budget"]["cap"] == 20
     assert data["registry"]["actions"][0]["params"] == {"amount": {"type": "int", "min": 1, "max": 2}}
     assert json.loads(json.dumps(data)) == data
+
+
+def test_the_mode_line_derives_the_lease_from_the_seconds_left():
+    from assay.status import mode_text
+
+    assert mode_text("local", None) == (
+        "MODE | LOCAL SIMULATOR | competition action/reset accounting | exact replay recovery enabled"
+    )
+    assert mode_text("competition", None) == (
+        "MODE | REMOTE COMPETITION | unknown | exact replay recovery unavailable"
+    )
+    assert mode_text("competition", 0) == (
+        "MODE | REMOTE COMPETITION | expired/unavailable | exact replay recovery unavailable"
+    )
+    assert mode_text("competition", 900).startswith("MODE | REMOTE COMPETITION | about 15m action-idle remaining")
+    assert mode_text("competition", 61).startswith("MODE | REMOTE COMPETITION | about 2m action-idle remaining")
+    assert mode_text("competition", 60).startswith("MODE | REMOTE COMPETITION | about 1m action-idle remaining")
 
 
 def test_the_status_renders_the_control_arm_notes_and_the_hidden_descriptions(paths):
@@ -332,11 +353,11 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
         modules = _one_document(run_cli(run, "module", "list", "--json"))
         assert [entry["name"] for entry in modules["modules"]][:2] == ["wall_spend", "miss_streak"]
         assert modules["ignored"] == []
-        # The prose form is unchanged, and the flag is not accepted where
-        # there is no result record.
+        # The prose form is unchanged; a command without a result record
+        # answers with its lines.
         prose = run_cli(run, "status")
         assert prose.returncode == 0 and prose.stdout.startswith("STATUS | fake1 | event 3 |")
-        refused = run_cli(run, "stop", "--json")
-        assert refused.returncode == 2 and json.loads(refused.stdout)["code"] == "CLI_USAGE"
+        stopped = run_cli(run, "stop", "--json")
+        assert stopped.returncode == 0 and list(json.loads(stopped.stdout)) == ["lines"]
     finally:
         stop_run(run)
