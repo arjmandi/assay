@@ -1,7 +1,7 @@
 """The result records of the offline commands (docs/ARCHITECTURE.md
 sections 7.3 and 7.4): the `Status` record holds every fact its lines print
 and `render_status` derives the lines; the audit report, the view record,
-the channel list and the module list are records whose renderings are the
+the state list and the module list are records whose renderings are the
 lines the commands always printed."""
 
 from __future__ import annotations
@@ -69,8 +69,8 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert status.gate is not None and (status.gate.mode, status.gate.unpredicted) == ("required", 0)
     assert status.agenda is not None and status.agenda.goal_text == "reach 3"
     assert status.agenda.goal_source == "registry" and status.agenda.achieved is False
-    assert status.channels is not None and status.channels.registered == ("goal", "level", "budget_remaining")
-    assert [(item.name, item.value) for item in status.channels.host] == [("goal", False), ("level", 0), ("budget_remaining", 18)]
+    assert status.states is not None and status.states.registered == ("goal", "level", "budget_remaining")
+    assert [(item.name, item.value) for item in status.states.host] == [("goal", False), ("level", 0), ("budget_remaining", 18)]
     assert status.model is None and status.hazards is None and status.spend is None and status.aggregates is None
     assert status.mis_references == 0
     assert status.integrity is not None and status.integrity.ungated == () and status.integrity.refused is None
@@ -104,10 +104,10 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     assert lines[11] == '  RESET (built-in; needs --because "<reason>" unless GAME_OVER)'
     assert lines[12] == "BUDGET | paid actions 2/20 | remaining 18"
     assert lines[13] == "AGENDA | goal (registry): reach 3 | not achieved"
-    assert lines[14] == "CHANNELS | registered: goal · level · budget_remaining"
-    assert lines[15] == "CHANNELS | host: goal=false · level=0 · budget_remaining=18"
+    assert lines[14] == "STATES | registered: goal · level · budget_remaining"
+    assert lines[15] == "STATES | host: goal=false · level=0 · budget_remaining=18"
     assert lines[16].startswith("ANCHORS | ") and "none yet (every 25 events and on WIN)" in lines[16]
-    assert lines[17] == "EMERGENCE | self-authored verifiers 0 | declared channels 0 | model replays 0 | goal proposals 0"
+    assert lines[17] == "EMERGENCE | self-authored verifiers 0 | declared states 0 | model replays 0 | goal proposals 0"
     assert lines[18] == "PROGRESS | 2 paid actions this unit | predictions 1/2 ✓ over the last 2"
     assert lines[19] == "CLAIMS | world-model misses 1/2 (50.0%) | gamble misses 0/0 | specificity 2/2 (100%) | invalid 0"
     # The module advisory lines are the modules' own, stored as lines.
@@ -123,7 +123,7 @@ def test_the_status_record_holds_the_facts_and_renders_the_lines(paths):
     data = status.to_json()
     assert list(data) == [
         "run", "mode", "observation", "actions", "kind", "registry", "budget", "gate", "agenda",
-        "ignored_modules", "foreign", "channels", "model", "hazards", "spend", "aggregates",
+        "ignored_modules", "foreign", "states", "model", "hazards", "spend", "aggregates",
         "mis_references", "integrity", "tamper", "anchors", "emergence", "unit", "claims", "vacuous",
         "advisories", "recent", "notes",
     ]
@@ -261,29 +261,29 @@ def test_the_view_record_carries_the_two_events_and_the_lines(paths):
     assert exported.to_json()["exported"] == "/somewhere/history.npz"
 
 
-def test_the_channel_and_module_lists_are_records(paths):
-    from assay.channels import channel_list_of, channel_list_text, declare_channel
+def test_the_state_and_module_lists_are_records(paths):
+    from assay.states import state_list_of, state_list_text, declare_state
     from assay.modules import module_list_of, module_list_text
 
     run = _run(paths)
-    declare_channel(run, "counter", path="counter")
-    listing = channel_list_of(run)
+    declare_state(run, "counter", path="counter")
+    listing = state_list_of(run)
     assert listing.registered == ("goal", "level", "budget_remaining", "counter")
     assert listing.readings is not None
     assert [(item.name, item.form, item.source, item.value) for item in listing.readings.declared] == [
         ("counter", "path", "live", 2)
     ]
     assert [(item.name, item.form, item.path) for item in listing.declared] == [("counter", "path", "counter")]
-    assert channel_list_text(listing) == [
-        "CHANNELS | registered: goal · level · budget_remaining · counter",
-        "CHANNELS | host: goal=false · level=0 · budget_remaining=18",
-        "CHANNELS | declared: counter=2 (path)",
+    assert state_list_text(listing) == [
+        "STATES | registered: goal · level · budget_remaining · counter",
+        "STATES | host: goal=false · level=0 · budget_remaining=18",
+        "STATES | declared: counter=2 (path)",
         "  counter: path counter",
     ]
     assert listing.to_json()["declared"] == [{"name": "counter", "form": "path", "path": "counter", "hash": None}]
-    empty = channel_list_of(run_of(paths, [], registry=run.registry))
+    empty = state_list_of(run_of(paths, [], registry=run.registry))
     assert empty.readings is None
-    assert channel_list_text(empty)[0] == "CHANNELS | goal · level · budget_remaining · counter"
+    assert state_list_text(empty)[0] == "STATES | goal · level · budget_remaining · counter"
     modules = module_list_of(run)
     names = [entry.name for entry in modules.modules]
     assert names[:2] == ["wall_spend", "miss_streak"] and modules.ignored == ()
@@ -341,7 +341,7 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
     """`--json` prints exactly one JSON document on stdout, the result
     record, and nothing on stderr (docs/ARCHITECTURE.md section 7.3): the
     receipt of act, commit and reset, the Status record, the view record,
-    the audit report, the channel list and the module list; the prose form
+    the audit report, the state list and the module list; the prose form
     is unchanged."""
     from assay.core import RunPaths
     from assay.inspect import result_text
@@ -394,13 +394,13 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
             key: value for key, value in expected.items() if key != "computed_at"
         }
         assert report["invalid_for_scoring"] is False and report["ungated"] == []
-        assert run_cli(run, "channel", "declare", "counter", "--path", "counter").returncode == 0
-        channels = _one_document(run_cli(run, "channel", "list", "--json"))
-        assert channels["registered"] == ["goal", "level", "budget_remaining", "counter"]
-        assert channels["readings"]["declared"] == [
+        assert run_cli(run, "state", "declare", "counter", "--path", "counter").returncode == 0
+        states = _one_document(run_cli(run, "state", "list", "--json"))
+        assert states["registered"] == ["goal", "level", "budget_remaining", "counter"]
+        assert states["readings"]["declared"] == [
             {"name": "counter", "form": "path", "source": "live", "ok": True, "value": 0, "problem": None, "event": None}
         ]
-        assert channels["declared"] == [{"name": "counter", "form": "path", "path": "counter", "hash": None}]
+        assert states["declared"] == [{"name": "counter", "form": "path", "path": "counter", "hash": None}]
         modules = _one_document(run_cli(run, "module", "list", "--json"))
         assert [entry["name"] for entry in modules["modules"]][:2] == ["wall_spend", "miss_streak"]
         assert modules["ignored"] == []

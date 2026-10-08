@@ -74,7 +74,7 @@ def result_text(run: Run, receipt: Receipt) -> str:
     lines.extend(f"  {line}" for line in receipt.grade or ())
     lines.extend(str(line) for line in receipt.modules or ())
     lines.extend(str(line) for line in receipt.aggregates or ())
-    lines.extend(str(line) for line in receipt.channels or ())
+    lines.extend(str(line) for line in receipt.states or ())
     for step in receipt.steps or ():
         mark = "·" if step.ungated else ("✓" if step.ok else "✗")
         lines.append(f"  e{step.event:04d} {step.action} {mark}")

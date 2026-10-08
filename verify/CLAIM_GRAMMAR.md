@@ -20,17 +20,20 @@ result settles within `N` seconds.
 | `level+1` | the action completes the current host progress unit (`levels_completed` increments) |
 | `win` | the action reaches the host's goal state (`state` becomes `WIN`) |
 | `verify:PATH.py` | the agent-authored program at PATH, run sandboxed by the referee over the raw before/after observations, returns ok; the program's contract is `def verify(before, after) -> (ok, actual)` |
-| `ch NAME = V [± TOL]` | the registered channel NAME reads V (within TOL) after the action |
-| `ch NAME delta OP V` | the channel moves by an amount satisfying OP ∈ {=, >=, <=} |
-| `ch NAME delta sign +`/`-` | the channel moves up / down |
-| `ch NAME crosses V [from below\|from above]` | the channel crosses threshold V |
+| `ch NAME = V [± TOL]` | the addressable state NAME reads V (within TOL) after the action |
+| `ch NAME delta OP V` | the state moves by an amount satisfying OP ∈ {=, >=, <=} |
+| `ch NAME delta sign +`/`-` | the state moves up / down |
+| `ch NAME crosses V [from below\|from above]` | the state crosses threshold V |
 
-**Channels** are typed extractors over the raw observation: `goal` and
-`level` are built in (the host lifecycle and progress of `JOURNAL_SPEC.md`
-§7); the agent declares its own, a dotted path into the observation or an
-extractor, and every declaration is journaled. A channel claim is graded
-against the extractor's value over the world's own response, never against
-the agent's account of it.
+**Addressable states.** The keyword `ch` names an addressable state, a typed
+extractor over the raw observation. `goal` and `level` are built in (the
+host lifecycle and progress of `JOURNAL_SPEC.md` §7). The agent declares its
+own, a dotted path into the observation or an extractor, and every
+declaration is journaled. A state claim is graded against the extractor's
+value over the world's own response, never against the agent's account of
+it. The claim kinds keep the spelling `channel_eq`, `channel_delta` and
+`channel_cross`, the implementation's earlier word for a state, because this
+format is frozen.
 
 **Executable verifiers** are the grammar's escape hatch to arbitrary checks:
 the agent writes the program, the referee runs it sandboxed and
@@ -68,8 +71,8 @@ Each event's `grade` is a list with one entry per claim:
 - `ok`: whether the claim held against the world's response;
 - `actual`: the machine's statement of what actually happened (the
   counter-fact when `ok` is false);
-- `bucket`: `gamble` for milestone claims (`win`, `level+1`, and channel
-  claims on the built-in `goal`/`level` channels) versus `world_model` for
+- `bucket`: `gamble` for milestone claims (`win`, `level+1`, and state
+  claims on the built-in `goal`/`level` states) versus `world_model` for
   everything else. The distinction lets a reader separate *predictions about
   progress* from *predictions about mechanics* when computing miss rates.
 
@@ -91,5 +94,5 @@ gaps).
 
 Out of scope for v1: re-executing grades. The spec makes every
 `predict`/`grade` pair readable; a shared run directory additionally contains
-the agent's channel declarations and verifier programs, so grades are
+the agent's state declarations and verifier programs, so grades are
 re-derivable in principle, but the reference checker does not re-run them.

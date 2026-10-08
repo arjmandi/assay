@@ -24,7 +24,7 @@ import pytest
 
 from conftest import ASSAY_CLI, FAKE_ADAPTER, event_of, run_cli, run_of, stop_run
 from assay import sandbox
-from assay.channels import channel_value, declare_channel
+from assay.states import state_value, declare_state
 from assay.records import Claim, Grade
 from assay.sandbox import (
     BWRAP,
@@ -266,8 +266,8 @@ def test_an_extractor_cannot_read_the_journal(paths):
         f"def extract(obs):\n    return open({str(paths.events)!r}).read()\n"
     )
     run = run_of(paths)
-    declare_channel(run, "peek", file="peek.py")
-    ok, value = channel_value(run, "peek", EVENT)
+    declare_state(run, "peek", file="peek.py")
+    ok, value = state_value(run, "peek", EVENT)
     assert ok is False and value.startswith("extractor crashed"), value
     assert any(error in value for error in REFUSALS), value
 

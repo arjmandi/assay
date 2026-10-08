@@ -15,8 +15,9 @@ Every paid action needs a checkable prediction, validated before anything is
 spent and graded in code against what the world actually reported. Everything
 lands in an append-only journal under a rolling hash chain whose heads are
 anchored outside the run directory, and `assay audit` recomputes the verdict
-from the artifacts alone. On top of that sit named channels the agent declares
-over the observation, sandboxed verifiers and a world model the agent writes,
+from the artifacts alone. On top of that sit addressable states (named
+readings the agent declares over the observation), sandboxed verifiers and a
+world model the agent writes,
 behavior modules that advise or demand structure, a standing goal the agent
 can propose to change but never ratify, carryover between runs that lands
 demoted, and the owner's gates (destructive, approval, budget, liveness). You
@@ -77,7 +78,7 @@ mkdir demo && cd demo
 
 "$ASSAY" act INC amount=1 --predict "change"        # graded ✓
 "$ASSAY" act NOOP --predict "change"                # graded ✗, with the counter-fact
-"$ASSAY" channel declare counter --path counter     # register a named reading
+"$ASSAY" state declare counter --path counter       # declare an addressable state
 "$ASSAY" act INC amount=2 --predict "ch counter = 3; win"   # WIN
 "$ASSAY" audit                                      # chain + integrity verdict
 ```
@@ -94,7 +95,7 @@ Line by line:
   simulator | no action-idle lease | replay recovery enabled` followed by
   the full status: the observation, the registered actions with their
   schemas and never their meanings, the budget, the standing goal, the
-  `CHANNELS` block and the `ANCHORS` line.
+  `STATES` block and the `ANCHORS` line.
 - Before the status, `start` prints the owner token once, on a line that
   begins `OWNER TOKEN |` and carries the token itself. Only the sha256 is
   kept in `.assay/owner.json`. It authorizes ratifications, approvals and
@@ -119,13 +120,15 @@ Line by line:
   The counter-fact is the machine's statement of what happened. A miss is
   the product, not the failure: it corrects the agent's model at the price
   of one action.
-- `channel declare counter --path counter` registers a named reading of the
-  observation, here the `counter` key of the dict the adapter put under
-  `data`. It prints a line beginning `CHANNEL | declared counter (path)`.
+- `state declare counter --path counter` declares an addressable state, a
+  named reading of the observation, here the `counter` key of the dict the
+  adapter put under `data`. It prints a line beginning
+  `STATE | declared counter (path)`. `assay channel declare`, the command's
+  earlier name, answers for one release.
   From now on claims can name the referent exactly. The declaration is free
   and journaled.
 - `act INC amount=2 --predict "ch counter = 3; win"` makes two claims on one
-  action: the channel reads exactly 3 afterwards, and this action reaches the
+  action: the state reads exactly 3 afterwards, and this action reaches the
   goal state. Both grade, the world reports `WIN`, the receipt says
   `OUTCOME | GAME_COMPLETE | the goal is reached; this run is complete`, the
   daemon calls the adapter's `finalize` if it has one, anchors the chain
@@ -166,7 +169,8 @@ there, and its extension points:
   token, approvals, waivers, budgets, carryover, anchors, interpreter.
 - Constitution (2.4): the agent-facing manual, one file for every world.
 - Modules (2.5): declare, advise, demand units over the journal.
-- Channels (2.6): named readings the agent declares over the observation.
+- Addressable states (2.6): named readings the agent declares over the
+  observation.
 - Verifiers and the world model (2.7): agent-written code, sandboxed,
   trusted only by replay fit.
 - Journal, chain, anchors, audit (2.8): the record, kernel-owned.
@@ -346,9 +350,9 @@ writes `goal.json` from the daemon. None of the three keeps a file of its own.
 
 Machine-readable output. Every command takes `--json`: exactly one JSON
 document on stdout and nothing on stderr. For `status`, `view`, `audit`,
-`act`, `commit`, `reset`, `channel list` and `module list` it is the
+`act`, `commit`, `reset`, `state list` and `module list` it is the
 command's result record (`docs/ARCHITECTURE.md` section 7.3: the `Status`
-record, the view record, the audit report, the receipt, the channel list, the
+record, the view record, the audit report, the receipt, the state list, the
 module list); for every other command, `start` and `stop` included, it is
 `{"lines": [...]}` with the lines the command would have printed; on a
 refusal it is the error object `{"code", "kind", "message", "hint",
@@ -504,7 +508,7 @@ The project entry is `{"mcpServers": {"assay": {"command":
 "<venv>/bin/assay", "args": ["serve-tools", "--run-dir", "<run-dir>"]}}}`.
 The server is named `assay` and its tools are the agent-facing commands by
 name (`status`, `view`, `act`, `commit`, `reset`, `python`,
-`channel_declare`, `channel_list`, `model_init`, `model_replay`,
+`state_declare`, `state_list`, `model_init`, `model_replay`,
 `model_solve`, `module_list`, `goal_propose`, `goal_list`, `audit`; never
 the owner's), each with its request record as the input schema, the result
 as the text the command prints (`format: "json"` for the record), and a
@@ -522,9 +526,10 @@ what they say; the protocols under `bench/` describe the operator-first
 order for the runs to come, and `tests/test_operator_start.py` runs the
 counter example in it.
 
-The channel pattern, worked. The Factorio M2 runs declared their channels
-first and claimed every action with a channel form. The irongear run declared
-seven path channels at its first event:
+The state pattern, worked. The Factorio M2 runs declared their states
+first and claimed every action with a state form. The irongear run declared
+seven path states at its first event, as the run issued them, under the
+command's earlier name:
 
 ```bash
 assay channel declare tick     --path tick
@@ -559,12 +564,12 @@ One mistake to avoid. The dotted path walks the object the adapter put under
 The circuit run's first event made that mistake and earned
 `UNGRADABLE: key 'data' not in observation path 'data.tick'`.
 
-Frame worlds have no dict to walk, so their channels are extractor files:
-`assay channel declare NAME --file extractor.py` with
+Frame worlds have no dict to walk, so their states are extractor files:
+`assay state declare NAME --file extractor.py` with
 `def extract(obs) -> value`, content-hashed, stored under `.assay/channels/`,
 and run only in the sandbox against the observation view (`state`,
 `levels_completed`, `win_levels`, `available_actions`, `frames`). The 25
-ARC-AGI-3 runs declared up to sixteen such channels each.
+ARC-AGI-3 runs declared up to sixteen such states each.
 
 The sandbox is `sandbox-exec` on macOS and `bwrap` (bubblewrap) on Linux:
 agent code (verifiers, extractors, the world model) runs from a scratch copy
@@ -704,7 +709,7 @@ log, the pinned registry and configuration, the owner hash, the module
 manifest and files, the verifier copies, the receipts and the anchors are
 then the daemon's alone: the agent reads them and cannot change them, even
 while the daemon is stopped. What the agent's commands write today stays the
-agent's to write: the activity log, the channel declarations, the proposals,
+agent's to write: the activity log, the state declarations, the proposals,
 the model fit and plan, and `audit.json` (rewritten by whoever runs `audit`,
 so under the sticky bit the operator audits after the run or on a copy). The
 owner operations run in the daemon (section 7.2, #10): an approval is held in
@@ -827,7 +832,7 @@ worked example, and `evidence/verify_all.py` checks every one of them.
 What the public contract freezes, from the architecture document's section 5:
 the journal field names, including the historical `levels_completed`,
 `win_levels`, `level_before`, the state values `NOT_FINISHED`, `WIN` and
-`GAME_OVER`, the claim syntax, the grade `actual` texts, the host channel
+`GAME_OVER`, the claim syntax, the grade `actual` texts, the host state
 names `goal`, `level` and `budget_remaining`, the chain seed and rule, the
 ungated rule and the `RESET` exemption, the `game_id` and `source_game` keys,
 the activity kinds, the receipt outcome tokens and the state-directory layout.
@@ -974,8 +979,8 @@ the column the world adds to the table in `docs/ARCHITECTURE.md` section 4.
 - Constitution: `CONSTITUTION.md` unchanged, plus any world reference handed
   beside it.
 - Modules: the built-ins, hazard tags observed, external modules.
-- Channels: host channels claimed, declared channels and their form, claim
-  kinds used.
+- Addressable states: host states claimed, declared states and their form,
+  claim kinds used.
 - Verifiers and the world model.
 - Journal shape, audit verdict, the frame extra (frame worlds only).
 - Kernel imports from the world: none, always.

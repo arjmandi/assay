@@ -99,18 +99,18 @@ mkdir demo && cd demo
 
 "$ASSAY" act INC amount=1 --predict "change"        # graded ✓
 "$ASSAY" act NOOP --predict "change"                # graded ✗, with the counter-fact
-"$ASSAY" channel declare counter --path counter     # register a named reading
+"$ASSAY" state declare counter --path counter       # declare an addressable state
 "$ASSAY" act INC amount=2 --predict "ch counter = 3; win"   # WIN
 "$ASSAY" audit                                      # chain + integrity verdict
 ```
 
-The third command declares an addressable state. The command keeps the name
-`channel` until the next release renames it to `assay state declare`, and
-the claim keyword `ch` keeps its spelling in the journal.
+The third command declares an addressable state. `assay channel declare` is
+the same command under its earlier name and answers for one release. The
+claim keyword `ch` keeps its spelling in the journal.
 
 Every command takes `--json` and prints one JSON document. A result record
 comes back for `status`, `view`, `audit`, `act`, `commit`, `reset`,
-`channel list` and `module list`, and the command's lines come back
+`state list` and `module list`, and the command's lines come back
 otherwise. A refusal is one line, `ERROR | CODE | message`, with the codes
 listed in `docs/ERRORS.md`.
 

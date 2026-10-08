@@ -11,7 +11,7 @@ Three rules govern aggregate claims and this module implements exactly them:
    fresh replay-fit passes).
 3. AUTO-RESOLVE AT HORIZON: an open aggregate that reaches its horizon is
    resolved then, pass or FAIL, never left dangling; superseding an open
-   aggregate (same channel + stat) closes the old one as an ABANDONMENT with
+   aggregate (same state + stat) closes the old one as an ABANDONMENT with
    miss-equivalent weight in the aggregate meter.
 
 Aggregates live in their own meter bucket; they never enter the world-model or
@@ -127,7 +127,7 @@ def resolve_due(run: Run) -> list[str]:
     state = load_state(paths)
     if not state["open"]:
         return []
-    from .channels import channel_value
+    from .states import state_value
 
     events = run.events
     paid = _paid_ids(events)
@@ -143,7 +143,7 @@ def resolve_due(run: Run) -> list[str]:
         readings: list[float] = []
         failure: str | None = None
         for pid in window:
-            ok, value = channel_value(run, entry["channel"], by_id[pid])
+            ok, value = state_value(run, entry["channel"], by_id[pid])
             if not ok or isinstance(value, bool) or not isinstance(value, (int, float)):
                 failure = f"reading at e{pid} not numeric/gradable: {value}"
                 break

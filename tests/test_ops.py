@@ -53,7 +53,7 @@ def test_commands_are_identifiers_with_unique_paths():
     assert cli.path_of(argparse.Namespace(command="hooks", hooks_command="install")) == "hooks install"
     assert cli.path_of(argparse.Namespace(command="hooks", hooks_command="post-tool-use")) == "hooks post-tool-use"
     assert cli.path_of(argparse.Namespace(command="status")) == "status"
-    assert cli.command_of(argparse.Namespace(command="channel", channel_command="declare")).name == "channel_declare"
+    assert cli.command_of(argparse.Namespace(command="state", state_command="declare")).name == "state_declare"
     assert cli.command_of(argparse.Namespace(command="goal", goal_command="ratify")).name == "goal_ratify"
     assert cli.command_of(argparse.Namespace(command="status")).name == "status"
     with pytest.raises(AssayError, match="^unsupported command nope$"):

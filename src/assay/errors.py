@@ -54,8 +54,8 @@ REGISTRY_MISSING = "REGISTRY_MISSING"
 ACTION_UNKNOWN = "ACTION_UNKNOWN"
 ACTION_PARAMS = "ACTION_PARAMS"
 CLAIM_SYNTAX = "CLAIM_SYNTAX"
-CHANNEL_UNKNOWN = "CHANNEL_UNKNOWN"
-CHANNEL_DECLARE = "CHANNEL_DECLARE"
+STATE_UNKNOWN = "STATE_UNKNOWN"
+STATE_DECLARE = "STATE_DECLARE"
 FILE_NOT_FOUND = "FILE_NOT_FOUND"
 PATH_INVALID = "PATH_INVALID"
 MODULE_CONTRACT = "MODULE_CONTRACT"
@@ -95,8 +95,8 @@ MODULE_DEMAND = "MODULE_DEMAND"
 NOTES_CAP = "NOTES_CAP"
 RESET_REASON = "RESET_REASON"
 GOAL_PROPOSAL = "GOAL_PROPOSAL"
-CHANNEL_CAP = "CHANNEL_CAP"
-CHANNEL_REDEFINED = "CHANNEL_REDEFINED"
+STATE_CAP = "STATE_CAP"
+STATE_REDEFINED = "STATE_REDEFINED"
 DAEMON_UNAVAILABLE = "DAEMON_UNAVAILABLE"
 DAEMON_BUSY = "DAEMON_BUSY"
 DAEMON_ORPHANED = "DAEMON_ORPHANED"
@@ -144,12 +144,12 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(ACTION_UNKNOWN, "usage", "the action is not registered."),
     ErrorCode(ACTION_PARAMS, "usage", "the parameters do not fit the registered schema: one missing, unknown or repeated, a wrong type, bound, enum, length or item count, nested values included, an object or an array as a token, or a broken `pname=value`."),
     ErrorCode(CLAIM_SYNTAX, "usage", "a prediction does not parse: a malformed claim, a form of another observation kind, a bad window or aggregate bound."),
-    ErrorCode(CHANNEL_UNKNOWN, "usage", "a claim or a model names a channel that is not registered."),
-    ErrorCode(CHANNEL_DECLARE, "usage", "a channel declaration is malformed: the name, a host channel, neither or both of --path and --file, an empty path."),
+    ErrorCode(STATE_UNKNOWN, "usage", "a claim or a model names an addressable state that is not registered."),
+    ErrorCode(STATE_DECLARE, "usage", "a state declaration is malformed: the name, a host state, neither or both of --path and --file, an empty path."),
     ErrorCode(FILE_NOT_FOUND, "usage", "a file the command names does not exist: a verifier, an extractor, a module."),
     ErrorCode(PATH_INVALID, "usage", "a path lies outside the run directory, inside `.assay`, or is absolute where a relative one is required."),
     ErrorCode(MODULE_CONTRACT, "usage", "a module file does not import, lacks the module contract, is not one `.py` file, or names a built-in or already-provided NAME."),
-    ErrorCode(MODEL_INVALID, "usage", "`model.py` is missing or declares no CHANNELS, or the solve goal names a channel it does not declare."),
+    ErrorCode(MODEL_INVALID, "usage", "`model.py` is missing or declares no STATES, or the solve goal names a state it does not declare."),
     ErrorCode(MODEL_FAILED, "usage", "the agent's `model.py` raised, timed out or produced malformed output in the sandbox."),
     ErrorCode(PYTHON_FAILED, "usage", "the agent's source raised inside `assay python`."),
     ErrorCode(PLAN_INVALID, "usage", "the commit plan is not a model plan written by `assay model solve`, is not `.assay/model_plan.json`, or carries its actions in the string form of a plan written before 1.2.0."),
@@ -183,8 +183,8 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(NOTES_CAP, "refused", "the notes file is past twice its cap; paid actions refuse until it is trimmed."),
     ErrorCode(RESET_REASON, "refused", "a reset needs --because unless the state is GAME_OVER."),
     ErrorCode(GOAL_PROPOSAL, "refused", "the goal proposal does not exist or is already resolved."),
-    ErrorCode(CHANNEL_CAP, "refused", "the declared channels are at the per-run cap."),
-    ErrorCode(CHANNEL_REDEFINED, "refused", "the channel is already declared with a different extractor."),
+    ErrorCode(STATE_CAP, "refused", "the declared states are at the per-run cap."),
+    ErrorCode(STATE_REDEFINED, "refused", "the state is already declared with a different extractor."),
     ErrorCode(DAEMON_UNAVAILABLE, "refused", "the harness's own state refused: the run's environment owner (the daemon) is not running or did not start."),
     ErrorCode(DAEMON_BUSY, "refused", "the harness's own state refused: the daemon is alive and inside a step, hung, or did not answer within the client's wait."),
     ErrorCode(DAEMON_ORPHANED, "refused", "the harness's own state refused: a live daemon still serves this directory while its run state is gone."),
