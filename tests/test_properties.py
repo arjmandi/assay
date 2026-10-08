@@ -563,7 +563,9 @@ _value_text = _token | _shaped_values | st.integers().map(str) | _finite_float.m
 @st.composite
 def param_schemas(draw) -> dict[str, Any]:
     """A parameter schema the registry accepts: int or float, optionally
-    bounded, str, each optionally with an enum of its own type."""
+    bounded, str, each optionally with an enum of its own type within its
+    bounds (a member outside them is a registry mistake the kernel refuses,
+    since no value could match it)."""
     kind = draw(st.sampled_from(["int", "float", "str"]))
     schema: dict[str, Any] = {"type": kind}
     bounds = st.integers(-1000, 1000) if kind == "int" else st.integers(-1000, 1000) | _finite_float
@@ -577,7 +579,7 @@ def param_schemas(draw) -> dict[str, Any]:
         if high is not None:
             schema["max"] = high
     if draw(st.booleans()):
-        members = {"int": st.integers(-1000, 1000), "float": bounds, "str": _token}[kind]
+        members = _token if kind == "str" else values_of(schema)
         schema["enum"] = draw(st.lists(members, min_size=1, max_size=5))
     return schema
 
@@ -721,3 +723,183 @@ def test_registry_str_without_enum_round_trips_any_token(name, pname, value):
         name.upper(),
         {pname: value},
     )
+
+
+# ------------------------------------------- the JSON Schema subset (#14)
+#
+# The contract, restated: a parameter schema is `integer`, `number`, `string`
+# or `boolean` (with `enum`, `minimum`/`maximum`, `minLength`/`maxLength`),
+# an `object` of such schemas (`properties`, `required`, no other property
+# admitted) or an `array` of one (`items`, `minItems`, `maxItems`), nested;
+# `int`, `float`, `str`, `min` and `max` are aliases. `satisfies` below is an
+# independent reading of it, and the kernel is held to it both ways: every
+# satisfying value validates and comes back satisfying it, and any JSON value
+# either validates (and satisfies it) or is refused with ACTION_PARAMS.
+
+_CANONICAL = {"int": "integer", "float": "number", "str": "string"}
+_json_values = st.recursive(
+    st.none() | st.booleans() | st.integers(-10**6, 10**6) | _finite_float | st.text(max_size=8),
+    lambda children: st.lists(children, max_size=4) | st.dictionaries(_param_name, children, max_size=4),
+    max_leaves=12,
+)
+
+
+def satisfies(schema: dict[str, Any], value: Any) -> bool:
+    kind = _CANONICAL.get(schema["type"], schema["type"])
+    if kind == "integer":
+        ok = isinstance(value, int) and not isinstance(value, bool)
+    elif kind == "number":
+        ok = isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value)
+    elif kind == "string":
+        ok = isinstance(value, str)
+    elif kind == "boolean":
+        ok = isinstance(value, bool)
+    elif kind == "object":
+        ok = isinstance(value, dict)
+    else:
+        ok = isinstance(value, list)
+    if not ok or ("enum" in schema and value not in schema["enum"]):
+        return False
+    if kind in ("integer", "number"):
+        low = schema.get("min", schema.get("minimum"))
+        high = schema.get("max", schema.get("maximum"))
+        return (low is None or value >= low) and (high is None or value <= high)
+    if kind == "string":
+        low, high = schema.get("minLength"), schema.get("maxLength")
+        return (low is None or len(value) >= low) and (high is None or len(value) <= high)
+    if kind == "object":
+        properties = schema["properties"]
+        if any(key not in properties for key in value):
+            return False
+        if any(name not in value for name in schema.get("required", ())):
+            return False
+        return all(satisfies(properties[key], item) for key, item in value.items())
+    if kind == "array":
+        low, high = schema.get("minItems"), schema.get("maxItems")
+        if (low is not None and len(value) < low) or (high is not None and len(value) > high):
+            return False
+        return all(satisfies(schema["items"], item) for item in value)
+    return True
+
+
+def values_of(schema: dict[str, Any]) -> st.SearchStrategy[Any]:
+    """Values that satisfy the schema, drawn from its own bounds."""
+    kind = _CANONICAL.get(schema["type"], schema["type"])
+    base: st.SearchStrategy[Any]
+    if kind in ("integer", "number"):
+        low = schema.get("min", schema.get("minimum"))
+        high = schema.get("max", schema.get("maximum"))
+        span = 10**6 if kind == "integer" else 1e6
+        if low is None and high is None:
+            low, high = -span, span
+        elif low is None:
+            low = high - span
+        elif high is None:
+            high = low + span
+        base = (
+            st.integers(low, high)
+            if kind == "integer"
+            else st.floats(low, high, allow_nan=False, allow_infinity=False)
+        )
+    elif kind == "string":
+        base = st.text(min_size=schema.get("minLength", 0), max_size=schema.get("maxLength", 8))
+    elif kind == "boolean":
+        base = st.booleans()
+    elif kind == "object":
+        properties = schema["properties"]
+        required = set(schema.get("required", ()))
+        base = st.fixed_dictionaries(
+            {name: values_of(properties[name]) for name in properties if name in required},
+            optional={name: values_of(properties[name]) for name in properties if name not in required},
+        )
+    else:
+        assert kind == "array", kind
+        low = schema.get("minItems", 0)
+        base = st.lists(values_of(schema["items"]), min_size=low, max_size=schema.get("maxItems", low + 3))
+    if "enum" in schema:
+        base = st.sampled_from(schema["enum"])
+    return base.filter(lambda value: satisfies(schema, value))
+
+
+@st.composite
+def subset_schemas(draw, depth: int = 2) -> dict[str, Any]:
+    kinds = ["integer", "number", "string", "boolean", "int", "float", "str"]
+    if depth > 0:
+        kinds += ["object", "array"]
+    kind = draw(st.sampled_from(kinds))
+    canonical = _CANONICAL.get(kind, kind)
+    schema: dict[str, Any] = {"type": kind}
+    if canonical in ("integer", "number"):
+        bounds = st.integers(-1000, 1000) if canonical == "integer" else st.integers(-1000, 1000) | _finite_float
+        low = draw(st.none() | bounds)
+        high = draw(st.none() | bounds)
+        if low is not None and high is not None and low > high:
+            low, high = high, low
+        if low is not None:
+            schema[draw(st.sampled_from(["min", "minimum"]))] = low
+        if high is not None:
+            schema[draw(st.sampled_from(["max", "maximum"]))] = high
+    elif canonical == "string":
+        low = draw(st.none() | st.integers(0, 5))
+        high = draw(st.none() | st.integers(0, 8))
+        if low is not None and high is not None and low > high:
+            low, high = high, low
+        if low is not None:
+            schema["minLength"] = low
+        if high is not None:
+            schema["maxLength"] = high
+    elif canonical == "object":
+        names = draw(st.lists(_param_name, min_size=1, max_size=3, unique=True))
+        schema["properties"] = {name: draw(subset_schemas(depth - 1)) for name in names}
+        schema["required"] = draw(st.lists(st.sampled_from(names), unique=True))
+        if draw(st.booleans()):
+            schema["additionalProperties"] = False
+    elif canonical == "array":
+        schema["items"] = draw(subset_schemas(depth - 1))
+        low = draw(st.none() | st.integers(0, 3))
+        high = draw(st.none() | st.integers(0, 4))
+        if low is not None and high is not None and low > high:
+            low, high = high, low
+        if low is not None:
+            schema["minItems"] = low
+        if high is not None:
+            schema["maxItems"] = high
+    if canonical in ("integer", "number", "string", "boolean") and draw(st.booleans()):
+        # Members drawn from the schema's own bounds, so the enum is satisfiable.
+        schema["enum"] = draw(st.lists(values_of(schema), min_size=1, max_size=4, unique=True))
+    return schema
+
+
+@given(name=_action_name, pname=_param_name, schema=subset_schemas(), data=st.data())
+def test_subset_registry_is_canonical_as_written_and_a_satisfying_value_round_trips(
+    name, pname, schema, data
+):
+    from assay.registry import validate_action, validate_value
+
+    registry = registry_with(name, pname, schema)
+    assert registry["actions"][0]["params"][pname] == schema
+    assert validate_registry(registry) == registry
+    value = data.draw(values_of(schema), label="a satisfying value")
+    parsed_name, params = validate_action(registry, name, {pname: value})
+    assert parsed_name == name.upper() and set(params) == {pname}
+    assert params[pname] == value and satisfies(schema, params[pname])
+    assert validate_value(schema, params[pname]) == params[pname]
+
+
+@given(name=_action_name, pname=_param_name, schema=subset_schemas(), value=_json_values)
+def test_subset_any_json_value_validates_or_is_refused_with_the_code(name, pname, schema, value):
+    from assay.registry import action_form, validate_action
+
+    registry = registry_with(name, pname, schema)
+    form = action_form(name.upper(), registry["actions"][0]["params"])
+    try:
+        parsed_name, params = validate_action(registry, name, {pname: value})
+    except AssayError as error:
+        assert error.code == "ACTION_PARAMS"
+        assert str(error).startswith(f"{name.upper()} {pname}")
+        assert error.hint == f"the form is `{form}`"
+        assert not satisfies(schema, value)
+        return
+    assert parsed_name == name.upper() and set(params) == {pname}
+    assert satisfies(schema, value) and satisfies(schema, params[pname])
+    assert params[pname] == value

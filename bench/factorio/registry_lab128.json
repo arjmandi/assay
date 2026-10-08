@@ -21,10 +21,10 @@
       "name": "RUN",
       "params": {
         "program": {
-          "type": "str"
+          "type": "string"
         }
       },
-      "description": "runs one program against the FLE API; source is base64-encoded UTF-8. API reference in bench/factorio/FLE_API.md \u2014 the same reference published FLE agents receive."
+      "description": "runs one program against the FLE API; program is the Python source as a plain string, passed as --params '{\"program\": \"...\"}' or --params @FILE since it holds whitespace. API reference in bench/factorio/FLE_API.md, the same reference published FLE agents receive."
     },
     {
       "name": "WAIT",

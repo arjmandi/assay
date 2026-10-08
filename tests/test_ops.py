@@ -90,6 +90,7 @@ def _samples():
         ActRequest(action="INC", params={"amount": 1}, predict="change", because="why", at_event=4, declares={"worst_case": "x"}),
         ActRequest(action="NOOP"),
         ActRequest(action="SET", params={"ratio": 0.5, "name": "x", "flag": True}),
+        ActRequest(action="APPLY", params={"ops": [{"kind": "inc", "amount": 1}], "note": "a b"}),
         Step(action="INC", params={"amount": 1}, predict="change"),
         Step(action="NOOP"),
         CommitRequest(plan="@.assay/model_plan.json", at_event=4),
@@ -138,10 +139,12 @@ def test_request_records_read_the_wire_fields():
         ActRequest.from_json({"action": 7})
     with pytest.raises(TypeError, match="^act.params must be a JSON object, got str$"):
         ActRequest.from_json({"action": "INC", "params": "amount=1"})
-    with pytest.raises(TypeError, match="^act.params.amount must be a string, a number or true/false, got list$"):
-        ActRequest.from_json({"action": "INC", "params": {"amount": [1]}})
-    with pytest.raises(TypeError, match="^act.params.amount must be a string, a number or true/false, got null$"):
-        ActRequest.from_json({"action": "INC", "params": {"amount": None}})
+    # A value of the object is any JSON (#14): whether a list or a null fits
+    # the parameter is the registry's schema to say, not the record's.
+    assert ActRequest.from_json({"action": "INC", "params": {"amount": [1]}}).params == {"amount": [1]}
+    assert ActRequest.from_json({"action": "INC", "params": {"amount": None}}).params == {"amount": None}
+    nested = {"ops": [{"kind": "inc", "amount": 1}, {"kind": "lamp", "state": "on"}]}
+    assert ActRequest.from_json({"action": "APPLY", "params": nested}).params == nested
     with pytest.raises(TypeError, match="^act.declares.k must be a string, got int$"):
         ActRequest.from_json({"action": "NOOP", "declares": {"k": 1}})
     with pytest.raises(TypeError, match="^commit.steps must be a list of steps, got int$"):

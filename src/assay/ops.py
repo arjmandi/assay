@@ -18,11 +18,12 @@ that does not fit it is refused with `REQUEST_MALFORMED`, kind usage, before
 anything spends), calls the name's handler with the daemon and the held run,
 and encodes the result.
 
-An action travels as its registered name and its parameters as an object of
-scalars (`action`, `params`), never as the typed token: the client parses
-`NAME k=v ...` against the pinned registry and the daemon validates the
-object against the same schema before anything spends (`registry.validate_action`);
-a batch step is `{action, params, predict}`.
+An action travels as its registered name and its parameters as a JSON
+object (`action`, `params`), never as the typed token: the client parses
+`NAME k=v ...` against the pinned registry or takes `--params JSON` as given,
+and the daemon validates the object against the registry's schema, nested
+values included, before anything spends (`registry.validate_action`); a
+batch step is `{action, params, predict}`.
 
 The records are small frozen classes with `from_json`, `to_json` and a
 hand-written `json_schema()`, the tool server's `inputSchema`. They decode
@@ -35,6 +36,7 @@ fields; the daemon spends on nothing it did not read whole.
 from __future__ import annotations
 
 import dataclasses
+import json
 from collections.abc import Mapping
 from typing import Any, Generic, Protocol, Self, TypeVar
 
@@ -55,6 +57,32 @@ from .records import (
 )
 
 PROTOCOL_VERSION = 2
+# One request line is at most this many bytes: the daemon reads that many and
+# one more and refuses a longer line before parsing it (`broker._read_request`),
+# and the command line refuses a `--params` or `--step` document past it
+# before the socket sees it. A parameter without `maxLength` or `maxItems` is
+# bounded by this; those keywords are the world's own caps below it.
+REQUEST_LIMIT_BYTES = 1_000_000
+
+
+def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    """The object of a JSON text with a repeated key refused: the last would
+    silently win, and nothing on the wire means that."""
+    obj: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in obj:
+            raise ValueError(f"the key {key!r} is repeated")
+        obj[key] = value
+    return obj
+
+
+def decode_json(text: str | bytes) -> Any:
+    """One JSON document under the protocol's rules: a repeated key within
+    an object is refused (`ValueError`), and a document nested past the
+    interpreter's limit raises `RecursionError`; the caller words the
+    refusal in its own code (`REQUEST_MALFORMED` on the daemon,
+    `COMMAND_ARGS` on the command line)."""
+    return json.loads(text, object_pairs_hook=_strict_object)
 
 
 class Record(Protocol):
@@ -90,24 +118,16 @@ def _declares(obj: Mapping[str, Any], record: str) -> dict[str, str] | None:
 
 
 def _params(obj: Mapping[str, Any], record: str) -> dict[str, Any] | None:
-    """The parameters object: scalars only; the registry's schema is the
-    daemon's to check."""
+    """The parameters object, its values any JSON: the registry's schema is
+    the daemon's to check (`registry.validate_action`)."""
     params = read_opt_object(obj, record, "params", nullable=True)
-    if params is None:
-        return None
-    for key, value in params.items():
-        if value is None or not isinstance(value, (str, int, float, bool)):
-            raise wrong_type(record, f"params.{key}", "a string, a number or true/false", value)
-    return dict(params)
+    return None if params is None else dict(params)
 
 
 _STRING_OR_NULL = {"type": ["string", "null"]}
 _INTEGER_OR_NULL = {"type": ["integer", "null"]}
 _DECLARES = {"type": ["object", "null"], "additionalProperties": {"type": "string"}}
-_PARAMS = {
-    "type": ["object", "null"],
-    "additionalProperties": {"type": ["string", "number", "boolean"]},
-}
+_PARAMS = {"type": ["object", "null"]}
 
 # The error object of section 7.1, as every refused reply carries it: the
 # code, its kind, the one-line message, the next step and the further lines
@@ -247,13 +267,13 @@ _ACT_KEYS = frozenset({"action", "params", "predict", "because", "at_event", "de
 @dataclasses.dataclass(frozen=True, slots=True)
 class ActRequest:
     """`act`: one action with its prediction. `action` is the registered
-    name and `params` the object of its scalar parameters, or null for an
-    action without any (the client parses `NAME pname=value ...` with the
-    pinned registry; the daemon validates the object against the same
-    schema before any spend); `predict` the claims text, null for a bare
-    act under a control arm; `because` the reason; `at_event` the event
-    guard; `declares` the structural declarations a gate or a module
-    demanded."""
+    name and `params` the object of its parameters, any JSON the registry's
+    schema admits, or null for an action without any (the client parses
+    `NAME pname=value ...` with the pinned registry or takes `--params` as
+    given; the daemon validates the object against the schema before any
+    spend); `predict` the claims text, null for a bare act under a control
+    arm; `because` the reason; `at_event` the event guard; `declares` the
+    structural declarations a gate or a module demanded."""
 
     action: str
     params: dict[str, Any] | None = None
@@ -306,8 +326,9 @@ _STEP_KEYS = frozenset({"action", "params", "predict"})
 @dataclasses.dataclass(frozen=True, slots=True)
 class Step:
     """One step of a hand-written batch: the registered name, its parameters
-    (an object of scalars, or null) and its prediction, null for a bare step
-    under a control arm (the client splits `NAME pname=value :: claims`)."""
+    (a JSON object, or null) and its prediction, null for a bare step under
+    a control arm (the client splits `NAME pname=value :: claims`, or takes
+    the step as this object)."""
 
     action: str
     params: dict[str, Any] | None = None

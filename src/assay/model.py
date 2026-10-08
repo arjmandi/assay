@@ -573,13 +573,11 @@ def solve_model(
             "event": int(events[-1].id),
             "model_hash": model_hash(paths),
         },
+        # Each action as the object the wire carries (`{action, params}`),
+        # validated against the registry when the plan is committed; a
+        # model's `actions()` gives the params, so they can be any JSON.
         "actions": [
-            step["action"]
-            + (
-                " " + " ".join(f"{k}={v}" for k, v in sorted(step["params"].items()))
-                if step.get("params")
-                else ""
-            )
+            {"action": str(step["action"]), "params": step.get("params") or None}
             for step in plan_steps or ()
         ],
         "predictions": [step["values"] for step in plan_steps or ()],

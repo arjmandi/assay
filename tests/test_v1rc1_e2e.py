@@ -234,6 +234,33 @@ def test_model_tier_promotion_and_plan(tmp_path):
         solved = run_cli(run, "model", "solve", "--to", "ch counter = 3")
         assert solved.returncode == 0, solved.stderr
         assert "SOLVE | plan found" in solved.stdout
+        assert "ACTIONS | INC amount=1 -> INC amount=2" in solved.stdout
+        # The plan carries its actions as objects (#14); one written in the
+        # string form of a plan before 1.2.0 is refused with the hint to
+        # solve again, and nothing is spent.
+        plan_file = run / ".assay" / "model_plan.json"
+        written = plan_file.read_text()
+        plan = json.loads(written)
+        assert plan["actions"] == [
+            {"action": "INC", "params": {"amount": 1}},
+            {"action": "INC", "params": {"amount": 2}},
+        ]
+        plan["actions"] = ["INC amount=1", "INC amount=2"]
+        plan_file.write_text(json.dumps(plan))
+        stale_form = run_cli(run, "commit", "@.assay/model_plan.json")
+        assert stale_form.returncode == 2
+        assert stale_form.stderr == (
+            "ERROR | PLAN_INVALID | plan action 0 is a string; a plan carries actions as "
+            '{"action", "params"} objects since 1.2.0\n'
+            "NEXT | rerun `assay model solve`\n"
+        )
+        plan["actions"] = [{"action": "INC", "params": {"amount": 9}}, {"action": "INC", "params": {"amount": 2}}]
+        plan_file.write_text(json.dumps(plan))
+        bad_value = run_cli(run, "commit", "@.assay/model_plan.json")
+        assert bad_value.returncode == 2
+        assert bad_value.stderr.startswith("ERROR | ACTION_PARAMS | INC amount=9 is above max 2\n")
+        assert len(_events(run)) == 41
+        plan_file.write_text(written)
         committed = run_cli(run, "commit", "@.assay/model_plan.json")
         assert committed.returncode == 0, committed.stderr
         assert "OUTCOME | GAME_COMPLETE" in committed.stdout

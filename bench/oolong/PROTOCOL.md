@@ -87,17 +87,25 @@ census clean. `available_actions` = `BANK_FACT`, `SUBMIT`.
 
 ## Actuators (both paid, both grounded in code)
 
-Arguments are base64 because ASSAY action tokens are whitespace-split (same
-convention as `bench/factorio` RUN).
+The arguments are plain strings and an array of strings, as the registry's
+schema declares them (`text`, `span` and `answer` are `string`, `spans` is an
+`array` of `string` with at least one item). A span holds spaces, so the
+values go as JSON through `assay act NAME --params '{...}'` (or `--params
+@FILE`), never as whitespace-split `pname=value` tokens; the kernel validates
+the object against the schema before any spend and journals it under `data`
+as given. (The runs recorded before 1.2.0 carried the same values
+base64-encoded, the only form a token could hold then; their journals keep
+that form and still verify.)
 
-- **`BANK_FACT text=<b64> span=<b64>`**: commit a fact citing a corpus span.
-  The span is verified as a verbatim substring (`str.find`) in code. A span not
-  present is **refused** and the attempt is **journaled** (evidence, like an FLE
-  policy refusal); no state advances.
-- **`SUBMIT answer=<b64> spans=<b64 json-list>`**: answer the current question,
-  citing verbatim spans (each `str.find`-checked). Also coverage-gated (census
-  below). On acceptance the answer is recorded **sealed** and the question
-  pointer advances. `spans` is base64 of a JSON array of non-empty strings.
+- **`BANK_FACT --params '{"text": "...", "span": "..."}'`**: commit a fact
+  citing a corpus span. The span is verified as a verbatim substring
+  (`str.find`) in code. A span not present is **refused** and the attempt is
+  **journaled** (evidence, like an FLE policy refusal); no state advances.
+- **`SUBMIT --params '{"answer": "...", "spans": ["...", ...]}'`**: answer
+  the current question, citing verbatim spans (each `str.find`-checked). Also
+  coverage-gated (census below). On acceptance the answer is recorded
+  **sealed** and the question pointer advances. `spans` is a non-empty array
+  of non-empty strings.
 
 Because a registry run is daemon-gated, paid actions go through `assay act`
 (carrying a `--predict`); a bare step is refused. Predictions grade against the
@@ -145,16 +153,17 @@ unaffected.
 hashed, no kernel behavior) and is read by the adapter from the run's pinned
 copy. Everything above holds except the shape of the two actuators:
 
-- **`BANK_FACT spans=<b64 json-list>`** banks several facts in one paid
-  action. Every span is verified as a verbatim substring in code; one missing
-  span refuses the whole action (journaled, nothing banked). Each verified
-  span is one banked fact for the current question.
-- **`SUBMIT answer=<plain text>`** answers in plain text. Action tokens are
-  whitespace-split, so a space is written as `_` (`more_common_than`,
-  `February_2022`). The census is unchanged (at least one verified span
-  banked for the current question), and those banked spans are the citation
-  recorded in the sealed submission. A registry that also gives SUBMIT a
-  `spans` parameter has it checked verbatim as in single mode.
+- **`BANK_FACT --params '{"spans": ["...", ...]}'`** banks several facts in
+  one paid action. Every span is verified as a verbatim substring in code;
+  one missing span refuses the whole action (journaled, nothing banked). Each
+  verified span is one banked fact for the current question.
+- **`SUBMIT answer=<string>`** answers with a plain string: `answer=1` as a
+  token, `--params '{"answer": "February 2022"}'` when the answer holds a
+  space (the runs recorded before 1.2.0 wrote a space as `_`, which the
+  adapter no longer rewrites). The census is unchanged (at least one verified
+  span banked for the current question), and those banked spans are the
+  citation recorded in the sealed submission. A registry that also gives
+  SUBMIT a `spans` parameter has it checked verbatim as in single mode.
 
 The default, `single`, is what every published OOLONG run was recorded under
 and what `registry_40.json` and `registry_200.json` select. Scoring is the

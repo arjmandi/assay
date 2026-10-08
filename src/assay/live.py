@@ -8,7 +8,7 @@ Every function here takes the run (docs/ARCHITECTURE.md section 6.3): the
 journal is the held `run.events`, the one writer is `run.append`, and the
 small files beside the journal are read from `run.paths` on demand. The
 public seam (paid_step, record_event, write_receipt, head_events,
-validate_batch_tokens) is what an observation kind's own
+validate_plan_actions) is what an observation kind's own
 executor builds on (the frame world's solve-plan executor in assay_grid).
 """
 
@@ -30,7 +30,6 @@ from .core import (
     load_jsonl,
     make_event,
     now_iso,
-    parse_action,
     read_json,
 )
 from .extras import kind_for
@@ -131,9 +130,9 @@ def paid_step(
     stepper: Stepper,
     claims: Sequence[Claim] | None = None,
 ) -> tuple[Event, Event, str | None, float]:
-    """One validated action (`registry.validate_action` or `parse_action`
-    ran before) through the stepper: the affordance check, the redaction,
-    the spend, the pending event with its mutation id."""
+    """One validated action (`registry.validate_action` ran before) through
+    the stepper: the affordance check, the redaction, the spend, the pending
+    event with its mutation id."""
     registry = require_registry(run)
     prior = run.events[-1]
     _refuse_reset_in_batch(name)
@@ -484,7 +483,10 @@ def execute_action(
     return write_receipt(run, receipt)
 
 
-STEP_SYNTAX = 'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
+STEP_SYNTAX = (
+    'each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+    'or "predict" in the step object'
+)
 STEP_HINT = "`assay act --help` lists the claim forms"
 
 
@@ -493,7 +495,7 @@ def split_step(raw: str) -> tuple[str, str | None]:
     action token and the claims text, None when the step carries none (no
     `::`, or nothing after it); whether a bare step is admitted is the
     daemon's rule (`execute_steps`), by the registry's gate. The token keeps
-    the case the agent typed; `parse_action` folds the name."""
+    the case the agent typed; `parse_registry_action` folds the name."""
     action, separator, predict = raw.partition("::")
     if not action.strip():
         raise AssayError(STEP_SYNTAX, code="PREDICTION_REQUIRED", hint=STEP_HINT)
@@ -507,17 +509,40 @@ def _refuse_reset_in_batch(name: str) -> None:
         )
 
 
-def validate_batch_tokens(
-    tokens: Sequence[str], registry: Mapping[str, Any]
+RESOLVE_HINT = "rerun `assay model solve`"
+
+
+def validate_plan_actions(
+    actions: Sequence[Any], registry: Mapping[str, Any]
 ) -> list[tuple[str, dict[str, Any] | None]]:
-    """The typed tokens of a model plan, each parsed against the registry
-    before any step spends an action; a reset is refused."""
-    actions: list[tuple[str, dict[str, Any] | None]] = []
-    for token in tokens:
-        name, data = parse_action(token, registry)
+    """The actions of a model plan, each an `{action, params}` object as
+    `solve_model` writes them, validated against the registry before any
+    step spends; a reset is refused. A plan written before 1.2.0 carried
+    its actions as `NAME k=v` strings, which are refused with the hint to
+    solve again."""
+    validated: list[tuple[str, dict[str, Any] | None]] = []
+    for index, item in enumerate(actions):
+        if isinstance(item, str):
+            raise AssayError(
+                f"plan action {index} is a string; a plan carries actions as "
+                '{"action", "params"} objects since 1.2.0',
+                code="PLAN_INVALID",
+                hint=RESOLVE_HINT,
+            )
+        if (
+            not isinstance(item, Mapping)
+            or not isinstance(item.get("action"), str)
+            or not (item.get("params") is None or isinstance(item.get("params"), Mapping))
+        ):
+            raise AssayError(
+                f"plan action {index} is not an {{\"action\", \"params\"}} object",
+                code="PLAN_INVALID",
+                hint=RESOLVE_HINT,
+            )
+        name, data = validate_action(registry, item["action"], item.get("params"))
         _refuse_reset_in_batch(name)
-        actions.append((name, data))
-    return actions
+        validated.append((name, data))
+    return validated
 
 
 def execute_steps(
@@ -689,9 +714,6 @@ def execute_steps(
     return write_receipt(run, receipt)
 
 
-RESOLVE_HINT = "rerun `assay model solve`"
-
-
 def execute_model_plan(
     run: Run,
     reference: str,
@@ -743,11 +765,11 @@ def execute_model_plan(
         raise AssayError("plan is stale (model.py changed)", code="PLAN_STALE", hint=RESOLVE_HINT)
     if int(source.get("event", -1)) != events[-1].id:
         raise AssayError("plan is stale (the journal moved)", code="PLAN_STALE", hint=RESOLVE_HINT)
-    actions = [str(item) for item in plan.get("actions") or ()]
+    actions = plan.get("actions") or ()
     predictions = plan.get("predictions") or ()
-    if not actions or len(actions) != len(predictions):
+    if not isinstance(actions, list) or not actions or len(actions) != len(predictions):
         raise AssayError("plan needs one prediction per action", code="PLAN_INVALID", hint=RESOLVE_HINT)
-    parsed = validate_batch_tokens(actions, registry)
+    parsed = validate_plan_actions(actions, registry)
     # The modules' advisories ride on this receipt like on an act's or a
     # hand batch's; they were consulted and discarded before #24.
     advisories = _enforce_registry_gates(

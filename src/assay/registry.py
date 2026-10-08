@@ -11,9 +11,7 @@ stay valid unchanged):
     {
       "actions": [
         {"name": "TOKEN",
-         "params": {"pname": {"type": "int|float|str",
-                              "min": number?, "max": number?,
-                              "enum": [values]?}},
+         "params": {"pname": <schema>, ...},   # a JSON Schema subset, below
          "destructive": bool?,      # kernel teeth: refuses without a declared
                                     # worst case + recovery plan; banned in batches
          "approval": bool?,         # default-deny: needs a fresh owner approval
@@ -49,9 +47,30 @@ stay valid unchanged):
                                       # audit keeps the run invalid for scoring.
     }
 
-Action tokens on the command line: `NAME pname=value pname2=value2`.
-Every registered parameter is required; values are type-coerced and validated
-(bounds, enum) before any action is spent. RESET stays built-in.
+A parameter schema is a JSON Schema subset, nested as deep as the world
+needs and holding nothing the kernel cannot check (`validate_value`):
+
+    {"type": "integer"|"number"|"string"|"boolean"|"object"|"array",
+     "enum": [values]?,                        # any type; each member fits the schema
+     "minimum": number?, "maximum": number?,   # integer and number
+     "minLength": N?, "maxLength": N?,         # string
+     "properties": {"name": <schema>, ...},    # object; no other property is admitted
+     "required": ["name", ...]?,               # object; absent means none is required
+     "additionalProperties": false?,           # object; the one admitted value
+     "items": <schema>,                        # array; the schema of every item
+     "minItems": N?, "maxItems": N?}           # array
+
+`int`, `float` and `str` are accepted as aliases of `integer`, `number` and
+`string`, and `min`/`max` of `minimum`/`maximum`: a registry written for
+1.1.0 is valid unchanged, and the pinned copy keeps the spelling the file
+used.
+
+Actions on the command line: `NAME pname=value ...` for scalar parameters,
+`NAME --params '{"pname": value, ...}'` (or `--params @FILE`) for any
+parameter and the only form for an object or an array. Every registered
+parameter is required; values are type-coerced and validated (bounds, enum,
+lengths, items, properties) before any action is spent. RESET stays
+built-in.
 """
 
 from __future__ import annotations
@@ -59,18 +78,39 @@ from __future__ import annotations
 import json
 import math
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, RunPaths, read_json
+from .core import AssayError, RunPaths, one_line_json, read_json
 from .records import Event
 
 if TYPE_CHECKING:
     from .run import Run
 
 _NAME = re.compile(r"^[A-Za-z][A-Za-z0-9_]{0,31}$")
-_TYPES = ("int", "float", "str")
+# The parameter types of the schema subset: the JSON Schema names, and the
+# three names the 1.1.0 registries used as aliases (the pinned copy keeps
+# the spelling the file used, so a registry's hash never moves).
+_TYPE_ALIASES = {"int": "integer", "float": "number", "str": "string"}
+_TYPES = ("object", "array", "string", "number", "integer", "boolean")
+_KEYS_BY_TYPE: dict[str, frozenset[str]] = {
+    "integer": frozenset({"type", "enum", "minimum", "maximum", "min", "max"}),
+    "number": frozenset({"type", "enum", "minimum", "maximum", "min", "max"}),
+    "string": frozenset({"type", "enum", "minLength", "maxLength"}),
+    "boolean": frozenset({"type", "enum"}),
+    "object": frozenset({"type", "enum", "properties", "required", "additionalProperties"}),
+    "array": frozenset({"type", "enum", "items", "minItems", "maxItems"}),
+}
+_SCHEMA_KEYS = frozenset().union(*_KEYS_BY_TYPE.values())
+# A refused value is named up to this many characters; a program or a list
+# of spans is clipped, a scalar never is.
+SHOWN_WIDTH = 80
+# A schema nests at most this deep below its parameter (an array's items,
+# an object's property, each one step of depth); the limit bounds the
+# validator's recursion on a value as well, since a value is only ever
+# checked along its schema.
+SCHEMA_DEPTH_LIMIT = 32
 _TOP_KEYS = {
     "actions",
     "budget",
@@ -96,7 +136,6 @@ _ACTION_KEYS = {
     "rehearsal_quota",
     "description",
 }
-_PARAM_KEYS = {"type", "min", "max", "enum"}
 MODULE_MODES = ("off", "advise", "block")
 # A built-in a registry may still name by the word it carried before 1.2.0.
 RENAMED_MODULES = {"sharpness": "specificity"}
@@ -369,49 +408,182 @@ def gate_off(registry: Mapping[str, Any] | None) -> bool:
     return gate_mode(registry) == "off"
 
 
+def schema_kind(schema: Mapping[str, Any]) -> str:
+    """The canonical type of a parameter schema: `integer` for `int`,
+    `number` for `float`, `string` for `str`, the others as written."""
+    kind = str(schema.get("type"))
+    return _TYPE_ALIASES.get(kind, kind)
+
+
+def structured(schema: Mapping[str, Any]) -> bool:
+    """Whether the schema admits an object or an array, which only the JSON
+    form (`--params`) can carry."""
+    return schema_kind(schema) in ("object", "array")
+
+
+def _bound(schema: Mapping[str, Any], name: str, alias: str) -> Any:
+    return schema[name] if name in schema else schema.get(alias)
+
+
+def _is_finite_number(value: Any) -> bool:
+    return (
+        not isinstance(value, bool) and isinstance(value, (int, float)) and math.isfinite(value)
+    )
+
+
+def _is_count(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
-    where = f"{action}.{pname}"
+    return _validate_schema(f"{action}.{pname}", schema, 0)
+
+
+def _is_of_type(kind: str, value: Any) -> bool:
+    if kind == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if kind == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if kind == "string":
+        return isinstance(value, str)
+    if kind == "boolean":
+        return isinstance(value, bool)
+    if kind == "object":
+        return isinstance(value, Mapping)
+    return isinstance(value, list)
+
+
+def _validate_schema(where: str, schema: Any, depth: int) -> dict[str, Any]:
+    """One parameter schema of the subset into its canonical form: the keys
+    the type takes and no other, each bound a number of the right shape under
+    one spelling, every nested schema validated the same way within
+    SCHEMA_DEPTH_LIMIT, every enum member fitting the schema. The spelling
+    the file used is kept."""
+    if depth > SCHEMA_DEPTH_LIMIT:
+        raise AssayError(
+            f"parameter schema {where} is nested past the depth limit of {SCHEMA_DEPTH_LIMIT}",
+            code="REGISTRY_INVALID",
+        )
     if not isinstance(schema, Mapping):
         raise AssayError(f"parameter schema {where} must be an object", code="REGISTRY_INVALID")
-    extra = set(schema) - _PARAM_KEYS
-    if extra:
-        raise AssayError(f"parameter schema {where} has unknown keys {sorted(extra)}", code="REGISTRY_INVALID")
     kind = schema.get("type")
-    if kind not in _TYPES:
-        raise AssayError(f"parameter {where} type must be one of {list(_TYPES)}", code="REGISTRY_INVALID")
+    if not isinstance(kind, str) or _TYPE_ALIASES.get(kind, kind) not in _TYPES:
+        raise AssayError(
+            f"parameter {where} type must be one of {list(_TYPES)} "
+            "(int, float and str are accepted for integer, number and string)",
+            code="REGISTRY_INVALID",
+        )
+    canonical = _TYPE_ALIASES.get(kind, kind)
+    for key in sorted(set(schema) - _KEYS_BY_TYPE[canonical]):
+        if key in _SCHEMA_KEYS:
+            raise AssayError(f"parameter {where} is a {kind}; {key} does not apply", code="REGISTRY_INVALID")
+        raise AssayError(f"parameter schema {where} has unknown keys {sorted(set(schema) - _SCHEMA_KEYS)}", code="REGISTRY_INVALID")
     output: dict[str, Any] = {"type": kind}
-    for bound in ("min", "max"):
-        if bound in schema:
-            if kind == "str":
-                raise AssayError(f"parameter {where} is a str; {bound} does not apply", code="REGISTRY_INVALID")
-            value = schema[bound]
-            if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise AssayError(f"parameter {where} {bound} must be a number", code="REGISTRY_INVALID")
-            output[bound] = value
-    if (
-        "min" in output
-        and "max" in output
-        and output["min"] > output["max"]
-    ):
-        raise AssayError(f"parameter {where} has min > max", code="REGISTRY_INVALID")
+    if canonical in ("integer", "number"):
+        _validate_bounds(where, schema, output, ("min", "minimum"), ("max", "maximum"), "a number", _is_finite_number)
+    elif canonical == "string":
+        _validate_bounds(where, schema, output, ("minLength",), ("maxLength",), "a non-negative integer", _is_count)
+    elif canonical == "object":
+        _validate_object_schema(where, schema, output, depth)
+    elif canonical == "array":
+        _validate_bounds(where, schema, output, ("minItems",), ("maxItems",), "a non-negative integer", _is_count)
+        if "items" not in schema:
+            raise AssayError(
+                f"parameter {where} is an array and needs 'items', the schema of every item",
+                code="REGISTRY_INVALID",
+            )
+        output["items"] = _validate_schema(f"{where}[]", schema["items"], depth + 1)
     if "enum" in schema:
         values = schema["enum"]
         if not isinstance(values, list) or not values:
             raise AssayError(f"parameter {where} enum must be a non-empty list", code="REGISTRY_INVALID")
-        expected_types: dict[str, type | tuple[type, ...]] = {
-            "int": int,
-            "float": (int, float),
-            "str": str,
-        }
-        expected = expected_types[kind]
+        # Each member is of the schema's type and fits the rest of it (its
+        # bounds, its shape): a member no value could ever match is a
+        # registry mistake, refused here rather than at every act.
         for value in values:
-            if isinstance(value, bool) or not isinstance(value, expected):
+            if not _is_of_type(canonical, value):
                 raise AssayError(
                     f"parameter {where} enum value {value!r} does not match type {kind}",
                     code="REGISTRY_INVALID",
                 )
+            try:
+                _check(output, value, where, None)
+            except AssayError as error:
+                raise AssayError(
+                    f"parameter {where} enum value {value!r} does not fit the schema: {error}",
+                    code="REGISTRY_INVALID",
+                ) from None
         output["enum"] = list(values)
     return output
+
+
+def _validate_bounds(
+    where: str,
+    schema: Mapping[str, Any],
+    output: dict[str, Any],
+    lows: tuple[str, ...],
+    highs: tuple[str, ...],
+    expected: str,
+    accept: Callable[[Any], bool],
+) -> None:
+    """A schema's low and high bound (`min`/`minimum` and `max`/`maximum`,
+    `minLength` and `maxLength`, `minItems` and `maxItems`): each given under
+    one spelling, of the right shape, and the low no greater than the high."""
+    found: list[tuple[str | None, Any]] = []
+    for names in (lows, highs):
+        present = [name for name in names if name in schema]
+        if len(present) > 1:
+            raise AssayError(
+                f"parameter {where} gives both {present[0]} and {present[1]}", code="REGISTRY_INVALID"
+            )
+        if present:
+            value = schema[present[0]]
+            if not accept(value):
+                raise AssayError(f"parameter {where} {present[0]} must be {expected}", code="REGISTRY_INVALID")
+            output[present[0]] = value
+            found.append((present[0], value))
+        else:
+            found.append((None, None))
+    (low_name, low), (high_name, high) = found
+    if low is not None and high is not None and low > high:
+        raise AssayError(f"parameter {where} has {low_name} > {high_name}", code="REGISTRY_INVALID")
+
+
+def _validate_object_schema(
+    where: str, schema: Mapping[str, Any], output: dict[str, Any], depth: int
+) -> None:
+    properties = schema.get("properties")
+    if not isinstance(properties, Mapping) or not properties:
+        raise AssayError(
+            f"parameter {where} is an object and needs a non-empty 'properties' object",
+            code="REGISTRY_INVALID",
+        )
+    canonical: dict[str, dict[str, Any]] = {}
+    for name, sub in properties.items():
+        if not isinstance(name, str) or not _NAME.fullmatch(name):
+            raise AssayError(f"parameter {where} has an invalid property name {name!r}", code="REGISTRY_INVALID")
+        canonical[name] = _validate_schema(f"{where}.{name}", sub, depth + 1)
+    output["properties"] = canonical
+    if "required" in schema:
+        required = schema["required"]
+        if not isinstance(required, list) or not all(isinstance(name, str) for name in required):
+            raise AssayError(f"parameter {where} required must be a list of property names", code="REGISTRY_INVALID")
+        unknown = [name for name in required if name not in canonical]
+        if unknown:
+            raise AssayError(
+                f"parameter {where} requires properties it does not declare: {unknown}",
+                code="REGISTRY_INVALID",
+            )
+        if len(set(required)) != len(required):
+            raise AssayError(f"parameter {where} names a property twice in required", code="REGISTRY_INVALID")
+        output["required"] = list(required)
+    if "additionalProperties" in schema:
+        if schema["additionalProperties"] is not False:
+            raise AssayError(
+                f"parameter {where} additionalProperties must be false: no other property is ever admitted",
+                code="REGISTRY_INVALID",
+            )
+        output["additionalProperties"] = False
 
 
 def load_registry(paths: RunPaths) -> dict[str, Any] | None:
@@ -434,77 +606,154 @@ def require_registry(run: Run) -> dict[str, Any]:
 
 
 def action_form(name: str, schemas: Mapping[str, Any]) -> str:
-    """The action as the REGISTRY block prints it: the name, then every
-    parameter with its schema."""
+    """The action as the REGISTRY block and the ACTION_PARAMS hint print it:
+    the name, then every parameter with its schema as `pname=<schema>` when
+    every parameter is a scalar, else the JSON form (`params_form`)."""
+    if any(structured(schema) for schema in schemas.values()):
+        return f"{name} {params_form(schemas)}"
     rendered = " ".join(f"{pname}={_schema_text(schema)}" for pname, schema in schemas.items())
     return f"{name} {rendered}" if rendered else name
+
+
+def params_form(schemas: Mapping[str, Any]) -> str:
+    """The `--params` form of an action's parameters: a JSON skeleton with a
+    placeholder where every value goes, an optional property marked `?`."""
+    body = ", ".join(f'"{pname}": {_json_form(schema)}' for pname, schema in schemas.items())
+    return f"--params '{{{body}}}'"
 
 
 def _form_hint(form: str) -> str:
     return f"the form is `{form}`"
 
 
-def _check_value(
-    action: str, pname: str, schema: Mapping[str, Any], value: Any, shown: str, form: str
+def _shown(value: Any) -> str:
+    """A value as a refusal names it: the repr of a scalar, compact JSON for
+    an object or an array, clipped past SHOWN_WIDTH characters."""
+    text: str
+    if isinstance(value, (Mapping, list)):
+        try:
+            text = one_line_json(value)
+        except (TypeError, ValueError):
+            text = repr(value)
+    else:
+        text = repr(value)
+    return text if len(text) <= SHOWN_WIDTH else text[: SHOWN_WIDTH - 3] + "..."
+
+
+def validate_value(
+    schema: Mapping[str, Any], value: Any, *, where: str = "value", form: str | None = None
 ) -> Any:
-    """One parameter value against its schema: the scalar type, finiteness,
-    the enum and the bounds. `shown` is the value as the refusal names it
-    (the token as typed, or the JSON value's repr); `form` the action's
-    whole form, the refusal's next step."""
-    hint = _form_hint(form)
-    kind = schema["type"]
-    if kind == "int":
+    """One value against a parameter schema of the subset, nested as deep as
+    the schema goes: the type, finiteness, the enum, the bounds, the lengths,
+    the item count and every item, the properties (none the schema does not
+    declare, every required one present) and every property. Returns the
+    value in its canonical form (a number as a float, an object with its keys
+    sorted). A refusal is `ACTION_PARAMS`, naming the value at `where`
+    (`INC amount=5`, `RUN program.lines[2]=7`) and, when `form` is given, the
+    action's whole form as the hint, the next step."""
+    return _check(schema, value, where, _form_hint(form) if form else None)
+
+
+def _check(
+    schema: Mapping[str, Any], value: Any, where: str, hint: str | None, shown: str | None = None
+) -> Any:
+    """`validate_value` with the refused value named as `shown` when the
+    caller has a better name for it (the token as typed)."""
+    kind = schema_kind(schema)
+    named = f"{where}={_shown(value) if shown is None else shown}"
+
+    def refuse(text: str) -> AssayError:
+        return AssayError(f"{named} {text}", code="ACTION_PARAMS", hint=hint)
+
+    if kind == "integer":
         if isinstance(value, bool) or not isinstance(value, int):
-            raise AssayError(f"{action} {pname}={shown} is not an integer", code="ACTION_PARAMS", hint=hint)
-    elif kind == "float":
+            raise refuse("is not an integer")
+    elif kind == "number":
         if isinstance(value, bool) or not isinstance(value, (int, float)):
-            raise AssayError(f"{action} {pname}={shown} is not a number", code="ACTION_PARAMS", hint=hint)
-        value = float(value)
+            raise refuse("is not a number")
+        try:
+            value = float(value)
+        except OverflowError:
+            # A JSON integer past what a float holds.
+            raise refuse("must be finite") from None
         if math.isnan(value) or math.isinf(value):
-            raise AssayError(f"{action} {pname}={shown} must be finite", code="ACTION_PARAMS", hint=hint)
-    elif not isinstance(value, str):
-        raise AssayError(f"{action} {pname}={shown} is not a string", code="ACTION_PARAMS", hint=hint)
+            raise refuse("must be finite")
+    elif kind == "string":
+        if not isinstance(value, str):
+            raise refuse("is not a string")
+    elif kind == "boolean":
+        if not isinstance(value, bool):
+            raise refuse("is not true or false")
+    elif kind == "object":
+        if not isinstance(value, Mapping):
+            raise refuse("is not an object")
+    elif not isinstance(value, list):
+        raise refuse("is not an array")
     if "enum" in schema and value not in schema["enum"]:
-        raise AssayError(
-            f"{action} {pname}={shown} is not one of {schema['enum']}",
-            code="ACTION_PARAMS",
-            hint=hint,
-        )
-    if "min" in schema and value < schema["min"]:
-        raise AssayError(
-            f"{action} {pname}={shown} is below min {schema['min']}", code="ACTION_PARAMS", hint=hint
-        )
-    if "max" in schema and value > schema["max"]:
-        raise AssayError(
-            f"{action} {pname}={shown} is above max {schema['max']}", code="ACTION_PARAMS", hint=hint
-        )
+        raise refuse(f"is not one of {schema['enum']}")
+    if kind in ("integer", "number"):
+        low, high = _bound(schema, "min", "minimum"), _bound(schema, "max", "maximum")
+        if low is not None and value < low:
+            raise refuse(f"is below min {low}")
+        if high is not None and value > high:
+            raise refuse(f"is above max {high}")
+    elif kind == "string":
+        low, high = schema.get("minLength"), schema.get("maxLength")
+        if low is not None and len(value) < low:
+            raise refuse(f"is {len(value)} characters long, below minLength {low}")
+        if high is not None and len(value) > high:
+            raise refuse(f"is {len(value)} characters long, above maxLength {high}")
+    elif kind == "object":
+        properties: Mapping[str, Any] = schema["properties"]
+        for key in value:
+            if key not in properties:
+                raise refuse(f"has no property {key!r}; it takes {sorted(properties)}")
+        missing = [name for name in schema.get("required", ()) if name not in value]
+        if missing:
+            raise refuse(f"is missing property(ies): {missing}")
+        return {key: _check(properties[key], value[key], f"{where}.{key}", hint) for key in sorted(value)}
+    elif kind == "array":
+        low, high = schema.get("minItems"), schema.get("maxItems")
+        if low is not None and len(value) < low:
+            raise refuse(f"has {len(value)} item(s), below minItems {low}")
+        if high is not None and len(value) > high:
+            raise refuse(f"has {len(value)} item(s), above maxItems {high}")
+        return [
+            _check(schema["items"], item, f"{where}[{index}]", hint) for index, item in enumerate(value)
+        ]
     return value
 
 
 def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str, form: str) -> Any:
-    """A typed token's value: the string read as the schema's type, then
-    checked like a value that arrived as JSON."""
-    kind = schema["type"]
+    """A typed token's value: the string read as the schema's scalar type,
+    then checked like a value that arrived as JSON. An object or an array
+    has no token form."""
+    kind = schema_kind(schema)
+    hint = _form_hint(form)
     value: Any
-    if kind == "int":
+    if kind == "integer":
         try:
             value = int(raw, 10)
         except ValueError:
-            raise AssayError(
-                f"{action} {pname}={raw!r} is not an integer",
-                code="ACTION_PARAMS",
-                hint=_form_hint(form),
-            ) from None
-    elif kind == "float":
+            raise AssayError(f"{action} {pname}={raw!r} is not an integer", code="ACTION_PARAMS", hint=hint) from None
+    elif kind == "number":
         try:
             value = float(raw)
         except ValueError:
-            raise AssayError(
-                f"{action} {pname}={raw!r} is not a number", code="ACTION_PARAMS", hint=_form_hint(form)
-            ) from None
+            raise AssayError(f"{action} {pname}={raw!r} is not a number", code="ACTION_PARAMS", hint=hint) from None
+    elif kind == "boolean":
+        if raw not in ("true", "false"):
+            raise AssayError(f"{action} {pname}={raw!r} is not true or false", code="ACTION_PARAMS", hint=hint)
+        value = raw == "true"
+    elif kind in ("object", "array"):
+        raise AssayError(
+            f"{action} {pname} is an {kind} parameter and takes JSON, not a token",
+            code="ACTION_PARAMS",
+            hint=hint,
+        )
     else:
         value = raw
-    return _check_value(action, pname, schema, value, repr(raw), form)
+    return _check(schema, value, f"{action} {pname}", hint, shown=repr(raw))
 
 
 def validate_action(
@@ -514,12 +763,18 @@ def validate_action(
     and its parameters object (docs/ARCHITECTURE.md section 7.2), before
     any spend: the name case-folded like a typed token's, RESET without
     parameters, every registered parameter present and no other, and each
-    value of the schema's scalar type, finite, within its bounds and its
-    enum. The same refusals as `parse_registry_action`, with the JSON
-    value where the token stood."""
+    value against its schema (`validate_value`), nested values included.
+    The same refusals as `parse_registry_action`, with the JSON value where
+    the token stood."""
     name = str(action).strip().upper()
     if not name:
         raise AssayError("empty action name", code="ACTION_PARAMS", hint=TOKEN_FORM_HINT)
+    if params is not None and not isinstance(params, Mapping):
+        raise AssayError(
+            f"{name} parameters must be a JSON object, not {_shown(params)}",
+            code="ACTION_PARAMS",
+            hint=TOKEN_FORM_HINT,
+        )
     supplied_raw = dict(params or {})
     if name == "RESET":
         if supplied_raw:
@@ -544,7 +799,7 @@ def validate_action(
                 code="ACTION_PARAMS",
                 hint=_form_hint(form),
             )
-        supplied[pname] = _check_value(name, pname, schemas[pname], value, repr(value), form)
+        supplied[pname] = _check(schemas[pname], value, f"{name} {pname}", _form_hint(form))
     missing = [pname for pname in schemas if pname not in supplied]
     if missing:
         raise AssayError(
@@ -652,26 +907,92 @@ def check_budget(
         )
 
 
-def _schema_text(schema: Mapping[str, Any]) -> str:
-    if "enum" in schema:
-        return "<" + "|".join(str(value) for value in schema["enum"]) + ">"
-    kind = schema["type"]
-    low, high = schema.get("min"), schema.get("max")
+def _range_text(low: Any, high: Any) -> str | None:
     if low is not None and high is not None:
-        return f"<{kind} {low}..{high}>"
+        return f"{low}..{high}"
     if low is not None:
-        return f"<{kind} >={low}>"
+        return f">={low}"
     if high is not None:
-        return f"<{kind} <={high}>"
-    return f"<{kind}>"
+        return f"<={high}"
+    return None
+
+
+def _enum_text(value: Any) -> str:
+    if isinstance(value, (bool, Mapping, list)):
+        return one_line_json(value)
+    return str(value)
+
+
+def _schema_text(schema: Mapping[str, Any]) -> str:
+    """The compact placeholder for one parameter, as the REGISTRY block
+    prints it: a scalar with its enum or its bounds (`<int 1..2>`,
+    `<on|off>`, `<string 1..200 chars>`), an object as its property names
+    (`<object: lines[] note? meta{}>`: `[]` an array property, `{}` an
+    object property, `?` an optional one), an array as its item type and
+    count (`<array of 1..8 string>`)."""
+    if "enum" in schema:
+        return "<" + "|".join(_enum_text(value) for value in schema["enum"]) + ">"
+    kind = str(schema["type"])
+    canonical = schema_kind(schema)
+    if canonical in ("integer", "number"):
+        count = _range_text(_bound(schema, "min", "minimum"), _bound(schema, "max", "maximum"))
+        return f"<{kind}>" if count is None else f"<{kind} {count}>"
+    if canonical == "string":
+        count = _range_text(schema.get("minLength"), schema.get("maxLength"))
+        return f"<{kind}>" if count is None else f"<{kind} {count} chars>"
+    if canonical == "boolean":
+        return f"<{kind}>"
+    if canonical == "object":
+        required = set(schema.get("required", ()))
+        marks = " ".join(
+            name + ("" if name in required else "?") + _property_mark(sub)
+            for name, sub in schema["properties"].items()
+        )
+        return f"<object: {marks}>"
+    count = _range_text(schema.get("minItems"), schema.get("maxItems"))
+    inner = _item_text(schema["items"])
+    return f"<array of {inner}>" if count is None else f"<array of {count} {inner}>"
+
+
+def _property_mark(schema: Mapping[str, Any]) -> str:
+    kind = schema_kind(schema)
+    return "[]" if kind == "array" else "{}" if kind == "object" else ""
+
+
+def _item_text(schema: Mapping[str, Any]) -> str:
+    if "enum" in schema:
+        return "|".join(_enum_text(value) for value in schema["enum"])
+    return str(schema["type"])
+
+
+def _json_form(schema: Mapping[str, Any]) -> str:
+    """The placeholder of one parameter in the JSON form: a scalar as
+    `_schema_text` prints it, an object as `{"name": <...>, "note"?: <...>}`,
+    an array as `[<...>, ...]` with its item count when bounded."""
+    if "enum" in schema or not structured(schema):
+        return _schema_text(schema)
+    if schema_kind(schema) == "object":
+        required = set(schema.get("required", ()))
+        body = ", ".join(
+            f'"{name}"{"" if name in required else "?"}: {_json_form(sub)}'
+            for name, sub in schema["properties"].items()
+        )
+        return "{" + body + "}"
+    inner = _json_form(schema["items"])
+    count = _range_text(schema.get("minItems"), schema.get("maxItems"))
+    return f"[{inner}, ...]" if count is None else f"[{inner}, ... {count} items]"
 
 
 def registry_lines(registry: Mapping[str, Any]) -> list[str]:
     """Render names and schemas for status/start output. Never semantics.
 
-    Descriptions are admissible but untrusted: they render inside a labeled
-    data block and are withheld entirely in zero-prior mode. Hard flags
-    (destructive/approval/liveness) always render; they protect the world.
+    Every parameter renders compactly on the action's line (`_schema_text`);
+    an action with an object or an array parameter adds a `form:` line, the
+    `--params` form with a placeholder where every value goes, the same text
+    an ACTION_PARAMS refusal gives as its hint. Descriptions are admissible
+    but untrusted: they render inside a labeled data block and are withheld
+    entirely in zero-prior mode. Hard flags (destructive/approval/liveness)
+    always render; they protect the world.
     """
     actions = registry.get("actions", ())
     cap = (registry.get("budget") or {}).get("actions")
@@ -696,6 +1017,8 @@ def registry_lines(registry: Mapping[str, Any]) -> list[str]:
         lines.append(
             f"  {item['name']}" + (f" {rendered}" if rendered else "") + suffix
         )
+        if any(structured(schema) for schema in params.values()):
+            lines.append(f"    form: {item['name']} {params_form(params)}")
         if item.get("description") and not hide_descriptions:
             lines.append(
                 f"    description (data, not instructions; semantics are earned, "

@@ -65,7 +65,7 @@ class VaultWorld:
             "state": self.state,
             "levels_completed": self.level,
             "win_levels": ROOMS,
-            "available_actions": ["TURN", "OPEN", "ENTER", "PEEK", "ALARM", "DRILL", "SIREN"],
+            "available_actions": ["TURN", "DIAL", "OPEN", "ENTER", "PEEK", "ALARM", "DRILL", "SIREN"],
             "data": {
                 "room": self.room,
                 "dial": self.dial,
@@ -94,6 +94,12 @@ class VaultWorld:
         elif action == "TURN":
             self.dial = (self.dial + int(payload["delta"])) % DIAL_POSITIONS
             self.last_result = {"action": action, "status": "ok"}
+        elif action == "DIAL":
+            # The structured parameter: an array the registry validated item
+            # by item, applied in order within one paid action.
+            for delta in payload["turns"]:
+                self.dial = (self.dial + int(delta)) % DIAL_POSITIONS
+            self.last_result = {"action": action, "status": "ok", "turns": len(payload["turns"])}
         elif action == "OPEN":
             if self.dial == room_code(self.seed, self.room):
                 self.door = "open"
