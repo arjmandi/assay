@@ -81,7 +81,7 @@ an experiment with a written expectation.
 When the operator has registered the harness as tools (an MCP server named
 `assay`, one per run), the same operations are tools named after the
 commands: `status`, `view`, `act`, `commit`, `reset`, `python`,
-`channel_declare`, `channel_list`, `model_init`, `model_replay`,
+`state_declare`, `state_list`, `model_init`, `model_replay`,
 `model_solve`, `module_list`, `goal_propose`, `goal_list` and `audit`; the
 owner's operations are not among them. `act` takes the fields the command
 takes: `action` (the registered name), `params` (one JSON object, or null
@@ -112,38 +112,39 @@ is a miss for the action.
 | `level+1` | this action completes the current level/stage | level counter |
 | `win` | this action reaches the goal state | terminal state check |
 | `verify:PATH.py` | your own executable check passes | sandboxed subprocess |
-| `ch NAME = V [± TOL]` | a registered channel reads V afterwards | channel extractor |
-| `ch NAME delta = / >= / <= V` | the channel moves by that amount | before/after delta |
-| `ch NAME delta sign +` or `-` | the channel moves up / down | before/after delta |
-| `ch NAME crosses V [from below/above]` | the channel crosses a threshold | straddle check |
+| `ch NAME = V [± TOL]` | a registered state reads V afterwards | state extractor |
+| `ch NAME delta = / >= / <= V` | the state moves by that amount | before/after delta |
+| `ch NAME delta sign +` or `-` | the state moves up / down | before/after delta |
+| `ch NAME crosses V [from below/above]` | the state crosses a threshold | straddle check |
 
-**Channels** are named readings you register once and then claim against:
-`goal` (true at the win state), `level` (progress units completed) and
-`budget_remaining` (paid actions left under the cap) are built in; declare
-your own with `assay channel declare NAME --path a.b.c` (a dotted path into
-the observation) or `--file extractor.py` (`def extract(obs) -> value`,
-sandboxed like a verifier). A claim naming an unregistered channel is refused
-free and counted; register the referent first. Claims on `goal`/`level` are
+**Addressable states** are named readings you declare once and then claim
+against. The keyword `ch` in a claim names a state. `goal` (true at the win
+state), `level` (progress units completed) and `budget_remaining` (paid
+actions left under the cap) are built in. Declare your own with
+`assay state declare NAME --path a.b.c` (a dotted path into the
+observation) or `--file extractor.py` (`def extract(obs) -> value`,
+sandboxed like a verifier). A claim naming an undeclared state is refused
+free and counted. Declare the referent first. Claims on `goal`/`level` are
 gambles; the rest meter your world model. Any claim may end with `@within Ns`
 to only grade if the result settled in time (a late settle is UNGRADABLE, not
 a miss). Statistical claims over a window (`agg ch NAME mean >= V over Na
 horizon Ma on-fail advise`) exist and are additive to a mechanical claim;
 `assay act --help` lists the form.
 
-## Channels: declare early, name referents, claim every action
+## Addressable states: declare early, name referents, claim every action
 
-The strongest runs on record share one habit: they declare channels at the
-first event and never take a paid action without a channel claim on it. A
-channel is a referent the referee can read; a claim on it is a fact about the
+The strongest runs on record share one habit: they declare states at the
+first event and never take a paid action without a state claim on it. A
+state is a referent the referee can read. A claim on it is a fact about the
 mechanics that costs nothing extra to make and is graded against the world's
 own response. Read the observation once, decide which readings matter, and
 declare them before the first action:
 
 ```bash
-"$ASSAY" channel declare tick     --path tick
-"$ASSAY" channel declare ents     --path entities_total
-"$ASSAY" channel declare refusals --path policy_refusals
-"$ASSAY" channel declare prod     --path throughput_corroboration.producer_present
+"$ASSAY" state declare tick     --path tick
+"$ASSAY" state declare ents     --path entities_total
+"$ASSAY" state declare refusals --path policy_refusals
+"$ASSAY" state declare prod     --path throughput_corroboration.producer_present
 ```
 
 The dotted path walks the observation object you see under OBSERVATION, so a
@@ -163,10 +164,10 @@ Equality (`ch tick = 360`) pins a value, delta (`ch ents delta sign +`,
 from below`) pins a threshold, and a tolerance (`ch lastrate = 20 ± 5`)
 admits noise. The second line above missed on `ch ents = 27` and the receipt
 said `ch ents = 18`: that counter-fact is the point. Status shows every
-channel's current reading in its CHANNELS block, and a receipt shows which
-path channels changed.
+state's current reading in its STATES block, and a receipt shows which
+path states changed.
 
-Frame worlds (grid observations) declare extractor channels instead:
+Frame worlds (grid observations) declare extractor states instead:
 `--file extractor.py` with `def extract(obs) -> value` over `obs["frames"]`.
 
 Free text that is not a claim is kept as commentary; if nothing gradable
@@ -237,13 +238,13 @@ steps are validated (schemas, claims, budget) before the first one spends.
 the refusal names the cap). Longer batches are EARNED through the model tier:
 
 ```bash
-"$ASSAY" model init        # writes model.py: declare CHANNELS, define next()
+"$ASSAY" model init        # writes model.py: declare STATES, define next()
 "$ASSAY" model replay      # grades your model over every recorded transition
 "$ASSAY" model solve --to "ch counter = 3"   # search the model for a plan
 "$ASSAY" commit @.assay/model_plan.json        # execute it (machine-graded steps)
 ```
 
-Trust is exactly replay-fit: a model whose declared channels held on every
+Trust is exactly replay-fit: a model whose declared states held on every
 recorded transition earns the right to run plans past the hand cap once at
 least 20 graded transitions (5 of them recent) were recorded after its first
 replay, so it is trusted for predicting what it had not seen, never for

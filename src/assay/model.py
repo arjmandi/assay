@@ -3,7 +3,7 @@
 The grid `rules.py` tier is this law's grid instance; registry runs get the
 general form. The agent writes `model.py` in the run root:
 
-    CHANNELS = ["counter", "lamp"]        # declared channel set (registered names)
+    STATES = ["counter", "lamp"]          # declared state set (registered names)
 
     def next(obs, action, params):        # the model: predict the next observation
         ...                               # return the predicted obs dict, or None
@@ -18,9 +18,9 @@ general form. The agent writes `model.py` in the run root:
 Trust is exactly replay-fit; no other trust states exist:
 
 - `assay model replay` re-predicts every recorded paid transition in the verifier
-  sandbox and grades ONLY the declared channels: MISMATCH = declared channel
+  sandbox and grades ONLY the declared states: MISMATCH = declared state
   wrong; INCOMPLETE = Unknown (excluded from fit, reported); undeclared
-  channels are out of scope. Fit is written to `.assay/model_fit.json`.
+  states are out of scope. Fit is written to `.assay/model_fit.json`.
 - PROMOTION LAW (pinned): a model hash is admitted at the journal event of
   its first replay (`admitted_at_event` in the fit record, read from the
   earliest `model_replay` activity record that carries the hash and its
@@ -33,7 +33,7 @@ Trust is exactly replay-fit; no other trust states exist:
   a named failure risk). Rights are void while an ungated event exists or an
   aggregate consequence revoked them.
 - `assay model solve --to "ch NAME = V"` searches the model (sandboxed BFS) for
-  a plan; every plan step carries machine-generated channel predictions,
+  a plan; every plan step carries machine-generated state predictions,
   marked `machine`; they never enter the agent's claim meters. Plans carry
   provenance hashes and refuse to run against a changed world or model.
 - Imported models NEVER carry rights: the fit record is never exported and
@@ -62,7 +62,7 @@ from .core import (
     read_json,
     render_action,
 )
-from .channels import channel_value, load_declared
+from .states import state_value, load_declared
 from .sandbox import run_program
 from .records import Event
 
@@ -75,14 +75,14 @@ SOLVE_DEFAULT_SECONDS = 15.0
 SOLVE_DEFAULT_NODES = 100_000
 SOLVE_MAX_DEPTH = 40
 
-MODEL_TEMPLATE = '''"""Your world model. Declare channels; predict the next observation.
+MODEL_TEMPLATE = '''"""Your world model. Declare states; predict the next observation.
 
-The kernel grades ONLY the channels you declare (registered channel names).
+The kernel grades ONLY the states you declare (registered state names).
 Return the predicted observation dict from next(), or None when this
 transition is outside your model (Unknown: honest, excluded from fit).
 """
 
-CHANNELS = []  # e.g. ["counter", "level"]: registered channel names you model
+STATES = []  # e.g. ["counter", "level"]: registered state names you model
 
 
 def next(obs, action, params):
@@ -106,15 +106,15 @@ model = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(model)
 
 extractors = {}
-for name, entry in payload["channels"].items():
+for name, entry in payload["states"].items():
     if entry["form"] == "extractor":
         espec = importlib.util.spec_from_file_location("x_" + name, entry["file"])
         emod = importlib.util.module_from_spec(espec)
         espec.loader.exec_module(emod)
         extractors[name] = emod.extract
 
-def read_channel(name, obs):
-    entry = payload["channels"][name]
+def read_state(name, obs):
+    entry = payload["states"][name]
     if entry["form"] == "host":
         if name == "goal":
             return str(obs.get("state")) == "WIN"
@@ -133,7 +133,9 @@ def read_channel(name, obs):
         return node
     return extractors[name](obs)
 
-declared = [str(name) for name in getattr(model, "CHANNELS", [])]
+# STATES names the states the model predicts; CHANNELS, the name before
+# 1.2.0, is read for one release.
+declared = [str(name) for name in getattr(model, "STATES", getattr(model, "CHANNELS", []))]
 
 if payload["mode"] == "replay":
     results = []
@@ -149,7 +151,7 @@ if payload["mode"] == "replay":
         values = {}
         for name in declared:
             try:
-                values[name] = read_channel(name, predicted)
+                values[name] = read_state(name, predicted)
             except Exception:
                 values[name] = None
         results.append({"predicted": values})
@@ -164,7 +166,7 @@ else:
             return str(model.key(obs))
         return json.dumps(obs, sort_keys=True, default=str)
     def goal_met(obs):
-        return read_channel(goal["channel"], obs) == goal["value"]
+        return read_state(goal["channel"], obs) == goal["value"]
     frontier = [(start, [])]
     seen = {obs_key(start)}
     nodes = 0
@@ -194,7 +196,7 @@ else:
                 if predicted is None or (isinstance(predicted, dict) and predicted.get("__unknown__")):
                     continue
                 step = {"action": str(action), "params": params,
-                        "values": {name: read_channel(name, predicted) for name in declared}}
+                        "values": {name: read_state(name, predicted) for name in declared}}
                 if goal_met(predicted):
                     found = path + [step]
                     break
@@ -243,10 +245,10 @@ def init_model(paths: RunPaths) -> Path:
 
 def model_created_text(target: Path) -> str:
     """The line `assay model init` prints for the template it wrote."""
-    return f"CREATED | {target}; declare CHANNELS, define next()"
+    return f"CREATED | {target}; declare STATES, define next()"
 
 
-def _channel_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
+def _state_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
     paths = run.paths
     known = load_declared(paths)
     specs: dict[str, Any] = {}
@@ -260,10 +262,10 @@ def _channel_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
             specs[name] = entry
         else:
             raise AssayError(
-                f"model declares unregistered channel {name!r}",
-                code="CHANNEL_UNKNOWN",
+                f"model declares unregistered state {name!r}",
+                code="STATE_UNKNOWN",
                 hint=(
-                    f"declare it with `assay channel declare {name} ...` first (referents are "
+                    f"declare it with `assay state declare {name} ...` first (referents are "
                     "registered, never assumed)"
                 ),
             )
@@ -286,11 +288,11 @@ def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
 
 def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
     """Run the model runner in the sandbox: `model.py` and the extractor files
-    of the declared channels travel as companions, and the payload's
-    `model_path` and `channels[name]["file"]` point at the scratch copies."""
+    of the declared states travel as companions, and the payload's
+    `model_path` and `states[name]["file"]` point at the scratch copies."""
     companions = [payload["model_path"]] + [
         entry["file"]
-        for entry in payload["channels"].values()
+        for entry in payload["states"].values()
         if entry.get("form") == "extractor"
     ]
     # The budgets as they have always been: CPU at the search budget (two
@@ -312,8 +314,9 @@ def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> di
     return result
 
 
-def _declared_channels(run: Run) -> list[str]:
-    """Read CHANNELS from model.py without executing agent code in-process."""
+def _declared_states(run: Run) -> list[str]:
+    """Read STATES from model.py without executing agent code in-process;
+    CHANNELS, the name before 1.2.0, is read for one release."""
     paths = run.paths
     source = model_source(paths)
     if not source.exists():
@@ -323,18 +326,18 @@ def _declared_channels(run: Run) -> list[str]:
     payload = {
         "mode": "replay",
         "model_path": str(source.resolve()),
-        "channels": {},
+        "states": {},
         "transitions": [],
     }
     result = _run_sandbox(paths, payload, timeout=10.0)
     declared = [str(name) for name in result.get("declared", [])]
     if not declared:
         raise AssayError(
-            "model.py declares no CHANNELS",
+            "model.py declares no STATES",
             code="MODEL_INVALID",
             hint=(
-                "name the channels the model predicts in CHANNELS; a model without declared "
-                "channels grades nothing and earns nothing"
+                "name the states the model predicts in STATES; a model without declared "
+                "states grades nothing and earns nothing"
             ),
         )
     return declared
@@ -362,13 +365,13 @@ def _admitted_at_event(run: Run, current_hash: str | None, head: int) -> int:
 
 
 def replay_model(run: Run) -> dict[str, Any]:
-    """Grade the model's declared channels over every recorded paid transition.
+    """Grade the model's declared states over every recorded paid transition.
 
     The fit covers every transition; promotion counts only the transitions
     recorded after the current model hash was admitted (its first replay)."""
     paths = run.paths
-    declared = _declared_channels(run)
-    specs = _channel_specs_for_sandbox(run, declared)
+    declared = _declared_states(run)
+    specs = _state_specs_for_sandbox(run, declared)
     events = run.events
     transitions = []
     indices = []
@@ -387,11 +390,11 @@ def replay_model(run: Run) -> dict[str, Any]:
     payload = {
         "mode": "replay",
         "model_path": str(model_source(paths).resolve()),
-        "channels": specs,
+        "states": specs,
         "transitions": transitions,
     }
     result = _run_sandbox(paths, payload, timeout=max(30.0, 0.2 * len(transitions)))
-    per_channel: dict[str, dict[str, int]] = {
+    per_state: dict[str, dict[str, int]] = {
         name: {"held": 0, "missed": 0, "unknown": 0} for name in declared
     }
     graded_indices: list[int] = []
@@ -404,20 +407,20 @@ def replay_model(run: Run) -> dict[str, Any]:
         if outcome.get("unknown"):
             unknown += 1
             for name in declared:
-                per_channel[name]["unknown"] += 1
+                per_state[name]["unknown"] += 1
             continue
         predicted = outcome.get("predicted") or {}
         graded_this = False
         for name in declared:
-            ok, actual = channel_value(run, name, events[index])
+            ok, actual = state_value(run, name, events[index])
             if not ok:
-                per_channel[name]["unknown"] += 1
+                per_state[name]["unknown"] += 1
                 continue
             graded_this = True
             if predicted.get(name) == actual:
-                per_channel[name]["held"] += 1
+                per_state[name]["held"] += 1
             else:
-                per_channel[name]["missed"] += 1
+                per_state[name]["missed"] += 1
                 if first_mismatch is None:
                     first_mismatch = {
                         "event": int(events[index].id),
@@ -427,8 +430,8 @@ def replay_model(run: Run) -> dict[str, Any]:
                     }
         if graded_this:
             graded_indices.append(index)
-    held = sum(entry["held"] for entry in per_channel.values())
-    missed = sum(entry["missed"] for entry in per_channel.values())
+    held = sum(entry["held"] for entry in per_state.values())
+    missed = sum(entry["missed"] for entry in per_state.values())
     graded = held + missed
     fit = (held / graded) if graded else 0.0
     paid_indices = [
@@ -464,7 +467,7 @@ def replay_model(run: Run) -> dict[str, Any]:
         "recent_graded": recent_graded,
         "counted": counted,
         "counted_recent": counted_recent,
-        "per_channel": per_channel,
+        "per_channel": per_state,  # the fit record keeps its earlier keys
         "fit": round(fit, 4),
         "promotion": promotion,
         "first_mismatch": first_mismatch,
@@ -547,22 +550,22 @@ def solve_model(
 ) -> dict[str, Any]:
     paths = run.paths
     goal = parse_goal_expression(goal_text)
-    declared = _declared_channels(run)
+    declared = _declared_states(run)
     if goal["channel"] not in declared:
         raise AssayError(
-            f"solve goal channel {goal['channel']!r} is not in the model's declared "
-            f"channels {declared}",
+            f"solve goal state {goal['channel']!r} is not in the model's declared "
+            f"states {declared}",
             code="MODEL_INVALID",
-            hint="add it to model.py's CHANNELS, or solve toward one of the declared channels",
+            hint="add it to model.py's STATES, or solve toward one of the declared states",
         )
-    specs = _channel_specs_for_sandbox(run, declared)
+    specs = _state_specs_for_sandbox(run, declared)
     events = run.events
     if not events:
         raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     payload = {
         "mode": "solve",
         "model_path": str(model_source(paths).resolve()),
-        "channels": specs,
+        "states": specs,
         "start_obs": _observation_view(events[-1]),
         "goal": goal,
         "limits": {"seconds": seconds, "max_nodes": max_nodes, "max_depth": max_depth},

@@ -87,7 +87,7 @@ def test_the_catalogue_is_well_formed_and_every_name_is_an_attribute():
         "REMOTE_SESSION_UNAVAILABLE", "MODULE_DEMAND", "CHAIN_DIVERGED", "TAMPER_DETECTED",
         "OPERATION_UNKNOWN", "PROTOCOL_VERSION", "CLI_USAGE", "WORLD_ERROR", "OBSERVATION_INVALID",
         "INTERNAL", "REQUEST_MALFORMED", "REPLY_MALFORMED", "RECORD_CORRUPT", "DAEMON_TOKEN",
-        "DAEMON_ORPHANED", "CHANNEL_CAP",
+        "DAEMON_ORPHANED", "STATE_CAP",
     ):
         assert name in errors.BY_CODE, name
     # The code of a raise without one lives outside the table.
@@ -349,10 +349,10 @@ def test_a_command_without_a_result_record_prints_its_lines_under_json(tmp_path)
     assert version.stdout.count("\n") == 1
     try:
         assert _start(run).returncode == 0
-        declared = run_cli(run, "channel", "declare", "counter", "--path", "counter", "--json")
+        declared = run_cli(run, "state", "declare", "counter", "--path", "counter", "--json")
         assert declared.returncode == 0 and declared.stderr == ""
         assert json.loads(declared.stdout) == {
-            "lines": ["CHANNEL | declared counter (path); claims like `ch counter = V` now parse and grade"]
+            "lines": ["STATE | declared counter (path); claims like `ch counter = V` now parse and grade"]
         }
         stopped = run_cli(run, "stop", "--json")
         assert stopped.returncode == 0 and stopped.stderr == ""

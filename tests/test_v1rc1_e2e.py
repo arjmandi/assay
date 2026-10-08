@@ -1,4 +1,4 @@
-"""End-to-end tests for the v1-rc1 layer: the daemon-side gate, channels,
+"""End-to-end tests for the v1-rc1 layer: the daemon-side gate, states,
 the model tier + batching law, agenda/owner authority, carryover, hazard
 teeth, destructive gate, notes cap, spend feed, aggregates, windows, audit.
 
@@ -22,9 +22,9 @@ BASE_ACTIONS = [
     {"name": "NOOP", "params": {}},
 ]
 
-MODEL_SOURCE = '''"""Exact model of the fake counter world (counter channel only)."""
+MODEL_SOURCE = '''"""Exact model of the fake counter world (the counter state only)."""
 
-CHANNELS = ["counter"]
+STATES = ["counter"]
 
 
 def next(obs, action, params):
@@ -119,37 +119,37 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
         stop_run(run)
 
 
-def test_channels_grade_and_misreference(tmp_path):
+def test_states_grade_and_misreference(tmp_path):
     run = tmp_path / "chan"
     run.mkdir()
     registry = _write_registry(run)
     try:
         assert _start(run, registry).returncode == 0
-        declared = run_cli(run, "channel", "declare", "counter", "--path", "counter")
+        declared = run_cli(run, "state", "declare", "counter", "--path", "counter")
         assert declared.returncode == 0, declared.stderr
-        # A correct channel claim grades PREDICTED.
+        # A correct state claim grades PREDICTED.
         acted = run_cli(
             run, "act", "INC", "amount=1", "--predict", "ch counter delta = 1"
         )
         assert acted.returncode == 0, acted.stderr
         assert "OUTCOME | PREDICTED" in acted.stdout
-        # A wrong channel claim is a graded miss with the counter-fact.
+        # A wrong state claim is a graded miss with the counter-fact.
         missed = run_cli(run, "act", "INC", "amount=1", "--predict", "ch counter = 99")
         assert missed.returncode == 0, missed.stderr
         assert "OUTCOME | SURPRISE" in missed.stdout
         assert "ch counter = 2" in missed.stdout
-        # An unregistered channel is refused FREE and counted (mis-reference).
+        # An unregistered state is refused FREE and counted (mis-reference).
         before = len(_events(run))
         refused = run_cli(run, "act", "NOOP", "--predict", "ch ghost = 1")
         assert refused.returncode == 2
-        assert "unregistered channel" in refused.stderr
+        assert "unregistered state" in refused.stderr
         assert len(_events(run)) == before
         status = run_cli(run, "status")
         assert "MIS-REFERENCE | 1" in status.stdout
-        assert "CHANNELS | registered:" in status.stdout
-        assert "EMERGENCE |" in status.stdout and "declared channels 1" in status.stdout
-        # A claim on a declared channel grades in the world_model bucket; only
-        # the goal and level channels gamble.
+        assert "STATES | registered:" in status.stdout
+        assert "EMERGENCE |" in status.stdout and "declared states 1" in status.stdout
+        # A claim on a declared state grades in the world_model bucket; only
+        # the goal and level states gamble.
         event = _events(run)[-1]
         assert event["grade"][0]["bucket"] == "world_model"
     finally:
@@ -162,7 +162,7 @@ def test_model_tier_promotion_and_plan(tmp_path):
     registry = _write_registry(run)
     try:
         assert _start(run, registry).returncode == 0
-        assert run_cli(run, "channel", "declare", "counter", "--path", "counter").returncode == 0
+        assert run_cli(run, "state", "declare", "counter", "--path", "counter").returncode == 0
         # Twenty transitions recorded before the model's first replay earn
         # nothing: the fit over them is perfect, none of them is counted.
         for _ in range(20):
@@ -408,7 +408,7 @@ def test_notes_cap_spend_feed_and_aggregates(tmp_path):
     )
     try:
         assert _start(run, registry).returncode == 0
-        assert run_cli(run, "channel", "declare", "counter", "--path", "counter").returncode == 0
+        assert run_cli(run, "state", "declare", "counter", "--path", "counter").returncode == 0
         # Aggregate claims: additive-only is enforced at parse; open + resolve.
         refused = run_cli(
             run, "act", "NOOP", "--predict",
@@ -530,7 +530,7 @@ def test_liveness_rehearsal_waiver_and_goal_gamble(tmp_path):
             run, "waive", "INC", "--token", token, "--because", "test world is safe"
         )
         assert waived.returncode == 0, waived.stderr
-        # The goal channel claim sits in the gamble bucket and grades.
+        # The goal state claim sits in the gamble bucket and grades.
         acted = run_cli(
             run, "act", "INC", "amount=2", "--predict", "change; ch goal = false"
         )

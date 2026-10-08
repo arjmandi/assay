@@ -22,7 +22,7 @@ ALLOWED_TOKENS = (
     "level advanced", "level did not advance", ".assay/levels", "levels/", "level-",
     "ch level", "`level`", '"level"', "level n/m", "level 3/6", "levels)",
 )
-# A literal that is exactly an identifier (a dict key, the host channel name,
+# A literal that is exactly an identifier (a dict key, the host state name,
 # the state directory's `levels` folder) is not prose.
 IDENTIFIER_LITERALS = {"level", "levels"}
 # Lines of prose that may say the word because they are about the mapping.

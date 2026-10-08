@@ -1,7 +1,7 @@
 """Agenda: the host-pinned goal, the goal-proposal lane, owner authority,
 and the emergence meter.
 
-The standing goal and its predicate are HOST state: the goal channel (the
+The standing goal and its predicate are HOST state: the goal state (the
 environment's win state) is pinned at registration and re-presented in every
 status until code says achieved; an agent-invented proxy can never silently
 replace it (the eight-of-eight proxy-chasing record). Subgoals live in notes
@@ -26,7 +26,7 @@ of `goal.json`. None of the three has a file of its own, so nothing the agent
 writes can grant one.
 
 The emergence meter is free journal counters over agent-initiated acts no
-module demanded: self-declared channels, self-authored verifiers, self-built
+module demanded: self-declared states, self-authored verifiers, self-built
 models, self-proposed goals: measuring emergence instead of assuming it.
 """
 
@@ -304,7 +304,7 @@ def emergence_meter(run: Run) -> dict[str, int]:
         for record in activity
         if record.get("kind") == "verifier_admitted"
     }
-    channels = {
+    states = {
         record.get("channel")
         for record in activity
         if record.get("kind") == "channel_declared"
@@ -313,16 +313,16 @@ def emergence_meter(run: Run) -> dict[str, int]:
     model_replays = sum(1 for record in activity if record.get("kind") == "model_replay")
     return {
         "verifiers": len(verifier_hashes - {None}),
-        "channels": len(channels - {None}),
+        "states": len(states - {None}),
         "model_replays": model_replays,
         "goal_proposals": proposals,
     }
 
 
-def emergence_text(verifiers: int, channels: int, model_replays: int, goal_proposals: int) -> str:
+def emergence_text(verifiers: int, states: int, model_replays: int, goal_proposals: int) -> str:
     return (
         f"EMERGENCE | self-authored verifiers {verifiers} | declared "
-        f"channels {channels} | model replays {model_replays} | "
+        f"states {states} | model replays {model_replays} | "
         f"goal proposals {goal_proposals}"
     )
 

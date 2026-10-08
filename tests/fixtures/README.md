@@ -12,6 +12,6 @@ journal: it has no chain and is not meant to verify.
 
 `cli_help.json` is the help text of `assay` and of every one of its
 commands and sub-commands, rendered by the hand-written parser at b1fb581
-with `COLUMNS=80`, keyed by the command path (`""` for the root, `"channel
+with `COLUMNS=80`, keyed by the command path (`""` for the root, `"state
 declare"` for a sub-command). `tests/test_cli_help.py` holds the parser
 built from the operation table to it, byte for byte.

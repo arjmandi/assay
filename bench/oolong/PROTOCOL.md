@@ -109,8 +109,8 @@ that form and still verify.)
 
 Because a registry run is daemon-gated, paid actions go through `assay act`
 (carrying a `--predict`); a bare step is refused. Predictions grade against the
-dict observation (`change`, `level+1`, host channel `level`, or a declared
-channel such as `assay channel declare banked --path banked_count`).
+dict observation (`change`, `level+1`, the host state `level`, or a declared
+state such as `assay state declare banked --path banked_count`).
 
 ## Census (the coverage gate)
 

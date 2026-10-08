@@ -912,6 +912,41 @@ Left on the experiment branch, deliberately:
   pinned copy under the current name, so a run pinned before the rename
   resumes whether FILE says `sharpness` or `specificity`. The replay gate's
   vocabulary map carries the renamed CLAIMS line.
+- Addressable states, where the code said channels (the articulation of
+  2026-10-08, the addressable world model and its five layers). The feature
+  an agent declares over the observation, a dotted path or an extractor, and
+  claims against with the `ch` forms, is an addressable state everywhere a
+  person reads it. The command is `assay state declare` and `assay state
+  list`. `assay channel declare` and `assay channel list` answer as the same
+  commands for one release: the retired word is replaced before the parse
+  (`cli.command_line`), so the help lists `state` alone and the activity
+  records carry `state`. The status block is `STATES |` where it was
+  `CHANNELS |`, the declaration prints `STATE | declared NAME`, the receipt
+  lines read `STATES | name: a -> b`, the EMERGENCE line says `declared
+  states N` and the MIS-REFERENCE line `named unregistered states`. The
+  `--json` documents carry `states` where they carried `channels`: the
+  `Status` record's block and its `emergence` block, the receipt's lines and
+  the `StateList` record of `state list`. The tool server's tools are
+  `state_declare` and `state_list`, with no alias, since the server is new
+  in 1.2.0. The error codes are `STATE_UNKNOWN`, `STATE_DECLARE`,
+  `STATE_CAP` and `STATE_REDEFINED` where they were `CHANNEL_UNKNOWN`,
+  `CHANNEL_DECLARE`, `CHANNEL_CAP` and `CHANNEL_REDEFINED`, with no alias,
+  since the codes are new in 1.2.0 and nothing published carries them. A
+  `model.py` names the states it predicts in `STATES`, and `CHANNELS` is
+  read for one release. The module is `states.py` (`declare_state`,
+  `state_value`, `state_readings`, `StateReadings`, `StateList`,
+  `state_list_of`, `state_list_text`, `state_declared_text`,
+  `state_change_lines`, `grade_state_claim`, `check_state_references`,
+  `records.STATE_KINDS`). Nothing on the journal or beside it changes
+  spelling: the claim kinds `channel_eq`, `channel_delta` and
+  `channel_cross`, the keyword `ch`, the `channel` field of a grade, the
+  activity kind `channel_declared` with its `channel` field, the
+  `mis_reference` record, `.assay/channels.json`, `.assay/channels/`,
+  `.assay/channel_readings.json`, and the keys of `model_fit.json`,
+  `model_plan.json` and `aggregates.json`. A run directory written by an
+  earlier kernel loads and resumes unchanged. The replay gate's vocabulary
+  map carries the EMERGENCE and MIS-REFERENCE lines, and its mask covers
+  both `CHANNELS |` and `STATES |`.
 
 ### Removed
 

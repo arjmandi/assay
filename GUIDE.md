@@ -21,9 +21,9 @@ You supply exactly two things, and they divide cleanly:
   return the settled result"). They share one object because in a turn-based
   world an action and its settled observation are a single transaction.
 
-On top of the adapter's raw observation, **channels** (section 4) are the
-named, fine-grained observers: readings the agent itself registers, which
-claims and world models then grade against.
+On top of the adapter's raw observation, **addressable states** (section 4)
+are the named, fine-grained observers: readings the agent itself declares,
+which claims and world models then grade against.
 
 ## 1. Requirements
 
@@ -48,7 +48,7 @@ mkdir demo && cd demo
 
 "$ASSAY" act INC amount=1 --predict "change"        # graded ✓
 "$ASSAY" act NOOP --predict "change"                # graded ✗, with the counter-fact
-"$ASSAY" channel declare counter --path counter     # register a named reading
+"$ASSAY" state declare counter --path counter       # declare an addressable state
 "$ASSAY" act INC amount=2 --predict "ch counter = 3; win"   # WIN
 "$ASSAY" audit                                      # chain + integrity verdict
 ```
@@ -75,12 +75,14 @@ Line by line, what actually happens:
   ✗ SURPRISE, with the counter-fact ("no observed change (0 keys)"). Misses
   are the product, not the failure: each one corrects the agent's model at
   the price of one action.
-- **`channel declare counter --path counter`**: registers a named reading
-  of the observation (here: the `counter` key). From now on claims can name
-  it exactly (`ch counter = 3`) instead of the blunt change/noop pair.
-  Free, journaled, and it feeds the emergence meter.
+- **`state declare counter --path counter`**: declares an addressable
+  state, a named reading of the observation (here: the `counter` key). From
+  now on claims can name it exactly (`ch counter = 3`) instead of the blunt
+  change/noop pair. Free, journaled, and it feeds the emergence meter.
+  `assay channel declare`, the command's earlier name, answers for one
+  release.
 - **`act INC amount=2 --predict "ch counter = 3; win"`**: two claims on one
-  action: the channel reads exactly 3 afterwards, AND this reaches the goal
+  action: the state reads exactly 3 afterwards, AND this reaches the goal
   state. Both grade ✓; the world reports WIN; the run is complete and the
   daemon finalizes.
 - **`audit`**: recomputes integrity from the artifacts alone: journal
@@ -185,11 +187,13 @@ before anything is spent. `examples/new_world/` is a template with every part
 of the contract in place.
 
 That one observation object is the observer stream. The agent (or you) can
-then register **channels**, named readings of it, at run time:
-`assay channel declare price --path market.price` (a dotted path), or
+then declare **addressable states**, named readings of it, at run time:
+`assay state declare price --path market.price` (a dotted path), or
 `--file extractor.py` for a computed reading (`def extract(obs) -> value`,
-sandboxed). Channels are what claims like `ch price delta >= 5` grade
-against, and what world models declare.
+sandboxed). States are what claims like `ch price delta >= 5` grade
+against, and what world models declare: a `model.py` names the states it
+predicts in `STATES`, and `CHANNELS`, the name before 1.2.0, is read for
+one release, since models under that name exist in the published runs.
 
 Two facts worth knowing before you write an adapter:
 
@@ -204,9 +208,9 @@ Two facts worth knowing before you write an adapter:
   dependencies live there. `ASSAY_PYTHON` pins it for the launcher, and
   `assay doctor` reports it, dry-imports the adapter, and checks the registry.
 
-The declare-early, claim-every-action channel pattern that the Factorio runs
-used is worked through in `CONSTITUTION.md` (the Channels section) and in
-`ONBOARDING.md` chapter 7.
+The declare-early, claim-every-action state pattern that the Factorio runs
+used is worked through in `CONSTITUTION.md` (the addressable states section)
+and in `ONBOARDING.md` chapter 7.
 
 ## 5. Running an LLM agent on it
 
@@ -253,8 +257,8 @@ The same operations are reachable as MCP tools, for an agent whose host
 speaks that protocol (Claude Code among them): `assay serve-tools --run-dir
 <run-dir>` serves one run over stdio, under the server name `assay`, with
 one tool per agent-facing operation, named after the command (`status`,
-`view`, `act`, `commit`, `reset`, `python`, `channel_declare`,
-`channel_list`, `model_init`, `model_replay`, `model_solve`, `module_list`,
+`view`, `act`, `commit`, `reset`, `python`, `state_declare`,
+`state_list`, `model_init`, `model_replay`, `model_solve`, `module_list`,
 `goal_propose`, `goal_list`, `audit`); the owner's operations, the lifecycle
 commands, `export` and `spend report` are not tools. It needs the `server`
 extra (`pip install -e '.[server]'`, the `mcp` package), which the kernel
@@ -323,8 +327,8 @@ hazard fires again).
 `assay status` is self-sufficient: the goal, budgets, the claim meters
 (world-model misses = does the agent understand the mechanics; gamble misses
 = is it converting understanding into progress; specificity = how much of its
-talk was checkable), declared channels, hazard tags, module advisories, and
-the emergence meter (self-authored verifiers, channels, models, proposals:
+talk was checkable), declared states, hazard tags, module advisories, and
+the emergence meter (self-authored verifiers, states, models, proposals:
 initiative the harness never demanded). `assay audit` is the integrity verdict:
 any ungated event marks the run invalid for scoring.
 
@@ -336,7 +340,7 @@ bug (the traceback is in `.assay/last_error.txt`), 5 when the run can no
 longer be scored or continued (a tampered file, a diverged chain or replay).
 `docs/ERRORS.md` lists every code. Every command takes `--json` and prints
 one JSON document instead of the lines: the result record (`status`, `view`,
-`audit`, `act`, `commit`, `reset`, `channel list`, `module list`), the lines
+`audit`, `act`, `commit`, `reset`, `state list`, `module list`), the lines
 as `{"lines": [...]}` for the others, or the error object on a refusal.
 
 `assay status --brief` is the short form: it drops the lowest-value blocks

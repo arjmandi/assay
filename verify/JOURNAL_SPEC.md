@@ -29,8 +29,8 @@ Files in scope for this specification:
 | `<state>/chain.json` | no | the writer's stored chain state `{event_id, head}`; runs recorded before chain support lack it |
 | `<state>/mutations.jsonl` | no | the broker's write-ahead spend records, used for crash recovery of orphaned spends |
 
-Every other file in the state directory (notes, verifier programs, channel
-definitions, receipts, caches) is operator- and agent-side working state,
+Every other file in the state directory (notes, verifier programs, the
+declarations of addressable states, receipts, caches) is operator- and agent-side working state,
 **out of scope** for integrity verification, and not required to be present
 in a shared run directory.
 

@@ -38,7 +38,7 @@ ACTIONS = [
     {"name": "NOOP", "params": {}},
 ]
 TOOL_NAMES = [
-    "status", "view", "act", "commit", "reset", "python", "channel_declare", "channel_list",
+    "status", "view", "act", "commit", "reset", "python", "state_declare", "state_list",
     "model_init", "model_replay", "model_solve", "module_list", "goal_propose", "goal_list", "audit",
 ]
 OWNER_OPERATIONS = {"install_module", "approve", "waive", "goal_ratify"}
@@ -46,7 +46,7 @@ OWNER_OPERATIONS = {"install_module", "approve", "waive", "goal_ratify"}
 # the token the agent never holds) and the operator's side effects beyond
 # the run (the knowledge export and the spend feed).
 NOT_TOOLS = {"module_install", "goal_ratify", "approve", "waive", "export", "spend_report"}
-DECLARED = "CHANNEL | declared counter (path); claims like `ch counter = V` now parse and grade"
+DECLARED = "STATE | declared counter (path); claims like `ch counter = V` now parse and grade"
 COUNTERS = "[t['after']['counter'] for t in transitions]"
 
 
@@ -162,7 +162,7 @@ def test_the_tool_table_is_the_agent_facing_operations():
 
 def test_the_offline_records_decode_like_the_wire_records():
     from assay import server
-    from assay.server import ChannelDeclareRequest, ModelSolveRequest, StatusRequest, ViewRequest
+    from assay.server import StateDeclareRequest, ModelSolveRequest, StatusRequest, ViewRequest
 
     assert StatusRequest.from_json({}) == StatusRequest(history=8, brief=False)
     assert StatusRequest.from_json({"history": 3, "brief": True}).to_json() == {"history": 3, "brief": True}
@@ -176,9 +176,9 @@ def test_the_offline_records_decode_like_the_wire_records():
     with pytest.raises(TypeError, match="^status.bogus is not a field of the record$"):
         StatusRequest.from_json({"bogus": 1})
     with pytest.raises(KeyError):
-        ChannelDeclareRequest.from_json({"path": "counter"})
-    assert ChannelDeclareRequest.json_schema()["required"] == ["name"]
-    assert ChannelDeclareRequest.from_json({"name": "counter", "path": "counter"}).file is None
+        StateDeclareRequest.from_json({"path": "counter"})
+    assert StateDeclareRequest.json_schema()["required"] == ["name"]
+    assert StateDeclareRequest.from_json({"name": "counter", "path": "counter"}).file is None
     with pytest.raises(TypeError, match="^view.event must be an integer or null, got str$"):
         ViewRequest.from_json({"event": "1"})
     assert ViewRequest.from_json({"event": None, "crop": "0:2,0:2"}) == ViewRequest(crop="0:2,0:2")
@@ -302,12 +302,12 @@ def test_a_call_dispatches_like_the_command_line(tmp_path, monkeypatch):
         assert answer.text.startswith("OUTCOME | RESET | ") and "EVENT | e5 | " in answer.text
         # The offline tools: the text of a command without a record and of one
         # with a record, as the command line prints them, and their documents.
-        answer = call_tool(paths, "channel_declare", {"name": "counter", "path": "counter"})
+        answer = call_tool(paths, "state_declare", {"name": "counter", "path": "counter"})
         assert not answer.error and answer.text == DECLARED
-        answer = call_tool(paths, "channel_list", {})
-        assert not answer.error and answer.text == run_cli(run, "channel", "list").stdout.rstrip("\n")
-        answer = call_tool(paths, "channel_list", {"format": "json"})
-        assert answer.structured == json.loads(run_cli(run, "channel", "list", "--json").stdout)
+        answer = call_tool(paths, "state_list", {})
+        assert not answer.error and answer.text == run_cli(run, "state", "list").stdout.rstrip("\n")
+        answer = call_tool(paths, "state_list", {"format": "json"})
+        assert answer.structured == json.loads(run_cli(run, "state", "list", "--json").stdout)
         # python: the source runs in a child process per call; its output is
         # the command line's, its errors are refusals, and nothing it does
         # reaches the server.
@@ -349,7 +349,7 @@ def test_a_call_dispatches_like_the_command_line(tmp_path, monkeypatch):
             "GOAL | proposal #1 journaled, awaiting owner ratification (`assay goal ratify ID --token ...`)"
         )
         assert call_tool(paths, "goal_list", {}).text == "  #1 [pending] count to two; cheaper"
-        assert call_tool(paths, "model_init", {}).text == f"CREATED | {run / 'model.py'}; declare CHANNELS, define next()"
+        assert call_tool(paths, "model_init", {}).text == f"CREATED | {run / 'model.py'}; declare STATES, define next()"
         answer = call_tool(paths, "view", {"event": 1, "history": 2})
         assert not answer.error and answer.text == run_cli(run, "view", "--event", "1", "--history", "2").stdout.rstrip("\n")
         assert call_tool(paths, "view", {"event": 1, "format": "json"}).structured["event"]["id"] == 1
@@ -373,12 +373,12 @@ def test_a_call_dispatches_like_the_command_line(tmp_path, monkeypatch):
         # The activity records: the command line's shape, `surface` apart.
         starts = _records(run, "command_start")
         assert [r["command"] for r in starts if r["surface"] == "mcp"] == [
-            "status", "status", "act", "act", "act", "commit", "commit", "reset", "channel_declare",
-            "channel_list", "channel_list", "python", "python", "python", "status", "python", "python",
+            "status", "status", "act", "act", "act", "commit", "commit", "reset", "state_declare",
+            "state_list", "state_list", "python", "python", "python", "status", "python", "python",
             "python", "goal_propose", "goal_list", "model_init", "view", "view", "status",
         ]
         assert [r["command"] for r in starts if r["surface"] == "cli"] == [
-            "status", "status", "act", "channel", "channel", "python", "python", "view",
+            "status", "status", "act", "state", "state", "python", "python", "view",
         ]
         ends = {(r["command"], r["surface"], r["status"]): r for r in _records(run, "command_end")}
         served, typed = ends[("act", "mcp", "FINISHED")], ends[("act", "cli", "FINISHED")]
@@ -460,7 +460,7 @@ def test_a_run_driven_through_the_server_over_stdio(tmp_path):
                 found["after"] = wire(await session.call_tool("status", {}))
                 found["view"] = wire(await session.call_tool("view", {}))
                 found["declare"] = wire(await session.call_tool(
-                    "channel_declare", {"name": "counter", "path": "counter"}
+                    "state_declare", {"name": "counter", "path": "counter"}
                 ))
                 # The command line takes the next step through the same daemon.
                 found["typed"] = await asyncio.to_thread(
@@ -534,7 +534,7 @@ def test_a_run_driven_through_the_server_over_stdio(tmp_path):
         # line's on its own, in order.
         starts = _records(run, "command_start")
         assert [r["command"] for r in starts if r["surface"] == "mcp"] == [
-            "status", "status", "act", "act", "python", "status", "view", "channel_declare", "act", "audit",
+            "status", "status", "act", "act", "python", "status", "view", "state_declare", "act", "audit",
         ]
         assert [r["command"] for r in starts if r["surface"] == "cli"] == ["status", "status", "act"]
         ends = [r for r in _records(run, "command_end") if r["command"] == "act" and r["status"] == "FINISHED"]

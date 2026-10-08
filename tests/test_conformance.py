@@ -486,7 +486,7 @@ def test_counter_quickstart_verbatim_from_the_readme(tmp_path):
     quickstart = readme[readme.index("## Quickstart"):]
     block = quickstart[quickstart.index("```bash") + 7 : quickstart.index("```", quickstart.index("```bash") + 7)]
     commands = [line.strip() for line in block.splitlines() if line.strip().startswith('"$ASSAY"')]
-    assert len(commands) == 6, block  # start, act, act, channel declare, act, audit
+    assert len(commands) == 6, block  # start, act, act, state declare, act, audit
     run = tmp_path / "demo"
     run.mkdir()
 
@@ -506,7 +506,7 @@ def test_counter_quickstart_verbatim_from_the_readme(tmp_path):
         missed = run_cli(run, *argv(commands[2]))
         assert missed.returncode == 0 and "OUTCOME | SURPRISE" in missed.stdout
         declared = run_cli(run, *argv(commands[3]))
-        assert declared.returncode == 0 and "CHANNEL | declared counter" in declared.stdout
+        assert declared.returncode == 0 and "STATE | declared counter" in declared.stdout
         won = run_cli(run, *argv(commands[4]))
         assert won.returncode == 0 and "OUTCOME | GAME_COMPLETE" in won.stdout
         audited = run_cli(run, *argv(commands[5]))
@@ -537,13 +537,13 @@ def test_new_world_template_end_to_end(tmp_path):
         config = json.loads((run / ".assay" / "config.json").read_text())
         assert config["public_info"]["rooms"] == 2
         token = token_file.read_text().strip()
-        # Channels, claims and a refusal through the observation.
-        assert run_cli(run, "channel", "declare", "dial", "--path", "dial").returncode == 0
-        assert run_cli(run, "channel", "declare", "door", "--path", "door").returncode == 0
-        assert run_cli(run, "channel", "declare", "refusals", "--path", "refusals").returncode == 0
+        # States, claims and a refusal through the observation.
+        assert run_cli(run, "state", "declare", "dial", "--path", "dial").returncode == 0
+        assert run_cli(run, "state", "declare", "door", "--path", "door").returncode == 0
+        assert run_cli(run, "state", "declare", "refusals", "--path", "refusals").returncode == 0
         turned = run_cli(run, "act", "TURN", "delta=1", "--predict", "ch dial delta = 1")
         assert turned.returncode == 0 and "OUTCOME | PREDICTED" in turned.stdout
-        assert "CHANNELS | dial: 0 -> 1" in turned.stdout
+        assert "STATES | dial: 0 -> 1" in turned.stdout
         refused = run_cli(run, "act", "OPEN", "--predict", "ch refusals delta = 1; ch door = locked")
         assert refused.returncode == 0 and "OUTCOME | PREDICTED" in refused.stdout, refused.stdout
         # Dial to the code with a batch (under the hand cap), open, enter: room 1.

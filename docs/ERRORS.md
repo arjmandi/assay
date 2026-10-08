@@ -40,12 +40,12 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `ACTION_UNKNOWN` | usage | the action is not registered. |
 | `ACTION_PARAMS` | usage | the parameters do not fit the registered schema: one missing, unknown or repeated, a wrong type, bound, enum, length or item count, nested values included, an object or an array as a token, or a broken `pname=value`. |
 | `CLAIM_SYNTAX` | usage | a prediction does not parse: a malformed claim, a form of another observation kind, a bad window or aggregate bound. |
-| `CHANNEL_UNKNOWN` | usage | a claim or a model names a channel that is not registered. |
-| `CHANNEL_DECLARE` | usage | a channel declaration is malformed: the name, a host channel, neither or both of --path and --file, an empty path. |
+| `STATE_UNKNOWN` | usage | a claim or a model names an addressable state that is not registered. |
+| `STATE_DECLARE` | usage | a state declaration is malformed: the name, a host state, neither or both of --path and --file, an empty path. |
 | `FILE_NOT_FOUND` | usage | a file the command names does not exist: a verifier, an extractor, a module. |
 | `PATH_INVALID` | usage | a path lies outside the run directory, inside `.assay`, or is absolute where a relative one is required. |
 | `MODULE_CONTRACT` | usage | a module file does not import, lacks the module contract, is not one `.py` file, or names a built-in or already-provided NAME. |
-| `MODEL_INVALID` | usage | `model.py` is missing or declares no CHANNELS, or the solve goal names a channel it does not declare. |
+| `MODEL_INVALID` | usage | `model.py` is missing or declares no STATES, or the solve goal names a state it does not declare. |
 | `MODEL_FAILED` | usage | the agent's `model.py` raised, timed out or produced malformed output in the sandbox. |
 | `PYTHON_FAILED` | usage | the agent's source raised inside `assay python`. |
 | `PLAN_INVALID` | usage | the commit plan is not a model plan written by `assay model solve`, is not `.assay/model_plan.json`, or carries its actions in the string form of a plan written before 1.2.0. |
@@ -78,8 +78,8 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `NOTES_CAP` | refused | the notes file is past twice its cap; paid actions refuse until it is trimmed. |
 | `RESET_REASON` | refused | a reset needs --because unless the state is GAME_OVER. |
 | `GOAL_PROPOSAL` | refused | the goal proposal does not exist or is already resolved. |
-| `CHANNEL_CAP` | refused | the declared channels are at the per-run cap. |
-| `CHANNEL_REDEFINED` | refused | the channel is already declared with a different extractor. |
+| `STATE_CAP` | refused | the declared states are at the per-run cap. |
+| `STATE_REDEFINED` | refused | the state is already declared with a different extractor. |
 | `DAEMON_UNAVAILABLE` | refused | the harness's own state refused: the run's environment owner (the daemon) is not running or did not start. |
 | `DAEMON_BUSY` | refused | the harness's own state refused: the daemon is alive and inside a step, hung, or did not answer within the client's wait. |
 | `DAEMON_ORPHANED` | refused | the harness's own state refused: a live daemon still serves this directory while its run state is gone. |

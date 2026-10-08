@@ -21,7 +21,7 @@ from typing import TYPE_CHECKING, Any, Protocol
 
 from .agenda import check_approval, check_rehearsal
 from .aggregates import open_aggregates, resolve_due
-from .channels import channel_change_lines, check_channel_references
+from .states import state_change_lines, check_state_references
 from .core import (
     AssayError,
     append_jsonl,
@@ -267,7 +267,7 @@ def _grade_summary(
     graded: Sequence[Grade],
 ) -> tuple[bool, bool, bool | None]:
     """(missed, invalid_any, predict_ok-journal-value) for one graded action.
-    UNGRADABLE outcomes (stale window, unreadable channel) count like invalid:
+    UNGRADABLE outcomes (stale window, unreadable state) count like invalid:
     their own meter, never a miss, and they halt a containing batch."""
     invalid_any = any(item.invalid or item.ungradable for item in graded)
     missed = any(
@@ -385,7 +385,7 @@ def execute_action(
     # without a kind, so a frame form is refused by name before any spend, the
     # rule every published journal was recorded under.
     claims = [] if ungated else parse_claims(predict)
-    check_channel_references(run, claims)
+    check_state_references(run, claims)
     claims = _admit_claims(run, claims)
     advisories = _enforce_registry_gates(
         run,
@@ -466,7 +466,7 @@ def execute_action(
         outcome, detail = "PREDICTED", "result matched the prediction"
     if warning:
         detail += f"; finalization warning from the world: {warning}"
-    changed = channel_change_lines(run, prior, event)
+    changed = state_change_lines(run, prior, event)
     receipt = Receipt(
         kind="act",
         outcome=outcome,
@@ -480,7 +480,7 @@ def execute_action(
         because=because_journal,
         modules=tuple(advisories) if advisories else None,
         aggregates=tuple(aggregate_lines) if aggregate_lines else None,
-        channels=tuple(changed) if changed else None,
+        states=tuple(changed) if changed else None,
     )
     return write_receipt(run, receipt)
 
@@ -602,7 +602,7 @@ def execute_steps(
         parsed.append((name, data, predict, claims))
     admitted: list[tuple[str, dict[str, Any] | None, str, list[Claim]]] = []
     for name, data, predict, claims in parsed:
-        check_channel_references(run, claims)
+        check_state_references(run, claims)
         admitted.append((name, data, predict, _admit_claims(run, claims)))
     parsed = admitted
     advisories = _enforce_registry_gates(
@@ -701,7 +701,7 @@ def execute_steps(
     aggregate_lines: list[str] = []
     aggregate_lines.extend(open_aggregates(run, all_claims))
     aggregate_lines.extend(resolve_due(run))
-    changed = channel_change_lines(run, before, final_events[-1])
+    changed = state_change_lines(run, before, final_events[-1])
     receipt = Receipt(
         kind="commit",
         outcome=outcome,
@@ -711,7 +711,7 @@ def execute_steps(
         steps=tuple(records),
         modules=tuple(advisories) if advisories else None,
         aggregates=tuple(aggregate_lines) if aggregate_lines else None,
-        channels=tuple(changed) if changed else None,
+        states=tuple(changed) if changed else None,
     )
     return write_receipt(run, receipt)
 
@@ -725,8 +725,8 @@ def execute_model_plan(
 ) -> Receipt:
     """Execute a model plan (registry runs): the ONLY way past the hand-batch
     cap. Rights are exactly replay-fit on THIS journal; every
-    step carries machine-generated channel predictions, marked machine."""
-    from .channels import channel_value
+    step carries machine-generated state predictions, marked machine."""
+    from .states import state_value
     from .model import batching_rights, model_hash, plan_path
 
     paths = run.paths
@@ -801,7 +801,7 @@ def execute_model_plan(
         ok = True
         problem = ""
         for name, predicted in (expected or {}).items():
-            got_ok, actual = channel_value(run, str(name), pending)
+            got_ok, actual = state_value(run, str(name), pending)
             held = bool(got_ok) and actual == predicted
             graded.append(
                 Grade(

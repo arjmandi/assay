@@ -80,9 +80,9 @@ Three trust classes decide where code may run:
 - **kernel code** is trusted and runs in the daemon and the CLI,
 - **pack and module code** (adapters, behavior modules) is installed by the
   human, runs in the daemon, and is trusted like the kernel,
-- **agent-authored code** (verifiers, channel extractors, world models) is
+- **agent-authored code** (verifiers, state extractors, world models) is
   untrusted and runs only in the sandbox (`sandbox.run_program`, behind
-  `verifiers.run_verifier`, `channels._run_extractor` and
+  `verifiers.run_verifier`, `states._run_extractor` and
   `model._run_sandbox`): a scratch copy of the program, `python -I`, an empty
   environment, CPU, file-size and process limits (no fork), a wall clock, and
   the platform's jail, `sandbox-exec` on macOS or `bwrap` on Linux, which
@@ -525,31 +525,31 @@ never for confidence, and declaring always unlocks.
 **Extension points.** The module contract itself, `module_modes`, `observe`
 for learning modules, `telemetry` for the analytics pack.
 
-### 2.6 Channels
+### 2.6 Addressable states
 
-**Role.** Named, code-extracted readings of the observation. Channels are how
-an agent names a referent once and then claims against it exactly, instead of
-through the blunt `change` and `noop` pair. They are the internalization
-mechanism and the grounding meter: a claim naming an unregistered channel is
-refused free and counted (`channels.check_channel_references`, the
-`mis_reference` activity record).
+**Role.** Named, code-extracted readings of the observation. An addressable
+state is how an agent names a referent once and then claims against it
+exactly, instead of through the blunt `change` and `noop` pair. The states are
+the internalization mechanism and the grounding meter: a claim naming an
+unregistered state is refused free and counted (`states.check_state_references`,
+the `mis_reference` activity record). The code calls them states for short.
 
-**Owner.** Host channels belong to the kernel. Declared channels belong to the
+**Owner.** Host states belong to the kernel. Declared states belong to the
 agent (or the operator). Available in every world.
 
-**Contract.** Three sources (`channels.py`):
+**Contract.** Three sources (`states.py`):
 
-- **Host channels**, always present: `goal` (true when `state == "WIN"`),
+- **Host states**, always present: `goal` (true when `state == "WIN"`),
   `level` (`levels_completed`), and `budget_remaining` (the registered action
   cap minus the paid actions up to and including the event, so
   `ch budget_remaining delta = -1` holds for any paid action, and UNGRADABLE
   only when no cap is registered, with the reason saying so).
-- **Declared path channels**: `assay channel declare NAME --path a.b.c`. The
+- **Declared path states**: `assay state declare NAME --path a.b.c`. The
   dotted path walks the observation object the adapter put under `data`, so a
   Factorio reading is declared as `--path tick`, not `--path data.tick` (the
   circuit run's first event shows the UNGRADABLE that the wrong form earns).
-  Lists are indexed by integer keys. Path channels need a dict observation.
-- **Declared extractor channels**: `--file extractor.py` with
+  Lists are indexed by integer keys. Path states need a dict observation.
+- **Declared extractor states**: `--file extractor.py` with
   `def extract(obs) -> value`. The file is content-hashed, stored at
   `.assay/channels/<hash>.py`, and runs only in the sandbox against the
   observation view (`verifiers.observation_view`: `state`, `levels_completed`,
@@ -561,26 +561,38 @@ cannot be redeclared with a different extractor (declare a new name instead of
 silently redefining a referent), every declaration is journaled as
 `channel_declared`.
 
-Claim forms graded by `channels.grade_channel_claim`: `ch NAME = V [± TOL]`,
+Claim forms graded by `states.grade_state_claim`: `ch NAME = V [± TOL]`,
 `ch NAME delta = | >= | <= V`, `ch NAME delta sign + | -`,
 `ch NAME crosses V [from below | from above]`. Delta and crossing forms need
 numeric readings before and after. Claims on `goal` and `level` sit in the
-`gamble` bucket, all other channel claims in `world_model`
-(`predictions.claim_bucket`). Statistical claims
+`gamble` bucket, all other state claims in `world_model`
+(`records.claim_bucket`). Statistical claims
 (`agg ch NAME mean|min|max OP V over Na horizon Ma on-fail advise|revoke_batching`)
 are additive, open at the gate and resolve at their horizon (`aggregates.py`).
 
-**The worked example** (the Factorio M2 runs, `evidence/factorio`).
-The pattern is declare early, name referents, claim every action with a channel
-form. The irongear run declared seven path channels at its first event:
+The journal and the files beside it keep the spelling of the earlier
+releases, which called a state a channel: the claim kinds `channel_eq`,
+`channel_delta` and `channel_cross`, the keyword `ch`, the `channel` field of
+a grade, the activity kind `channel_declared` with its `channel` field, the
+store `.assay/channels.json`, the extractor directory `.assay/channels/` and
+the daemon's readings cache `.assay/channel_readings.json`. The command
+`assay channel declare` and `assay channel list` answer as `assay state
+declare` and `assay state list` for one release (`cli.command_line`), and
+a `model.py` naming its states `CHANNELS` is read for one release
+(section 2.7).
 
-    assay channel declare tick     --path tick
-    assay channel declare ents     --path entities_total
-    assay channel declare refusals --path policy_refusals
-    assay channel declare prod     --path throughput_corroboration.producer_present
-    assay channel declare wins     --path windows_complete
-    assay channel declare gears    --path target_produced_total
-    assay channel declare auto     --path target_automated_total
+**The worked example** (the Factorio M2 runs, `evidence/factorio`).
+The pattern is declare early, name referents, claim every action with a state
+form. The irongear run declared seven path states at its first event, under
+the command's earlier name:
+
+    assay state declare tick     --path tick
+    assay state declare ents     --path entities_total
+    assay state declare refusals --path policy_refusals
+    assay state declare prod     --path throughput_corroboration.producer_present
+    assay state declare wins     --path windows_complete
+    assay state declare gears    --path target_produced_total
+    assay state declare auto     --path target_automated_total
 
 and then claimed, verbatim from the journal:
 
@@ -591,21 +603,21 @@ and then claimed, verbatim from the journal:
     e8 WAIT --predict "verify:checks/first_window.py; ch tick = 3600; ch wins = 1; ch prod = True"
     e9 WAIT --predict "win; level+1; verify:checks/holdout.py; ch tick = 7200; ch wins = 2; ch gears delta >= 16; ch prod = True"
 
-The ironplate run used the crossing form on the automated-production channel
+The ironplate run used the crossing form on the automated-production state
 (`ch automated crosses 16 from below`) and the circuit run used a tolerance
 (`ch lastrate = 20 ± 5`). The equality claims pin the tick clock, the delta and
 crossing claims pin the mechanics, and every miss carries the machine's
 counter-fact.
 
-**Required.** Nothing. Host channels exist without declaration.
+**Required.** Nothing. Host states exist without declaration.
 
-**Optional.** Declared channels, aggregate claims.
+**Optional.** Declared states, aggregate claims.
 
-**Never here.** A channel is graded against the extractor's value over the
+**Never here.** A state is graded against the extractor's value over the
 world's own response, never against the agent's account of it. The kernel never
-invents a channel from a description. Extractor code never runs in-process.
+invents a state from a description. Extractor code never runs in-process.
 
-**Extension points.** Path and extractor declarations. Pack channels are a
+**Extension points.** Path and extractor declarations. Pack states are a
 later stage (no second pack exists).
 
 ### 2.7 Verifiers and the world model
@@ -656,10 +668,11 @@ something else in forecasting, the concentration of a predictive
 distribution, and the harness scores no distributions: a grade is binary.
 
 **Contract, world model** (`model.py`). `model.py` in the run root declares
-`CHANNELS` (registered channel names), `next(obs, action, params)` returning the
+`STATES`, the registered state names (`CHANNELS`, the name before 1.2.0, is
+read for one release), `next(obs, action, params)` returning the
 predicted observation or `None` for Unknown, optional `actions(obs)` and
 `key(obs)`. `assay model replay` re-predicts every recorded paid transition in
-the sandbox and grades only the declared channels (`model.replay_model`, fit
+the sandbox and grades only the declared states (`model.replay_model`, fit
 record in `.assay/model_fit.json`). The promotion law is pinned: a model hash
 is admitted at the journal event of its first replay (`admitted_at_event` in
 the fit record, read from the earliest `model_replay` activity record that
@@ -674,7 +687,7 @@ aggregate that revoked batching (`model.batching_rights`).
 searches the model in the sandbox and writes `.assay/model_plan.json` with one
 machine prediction per step. `assay commit @.assay/model_plan.json` is the only
 way past the hand-batch cap (`live.execute_model_plan`), every step is graded
-against the channel values and marked `machine: true`, so machine predictions
+against the state values and marked `machine: true`, so machine predictions
 never enter the agent's meters. Imported models never carry rights.
 
 **Required.** Nothing.
@@ -767,7 +780,7 @@ audit that recomputes integrity from the artifacts alone.
 - **Beside the journal**, out of the spec's scope: `.assay/activity.jsonl`
   (command starts and ends, receipts, declarations, mis-references, hazard tags,
   spend reports, approvals, waivers, proposals), `.assay/receipts/`, the notes
-  file, channel and verifier stores, caches.
+  file, state and verifier stores, caches.
 
 **Required.** All of it, on every run.
 
@@ -879,9 +892,9 @@ say **present**, **optional, unused**, or **world-specific** with the file.
 | Modules: built-ins | six, advise | six, advise | six, advise | six, advise | seven, advise |
 | Modules: hazard tags observed | bp35 (3 classes), tu93, wa30 | none | none | `BOMB` after `GAME_OVER` | `ALARM` after `GAME_OVER` |
 | Modules: external | none in the 25 | none | none | none | none |
-| Channels: host | present, unclaimed (progress claimed as `level+1` and `win`) | present, unclaimed (same) | present, unclaimed (same) | present, `ch goal` claimed in the e2e tests | present, `level+1` and `win` claimed |
-| Channels: declared, form | extractor files, 6 to 16 per run in 22 of 25 (one path channel in r11l, ungradable on frames) | path channels, 7 to 14 per run, one extractor (circuit `lastrate`) | path channels `banked` and `submitted` in synth1m, none in 128k and 4m | one path channel (`counter`) | path channels `dial`, `door`, `refusals` |
-| Channels: claim kinds used | eq, delta (meter, cursor rows and columns, bars) | eq, delta, sign, crosses, tolerance | delta | eq, delta | eq, delta |
+| States: host | present, unclaimed (progress claimed as `level+1` and `win`) | present, unclaimed (same) | present, unclaimed (same) | present, `ch goal` claimed in the e2e tests | present, `level+1` and `win` claimed |
+| States: declared, form | extractor files, 6 to 16 per run in 22 of 25 (one path state in r11l, ungradable on frames) | path states, 7 to 14 per run, one extractor (circuit `lastrate`) | path states `banked` and `submitted` in synth1m, none in 128k and 4m | one path state (`counter`) | path states `dial`, `door`, `refusals` |
+| States: claim kinds used | eq, delta (meter, cursor rows and columns, bars) | eq, delta, sign, crosses, tolerance | delta | eq, delta | eq, delta |
 | Verifiers | all 25 runs, 20 to 794 graded verify claims per run | 3 to 5 per run | optional, unused in the three published runs | tests only | optional, unused |
 | World model (`model.py`) | written in cn04, s5i5, sc25, su15, tu93, replayed in cn04, no plan ever executed | optional, unused | optional, unused | tests only | optional, unused |
 | Journal | frames, `n_frames`, 83 to 1172 events | dict observation, 6 to 10 events | dict observation, 41 to 51 events | dict observation | dict observation, two progress units |
@@ -910,7 +923,7 @@ their heads:
   `vanish`, `region` on frame worlds,
 - the grade `actual` texts ("level advanced", "level did not advance",
   "state WIN"), which are graded facts inside journals,
-- the host channel names `goal`, `level` and `budget_remaining`,
+- the host state names `goal`, `level` and `budget_remaining`,
 - the chain seed `assay-chain-v1`, the chain rule, the ungated rule and the
   `RESET` exemption,
 - the config key `game_id`, the knowledge-file key `game_id`, the import
@@ -1002,7 +1015,7 @@ or string, `predict_ok` None or bool, `level_before` None or int, `note` string,
   `excluded_from_meter` (bool), `machine` (bool). On the journal a coerced claim's kind is
   the string `coerced`, as today.
 - `Receipt`: `kind`, `outcome`, `detail`, `start_event`, `end_event`, `level`, `action`,
-  `predict`, `grade` (the rendered lines), `because`, `modules`, `aggregates`, `channels`,
+  `predict`, `grade` (the rendered lines), `because`, `modules`, `aggregates`, `states`,
   `steps` (a tuple of `ReceiptStep`: `event`, `action`, `ok`, `failed`, `invalid`,
   `ungated`, `machine`, `kind`, `problem`), `plan`, `timestamp`. Written to
   `.assay/receipts/` and to the activity log as today. The `--json` document of a paid
@@ -1087,7 +1100,7 @@ the daemon alive.
   same size, budget 70 ms per paid action worst case, against a world step that takes
   seconds. An implementer may hold a raw digest of the file bytes instead of the chain and
   compare `hashlib.file_digest`, which halves it.
-- Every function under `live.py`, `inspect.py`, `channels.py`, `modules.py`,
+- Every function under `live.py`, `inspect.py`, `states.py`, `modules.py`,
   `aggregates.py`, `agenda.py`, `model.py` and `carryover.py` that took `paths` and
   reloaded the journal takes the run, and uses `run.paths` for its own files. The
   `ObservationKind` protocol's display and after-record methods (`after_record`,
@@ -1233,8 +1246,8 @@ client as the same error, `act` carrying `action` and `params` and a commit step
 pinned registry (`registry.parse_registry_action`, `live.split_step`) and validated by
 the daemon against the same schema before any spend (`registry.validate_action`), the
 journal storing the validated object under `data`); `--json` of 7.3 on `status`,
-`view`, `audit`, `act`, `commit`, `reset`, `channel list` and `module list`, printing
-the `Status`, `View`, `AuditReport`, `Receipt`, `ChannelList` or `ModuleList` record,
+`view`, `audit`, `act`, `commit`, `reset`, `state list` and `module list`, printing
+the `Status`, `View`, `AuditReport`, `Receipt`, `StateList` or `ModuleList` record,
 or the error object, as one JSON document, with stderr empty on success; and the
 `Status` record of 7.4 (`status.py`: `status_of(run)` builds the blocks once,
 `render_status(status)` derives today's lines, byte for byte over the 25 published
@@ -1356,7 +1369,7 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   1.1.0 build; the test that asserted `UNGATED_STEP_REFUSED` asserts that an unknown
   operation is refused with `OPERATION_UNKNOWN` and no mutation is written.
 - Offline operations, in the client from disk: `start`, `stop`, `status`, `view` (with
-  `--export`), `audit`, `channel declare`, `channel list`, `export`, `spend report`,
+  `--export`), `audit`, `state declare`, `state list`, `export`, `spend report`,
   `goal propose`, `goal list`, `model init`, `model replay`, `model solve`, `module list`,
   `python`, `doctor`, `version`, `hooks install`, `hooks post-tool-use` (section 8.4),
   `serve-tools` (section 7.5).
@@ -1417,7 +1430,7 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
 
 Every command accepts `--json` and prints exactly one JSON document on stdout: the
 result record where the command has one (`Receipt`, `Status`, the audit report, the
-view record, the channel list, the module list), `{"lines": [...]}` with the prose
+view record, the state list, the module list), `{"lines": [...]}` with the prose
 lines where it has none (`start`, `stop`, `version`, `doctor`, `python` and the other
 commands that print a line), or the error object on failure, nothing else; stderr stays
 empty on success. The view record is `{"event": Event, "previous": Event or null,
@@ -1429,7 +1442,7 @@ form.)
 
 Status (#13): landed as amended. The view record carries `exported` (the path) when
 `--export` wrote a file. The result records of the offline commands (`Status`, `View`,
-`AuditReport`, `ChannelList`, `ModuleList`) have `to_json()` (`records.plain`), and
+`AuditReport`, `StateList`, `ModuleList`) have `to_json()` (`records.plain`), and
 the audit report's `to_json()` is the shape `.assay/audit.json` always had; their
 `from_json` and `json_schema()` are the tool server's (#15) when it needs them. The
 document is printed compact, on one line, with the journal's separators and no NaN or
@@ -1451,7 +1464,7 @@ observation kind's record, rendered by the kind: for the frame extra the image p
 advertised-actions line that `status_head_lines` prints today), `registry` (actions with
 their schemas, flags and descriptions unless zero_prior, budget, gate, mode_note), `budget`
 (cap, spent, remaining), `gate` (mode, unpredicted), `agenda` (goal text, source, achieved,
-pending proposals), `foreign` (the imported-knowledge facts), `channels` (registered, host
+pending proposals), `foreign` (the imported-knowledge facts), `states` (registered, host
 values, declared readings with their event), `model` (fit, graded, rights, reason),
 `hazards` (every active tag; the renderer shows four), `spend`, `aggregates`,
 `mis_references`, `integrity` (the unpermitted ungated events), `anchors` (file, count,
@@ -1526,12 +1539,12 @@ Status (#15): landed as written and revised in review, with these particulars.
 line sends them (`act` and the steps of a `commit` validated against the pinned registry
 before the socket, as `--params` is), and twelve offline operations run from `Run.load` on
 every call, whose request records live in `server.py`, since they never cross the socket
-(`StatusRequest`, `ViewRequest`, `ChannelDeclareRequest` and the rest, decoded by the
+(`StatusRequest`, `ViewRequest`, `StateDeclareRequest` and the rest, decoded by the
 records kit's rules and described by the same fields, so the schema and the check cannot
 drift apart). The rule, `server.agent_facing` with `server.DAEMON_OWN` and
 `server.OPERATOR_COMMANDS`: a tool is what reads or advances the agent's own run, which
 the constitution gives the agent (the paid operations, the readers `status`, `view`,
-`audit`, `channel_list`, `module_list` and `python`, the channel, model and goal
+`audit`, `state_list`, `module_list` and `python`, the state, model and goal
 operations); not a tool is every operation with `owner=True` in the wire table
 (`install_module`, `approve`, `waive`, `goal_ratify`), the daemon's own `ping` and
 `observe`, the lifecycle commands (`start`, `stop`, `version`, `doctor`, `serve-tools`),
@@ -1585,9 +1598,9 @@ activity records are the command line's (`core.command_status` takes the surface
 `surface` rides on `command_start` and `command_end`, `cli` from the command line, its
 `start` and `stop` records included, `mcp` from the server), and the `command` field
 carries the tool's name where the command line writes the group's word for a grouped
-command (`channel` for `channel declare`). The prose of `channel declare`, `model init`,
+command (`state` for `state declare`). The prose of `state declare`, `model init`,
 `model solve`, `goal propose` and `goal list` moved beside their records
-(`channels.channel_declared_text`, `model.model_created_text`, `model.solve_lines`,
+(`states.state_declared_text`, `model.model_created_text`, `model.solve_lines`,
 `agenda.proposal_text`, `agenda.proposals_text`), unchanged, so both surfaces print one
 text. The server runs one run per process, named `assay`, with the constitution's loop
 as its instructions; the PostToolUse join is #11's, whose hook reads the receipt's
@@ -1927,9 +1940,9 @@ separate-user setup (8.1, ONBOARDING section 7).
 ### 8.5 The sandbox (#19)
 
 One module, `src/assay/sandbox.py`, with one function `run_program(program, payload, *,
-timeout, companions=(), cpu_seconds=None)` used by the verifier runner, the channel
+timeout, companions=(), cpu_seconds=None)` used by the verifier runner, the state
 extractor and the model runner. The program and its companions (the stored verifier or
-extractor, `model.py` and the extractor files of the model's declared channels) are copied
+extractor, `model.py` and the extractor files of the model's declared states) are copied
 into a fresh scratch directory, every payload string naming a companion is rewritten to
 the copy, and the program runs from there as `python -I` (isolated: no `PYTHONPATH`, no
 user site, the current directory not on the path; not `-S`, which would drop site-packages
@@ -2024,7 +2037,7 @@ one that reads the daemon's arguments through `sysctl` fails (macOS), one that p
 past the output cap fails with that reason, one that allocates past the limit is killed
 (Linux), and the same reading verifier passes under the forced fallback with the doctor
 line saying so; a verifier importing numpy passes; `doctor` prints the mode, `start`
-records it, the daemon records its own. The channels test that counted extractor calls
+records it, the daemon records its own. The states test that counted extractor calls
 through a marker file the extractor wrote outside the run directory counts them through
 the daemon's readings cache instead.
 

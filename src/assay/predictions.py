@@ -14,14 +14,14 @@ from typing import TYPE_CHECKING, Any
 
 from .core import AssayError
 from .extras import ObservationKind, all_kinds, foreign_form, kind_for, refusal_text
-from .records import CHANNEL_KINDS, GAMBLE_KINDS, Claim, Event, Grade, claim_bucket
+from .records import STATE_KINDS, GAMBLE_KINDS, Claim, Event, Grade, claim_bucket
 from .textobs import changed_count
 
 if TYPE_CHECKING:
     from .run import Run
 
 __all__ = [
-    "CHANNEL_KINDS",
+    "STATE_KINDS",
     "GAMBLE_KINDS",
     "GENERAL_CLAIMS_HELP",
     "claim_bucket",
@@ -39,12 +39,12 @@ PREDICTION CLAIMS | separate several with ";"
   level+1              this action completes the current progress unit
   win                  this action reaches the goal state
   verify:PATH.py       run your verifier file: def verify(before, after) -> (ok, actual)
-  ch NAME = V [± TOL]  a registered channel reads V after this action
-  ch NAME delta OP V   the channel moves by an amount where OP is =, >=, <=
-  ch NAME delta sign +|-    the channel moves up / down
-  ch NAME crosses V [from below|from above]   the channel crosses a threshold
+  ch NAME = V [± TOL]  a registered state reads V after this action
+  ch NAME delta OP V   the state moves by an amount where OP is =, >=, <=
+  ch NAME delta sign +|-    the state moves up / down
+  ch NAME crosses V [from below|from above]   the state crosses a threshold
 Any claim may end with `@within Ns`; it only grades if the result settles in time.
-Channels: `goal` and `level` are built in; declare your own with `assay channel declare`.
+Addressable states: `goal` and `level` are built in; declare your own with `assay state declare`.
 Free text that is not a claim is kept as commentary. Example:
   --predict "ch counter delta = 1; verify:checks/counter.py"
 """
@@ -367,7 +367,7 @@ def grade_pending(
     elapsed_s: float | None,
 ) -> list[Grade]:
     """Grade every claim of one paid action against its pending event: the
-    observation kind's grader or the general one, then channels, then
+    observation kind's grader or the general one, then states, then
     verifiers. The live path and recovery share it (docs/ARCHITECTURE.md
     section 6.5).
 
@@ -379,7 +379,7 @@ def grade_pending(
     late settle is UNGRADABLE too: its own outcome, never a silent pass or
     miss.
     """
-    from .channels import grade_channel_claim
+    from .states import grade_state_claim
     from .verifiers import grade_verifier_claim, observation_view
 
     graded: list[Grade] = []
@@ -412,7 +412,7 @@ def grade_pending(
     plain = [
         claim
         for claim in timely
-        if claim.kind != "verify" and claim.kind not in CHANNEL_KINDS
+        if claim.kind != "verify" and claim.kind not in STATE_KINDS
     ]
     kind = kind_for(pending)
     if kind is not None:
@@ -420,9 +420,9 @@ def grade_pending(
     else:
         graded.extend(grade_general_claims(plain, prior, pending))
     graded.extend(
-        grade_channel_claim(run, claim, prior, pending)
+        grade_state_claim(run, claim, prior, pending)
         for claim in timely
-        if claim.kind in CHANNEL_KINDS
+        if claim.kind in STATE_KINDS
     )
     verify_claims = [claim for claim in timely if claim.kind == "verify"]
     if verify_claims:

@@ -1,11 +1,11 @@
 """The sandbox: the one place agent-authored code runs (design note 3, 8.5).
 
-Verifiers (`verifiers.run_verifier`), channel extractors
-(`channels._run_extractor`) and the world model (`model._run_sandbox`) hand
+Verifiers (`verifiers.run_verifier`), state extractors
+(`states._run_extractor`) and the world model (`model._run_sandbox`) hand
 `run_program` the source of their runner (the program), the JSON payload the
 runner reads from stdin, and the files the runner loads (the companions: the
 stored verifier or extractor, `model.py` and the extractor files of the
-model's declared channels). The program and its companions are copied into a
+model's declared states). The program and its companions are copied into a
 fresh scratch directory, every payload string naming a companion is rewritten
 to the copy, and the program runs from there as `python -I` (isolated: no
 PYTHONPATH, no user site, the working directory off the path; not `-S`, which

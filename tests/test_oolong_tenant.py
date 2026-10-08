@@ -47,7 +47,7 @@ def test_oolong_spam4k_to_win_and_sealed_score(tmp_path):
         ) in started.stdout
         assert '"question_count": 5' in started.stdout
         assert (run / ".assay" / "corpus.txt").read_text() == CORPUS.read_text()
-        assert run_cli(run, "channel", "declare", "banked", "--path", "banked_count").returncode == 0
+        assert run_cli(run, "state", "declare", "banked", "--path", "banked_count").returncode == 0
         # The spans parameter is an array: a token cannot carry it, and the
         # refusal names the JSON form, free.
         token = run_cli(run, "act", "SUBMIT", "answer=1", "spans=x", "--predict", "level+1")
@@ -120,7 +120,7 @@ def test_oolong_spam4k_batch_mode_to_win(tmp_path):
         assert started.returncode == 0, started.stderr
         assert '"bank_mode": "batch"' in started.stdout
         assert "  BANK_FACT spans=<array of >=1 string>" in started.stdout
-        assert run_cli(run, "channel", "declare", "banked", "--path", "banked_count").returncode == 0
+        assert run_cli(run, "state", "declare", "banked", "--path", "banked_count").returncode == 0
         # One missing span refuses the whole batch: nothing banked, the spend journaled.
         refused = run_cli(
             run, "act", "BANK_FACT", "--params", _params(spans=[SPAN, "not in the corpus"]),

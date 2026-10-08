@@ -4,7 +4,7 @@ Copy this folder, rename the world, and you have a world ASSAY can referee.
 `adapter.py` is the whole world side (the session contract). `registry.json`
 is the whole operator side (what the agent may do). The conformance test
 (`tests/test_conformance.py`) drives this template through start, act,
-channel declare, commit, reset, the owner operations and the audit, so a
+state declare, commit, reset, the owner operations and the audit, so a
 copy that keeps the contract keeps passing.
 
 Run it:
@@ -74,7 +74,7 @@ Every key beyond `actions` is optional. This file sets all of them but
 
 ## What the kernel adds without any work here
 
-Channels (`assay channel declare dial --path dial`), verifiers
+Addressable states (`assay state declare dial --path dial`), verifiers
 (`verify:checks/door_opens.py`), the world model (`assay model`), the six
 built-in modules plus the coverage audit, the hash chain and anchors, and the
 audit. None of it knows the vault exists.

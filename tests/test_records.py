@@ -171,8 +171,8 @@ def test_grade_of_a_claim_keeps_the_written_form():
         "kind": "coerced", "text": "change (implied by free text)", "coerced": True,
         "ok": True, "actual": "1 keys changed", "bucket": "world_model",
     }
-    channel = Claim(kind="channel_eq", text="ch goal = true", channel="goal", value=True)
-    assert Grade.of(channel, ok=False, actual="ch goal = false").bucket == "gamble"
+    goal = Claim(kind="channel_eq", text="ch goal = true", channel="goal", value=True)
+    assert Grade.of(goal, ok=False, actual="ch goal = false").bucket == "gamble"
     verified = Grade.of(
         Claim(kind="verify", text="verify:x.py", path="x.py", verifier_hash="a" * 64),
         ok=True, actual="fine", verifier=True, identity_verdict=False,
@@ -181,7 +181,7 @@ def test_grade_of_a_claim_keeps_the_written_form():
     assert "invalid" not in verified.to_json()
     assert claim_bucket("win") == "gamble" and claim_bucket("aggregate") == "aggregate"
     assert Grade.from_json(verified.to_json()) == verified
-    assert Claim.from_json(channel.to_json()) == channel
+    assert Claim.from_json(goal.to_json()) == goal
 
 
 def test_grade_keeps_numbers_as_written():

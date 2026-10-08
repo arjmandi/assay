@@ -98,7 +98,7 @@ def test_spend_reports_idempotent_by_id():
 # ------------------------------------------------------------------- grammar
 
 
-def test_channel_claims_parse():
+def test_state_claims_parse():
     claims = parse_claims(
         "ch counter = 3; ch counter delta >= 1; ch temp crosses 5 from below; "
         "ch level delta sign +",
@@ -111,14 +111,14 @@ def test_channel_claims_parse():
     assert claims[3].op == "sign" and claims[3].sign == "+"
 
 
-def test_channel_claim_tolerance_and_window():
+def test_state_claim_tolerance_and_window():
     claims = parse_claims("ch price = 4.5 +- 0.2 @within 1.5s")
     assert claims[0].tol == 0.2 and claims[0].window_s == 1.5
     with pytest.raises(AssayError):
         parse_claims("ch price = up down")  # malformed, not a note
 
 
-def test_channel_bucket_split():
+def test_state_bucket_split():
     assert claim_bucket("channel_eq", "goal") == "gamble"
     assert claim_bucket("channel_delta", "level") == "gamble"
     assert claim_bucket("channel_eq", "counter") == "world_model"

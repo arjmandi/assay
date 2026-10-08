@@ -16,7 +16,7 @@ verify/JOURNAL_SPEC.md) and the 66 published journals under evidence/
 - the claim syntax `level+1` and `win`, and the grade `actual` texts
   ("level advanced", "level did not advance", "state WIN"), which are graded
   facts inside journals,
-- the host channel names `goal` and `level`,
+- the host state names `goal` and `level`,
 - the config key `game_id`, the knowledge-file key `game_id` and the summary
   key `source_game`, and every activity record kind,
 - the receipt outcome tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,

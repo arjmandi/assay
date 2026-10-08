@@ -34,14 +34,16 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 GAMBLE_KINDS = frozenset({"win", "level_up"})
-CHANNEL_KINDS = frozenset({"channel_eq", "channel_delta", "channel_cross"})
-_MILESTONE = frozenset({"goal", "level"})  # channel claims here gamble; the rest world-model
+# The state claims keep the kinds' frozen spelling on the journal; so does the
+# `channel` field that names the state a claim is on.
+STATE_KINDS = frozenset({"channel_eq", "channel_delta", "channel_cross"})
+_MILESTONE = frozenset({"goal", "level"})  # state claims on these gamble; the rest world-model
 
 
-def claim_bucket(kind: str, channel: str | None = None) -> str:
+def claim_bucket(kind: str, state: str | None = None) -> str:
     """Claim taxonomy: goal/milestone claims gamble, the rest world-model."""
-    if kind in CHANNEL_KINDS:
-        return "gamble" if channel in _MILESTONE else "world_model"
+    if kind in STATE_KINDS:
+        return "gamble" if state in _MILESTONE else "world_model"
     if kind == "aggregate":
         return "aggregate"
     return "gamble" if kind in GAMBLE_KINDS else "world_model"
@@ -670,7 +672,7 @@ class ReceiptStep:
 _RECEIPT_KEYS = frozenset(
     {
         "kind", "outcome", "detail", "start_event", "end_event", "level", "action", "predict",
-        "grade", "because", "modules", "aggregates", "channels", "steps", "plan",
+        "grade", "because", "modules", "aggregates", "states", "steps", "plan",
         "timestamp",
     }
 )
@@ -680,7 +682,7 @@ _RECEIPT_KEYS = frozenset(
 class Receipt:
     """What a paid command returns and what `.assay/receipts/` and the activity
     log keep: the outcome, the rendered grade lines, the module, aggregate
-    and channel lines, and the steps of a batch. An `act` receipt always
+    and state lines, and the steps of a batch. An `act` receipt always
     carries `predict` and `because`, null when there is none, as it always
     has; every other optional key is written when it is set."""
 
@@ -696,7 +698,7 @@ class Receipt:
     because: str | None = None
     modules: tuple[str, ...] | None = None
     aggregates: tuple[str, ...] | None = None
-    channels: tuple[str, ...] | None = None
+    states: tuple[str, ...] | None = None
     steps: tuple[ReceiptStep, ...] | None = None
     plan: str | None = None
     timestamp: str | None = None
@@ -721,7 +723,7 @@ class Receipt:
             because=read_opt_str(obj, record, "because", nullable=True),
             modules=read_opt_lines(obj, record, "modules"),
             aggregates=read_opt_lines(obj, record, "aggregates"),
-            channels=read_opt_lines(obj, record, "channels"),
+            states=read_opt_lines(obj, record, "states"),
             steps=None if steps_raw is None else tuple(ReceiptStep.from_json(item) for item in steps_raw),
             plan=read_opt_str(obj, record, "plan"),
             timestamp=read_opt_str(obj, record, "timestamp"),
@@ -744,7 +746,7 @@ class Receipt:
             value = getattr(self, key)
             if value is not None or self.kind == "act":
                 output[key] = value
-        for key in ("grade", "modules", "aggregates", "channels"):
+        for key in ("grade", "modules", "aggregates", "states"):
             lines = getattr(self, key)
             if lines is not None:
                 output[key] = list(lines)

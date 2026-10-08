@@ -30,7 +30,7 @@ line writes, with `surface: "mcp"` where the command line's say `cli`.
 The exclusion rule, in this one place (`agent_facing`, `OPERATOR_COMMANDS`
 and the table): a tool is what reads or advances the agent's own run, which
 the constitution gives the agent: the paid operations, the readers (`status`,
-`view`, `audit`, `channel_list`, `module_list`, `python`) and the channel,
+`view`, `audit`, `state_list`, `module_list`, `python`) and the state,
 model and goal operations. Not tools: the owner operations (`owner=True` in
 the wire table: `install_module`, `approve`, `waive` and `goal_ratify` take
 the owner token the agent must never hold); the daemon's own operations
@@ -79,7 +79,7 @@ from . import __version__
 from .agenda import list_proposals, proposal_text, proposals_text, propose_goal
 from .analysis import run_python
 from .broker import broker_gated
-from .channels import channel_declared_text, channel_list_of, channel_list_text, declare_channel
+from .states import state_declared_text, state_list_of, state_list_text, declare_state
 from .core import (
     TOOL_SURFACE,
     AssayError,
@@ -316,12 +316,12 @@ class PythonRequest(_OfflineRequest):
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class ChannelDeclareRequest(_OfflineRequest):
-    """`channel_declare`: a named reading, by a path or an extractor."""
+class StateDeclareRequest(_OfflineRequest):
+    """`state_declare`: an addressable state, a named reading by a path or an extractor."""
 
-    NAME: ClassVar[str] = "channel_declare"
+    NAME: ClassVar[str] = "state_declare"
 
-    name: str = _field(_STRING, "the channel's name, lowercase")
+    name: str = _field(_STRING, "the state's name, lowercase")
     path: str | None = _field(
         _STRING_OR_NULL, "dotted keys into the dict observation, e.g. counters.red", None
     )
@@ -334,14 +334,14 @@ class ChannelDeclareRequest(_OfflineRequest):
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class ChannelListRequest(_OfflineRequest):
-    """`channel_list`: the registered channels with their readings."""
+class StateListRequest(_OfflineRequest):
+    """`state_list`: the registered states with their readings."""
 
-    NAME: ClassVar[str] = "channel_list"
+    NAME: ClassVar[str] = "state_list"
 
     read: bool = _field(
         _BOOLEAN,
-        "compute the extractor channels fresh (each extractor runs sandboxed) instead of showing "
+        "compute the extractor states fresh (each extractor runs sandboxed) instead of showing "
         "the last graded reading",
         False,
     )
@@ -363,7 +363,7 @@ class ModelReplayRequest(_OfflineRequest):
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class ModelSolveRequest(_OfflineRequest):
-    """`model_solve`: a plan to a channel target, searched inside the model."""
+    """`model_solve`: a plan to a state target, searched inside the model."""
 
     NAME: ClassVar[str] = "model_solve"
 
@@ -649,14 +649,14 @@ def run_python_child(root: str) -> int:
     return 0
 
 
-def _channel_declare(paths: RunPaths, status: CommandStatus, request: ChannelDeclareRequest) -> Outcome:
-    spec = declare_channel(status.run, request.name, path=request.path, file=request.file)
-    return _lines([channel_declared_text(request.name, spec)])
+def _state_declare(paths: RunPaths, status: CommandStatus, request: StateDeclareRequest) -> Outcome:
+    spec = declare_state(status.run, request.name, path=request.path, file=request.file)
+    return _lines([state_declared_text(request.name, spec)])
 
 
-def _channel_list(paths: RunPaths, status: CommandStatus, request: ChannelListRequest) -> Outcome:
-    listing = channel_list_of(status.run, fresh=request.read)
-    return Outcome(listing.to_json(), "\n".join(channel_list_text(listing)))
+def _state_list(paths: RunPaths, status: CommandStatus, request: StateListRequest) -> Outcome:
+    listing = state_list_of(status.run, fresh=request.read)
+    return Outcome(listing.to_json(), "\n".join(state_list_text(listing)))
 
 
 def _model_init(paths: RunPaths, status: CommandStatus, request: ModelInitRequest) -> Outcome:
@@ -743,33 +743,33 @@ TOOLS: tuple[Tool, ...] = (
         _python,
     ),
     Tool(
-        "channel_declare",
-        "Register a named reading of the observation, by a dotted path into it or by an "
-        "extractor file; claims like `ch NAME = V` then parse and grade.",
-        ChannelDeclareRequest,
-        _channel_declare,
+        "state_declare",
+        "Declare an addressable state, a named reading of the observation, by a dotted path "
+        "into it or by an extractor file; claims like `ch NAME = V` then parse and grade.",
+        StateDeclareRequest,
+        _state_declare,
     ),
     Tool(
-        "channel_list",
-        "List the registered channels with their current readings.",
-        ChannelListRequest,
-        _channel_list,
+        "state_list",
+        "List the registered states with their current readings.",
+        StateListRequest,
+        _state_list,
     ),
     Tool(
         "model_init",
-        "Create the model.py template: declare CHANNELS, define next().",
+        "Create the model.py template: declare STATES, define next().",
         ModelInitRequest,
         _model_init,
     ),
     Tool(
         "model_replay",
-        "Grade model.py's declared channels over every recorded transition; replay-fit is trust.",
+        "Grade model.py's declared states over every recorded transition; replay-fit is trust.",
         ModelReplayRequest,
         _model_replay,
     ),
     Tool(
         "model_solve",
-        "Search the model for a plan to a channel target; the plan is written to "
+        "Search the model for a plan to a state target; the plan is written to "
         ".assay/model_plan.json for commit.",
         ModelSolveRequest,
         _model_solve,

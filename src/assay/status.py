@@ -20,8 +20,8 @@ naming what was dropped. `estimated_tokens` is the estimate every surface
 reports beside what it prints: characters over four, no tokenizer.
 
 The renderers of the lines other commands print too (the budget line, the
-anchor line, the channel block, the history lines) live beside their facts
-in `registry`, `integrity`, `channels` and `evidence`, and this module calls
+anchor line, the states block, the history lines) live beside their facts
+in `registry`, `integrity`, `states` and `evidence`, and this module calls
 them with the record's fields.
 """
 
@@ -35,7 +35,7 @@ from typing import TYPE_CHECKING, Any
 from .agenda import agenda_text, emergence_meter, emergence_text, list_proposals, standing_goal
 from .aggregates import meter as aggregate_meter
 from .carryover import foreign_facts, foreign_text
-from .channels import ChannelReadings, channel_readings, channel_text
+from .states import StateReadings, state_readings, states_text
 from .adapters import SessionCapability, recorded_capability
 from .core import REMOTE_MODE, AssayError, load_jsonl, read_json, run_mode
 from .evidence import RecentLine, history_text, recent_lines
@@ -314,7 +314,7 @@ class AnchorsBlock:
 @dataclasses.dataclass(frozen=True, slots=True)
 class EmergenceBlock:
     verifiers: int
-    channels: int
+    states: int
     model_replays: int
     goal_proposals: int
 
@@ -394,7 +394,7 @@ class Status:
     agenda: AgendaBlock | None
     ignored_modules: tuple[str, ...]
     foreign: ForeignBlock | None
-    channels: ChannelReadings | None
+    states: StateReadings | None
     model: ModelBlock | None
     hazards: HazardsBlock | None
     spend: SpendBlock | None
@@ -451,7 +451,7 @@ def status_of(run: Run, *, history: int = 8) -> Status:
         agenda=_agenda_block(run) if registry else None,
         ignored_modules=tuple(ignored_modules(run)) if registry else (),
         foreign=_foreign_block(run) if registry else None,
-        channels=channel_readings(run, event) if registry else None,
+        states=state_readings(run, event) if registry else None,
         model=_model_block(run) if registry else None,
         hazards=_hazards_block(run) if registry else None,
         spend=_spend_block(run, registry) if registry else None,
@@ -997,8 +997,8 @@ def _status_lines(status: Status) -> list[str]:
     lines.extend(ignored_text(status.ignored_modules))
     if status.foreign is not None:
         lines.extend(foreign_text(**dataclasses.asdict(status.foreign)))
-    if status.channels is not None:
-        lines.extend(channel_text(status.channels))
+    if status.states is not None:
+        lines.extend(states_text(status.states))
     if status.model is not None:
         lines.append(model_text(status.model))
     if status.hazards is not None:
@@ -1013,7 +1013,7 @@ def _status_lines(status: Status) -> list[str]:
         )
     if status.mis_references:
         lines.append(
-            f"MIS-REFERENCE | {status.mis_references} claim(s) named unregistered channels "
+            f"MIS-REFERENCE | {status.mis_references} claim(s) named unregistered states "
             "(refused free; the grounding meter)"
         )
     if status.integrity is not None:

@@ -39,7 +39,7 @@ from .carryover import (
     import_knowledge,
     registry_hash_of,
 )
-from .channels import channel_declared_text, channel_list_of, channel_list_text, declare_channel
+from .states import state_declared_text, state_list_of, state_list_text, declare_state
 from .integrity import (
     anchor_file,
     anchor_line,
@@ -203,7 +203,7 @@ JSON_FLAG = arg(
 
 @dataclasses.dataclass(frozen=True)
 class Group:
-    """A command that holds sub-commands (`assay channel declare`): its word,
+    """A command that holds sub-commands (`assay state declare`): its word,
     its help and the namespace field the chosen sub-command lands in."""
 
     name: str
@@ -228,7 +228,7 @@ class Lifecycle:
 @dataclasses.dataclass(frozen=True)
 class Command:
     """A command over the loaded run: its identifier, its path on the command
-    line (`channel declare`), its help, what it runs (the client of a daemon
+    line (`state declare`), its help, what it runs (the client of a daemon
     operation, or the function of an offline command), the daemon operation
     it is the client of, if any, its arguments, and the lazy epilog (the
     claims table, rendered only when help is)."""
@@ -246,7 +246,7 @@ GROUPS: Mapping[str, Group] = {
     group.name: group
     for group in (
         Group(
-            "channel", "declare and list registered channels (named readings)", "channel_command"
+            "state", "declare and list addressable states (named readings)", "state_command"
         ),
         Group(
             "model",
@@ -265,6 +265,30 @@ GROUPS: Mapping[str, Group] = {
         ),
     )
 }
+
+
+# `assay channel ...` for `assay state ...`, for one release: the retired word
+# is replaced before the parse, so the help lists `state` alone and the parsed
+# line, its activity records included, carries the current word.
+COMMAND_ALIASES: Mapping[str, str] = {"channel": "state"}
+
+
+def command_line(argv: list[str]) -> list[str]:
+    """The arguments with a retired command word replaced by its current
+    one. The command word is the first argument that is not an option of
+    the root parser, whose `--run-dir` takes a value."""
+    words = list(argv)
+    index = 0
+    while index < len(words):
+        word = words[index]
+        if word == "--run-dir":
+            index += 2
+        elif word.startswith("-"):
+            index += 1
+        else:
+            words[index] = COMMAND_ALIASES.get(word, word)
+            break
+    return words
 
 
 def _parser() -> Parser:
@@ -319,7 +343,7 @@ def _add_command(
 
 def path_of(args: argparse.Namespace) -> str:
     """The path a parsed command line names: for a group, with the
-    sub-command's word (`channel declare`, `hooks install`)."""
+    sub-command's word (`state declare`, `hooks install`)."""
     path = str(args.command)
     group = GROUPS.get(path)
     if group is not None:
@@ -1383,14 +1407,14 @@ def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
     _paid(paths, status, RESET, request, args)
 
 
-def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    spec = declare_channel(run, args.name, path=args.path, file=args.file)
-    print(channel_declared_text(args.name, spec))
+def state_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    spec = declare_state(run, args.name, path=args.path, file=args.file)
+    print(state_declared_text(args.name, spec))
 
 
-def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    listing = channel_list_of(run, fresh=args.read)
-    _emit(args, listing, "\n".join(channel_list_text(listing)))
+def state_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    listing = state_list_of(run, fresh=args.read)
+    _emit(args, listing, "\n".join(state_list_text(listing)))
 
 
 def model_init(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1521,7 +1545,7 @@ def _wants_json(argv: list[str]) -> bool:
 def main() -> None:
     machine = _wants_json(sys.argv[1:])
     try:
-        args = _parser().parse_args()
+        args = _parser().parse_args(command_line(sys.argv[1:]))
         paths = RunPaths(Path(args.run_dir).resolve())
         os.environ["ASSAY_RUN_DIR"] = str(paths.root)
         raise SystemExit(_machine_run(paths, args) if machine else _run(paths, args))
@@ -1885,10 +1909,10 @@ COMMANDS: tuple[Command, ...] = (
         arguments=(arg("source", nargs="?"), arg("--file", type=Path)),
     ),
     Command(
-        "channel_declare",
-        "channel declare",
-        "register a named reading of the observation",
-        channel_declare,
+        "state_declare",
+        "state declare",
+        "declare an addressable state: a named reading of the observation",
+        state_declare,
         arguments=(
             arg("name"),
             arg("--path", help="dotted keys into the dict observation, e.g. counters.red"),
@@ -1896,15 +1920,15 @@ COMMANDS: tuple[Command, ...] = (
         ),
     ),
     Command(
-        "channel_list",
-        "channel list",
-        "list registered channels with their current readings",
-        channel_list,
+        "state_list",
+        "state list",
+        "list registered states with their current readings",
+        state_list,
         arguments=(
             arg(
                 "--read",
                 action="store_true",
-                help="compute extractor channels fresh (runs each extractor sandboxed) "
+                help="compute extractor states fresh (runs each extractor sandboxed) "
                 "instead of showing the last graded reading",
             ),
         ),
@@ -1913,13 +1937,13 @@ COMMANDS: tuple[Command, ...] = (
     Command(
         "model_replay",
         "model replay",
-        "grade model.py's declared channels over every recorded transition",
+        "grade model.py's declared states over every recorded transition",
         model_replay,
     ),
     Command(
         "model_solve",
         "model solve",
-        "search the model for a plan to a channel target",
+        "search the model for a plan to a state target",
         model_solve,
         arguments=(
             arg("--to", required=True, metavar='"ch NAME = V"', help="the goal reading"),
