@@ -1,24 +1,16 @@
 # ASSAY
 
-ASSAY is a reasoning harness for language-model agents. An agent harness
-surrounds a model with tools, memory and a control loop. ASSAY surrounds it
-with a world model the model can address.
-
-The agent names the parts of its environment it cares about as addressable
-states. It reads them through the harness. Before it acts, it says what the
-action will do to them. Code grades that claim against what the environment
-reports. A claim that held enters the record. A claim that missed is marked,
-and the agent learns the world one graded claim at a time.
-
-Over a run, the record becomes a world model the agent consults by address
-instead of by memory. A state is looked up, not recalled. A long run
-therefore does not decay the way a long context does, where details are lost
-in the middle and referents drift. The agent also cannot fill its own model
-with things it merely said, because nothing enters the record without a
-grade.
-
-The record lives on disk. It is hash-chained, replayable, and checkable by
-anyone without the harness.
+ASSAY is a reasoning harness. It gives a language-model agent a world to think in
+that is not its context window. The agent names the parts of its environment it cares
+about as addressable states, reads them through the harness, and before it acts it
+says what the action will do to them. Code grades that claim against what the
+environment reports. What held goes into the record, what missed is marked, and the
+agent learns the world one graded claim at a time. Over a run the record becomes a
+world model the agent consults by address instead of by memory: a state is looked up,
+not recalled, so a long run does not decay the way a long context does, with details
+lost in the middle and referents drifting, and the agent cannot fill its own model
+with things it merely said. The record lives on disk, hash-chained, replayable, and
+checkable by anyone without the harness.
 
 ## Five layers
 
