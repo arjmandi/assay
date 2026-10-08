@@ -28,12 +28,15 @@ malformed line is a bug of the client, never a refusal.
 
 from __future__ import annotations
 
+import argparse
 import dataclasses
 import functools
 from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any, Protocol, Self
 
 from .core import AssayError
+from .predictions import claims_help
 from .records import (
     Receipt,
     _bool,
@@ -371,9 +374,66 @@ class InstallModuleResult:
         return _schema({"record": {"type": "object"}}, ("record",))
 
 
-# --- the table ----------------------------------------------------------------
+# --- the command-line surface -------------------------------------------------
 
 Handler = Callable[..., Any]
+
+
+@dataclasses.dataclass(frozen=True)
+class Argument:
+    """One `add_argument` call of a command: the flags, then the keyword
+    arguments exactly as the parser spells them."""
+
+    flags: tuple[str, ...]
+    options: Mapping[str, Any]
+
+
+def arg(*flags: str, **options: Any) -> Argument:
+    return Argument(flags, options)
+
+
+@dataclasses.dataclass(frozen=True)
+class Group:
+    """A command that holds sub-commands (`assay channel declare`): its
+    name, its help and the namespace field the chosen sub-command lands
+    in."""
+
+    name: str
+    help: str
+    dest: str
+
+
+@dataclasses.dataclass(frozen=True)
+class Command:
+    """The command-line surface of an operation, from which the parser is
+    built. `epilog` renders only when help does (the claims table imports
+    the observation kinds). `lifecycle` marks the commands that run before
+    any run is loaded (start, stop, version, doctor) and return the exit
+    status. `run` is what the command line executes for a daemon operation,
+    its client; for an offline operation the handler is the function."""
+
+    name: str
+    help: str
+    arguments: tuple[Argument, ...] = ()
+    epilog: Callable[[], str] | None = None
+    group: Group | None = None
+    lifecycle: bool = False
+    run: Handler | None = None
+
+
+CHANNEL = Group("channel", "declare and list registered channels (named readings)", "channel_command")
+MODEL = Group(
+    "model",
+    "the general world-model tier: replay-fit is trust; fit models earn batching",
+    "model_command",
+)
+MODULE = Group("module", "behavior modules: list the active set, install one (owner)", "module_command")
+GOAL = Group("goal", "the standing goal: propose revisions (agent), ratify (owner)", "goal_command")
+SPEND = Group("spend", "the external spend feed (the kernel cannot see the LLM bill)", "spend_command")
+GROUPS = (CHANNEL, MODEL, MODULE, GOAL, SPEND)
+
+
+# --- the table ----------------------------------------------------------------
 
 
 @dataclasses.dataclass(frozen=True)
@@ -384,7 +444,8 @@ class Operation:
     `(daemon, run, request) -> result`, or the command-line function of an
     offline operation; `paid` marks the operations that spend, `owner` the
     ones that need the owner token, `offline` the ones the client runs from
-    disk without the daemon."""
+    disk without the daemon; `command` is the command-line surface, None
+    for the operations the client uses on its own (`ping`, `observe`)."""
 
     name: str
     request: type[Record] | None
@@ -393,6 +454,15 @@ class Operation:
     paid: bool = False
     owner: bool = False
     offline: bool = False
+    command: Command | None = None
+
+    @property
+    def path(self) -> str | None:
+        """The command path (`channel declare`), None without a command."""
+        command = self.command
+        if command is None:
+            return None
+        return command.name if command.group is None else f"{command.group.name} {command.name}"
 
     def decode(self, obj: Mapping[str, Any]) -> Any:
         """The request record from the wire fields, None for an operation
@@ -400,26 +470,421 @@ class Operation:
         return None if self.request is None else self.request.from_json(obj)
 
 
+def _offline(name: str, handler: Handler, command: Command, *, owner: bool = False) -> Operation:
+    return Operation(name, None, None, handler, owner=owner, offline=True, command=command)
+
+
+_DECLARE = ("--declare",)
+_AT = arg("--at", type=int, dest="at_event")
+
+
 @functools.cache
 def operations() -> tuple[Operation, ...]:
-    """The table. Built on first read, since it binds the daemon's handlers
-    and the daemon imports this module."""
-    from . import broker
+    """The table, in the order the command line lists its commands. Built on
+    first read, since it binds the daemon's handlers and the command line's
+    functions, and both modules import this one. The owner operations
+    `approve`, `waive` and `goal ratify` are offline here and move into the
+    daemon with #13."""
+    from . import broker, cli
 
     return (
         Operation("ping", PingRequest, PingResult, broker.serve_ping),
         Operation("observe", ObserveRequest, ObserveResult, broker.serve_observe),
-        Operation("act", ActRequest, ReceiptResult, broker.serve_act, paid=True),
-        Operation("commit", CommitRequest, ReceiptResult, broker.serve_commit, paid=True),
-        Operation("reset", ResetRequest, ReceiptResult, broker.serve_reset, paid=True),
+        _offline(
+            "start",
+            cli.start_command,
+            Command(
+                "start",
+                "start or resume the one persistent run",
+                arguments=(
+                    arg(
+                        "game_id",
+                        metavar="world_id",
+                        help="a label for this run, kept as given: up to 64 characters with no whitespace, "
+                        "control characters or path separators. A benchmark adapter may read it to pick the instance",
+                    ),
+                    arg("--seed", type=int, default=0, help=argparse.SUPPRESS),
+                    arg(
+                        "--adapter",
+                        help="world adapter factory: module:factory or /path/file.py:factory",
+                    ),
+                    arg(
+                        "--registry",
+                        type=Path,
+                        help="JSON file registering the actions, their parameter schemas and the action "
+                        "budget; required for a fresh run, optional on resume (the pinned one is used)",
+                    ),
+                    arg(
+                        "--mode",
+                        choices=(broker.LOCAL_MODE, broker.REMOTE_MODE),
+                        help="local simulator (default), or expiring remote competition validation",
+                    ),
+                    arg(
+                        "--import",
+                        dest="import_knowledge",
+                        type=Path,
+                        metavar="KNOWLEDGE.json",
+                        help="import a prior run's exported knowledge (lands FOREIGN, demoted)",
+                    ),
+                    arg(
+                        "--owner-token-file",
+                        type=Path,
+                        metavar="PATH",
+                        help="write the owner token to this file (mode 0600, outside the run "
+                        "directory) instead of printing it; ASSAY_OWNER_TOKEN_FILE does the same",
+                    ),
+                ),
+                lifecycle=True,
+            ),
+        ),
+        _offline(
+            "stop",
+            cli.stop_command,
+            Command(
+                "stop",
+                "stop this run's environment owner (the daemon) cleanly; "
+                "`assay start` resumes the run later",
+                lifecycle=True,
+            ),
+        ),
+        _offline(
+            "version",
+            cli.version_command,
+            Command(
+                "version",
+                "the harness version, the journal spec it writes, the interpreter",
+                lifecycle=True,
+            ),
+        ),
+        _offline(
+            "doctor",
+            cli.doctor_command,
+            Command(
+                "doctor",
+                "check the interpreter, dependencies, anchors, socket path, run "
+                "state, daemon, adapter and registry; works with or without a run here",
+                lifecycle=True,
+            ),
+        ),
+        _offline(
+            "status",
+            cli.status_command,
+            Command(
+                "status",
+                "full picture: progress, image, actions, recent results, notes",
+                arguments=(arg("--history", type=int, default=8),),
+            ),
+        ),
+        _offline(
+            "view",
+            cli.view_command,
+            Command(
+                "view",
+                "inspect one event: the observation, the delta since the previous one, history",
+                arguments=(
+                    arg("--event", type=int),
+                    arg("--history", type=int, default=0),
+                    # Frame worlds only; inert on a dict run, which says so.
+                    arg(
+                        "--grid",
+                        action="store_true",
+                        help="frame worlds: print the complete exact 0-f grid",
+                    ),
+                    arg(
+                        "--frames",
+                        action="store_true",
+                        help="frame worlds: show causal animation frames",
+                    ),
+                    arg(
+                        "--crop",
+                        metavar="R0:R1,C0:C1",
+                        help="frame worlds: print an exact half-open crop",
+                    ),
+                    arg(
+                        "--export",
+                        type=Path,
+                        metavar="FILE.npz",
+                        help="frame worlds: export the grid history",
+                    ),
+                ),
+            ),
+        ),
+        Operation(
+            "act",
+            ActRequest,
+            ReceiptResult,
+            broker.serve_act,
+            paid=True,
+            command=Command(
+                "act",
+                "take one action with a prediction; the result is graded against it",
+                arguments=(
+                    arg("action"),
+                    arg("params", nargs="*", metavar="pname=value", help=argparse.SUPPRESS),
+                    arg(
+                        "--predict",
+                        required=False,
+                        help='what this action does, e.g. "change; ch counter delta = 1" (see below); required '
+                        "unless the registry sets gate: optional",
+                    ),
+                    arg("--because", help="short reason for choosing this action"),
+                    _AT,
+                    arg(
+                        *_DECLARE,
+                        action="append",
+                        default=[],
+                        metavar='"field=value"',
+                        help="structural declaration a gate or module demanded "
+                        '(e.g. --declare "worst_case=..." --declare "recovery=...")',
+                    ),
+                ),
+                epilog=claims_help,
+                run=cli.act_command,
+            ),
+        ),
+        Operation(
+            "commit",
+            CommitRequest,
+            ReceiptResult,
+            broker.serve_commit,
+            paid=True,
+            command=Command(
+                "commit",
+                "run a prediction-checked batch or a model plan; halts on the first miss",
+                arguments=(
+                    arg(
+                        "plan",
+                        nargs="?",
+                        help="a plan file, e.g. @.assay/model_plan.json from `assay model solve`",
+                    ),
+                    arg(
+                        "--step",
+                        action="append",
+                        default=[],
+                        metavar='"ACTION :: CLAIMS"',
+                        help="one action with its own prediction; repeat in execution order",
+                    ),
+                    _AT,
+                    arg(
+                        *_DECLARE,
+                        action="append",
+                        default=[],
+                        metavar='"field=value"',
+                        help="structural declaration a module demanded for a step in this batch",
+                    ),
+                ),
+                epilog=claims_help,
+                run=cli.commit_command,
+            ),
+        ),
+        Operation(
+            "reset",
+            ResetRequest,
+            ReceiptResult,
+            broker.serve_reset,
+            paid=True,
+            command=Command(
+                "reset",
+                "pay one action to rewind the current progress unit",
+                arguments=(
+                    arg(
+                        "--because",
+                        help="why the current state is worth abandoning (required unless GAME_OVER)",
+                    ),
+                    _AT,
+                    arg(
+                        *_DECLARE,
+                        action="append",
+                        default=[],
+                        metavar='"field=value"',
+                        help="structural declaration a module demanded for this reset "
+                        '(e.g. --declare "impossible=..." --declare "coverage_audit=...")',
+                    ),
+                ),
+                run=cli.reset_command,
+            ),
+        ),
+        _offline(
+            "python",
+            cli.python_command,
+            Command(
+                "python",
+                "run offline Python with the history, deltas, BFS and A* preloaded",
+                arguments=(arg("source", nargs="?"), arg("--file", type=Path)),
+            ),
+        ),
+        _offline(
+            "channel declare",
+            cli.channel_declare,
+            Command(
+                "declare",
+                "register a named reading of the observation",
+                arguments=(
+                    arg("name"),
+                    arg("--path", help="dotted keys into the dict observation, e.g. counters.red"),
+                    arg("--file", help="extractor file: def extract(obs) -> value (sandboxed)"),
+                ),
+                group=CHANNEL,
+            ),
+        ),
+        _offline(
+            "channel list",
+            cli.channel_list,
+            Command(
+                "list",
+                "list registered channels with their current readings",
+                arguments=(
+                    arg(
+                        "--read",
+                        action="store_true",
+                        help="compute extractor channels fresh (runs each extractor sandboxed) "
+                        "instead of showing the last graded reading",
+                    ),
+                ),
+                group=CHANNEL,
+            ),
+        ),
+        _offline(
+            "model init",
+            cli.model_init,
+            Command("init", "create a model.py template", group=MODEL),
+        ),
+        _offline(
+            "model replay",
+            cli.model_replay,
+            Command(
+                "replay",
+                "grade model.py's declared channels over every recorded transition",
+                group=MODEL,
+            ),
+        ),
+        _offline(
+            "model solve",
+            cli.model_solve,
+            Command(
+                "solve",
+                "search the model for a plan to a channel target",
+                arguments=(
+                    arg("--to", required=True, metavar='"ch NAME = V"', help="the goal reading"),
+                    arg("--seconds", type=float, default=15.0),
+                    arg("--max-nodes", type=int, default=100_000),
+                    arg("--max-depth", type=int, default=40),
+                ),
+                group=MODEL,
+            ),
+        ),
+        _offline(
+            "module list",
+            cli.module_list,
+            Command(
+                "list",
+                "active modules with mode and origin, plus ignored files",
+                group=MODULE,
+            ),
+        ),
         Operation(
             "install_module",
             InstallModuleRequest,
             InstallModuleResult,
             broker.serve_install_module,
             owner=True,
+            command=Command(
+                "install",
+                "owner: install a module file mid-run (journaled, manifest-pinned)",
+                arguments=(arg("path", type=Path), arg("--token")),
+                group=MODULE,
+                run=cli.module_install,
+            ),
+        ),
+        _offline(
+            "goal propose",
+            cli.goal_propose,
+            Command(
+                "propose",
+                "propose a standing-goal revision (journaled, owner ratifies)",
+                arguments=(arg("text"), arg("--because")),
+                group=GOAL,
+            ),
+        ),
+        _offline(
+            "goal list",
+            cli.goal_list,
+            Command("list", "list goal proposals and their status", group=GOAL),
+        ),
+        _offline(
+            "goal ratify",
+            cli.goal_ratify,
+            Command(
+                "ratify",
+                "owner: ratify a proposal by id (requires the owner token)",
+                arguments=(arg("id", type=int), arg("--token")),
+                group=GOAL,
+            ),
+            owner=True,
+        ),
+        _offline(
+            "export",
+            cli.export_command,
+            Command(
+                "export",
+                "export this run's earned knowledge for a future import",
+                arguments=(arg("--out", type=Path),),
+            ),
+        ),
+        _offline(
+            "spend report",
+            cli.spend_report,
+            Command(
+                "report",
+                "post cumulative usage (idempotent by --id; last entry wins)",
+                arguments=(
+                    arg("--usd", type=float, required=True),
+                    arg("--tokens", type=int, default=0),
+                    arg("--id", dest="report_id", required=True),
+                ),
+                group=SPEND,
+            ),
+        ),
+        _offline(
+            "audit",
+            cli.audit_command,
+            Command("audit", "recompute journal integrity: chain, anchors, ungated events"),
+        ),
+        _offline(
+            "approve",
+            cli.approve_command,
+            Command(
+                "approve",
+                "owner: grant one use of an approval-gated action",
+                arguments=(arg("action"), arg("--token")),
+            ),
+            owner=True,
+        ),
+        _offline(
+            "waive",
+            cli.waive_command,
+            Command(
+                "waive",
+                "owner: waive a live actuator's rehearsal quota (journaled)",
+                arguments=(arg("action"), arg("--token"), arg("--because")),
+            ),
+            owner=True,
         ),
     )
+
+
+def command_operation(args: argparse.Namespace) -> Operation:
+    """The operation a parsed command line names: for a group, the
+    sub-command's (`channel declare`)."""
+    path = str(args.command)
+    for group in GROUPS:
+        if path == group.name:
+            path = f"{group.name} {getattr(args, group.dest)}"
+            break
+    for operation in operations():
+        if operation.command is not None and operation.path == path:
+            return operation
+    raise AssayError(f"unsupported command {args.command}")
 
 
 def daemon_operation(name: Any) -> Operation:
