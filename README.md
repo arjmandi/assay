@@ -1,37 +1,72 @@
 # ASSAY
 
-ASSAY is a **referee harness** that sits between an agent (a person at a
-terminal, or an LLM agent) and a world you register:
+ASSAY is a reasoning harness for language-model agents. An agent harness
+surrounds a model with tools, memory and a control loop. ASSAY surrounds it
+with a world model the model can address.
 
-- **Enforced predict-before-act**: the agent is never told what the
-  registered actions do; every paid action requires a checkable prediction,
-  validated before anything is spent.
-- **Code-graded claims**: every prediction is graded in code against what
-  actually happened: change/noop, progress and goal gambles, executable
-  verifiers, and named channels with equality, delta and threshold claims.
-- **Hash-chained journals**: everything lands in an append-only journal with
-  a rolling hash chain and external anchors; `assay audit` recomputes
-  integrity from the artifacts alone, and any world contact that bypassed the
-  gate marks the run invalid. The journal standard and an independent checker
-  are in `verify/`, every published journal with its head in `evidence/`.
-- **Memory + agency layer**: knowledge export/import between runs (imported
-  knowledge lands FOREIGN and must be re-earned), a standing goal with a
-  proposal lane the agent cannot self-ratify, behavior modules, and safety
-  gates (destructive, approval, budget, liveness).
+The agent names the parts of its environment it cares about as addressable
+states. It reads them through the harness. Before it acts, it says what the
+action will do to them. Code grades that claim against what the environment
+reports. A claim that held enters the record. A claim that missed is marked,
+and the agent learns the world one graded claim at a time.
 
-You supply two things: a **registry** (a JSON contract of what the agent may
-do: names, typed parameter schemas, budgets, flags, the goal) and an
-**adapter** (one Python file plugging ASSAY into your world). See `GUIDE.md`
-for the user guide, `ONBOARDING.md` for attaching a new world end to end,
-`docs/ARCHITECTURE.md` for the component model, `CONSTITUTION.md` for the
-agent-facing manual, `AGENTS.md` if you are a coding agent working on the
-harness, and `bench/` for benchmark harnesses and results.
+Over a run, the record becomes a world model the agent consults by address
+instead of by memory. A state is looked up, not recalled. A long run
+therefore does not decay the way a long context does, where details are lost
+in the middle and referents drift. The agent also cannot fill its own model
+with things it merely said, because nothing enters the record without a
+grade.
+
+The record lives on disk. It is hash-chained, replayable, and checkable by
+anyone without the harness.
+
+## Five layers
+
+ASSAY places what an agent needs to reason at five layers, from the most
+general to the most specific. Each layer is a place to steer the agent, and
+each layer tells the operator where to work when the agent fails.
+
+1. **The constitution.** The mental model a domain needs, written by a human
+   once. It says how to learn any world under the harness, and it carries the
+   experience that pretraining does not. Change it when the agent lacks a way
+   of working that no training data contains.
+2. **Modules.** Reasoning in code that the agent can pick up. A module
+   watches the record and advises or demands. Change this layer when the
+   agent fails to recognize a pattern that repeats across a long trace.
+3. **The registry and the adapter.** The description of one world and the
+   only way to touch it. The registry lists the actions, their typed
+   parameters, the budgets and the goal. The adapter carries an action to the
+   world and the observation back. Change this layer when the failures come
+   from the interaction itself.
+4. **Addressable states.** The world model the agent builds: the states it
+   named, their readings, the claims it made over them and how each was
+   graded. Change this layer when reasoning breaks from forgetting or from
+   referents that drift.
+5. **The model.** Everything behind the model's API. This layer is not
+   ASSAY's.
+
+The more the model already knows the world, the less the layers above it
+need to say. The more the agent struggles on its own, the more they carry.
+
+## What you supply
+
+A world is attached with two files. The **registry** is a JSON contract of
+what the agent may do: the action names, their parameter schemas, the
+budgets, the flags and the goal. The **adapter** is one Python file that
+plugs ASSAY into your world. The kernel makes no model calls. Any model
+process that can drive a shell can operate it, and so can a person at a
+terminal.
+
+`GUIDE.md` is the user guide. `ONBOARDING.md` attaches a new world end to
+end. `docs/ARCHITECTURE.md` is the component model. `CONSTITUTION.md` is the
+manual the agent reads. `AGENTS.md` is for a coding agent working on the
+harness. `bench/` holds the benchmark worlds and their results.
 
 ## Platforms
 
 macOS and Linux. The daemon listens on a Unix domain socket, the run state is
-guarded by file locks, and verifiers run under resource limits, none of which
-Windows provides in the same form; Windows is not supported.
+guarded by file locks, and verifiers run under resource limits. Windows
+provides none of these in the same form and is not supported.
 
 ## Install
 
@@ -53,8 +88,8 @@ one:
    `[grid]` adds pillow for frame worlds (rendering). A dict world does not
    need it. `[arcagi]` adds the ARC-AGI-3 client. `[dev]` adds pytest.
    `[server]` adds the `mcp` package for `assay serve-tools`, the tool server
-   (the agent-facing operations as MCP tools over the same daemon; GUIDE
-   section 5).
+   that serves the agent-facing operations as MCP tools over the same daemon
+   (GUIDE section 5).
 3. **The CLI alone.** `pipx install '.[grid]'` puts `assay` on PATH in its own
    environment, for worlds whose adapters have no dependencies of their own.
 
@@ -77,41 +112,49 @@ mkdir demo && cd demo
 "$ASSAY" audit                                      # chain + integrity verdict
 ```
 
-Every command takes `--json` and prints one JSON document: its result record
-(`status`, `view`, `audit`, `act`, `commit`, `reset`, `channel list`, `module
-list`), its lines otherwise; a refusal is one line, `ERROR | CODE | message`,
-with the codes listed in `docs/ERRORS.md`.
+The third command declares an addressable state. The command keeps the name
+`channel` until the next release renames it to `assay state declare`, and
+the claim keyword `ch` keeps its spelling in the journal.
 
-That is one person at a terminal playing both roles; an evaluated agent does
-not start the run: the operator starts it with `--owner-token-file` and the
-agent's session begins at `assay status` (`GUIDE.md` section 5).
+Every command takes `--json` and prints one JSON document. A result record
+comes back for `status`, `view`, `audit`, `act`, `commit`, `reset`,
+`channel list` and `module list`, and the command's lines come back
+otherwise. A refusal is one line, `ERROR | CODE | message`, with the codes
+listed in `docs/ERRORS.md`.
+
+The quickstart is one person at a terminal playing both roles. An evaluated
+agent does not start the run. The operator starts it with
+`--owner-token-file`, and the agent's session begins at `assay status`
+(`GUIDE.md` section 5).
 
 ## Trust model
 
-ASSAY's record is tamper-evident, not tamper-proof. The agent and the daemon run as the
-same user, so the agent can write the run directory. The daemon holds the chain head in
-memory, verifies the journal on disk before every paid action, and refuses to continue on
-a difference, sealing the anchor file at the last trusted event; in a Claude Code session
-the shipped hooks refuse writes under `.assay/` and world access that bypasses `assay`;
-the operator holds the owner token outside the run, and approvals and waivers are granted
-inside the daemon against it. The activity log is the agent's to write, so a waiver or an
-installed module recorded there is admitted at the next start on the operator's word, not
-the daemon's; the separate-user setup is what puts it out of reach. An agent that rewrites
-the journal, the chain file, the mutation log and the anchor file consistently while the
-daemon is stopped is caught only
-by a head published or anchored outside its reach, which is why heads are published with
-every evidence pack and why a separate user for the daemon is the recommended setup where
-the stakes warrant it. Nothing the agent asserts is load-bearing: every grade is computed
-by the kernel from the world's own response, and the published journals replay through
-the engine.
+ASSAY's record is tamper-evident, not tamper-proof. The agent and the daemon
+run as the same user, so the agent can write the run directory. The daemon
+holds the chain head in memory and verifies the journal on disk before every
+paid action. On a difference it refuses to continue and seals the anchor
+file at the last trusted event. In a Claude Code session the shipped hooks
+refuse writes under `.assay/` and world access that bypasses `assay`. The
+operator holds the owner token outside the run, and approvals and waivers
+are granted inside the daemon against it. The activity log is the agent's to
+write, so a waiver or an installed module recorded there is admitted at the
+next start on the operator's word, not the daemon's. The separate-user setup
+is what puts it out of reach. An agent that rewrites the journal, the chain
+file, the mutation log and the anchor file consistently while the daemon is
+stopped is caught only by a head published or anchored outside its reach.
+That is why heads are published with every evidence pack, and why a separate
+user for the daemon is the recommended setup where the stakes warrant it.
+Nothing the agent asserts is load-bearing. Every grade is computed by the
+kernel from the world's own response, and the published journals replay
+through the engine.
 
 ## Status
 
-1.2.0, the first open-source release. The ARC-AGI-3 campaign of
+1.2.0 is the first open-source release. The ARC-AGI-3 campaign of
 2026-08-21 to 08-23 ran on the kernel published as v1.0-rc1, and the Factorio
 and OOLONG runs on that kernel plus two small fixes. The 1.2.0 kernel is a
 refactor of it, verified by replaying the 25 published run directories
-unchanged; the experiments of October 2026 ran on commit 6ea56e4 of it
+unchanged. The experiments of October 2026 ran on commit 6ea56e4 of it
 (`CHANGELOG.md`).
 
 ## License
