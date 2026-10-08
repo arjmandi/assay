@@ -683,7 +683,9 @@ def execute_model_plan(
     if not actions or len(actions) != len(predictions):
         raise AssayError("plan needs one prediction per action; rerun `assay model solve`")
     validate_batch_tokens(actions, registry)
-    _enforce_registry_gates(
+    # The modules' advisories ride on this receipt like on an act's or a
+    # hand batch's; they were consulted and discarded before #24.
+    advisories = _enforce_registry_gates(
         run,
         kind="commit",
         tokens=actions,
@@ -773,6 +775,7 @@ def execute_model_plan(
             end_event=run.events[-1].id,
             plan="model",
             steps=tuple(records),
+            modules=tuple(advisories) if advisories else None,
         ),
     )
 

@@ -236,6 +236,18 @@ def test_model_tier_promotion_and_plan(tmp_path):
         committed = run_cli(run, "commit", "@.assay/model_plan.json")
         assert committed.returncode == 0, committed.stderr
         assert "OUTCOME | GAME_COMPLETE" in committed.stdout
+        # The modules' advisories ride on a model-plan receipt like on every
+        # other paid receipt (#24; before, the plan consulted them and
+        # discarded what they said): forty paid actions on this unit is
+        # past the wall_spend threshold.
+        wall = (
+            "MODULE wall_spend | 40 paid actions on this unit; stop manual probing; "
+            "model the mechanics offline (`assay python`, or the `assay model` tier: "
+            "replay-verified models earn batching rights)"
+        )
+        assert wall in committed.stdout.splitlines()
+        receipt = json.loads(sorted((run / ".assay" / "receipts").glob("*.json"))[-1].read_text())
+        assert receipt["plan"] == "model" and receipt["modules"] == [wall]
         # Machine plan steps are gated (predict_ok set) and marked machine.
         events = _events(run)
         assert events[-1]["state"] == "WIN"
