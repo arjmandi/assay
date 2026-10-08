@@ -63,9 +63,9 @@ if TYPE_CHECKING:
 OBSERVATION_LINES = 48
 NOTES_LINES = 120
 NOTES_LINE_WIDTH = 240
-# The token budget `assay status --brief` fits when the registry sets no
-# `status_budget`, and the least a budget keeps of each block it cuts
-# (docs/ARCHITECTURE.md section 7.6).
+# The token budget `assay status --brief` fits (the registry's
+# `status_budget` when that is smaller), and the least a budget keeps of
+# each block it cuts (docs/ARCHITECTURE.md section 7.6).
 BRIEF_BUDGET = 1500
 NOTES_LINES_KEPT = 4
 OBSERVATION_LINES_KEPT = 8
@@ -781,7 +781,7 @@ def truncated_text(dropped: Sequence[str], budget: int) -> str:
     dropped (section 7.6)."""
     return (
         f"TRUNCATED | {', '.join(dropped)} dropped to fit {budget} tokens; "
-        "assay view and assay channel list show them"
+        "assay status --json carries them all"
     )
 
 
@@ -1155,15 +1155,15 @@ def notes_text(notes: NotesBlock, win_levels: int) -> list[str]:
         lines.append("NOTES | missing; create .assay/NOTES.md and keep it current")
         return lines
     content = [f"  {line[:notes.line_width]}" for line in notes.text.splitlines()]
-    if notes.tail_dropped and len(content) > notes.max_lines:
-        lines.append(
-            f"NOTES | {notes.path} (edit the file directly; the first {notes.max_lines} "
-            f"of {len(content)} lines)"
-        )
-        lines.extend(_bounded(content, notes.max_lines, head=True))
+    shown, total = notes.max_lines, len(content)
+    if total <= shown:
+        extent = "shown in full"
+    elif notes.tail_dropped:
+        extent = f"the first {shown} of {total} lines"
     else:
-        lines.append(f"NOTES | {notes.path} (edit the file directly; shown in full)")
-        lines.extend(_bounded(content, notes.max_lines, preserve_ends=True))
+        extent = f"{shown} of {total} lines"
+    lines.append(f"NOTES | {notes.path} (edit the file directly; {extent})")
+    lines.extend(_bounded(content, shown, preserve_ends=True, head=notes.tail_dropped))
     cap = notes.cap
     size = notes.size or 0
     if cap is not None and size > 2 * cap:

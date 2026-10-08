@@ -941,8 +941,12 @@ or string, `predict_ok` None or bool, `level_before` None or int, `note` string,
 - `Receipt`: `kind`, `outcome`, `detail`, `start_event`, `end_event`, `level`, `action`,
   `predict`, `grade` (the rendered lines), `because`, `modules`, `aggregates`, `channels`,
   `steps` (a tuple of `ReceiptStep`: `event`, `action`, `ok`, `failed`, `invalid`,
-  `ungated`, `machine`, `kind`, `problem`), `plan`, `estimated_tokens` (section 7.6),
-  `timestamp`. Written to `.assay/receipts/` and to the activity log as today.
+  `ungated`, `machine`, `kind`, `problem`), `plan`, `timestamp`. Written to
+  `.assay/receipts/` and to the activity log as today. The `--json` document of a paid
+  command is these fields plus the command line's `estimated_tokens` (section 7.6), which
+  a consumer strips before treating the document as the record (a record carries unknown
+  keys through `extra`, so a round trip is harmless). The draft listed `estimated_tokens`
+  among the fields; the review of #23 removed it, since nothing on disk carries it.
 - `Mutation`: `mutation_id`, `action`, `data`, `reasoning`, `observation`, `claims` (a tuple
   of `Claim`, written by the daemon at spend time from #16 on, absent on older records),
   `timestamp`.
@@ -1377,27 +1381,33 @@ are stored as lines, the two exceptions the rule allows.
 ### 7.6 Token-aware output (#23)
 
 `estimated_tokens = len(text) // 4` on receipts and status, labelled an estimate in the
-docs. The registry key `status_budget` (tokens, optional) and `assay status --brief`:
-the renderer drops the lowest-value blocks first when over budget (the notes tail, the
-observation tail, the registry descriptions, the history beyond four lines) and appends
-one line, `TRUNCATED | <blocks> dropped to fit <budget> tokens; assay view and assay
-channel list show them`. The estimate appears in `--json` output only. The prose status
+docs. The registry key `status_budget` (tokens, optional) and `assay status --brief`,
+which renders under the smaller of that budget and 1500 tokens: the renderer drops the
+lowest-value blocks first when over budget (the notes tail, the observation tail, the
+registry descriptions, the history beyond four lines) and appends one line, `TRUNCATED |
+<blocks> dropped to fit <budget> tokens; assay status --json carries them all`. (Revised
+in the review of #23: the draft's line pointed at `assay view` and `assay channel list`,
+which hold neither the notes tail nor the registry descriptions; the one pointer that is
+always true is the record.) The estimate appears in `--json` output only. The prose status
 truncates only under `--brief` or when the registry sets `status_budget`; no published
 registry sets it, so the replay gate is unaffected.
 
-Status (#23): landed as written, with these particulars. The estimate is
-`status.estimated_tokens(text)`, `len(text) // 4` over the prose as printed, added to the
-`--json` document beside the record's fields by the command line (`cli._emit`) on `status`,
-`act`, `commit` and `reset`; it enters no record on disk (the daemon writes the receipt to
-`.assay/receipts/` and the activity log before the client renders it, so the `Receipt`
-record's `estimated_tokens` field of section 6.2 stays unset). The registry key
+Status (#23): landed as revised in review, with these particulars. The estimate is
+`status.estimated_tokens(text)`, `len(text) // 4` over the lines as printed, without the
+final newline, added to the `--json` document beside the record's fields by the command
+line (`cli._emit`) on `status`, `act`, `commit` and `reset`. The `Receipt` record has no
+such field: the document is the record's fields plus the command line's keys,
+`estimated_tokens` and, on status, `truncated`, which a consumer strips before treating
+the document as the record (a record carries unknown keys through `extra`, so a round
+trip is harmless); nothing on disk changes, since the daemon writes the receipt to
+`.assay/receipts/` and the activity log before the client renders it. The registry key
 `status_budget`, a positive integer of tokens (`registry.status_budget`; anything else is
 `REGISTRY_INVALID` with a hint naming the form), applies to every status, the one `assay
-start` prints included; `--brief` without it fits `status.BRIEF_BUDGET`, 1500 tokens, and
-with it fits the registry's. `status.fit_status` drops over the record's fields, in this
-order and each as far as it goes, until the rendering fits with its TRUNCATED line: the
-notes tail (the head that fits stays, four lines at least, and the NOTES header then says
-`the first N of M lines`), the observation tail (the head, eight lines at least), the
+start` prints included; `--brief` renders under the smaller of that budget and
+`status.BRIEF_BUDGET`, 1500 tokens. `status.fit_status` drops over the record's fields, in
+this order and each as far as it goes, until the rendering fits with its TRUNCATED line:
+the notes tail (the head that fits stays, four lines at least, and the NOTES header then
+says `the first N of M lines`), the observation tail (the head, eight lines at least), the
 registry descriptions (the action lines stay), the history beyond four lines (the last
 four stay). A budget none of it can meet leaves all four dropped, named, and the rest
 printing; a block with nothing past its floor is neither dropped nor named, so a short
@@ -1409,9 +1419,12 @@ without `--brief`. The receipt's observation block is cut by `textobs.pretty_lin
 lines with the middle omitted, and 200 characters a line), the rule status and view
 share, whose markers are unchanged; when anything was cut, one line follows the block:
 `OBSERVATION | N of M lines omitted, K line(s) cut at 200 characters; assay view --event E
---json shows it in full`, each part present when it applies. Without `--brief` and
-without the key the prose status is byte-identical to before, which the replay gate
-proves.
+--json shows it in full`, each part present when it applies and K counted over the lines
+shown. One display change the replay gate cannot see: the NOTES header of the 120-line
+cap says `120 of M lines` around the middle marker when the file is longer, where it said
+`shown in full` (no published run has more than 120 notes lines; the longest has 115).
+Without `--brief` and without the key the prose status is otherwise byte-identical to
+before, which the replay gate proves.
 
 ## 8. The trust model (1.2.0, design note 3)
 

@@ -40,9 +40,9 @@ def _observation_lines(event: Event, max_lines: int = 48) -> list[str]:
 
 def _observation_note(event: Event, max_lines: int) -> str | None:
     """The receipt's line on what its observation block left out
-    (docs/ARCHITECTURE.md section 7.6): the lines the cap omitted and the
-    lines cut to the width, and the command that shows the event whole;
-    None when nothing was cut."""
+    (docs/ARCHITECTURE.md section 7.6): the lines the cap omitted and, among
+    the lines shown, the lines cut to the width, and the command that shows
+    the event whole; None when nothing was cut."""
     total, omitted, shortened = pretty_cuts(event.observation, max_lines)
     cuts: list[str] = []
     if omitted:

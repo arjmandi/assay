@@ -71,21 +71,33 @@ def delta_lines(before: Any, after: Any, limit: int = 24) -> list[str]:
     return lines
 
 
-def _pretty(data: Any) -> tuple[list[str], int]:
-    """Every line of the pretty JSON, each cut to the width, and how many
-    were cut."""
+def _pretty(data: Any) -> tuple[list[str], list[bool]]:
+    """Every line of the pretty JSON, each cut to the width, and whether
+    each was cut."""
     try:
         text = json.dumps(data, indent=2, sort_keys=True, default=str)
     except (TypeError, ValueError):
         text = repr(data)
     lines: list[str] = []
-    shortened = 0
+    cut: list[bool] = []
     for line in text.splitlines():
-        if len(line) > LINE_LIMIT:
-            shortened += 1
-            line = line[: LINE_LIMIT - 1] + "…"
-        lines.append(line)
-    return lines, shortened
+        long = len(line) > LINE_LIMIT
+        lines.append(line[: LINE_LIMIT - 1] + "…" if long else line)
+        cut.append(long)
+    return lines, cut
+
+
+def _shown(count: int, max_lines: int, *, head_only: bool) -> tuple[int, int, int]:
+    """What a cap shows of `count` lines: the head's length, the tail's (0
+    under `head_only`) and the lines omitted between them (0 when all
+    fit)."""
+    if count <= max_lines:
+        return count, 0, 0
+    if head_only:
+        return max_lines, 0, count - max_lines
+    head = max_lines * 2 // 3
+    tail = max_lines - head
+    return head, tail, count - head - tail
 
 
 def pretty_lines(data: Any, max_lines: int = 48, *, head_only: bool = False) -> list[str]:
@@ -93,19 +105,17 @@ def pretty_lines(data: Any, max_lines: int = 48, *, head_only: bool = False) -> 
     after the head when a status budget dropped the tail (`head_only`,
     docs/ARCHITECTURE.md section 7.6)."""
     lines, _ = _pretty(data)
-    if len(lines) <= max_lines:
+    head, tail, omitted = _shown(len(lines), max_lines, head_only=head_only)
+    if not omitted:
         return lines
-    if head_only:
-        return lines[:max_lines] + [f"… {len(lines) - max_lines} lines omitted …"]
-    head = max_lines * 2 // 3
-    tail = max_lines - head
-    omitted = len(lines) - head - tail
-    return lines[:head] + [f"… {omitted} lines omitted …"] + lines[-tail:]
+    return lines[:head] + [f"… {omitted} lines omitted …"] + (lines[-tail:] if tail else [])
 
 
 def pretty_cuts(data: Any, max_lines: int = 48) -> tuple[int, int, int]:
     """What `pretty_lines` leaves out at this cap: the lines of the whole
-    pretty print, the lines the cap omits and the lines cut to the width."""
-    lines, shortened = _pretty(data)
-    omitted = len(lines) - max_lines if len(lines) > max_lines else 0
-    return len(lines), omitted, shortened
+    pretty print, the lines the cap omits and, among the lines it shows,
+    the lines cut to the width."""
+    lines, cut = _pretty(data)
+    head, tail, omitted = _shown(len(lines), max_lines, head_only=False)
+    shown = cut[:head] + (cut[-tail:] if tail else [])
+    return len(lines), omitted, sum(shown)

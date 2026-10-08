@@ -994,12 +994,14 @@ def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
 
 
 def status_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    # The registry's budget on every status, the brief default without one
-    # (docs/ARCHITECTURE.md section 7.6); the document carries the whole
-    # record either way, with the estimate of the prose this call prints
-    # and the blocks the budget dropped beside it.
+    # The registry's budget on every status; `--brief` fits BRIEF_BUDGET, or
+    # the registry's when that is smaller (docs/ARCHITECTURE.md section 7.6).
+    # The document carries the whole record either way, with the estimate of
+    # the prose this call prints and the blocks the budget dropped beside it.
     record = status_of(run, history=args.history)
-    budget = status_budget(run.registry) or (BRIEF_BUDGET if args.brief else None)
+    budget = status_budget(run.registry)
+    if args.brief:
+        budget = BRIEF_BUDGET if budget is None else min(budget, BRIEF_BUDGET)
     text, dropped = status_within(record, budget)
     _emit(args, record, text, estimated_tokens=estimated_tokens(text), truncated=list(dropped))
 
@@ -1427,8 +1429,8 @@ COMMANDS: tuple[Command, ...] = (
             arg(
                 "--brief",
                 action="store_true",
-                help="a short status: the lowest-value blocks are dropped to fit the registry's "
-                "status_budget, or 1500 tokens without one, and a TRUNCATED line names them",
+                help="a short status: the lowest-value blocks are dropped to fit 1500 tokens, or "
+                "the registry's status_budget when that is smaller, and a TRUNCATED line names them",
             ),
         ),
     ),

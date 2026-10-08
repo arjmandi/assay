@@ -671,7 +671,7 @@ _RECEIPT_KEYS = frozenset(
     {
         "kind", "outcome", "detail", "start_event", "end_event", "level", "action", "predict",
         "grade", "because", "modules", "aggregates", "channels", "steps", "plan",
-        "estimated_tokens", "timestamp",
+        "timestamp",
     }
 )
 
@@ -699,7 +699,6 @@ class Receipt:
     channels: tuple[str, ...] | None = None
     steps: tuple[ReceiptStep, ...] | None = None
     plan: str | None = None
-    estimated_tokens: int | None = None
     timestamp: str | None = None
     extra: dict[str, Any] = dataclasses.field(default_factory=dict)
 
@@ -725,7 +724,6 @@ class Receipt:
             channels=read_opt_lines(obj, record, "channels"),
             steps=None if steps_raw is None else tuple(ReceiptStep.from_json(item) for item in steps_raw),
             plan=read_opt_str(obj, record, "plan"),
-            estimated_tokens=read_opt_int(obj, record, "estimated_tokens"),
             timestamp=read_opt_str(obj, record, "timestamp"),
             extra=extras_of(obj, _RECEIPT_KEYS),
         )
@@ -738,7 +736,7 @@ class Receipt:
             "start_event": self.start_event,
             "end_event": self.end_event,
         }
-        for key in ("level", "action", "plan", "estimated_tokens", "timestamp"):
+        for key in ("level", "action", "plan", "timestamp"):
             value = getattr(self, key)
             if value is not None:
                 output[key] = value

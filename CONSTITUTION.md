@@ -61,8 +61,9 @@ an experiment with a written expectation.
    fix the notes before the next action. `assay status` prints the file in full,
    so it is also your recovery story: **after any context loss, run
    `assay status` first.** `assay status --brief` is the short form; a status
-   that ends with a TRUNCATED line names the blocks it dropped, which
-   `assay view` and `assay channel list` show in full.
+   that ends with a TRUNCATED line names the blocks it dropped: the notes are
+   in `.assay/NOTES.md`, the observation under `assay view --event N`, and the
+   whole record under `assay status --json`.
 
 ## The claim grammar
 

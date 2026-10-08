@@ -77,22 +77,27 @@ Left on the experiment branch, deliberately:
 
 - Token-aware output (#23, design note 2 section 7.6). `--json` on `status`,
   `act`, `commit` and `reset` carries `estimated_tokens`, the prose the call
-  would have printed in characters over four (an estimate, no tokenizer),
-  beside the record's fields; it enters no record on disk. The registry key
-  `status_budget`, a positive integer of tokens (anything else is
-  `REGISTRY_INVALID` with a hint naming the form), renders every status under
-  it; `assay status --brief` fits it, or 1500 tokens when the registry sets
-  none. Over budget the renderer drops the lowest-value blocks first, over the
-  `Status` record's fields and each only as far as needed: the notes tail (the
-  head that fits, four lines at least), the observation tail (eight lines at
-  least), the registry descriptions, the history beyond four lines; then one
-  line, `TRUNCATED | <blocks> dropped to fit N tokens; assay view and assay
-  channel list show them`. `status --json` carries the whole record either way,
-  with `truncated`, the blocks dropped. A receipt whose observation block was
-  cut (40 lines, 200 characters a line) says so on one line after it,
-  `OBSERVATION | N of M lines omitted, K line(s) cut at 200 characters; assay
-  view --event E --json shows it in full`. Without `--brief` and without the
-  key the status prose is unchanged, which the replay gate proves.
+  would have printed (without its final newline) in characters over four, an
+  estimate with no tokenizer, beside the record's fields; it enters no record
+  on disk, and the `Receipt` record's never-set `estimated_tokens` field is
+  gone. The registry key `status_budget`, a positive integer of tokens
+  (anything else is `REGISTRY_INVALID` with a hint naming the form), renders
+  every status under it; `assay status --brief` fits 1500 tokens, or that
+  budget when it is smaller. Over budget the renderer drops the lowest-value
+  blocks first, over the `Status` record's fields and each only as far as
+  needed: the notes tail (the head that fits, four lines at least), the
+  observation tail (eight lines at least), the registry descriptions, the
+  history beyond four lines; then one line, `TRUNCATED | <blocks> dropped to
+  fit N tokens; assay status --json carries them all`. `status --json` carries
+  the whole record either way, with `truncated`, the blocks dropped. A receipt
+  whose observation block was cut (40 lines, 200 characters a line) says so on
+  one line after it, `OBSERVATION | N of M lines omitted, K line(s) cut at
+  200 characters; assay view --event E --json shows it in full`, K counted
+  over the lines shown. The NOTES header of the 120-line cap says `120 of M
+  lines` when the file is longer, where it said `shown in full`; no published
+  run exceeds the cap, so the replay gate cannot see it, and without `--brief`
+  and without the key the status prose is otherwise unchanged, which the gate
+  proves.
 - The error catalogue and `docs/ERRORS.md` (#13, design note 2 section 7.1).
   `AssayError(message, *, code, kind, hint, detail)` in `core.py`; `errors.py`
   lists 61 codes, each with its kind and a one-line meaning, and renders

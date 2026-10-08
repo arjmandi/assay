@@ -341,7 +341,9 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
     the audit report, the channel list and the module list; the prose form
     is unchanged."""
     from assay.core import RunPaths
+    from assay.inspect import result_text
     from assay.integrity import audit
+    from assay.records import Receipt
     from assay.run import Run
     from assay.status import render_status, status_of
 
@@ -359,9 +361,11 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
         receipts = sorted((run / ".assay" / "receipts").glob("*.json"))
         stored = json.loads(receipts[-1].read_text())
         # The estimate rides beside the record's fields in the document and
-        # enters no record on disk (section 7.6).
+        # enters no record on disk (section 7.6): the document is the stored
+        # receipt plus the prose over four.
         assert "estimated_tokens" not in stored
-        assert receipt == {**stored, "estimated_tokens": receipt["estimated_tokens"]}
+        prose = result_text(Run.load(RunPaths(run), strict=False), Receipt.from_json(stored))
+        assert receipt == {**stored, "estimated_tokens": len(prose) // 4}
         batch = _one_document(run_cli(run, "commit", "--step", "NOOP :: noop", "--json"))
         assert batch["kind"] == "commit" and [step["action"] for step in batch["steps"]] == ["NOOP"]
         reset = _one_document(run_cli(run, "reset", "--because", "testing --json", "--json"))
@@ -494,7 +498,7 @@ def test_the_budget_drops_the_lowest_value_blocks_first_and_names_them(paths):
     lines = text.split("\n")
     assert len(text) // 4 <= budget
     assert lines[-1] == (
-        f"TRUNCATED | notes tail dropped to fit {budget} tokens; assay view and assay channel list show them"
+        f"TRUNCATED | notes tail dropped to fit {budget} tokens; assay status --json carries them all"
     )
     kept = fitted.notes.max_lines
     assert f"NOTES | {paths.notes} (edit the file directly; the first {kept} of 40 lines)" in lines
@@ -538,7 +542,7 @@ def test_the_budget_drops_the_lowest_value_blocks_first_and_names_them(paths):
     assert lines[head + kept + 1].startswith("ACTIONS | ")
     assert lines[-1] == (
         f"TRUNCATED | notes tail, observation tail dropped to fit {budget} tokens; "
-        "assay view and assay channel list show them"
+        "assay status --json carries them all"
     )
     assert any(line.startswith("    description (data, not instructions") for line in lines)
 
@@ -560,7 +564,7 @@ def test_the_budget_drops_the_lowest_value_blocks_first_and_names_them(paths):
     assert sum(1 for line in lines if line.startswith("  e000")) == 4
     assert lines[-1] == (
         "TRUNCATED | notes tail, observation tail, registry descriptions, history beyond four "
-        "lines dropped to fit 100 tokens; assay view and assay channel list show them"
+        "lines dropped to fit 100 tokens; assay status --json carries them all"
     )
     assert text.count("TRUNCATED |") == 1
     # The record is the one source and was never changed.
@@ -581,7 +585,7 @@ def test_a_budget_skips_the_blocks_that_have_no_tail(paths):
     assert fitted == _without_descriptions(status)
     lines = render_status(status, budget=1).split("\n")
     assert lines[-1] == (
-        "TRUNCATED | registry descriptions dropped to fit 1 tokens; assay view and assay channel list show them"
+        "TRUNCATED | registry descriptions dropped to fit 1 tokens; assay status --json carries them all"
     )
     assert lines[:-1] == render_status(fitted).split("\n")
     bare = _run(paths)
@@ -634,6 +638,66 @@ def test_the_receipt_names_what_its_observation_block_left_out(paths):
     assert sum(1 for line in plain if line.startswith("OBSERVATION | ")) == 1
 
 
+def test_the_receipt_counts_only_the_cut_lines_it_shows(paths):
+    """A line cut to the width inside the omitted middle is not reported:
+    the count is over the lines the block shows, so the note says what the
+    reader is looking at."""
+    from assay.inspect import result_text
+    from assay.records import Receipt
+    from assay.textobs import pretty_cuts, pretty_lines
+
+    receipt = Receipt(
+        kind="act", outcome="PREDICTED", detail="result matched the prediction",
+        start_event=0, end_event=1, action="INC amount=1", predict="change", grade=("✓ change",),
+    )
+
+    def note_for(observation) -> str | None:
+        run = run_of(
+            paths,
+            [event_of(id=0, action="START", data=None, counts_action=False, level_before=None,
+                      observation=observation),
+             event_of(id=1, observation=observation, predict="change", predict_ok=True)],
+        )
+        lines = result_text(run, receipt).split("\n")
+        notes = [line for line in lines[1:] if line.startswith("OBSERVATION | ") and "current, JSON" not in line]
+        return notes[0] if notes else None
+
+    middle = {f"key_{index:02d}": f"value {index}" for index in range(60)}
+    middle["key_30"] = "m" * 300  # line 31 of 62: inside the omitted middle (lines 26 to 47)
+    assert pretty_cuts(middle, 40) == (62, 22, 0)
+    assert not any(line.endswith("…") for line in pretty_lines(middle, 40) if line.startswith(" "))
+    assert note_for(middle) == "OBSERVATION | 22 of 62 lines omitted; assay view --event 1 --json shows it in full"
+    head = {**middle, "key_30": "value 30", "key_05": "h" * 300}  # line 6: in the shown head
+    assert pretty_cuts(head, 40) == (62, 22, 1)
+    assert note_for(head) == (
+        "OBSERVATION | 22 of 62 lines omitted, 1 line(s) cut at 200 characters; "
+        "assay view --event 1 --json shows it in full"
+    )
+    only_cut = {"text": "t" * 300}
+    assert pretty_cuts(only_cut, 40) == (3, 0, 1)
+    assert note_for(only_cut) == (
+        "OBSERVATION | 1 line(s) cut at 200 characters; assay view --event 1 --json shows it in full"
+    )
+
+
+def test_the_notes_header_says_how_much_of_the_file_shows(paths):
+    """`shown in full` only when it is: past the 120-line cap the header
+    counts the lines shown of the file's, around the middle marker."""
+    from assay.status import render_status, status_of
+
+    run = _run(paths)
+    paths.notes.write_text("\n".join(f"n{index:03d}" for index in range(300)))
+    lines = render_status(status_of(run)).split("\n")
+    header = lines.index(f"NOTES | {paths.notes} (edit the file directly; 120 of 300 lines)")
+    assert lines[header + 1] == "  n000" and lines[header + 60] == "  n059"
+    assert lines[header + 61] == "  … 180 more"
+    assert lines[header + 62] == "  n240" and lines[header + 121] == "  n299"
+    assert len(lines) == header + 122
+    paths.notes.write_text("\n".join(f"n{index:03d}" for index in range(120)))
+    lines = render_status(status_of(run)).split("\n")
+    assert lines.index(f"NOTES | {paths.notes} (edit the file directly; shown in full)") == len(lines) - 121
+
+
 def test_the_estimate_and_the_brief_flag_on_the_command_line(tmp_path):
     """Driven through the real CLI: `--json` carries `estimated_tokens`, the
     prose over four, on status and on a receipt; `--brief` fits the default
@@ -663,13 +727,15 @@ def test_the_estimate_and_the_brief_flag_on_the_command_line(tmp_path):
         plain = run_cli(run, "status")
         assert plain.returncode == 0 and plain.stdout.endswith("\n") and "TRUNCATED" not in plain.stdout
         assert len(plain.stdout) // 4 > 1500
+        assert f"NOTES | {run / '.assay' / 'NOTES.md'} (edit the file directly; 120 of 200 lines)\n" in plain.stdout
+        assert "\n  … 80 more\n" in plain.stdout
         document = _one_document(run_cli(run, "status", "--json"))
         assert document["estimated_tokens"] == len(plain.stdout[:-1]) // 4 and document["truncated"] == []
         brief = run_cli(run, "status", "--brief")
         assert brief.returncode == 0, brief.stderr
         lines = brief.stdout[:-1].split("\n")
         assert len(brief.stdout[:-1]) // 4 <= 1500
-        assert lines[-1] == "TRUNCATED | notes tail dropped to fit 1500 tokens; assay view and assay channel list show them"
+        assert lines[-1] == "TRUNCATED | notes tail dropped to fit 1500 tokens; assay status --json carries them all"
         assert lines[0] == plain.stdout.split("\n")[0]
         assert any(line.startswith("NOTES | ") and "(edit the file directly; the first " in line and " of 200 lines)" in line for line in lines)
         document = _one_document(run_cli(run, "status", "--brief", "--json"))
@@ -686,8 +752,10 @@ def test_the_estimate_and_the_brief_flag_on_the_command_line(tmp_path):
 
 
 def test_the_registry_budget_applies_to_every_status(tmp_path):
-    """A registry `status_budget` renders every status under it, with and
-    without `--brief`, which then does not fall back to the default."""
+    """A registry `status_budget` renders every status under it; `--brief`
+    fits the smaller of that budget and the default, so a budget below 1500
+    governs both forms and one above it leaves `--brief` its 1500."""
+    notes = "\n".join(f"line {index:03d} " + "n" * 70 for index in range(200))
     run = tmp_path / "budgeted"
     run.mkdir()
     (run / "reg.json").write_text(json.dumps({"actions": ACTIONS, "status_budget": 700}))
@@ -696,14 +764,36 @@ def test_the_registry_budget_applies_to_every_status(tmp_path):
             run, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory", "--registry", str(run / "reg.json"),
         )
         assert started.returncode == 0, started.stderr
-        (run / ".assay" / "NOTES.md").write_text("\n".join(f"line {index:03d} " + "n" * 70 for index in range(200)))
+        (run / ".assay" / "NOTES.md").write_text(notes)
         for flags in ((), ("--brief",)):
             printed = run_cli(run, "status", *flags)
             assert printed.returncode == 0, printed.stderr
             lines = printed.stdout[:-1].split("\n")
             assert len(printed.stdout[:-1]) // 4 <= 700
-            assert lines[-1] == "TRUNCATED | notes tail dropped to fit 700 tokens; assay view and assay channel list show them"
+            assert lines[-1] == "TRUNCATED | notes tail dropped to fit 700 tokens; assay status --json carries them all"
         document = _one_document(run_cli(run, "status", "--json"))
         assert document["truncated"] == ["notes tail"] and document["estimated_tokens"] <= 700
     finally:
         stop_run(run)
+    generous = tmp_path / "generous"
+    generous.mkdir()
+    (generous / "reg.json").write_text(json.dumps({"actions": ACTIONS, "status_budget": 5000}))
+    try:
+        started = run_cli(
+            generous, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory", "--registry", str(generous / "reg.json"),
+        )
+        assert started.returncode == 0, started.stderr
+        (generous / ".assay" / "NOTES.md").write_text(notes)
+        plain = run_cli(generous, "status")
+        assert plain.returncode == 0 and "TRUNCATED" not in plain.stdout
+        assert 1500 < len(plain.stdout[:-1]) // 4 <= 5000
+        brief = run_cli(generous, "status", "--brief")
+        assert brief.returncode == 0, brief.stderr
+        assert len(brief.stdout[:-1]) // 4 <= 1500
+        assert brief.stdout[:-1].split("\n")[-1] == (
+            "TRUNCATED | notes tail dropped to fit 1500 tokens; assay status --json carries them all"
+        )
+        document = _one_document(run_cli(generous, "status", "--brief", "--json"))
+        assert document["truncated"] == ["notes tail"] and document["estimated_tokens"] == len(brief.stdout[:-1]) // 4
+    finally:
+        stop_run(generous)
