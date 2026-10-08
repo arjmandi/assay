@@ -71,7 +71,7 @@ def test_status_shows_readings_without_spawning_extractors(tmp_path):
     """Why the count goes through the cache: an extractor leaves no trace
     outside its scratch directory (the sandbox refuses the marker file the
     old test had it write), so its runs are counted through what the daemon
-    caches at grade time in `.assay/state_readings.json`. Why 20 against
+    caches at grade time in `.assay/channel_readings.json`. Why 20 against
     21: the extractor reads counter times ten plus one when the lamp is on,
     so after the graded act the cache holds 20 at e1, and once the lamp is
     on a fresh run can only read 21; a status line that says 20 came from
@@ -82,7 +82,7 @@ def test_status_shows_readings_without_spawning_extractors(tmp_path):
     run = tmp_path / "readings"
     _prepare(run, budget={"actions": 20})
     (run / "tens.py").write_text(EXTRACTOR)
-    cache = run / ".assay" / "state_readings.json"
+    cache = run / ".assay" / "channel_readings.json"
 
     def graded_readings() -> dict:
         return json.loads(cache.read_text()) if cache.exists() else {}
@@ -239,5 +239,35 @@ def test_a_model_declaring_channels_still_replays(tmp_path):
         created = run_cli(run, "model", "init")
         assert created.returncode == 0 and created.stdout.rstrip("\n") == f"CREATED | {run / 'model.py'}; declare STATES, define next()"
         assert "STATES = []  # e.g. [\"counter\", \"level\"]: registered state names you model" in (run / "model.py").read_text()
+    finally:
+        stop_run(run)
+
+
+def test_a_readings_cache_from_before_the_rename_is_read_after_a_resume(tmp_path):
+    """The daemon's cache of graded extractor readings keeps its on-disk
+    name, `.assay/channel_readings.json`, so a run directory written before
+    the rename shows its last graded readings after a resume instead of
+    `not yet graded`, and no second cache appears beside it."""
+    run = tmp_path / "cache"
+    _prepare(run, budget={"actions": 20})
+    (run / "tens.py").write_text(EXTRACTOR)
+    cache = run / ".assay" / "channel_readings.json"
+    try:
+        assert _start(run).returncode == 0
+        assert run_cli(run, "state", "declare", "tens", "--file", "tens.py").returncode == 0
+        acted = run_cli(run, "act", "INC", "amount=2", "--predict", "ch tens = 20")
+        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout, acted.stdout
+        assert json.loads(cache.read_text()) == {"tens": {"event": 1, "value": 20}}
+        assert run_cli(run, "stop").returncode == 0
+        # The directory as an earlier kernel left it: the cache under its
+        # name, holding a reading only that file can account for.
+        cache.write_text(json.dumps({"tens": {"event": 1, "value": 77}}))
+        assert _start(run).returncode == 0
+        status = run_cli(run, "status")
+        assert "tens=77 @e1 (extractor, last graded)" in status.stdout, status.stdout
+        listed = run_cli(run, "state", "list")
+        assert "tens=77 @e1 (extractor, last graded)" in listed.stdout
+        assert json.loads(cache.read_text()) == {"tens": {"event": 1, "value": 77}}
+        assert sorted(path.name for path in (run / ".assay").glob("*readings*")) == ["channel_readings.json"]
     finally:
         stop_run(run)

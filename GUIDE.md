@@ -191,9 +191,9 @@ then declare **addressable states**, named readings of it, at run time:
 `assay state declare price --path market.price` (a dotted path), or
 `--file extractor.py` for a computed reading (`def extract(obs) -> value`,
 sandboxed). States are what claims like `ch price delta >= 5` grade
-against, and what world models declare: a `model.py` names the states it
-predicts in `STATES`, and `CHANNELS`, the name before 1.2.0, is read for
-one release, since models under that name exist in the published runs.
+against, and what world models declare. A `model.py` names the states it
+predicts in `STATES`. The published runs hold models that named them
+`CHANNELS`, so that name is read for one release.
 
 Two facts worth knowing before you write an adapter:
 

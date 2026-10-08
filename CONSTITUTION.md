@@ -123,7 +123,7 @@ state), `level` (progress units completed) and `budget_remaining` (paid
 actions left under the cap) are built in. Declare your own with
 `assay state declare NAME --path a.b.c` (a dotted path into the
 observation) or `--file extractor.py` (`def extract(obs) -> value`,
-sandboxed like a verifier). A claim naming an undeclared state is refused
+sandboxed like a verifier). A claim naming an unregistered state is refused
 free and counted. Declare the referent first. Claims on `goal`/`level` are
 gambles; the rest meter your world model. Any claim may end with `@within Ns`
 to only grade if the result settled in time (a late settle is UNGRADABLE, not

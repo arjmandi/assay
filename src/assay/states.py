@@ -79,9 +79,10 @@ def declarations_path(paths: RunPaths) -> Path:
 
 
 def readings_path(paths: RunPaths) -> Path:
-    """Last graded extractor readings, written by the daemon only (so it never
-    races the CLI's writes to channels.json); the cache keeps its original name."""
-    return paths.state / "state_readings.json"
+    """Last graded extractor readings, written by the daemon only, so it never
+    races the CLI's writes to channels.json. The cache keeps its original
+    name on disk."""
+    return paths.state / "channel_readings.json"
 
 
 def load_readings(paths: RunPaths) -> dict[str, dict[str, Any]]:

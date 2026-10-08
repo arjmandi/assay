@@ -133,7 +133,7 @@ def read_state(name, obs):
         return node
     return extractors[name](obs)
 
-# STATES names the states the model predicts; CHANNELS, the name before
+# STATES names the states the model predicts. CHANNELS, the name before
 # 1.2.0, is read for one release.
 declared = [str(name) for name in getattr(model, "STATES", getattr(model, "CHANNELS", []))]
 
@@ -315,7 +315,7 @@ def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> di
 
 
 def _declared_states(run: Run) -> list[str]:
-    """Read STATES from model.py without executing agent code in-process;
+    """Read STATES from model.py without executing agent code in-process.
     CHANNELS, the name before 1.2.0, is read for one release."""
     paths = run.paths
     source = model_source(paths)

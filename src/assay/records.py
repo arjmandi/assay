@@ -34,10 +34,10 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 GAMBLE_KINDS = frozenset({"win", "level_up"})
-# The state claims keep the kinds' frozen spelling on the journal; so does the
+# The state claims keep the kinds' frozen spelling on the journal. So does the
 # `channel` field that names the state a claim is on.
 STATE_KINDS = frozenset({"channel_eq", "channel_delta", "channel_cross"})
-_MILESTONE = frozenset({"goal", "level"})  # state claims on these gamble; the rest world-model
+_MILESTONE = frozenset({"goal", "level"})  # state claims on these gamble, the rest are world-model
 
 
 def claim_bucket(kind: str, state: str | None = None) -> str:

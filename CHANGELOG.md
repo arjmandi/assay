@@ -937,16 +937,21 @@ Left on the experiment branch, deliberately:
   `state_value`, `state_readings`, `StateReadings`, `StateList`,
   `state_list_of`, `state_list_text`, `state_declared_text`,
   `state_change_lines`, `grade_state_claim`, `check_state_references`,
-  `records.STATE_KINDS`). Nothing on the journal or beside it changes
-  spelling: the claim kinds `channel_eq`, `channel_delta` and
-  `channel_cross`, the keyword `ch`, the `channel` field of a grade, the
-  activity kind `channel_declared` with its `channel` field, the
-  `mis_reference` record, `.assay/channels.json`, `.assay/channels/`,
-  `.assay/channel_readings.json`, and the keys of `model_fit.json`,
-  `model_plan.json` and `aggregates.json`. A run directory written by an
-  earlier kernel loads and resumes unchanged. The replay gate's vocabulary
-  map carries the EMERGENCE and MIS-REFERENCE lines, and its mask covers
-  both `CHANNELS |` and `STATES |`.
+  `records.STATE_KINDS`). The journal keeps every spelling: the claim kinds
+  `channel_eq`, `channel_delta` and `channel_cross`, the keyword `ch`, the
+  `channel` field of a grade. Beside the journal, the activity kind
+  `channel_declared` with its `channel` field, the `mis_reference` record,
+  `.assay/channels.json`, `.assay/channels/`, `.assay/channel_readings.json`,
+  and the keys of `model_fit.json`, `model_plan.json` and `aggregates.json`
+  keep theirs. The receipt files under `.assay/receipts/` and the activity
+  log's receipt records carry their state lines under `states` from 1.2.0
+  on, where earlier runs carry them under `channels`. Nothing reads that key
+  back, and the records carry an unknown key through. A run directory
+  written by an earlier kernel loads and resumes unchanged, its cached
+  extractor readings included. The replay gate's vocabulary map carries the
+  EMERGENCE and MIS-REFERENCE lines, and its mask covers both `CHANNELS |`
+  and `STATES |`. The entry "Channel readings" under Added above describes
+  the block and `assay channel list --read` under the earlier words.
 
 ### Removed
 

@@ -15,8 +15,8 @@ Every paid action needs a checkable prediction, validated before anything is
 spent and graded in code against what the world actually reported. Everything
 lands in an append-only journal under a rolling hash chain whose heads are
 anchored outside the run directory, and `assay audit` recomputes the verdict
-from the artifacts alone. On top of that sit addressable states, named
-readings the agent declares over the observation, sandboxed verifiers and a
+from the artifacts alone. On top of that sit addressable states (named
+readings the agent declares over the observation), sandboxed verifiers and a
 world model the agent writes,
 behavior modules that advise or demand structure, a standing goal the agent
 can propose to change but never ratify, carryover between runs that lands
@@ -528,17 +528,17 @@ counter example in it.
 
 The state pattern, worked. The Factorio M2 runs declared their states
 first and claimed every action with a state form. The irongear run declared
-seven path states at its first event (under the command's earlier name,
-`assay channel declare`):
+seven path states at its first event, as the run issued them, under the
+command's earlier name:
 
 ```bash
-assay state declare tick     --path tick
-assay state declare ents     --path entities_total
-assay state declare refusals --path policy_refusals
-assay state declare prod     --path throughput_corroboration.producer_present
-assay state declare wins     --path windows_complete
-assay state declare gears    --path target_produced_total
-assay state declare auto     --path target_automated_total
+assay channel declare tick     --path tick
+assay channel declare ents     --path entities_total
+assay channel declare refusals --path policy_refusals
+assay channel declare prod     --path throughput_corroboration.producer_present
+assay channel declare wins     --path windows_complete
+assay channel declare gears    --path target_produced_total
+assay channel declare auto     --path target_automated_total
 ```
 
 and then claimed, verbatim from the published journal:

@@ -575,24 +575,28 @@ releases, which called a state a channel: the claim kinds `channel_eq`,
 `channel_delta` and `channel_cross`, the keyword `ch`, the `channel` field of
 a grade, the activity kind `channel_declared` with its `channel` field, the
 store `.assay/channels.json`, the extractor directory `.assay/channels/` and
-the daemon's readings cache `.assay/channel_readings.json`. The command
-`assay channel declare` and `assay channel list` answer as `assay state
-declare` and `assay state list` for one release (`cli.command_line`), and
-a `model.py` naming its states `CHANNELS` is read for one release
-(section 2.7).
+the daemon's readings cache `.assay/channel_readings.json`. Two records
+beside the journal carry the new word: the receipt files under
+`.assay/receipts/` and the activity log's receipt records hold their state
+lines under `states` from 1.2.0 on, where runs recorded earlier hold them
+under `channels`. Nothing reads that key back, and the records carry an
+unknown key through. The command `assay channel declare` and `assay channel
+list` answer as `assay state declare` and `assay state list` for one release
+(`cli.command_line`), and a `model.py` naming its states `CHANNELS` is read
+for one release (section 2.7).
 
 **The worked example** (the Factorio M2 runs, `evidence/factorio`).
 The pattern is declare early, name referents, claim every action with a state
-form. The irongear run declared seven path states at its first event, under
-the command's earlier name:
+form. The irongear run declared seven path states at its first event, as the
+run issued them, under the command's earlier name:
 
-    assay state declare tick     --path tick
-    assay state declare ents     --path entities_total
-    assay state declare refusals --path policy_refusals
-    assay state declare prod     --path throughput_corroboration.producer_present
-    assay state declare wins     --path windows_complete
-    assay state declare gears    --path target_produced_total
-    assay state declare auto     --path target_automated_total
+    assay channel declare tick     --path tick
+    assay channel declare ents     --path entities_total
+    assay channel declare refusals --path policy_refusals
+    assay channel declare prod     --path throughput_corroboration.producer_present
+    assay channel declare wins     --path windows_complete
+    assay channel declare gears    --path target_produced_total
+    assay channel declare auto     --path target_automated_total
 
 and then claimed, verbatim from the journal:
 
