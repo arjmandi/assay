@@ -76,38 +76,57 @@ Left on the experiment branch, deliberately:
 ### Added
 
 - The error catalogue and `docs/ERRORS.md` (#13, design note 2 section 7.1).
-  `AssayError(message, *, code, kind, hint)` in `core.py`; `errors.py` lists
-  60 codes, each with its kind and a one-line meaning, and renders
+  `AssayError(message, *, code, kind, hint, detail)` in `core.py`; `errors.py`
+  lists 61 codes, each with its kind and a one-line meaning, and renders
   `docs/ERRORS.md` with `python -m assay.errors --render` (a test asserts the
   file is current). Every raise in `src/assay` and `src/assay_grid` names a
   code (224 call sites; an AST test refuses one without a catalogued code), with
   a hint where the message did not already say what to do. The daemon's
   calls into the adapter (the factory, the observation, a step) wrap
-  whatever is raised into `WORLD_ERROR`; a finalize failure stays the
-  warning on the receipt; anything else that is not an `AssayError` is
-  `INTERNAL` with the traceback saved. The bench adapters keep raising
-  `AssayError` without a code (`UNSPECIFIED`). The `command_end` activity
-  record of a failed command carries `code` and `error_kind`. The two
-  unguarded `int` conversions in `parse_claims` refuse an aggregate count
-  past nine digits (`CLAIM_SYNTAX`) instead of escaping as a `ValueError`.
-- `--json` (#13, section 7.3). `status`, `view`, `audit`, `act`, `commit`,
-  `reset`, `channel list` and `module list` print their result record
-  (`Status`, `View`, `AuditReport`, `Receipt`, `ChannelList`, `ModuleList`)
-  as exactly one JSON document on stdout, with stderr empty on success; on
-  a refusal the error object `{code, kind, message, hint}` alone, with the
-  exit status by kind. The `Status` record (section 7.4, `status.py`) holds
-  every fact a status line prints as a field, and `render_status` derives
-  the lines from it: the replay gate over the 25 published runs holds the
-  rendering byte for byte. The audit report is a record whose `to_json()`
-  is the shape `.assay/audit.json` always had; the view record is `{event,
-  previous, lines}` plus `exported` when `--export` wrote a file.
+  whatever the world raised into `WORLD_ERROR`, and the kernel's own shape
+  checks on the observation are `OBSERVATION_INVALID` (a broken adapter,
+  not a refused action); a finalize failure stays the warning on the
+  receipt; anything else that is not an `AssayError` is `INTERNAL` with the
+  traceback saved. A request body that does not fit the operation's record
+  is `REQUEST_MALFORMED` (usage, naming the record's fields, no traceback)
+  and a reply the client cannot read `REPLY_MALFORMED`. The bench adapters
+  keep raising `AssayError` without a code (`UNSPECIFIED`, outside the
+  table). Where a message carried its next step after a semicolon, the step
+  is the hint now, and `ACTION_PARAMS` names the registered form; the
+  claims table rides as the error's `detail`, printed after the two lines,
+  so `message` stays one line. The `command_end` activity record of a
+  failed command carries `code` and `error_kind`, and `start` and `stop`
+  write `command_start` and `command_end` records when the run state
+  existed before them. The two unguarded `int` conversions in
+  `parse_claims` refuse an aggregate count past nine digits
+  (`CLAIM_SYNTAX`) instead of escaping as a `ValueError`.
+- `--json` (#13, section 7.3, as amended in review). Every command takes
+  the flag and prints exactly one JSON document on stdout, with stderr empty
+  on success: `status`, `view`, `audit`, `act`, `commit`, `reset`, `channel
+  list` and `module list` print their result record (`Status`, `View`,
+  `AuditReport`, `Receipt`, `ChannelList`, `ModuleList`), every other
+  command `{"lines": [...]}` with the lines it would have printed; on a
+  refusal the error object `{code, kind, message, hint, detail}` alone,
+  with the exit status by kind. The document is compact, with the journal's
+  separators and no NaN (`spend report` refuses a `--usd` that is not
+  finite). The `Status` record (section 7.4, `status.py`) holds every fact
+  a status line prints as a field, none of it rendered text, and
+  `render_status` derives the lines from it: the replay gate over the 25
+  published runs holds the rendering byte for byte. The audit report is a
+  record whose `to_json()` is the shape `.assay/audit.json` always had; the
+  view record is `{event, previous, lines}` plus `exported` when `--export`
+  wrote a file.
 - The versioned protocol (#13, section 7.2). Every request is `{"v": 2,
   "token", "op", "args": {...}}` and every reply `{"v": 2, "ok": true,
   "result": {...}}` or `{"v": 2, "ok": false, "error": {code, kind, message,
   hint}}`; the daemon refuses a line without `v`, or with another value,
-  with `PROTOCOL_VERSION` before the token and the operation, and the
-  client refuses such a reply the same way, with the hint to stop and start
-  the daemon, so a daemon that outlived an upgrade is never misread.
+  with `PROTOCOL_VERSION` before the token and the operation (the integer
+  2, not a float or boolean that compares equal), and the client refuses
+  such a reply the same way, with the hint to stop and start the daemon, so
+  a daemon that outlived an upgrade is never misread. A socket wait that
+  runs out is `DAEMON_BUSY` with the hint to read the last event before
+  acting again, never to resume under a step that may still land;
+  `DAEMON_UNAVAILABLE` is the daemon not running.
 - The typed records and the run model of design note 1 (#12). `records.py`
   holds the frozen dataclasses `Event`, `Claim`, `Grade`, `Receipt` with
   `ReceiptStep`, and `Mutation`: `from_json` validates the type of every

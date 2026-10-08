@@ -306,14 +306,16 @@ assay waive SIREN --token TOK --because "..."   # journaled waiver of a rehearsa
 assay module install PATH --token TOK           # add a behavior module mid-run
 ```
 
-Machine-readable output. `status`, `view`, `audit`, `act`, `commit`,
-`reset`, `channel list` and `module list` take `--json`: exactly one JSON
-document on stdout, the command's result record (`docs/ARCHITECTURE.md`
-section 7.3: the receipt, the `Status` record, the view record, the audit
-report, the channel list, the module list), and nothing on stderr; on a
-refusal the error object `{"code", "kind", "message", "hint"}` alone, with
-the exit status the prose form would have given (2, 3, 4 or 5 by kind). The
-prose output without the flag is unchanged.
+Machine-readable output. Every command takes `--json`: exactly one JSON
+document on stdout and nothing on stderr. For `status`, `view`, `audit`,
+`act`, `commit`, `reset`, `channel list` and `module list` it is the
+command's result record (`docs/ARCHITECTURE.md` section 7.3: the `Status`
+record, the view record, the audit report, the receipt, the channel list, the
+module list); for every other command, `start` and `stop` included, it is
+`{"lines": [...]}` with the lines the command would have printed; on a
+refusal it is the error object `{"code", "kind", "message", "hint",
+"detail"}` alone, with the exit status the prose form would have given (2,
+3, 4 or 5 by kind). The prose output without the flag is unchanged.
 
 The spend feed. The kernel cannot see the LLM bill, so the launcher posts it:
 `assay spend report --usd 4.20 --tokens 91000 --id turn-7`. Entries are
@@ -339,7 +341,8 @@ the daemon is alive and ours but does not answer (a slow world inside a step,
 or hung), start refuses rather than killing it:
 
 ```
-ERROR | DAEMON_BUSY | the environment owner is busy or hung (pid N, started T); wait and rerun `assay start`, or run `assay stop` (it exits after the current step)
+ERROR | DAEMON_BUSY | the environment owner is busy or hung (pid N, started T)
+NEXT | wait and rerun `assay start`, or run `assay stop` (it exits after the current step)
 ```
 
 If `.assay` was removed by hand while the daemon lived, a fresh start refuses
@@ -614,9 +617,10 @@ registry sets `off`, `advise` or `block` per name:
 
 `assay module list` prints each active module with mode, origin,
 constitution paragraph and telemetry. In block mode an unmet demand refuses
-with `MODULE name | declaration demanded before this action: --declare f=...`,
-and the declaration always unlocks the action (`--declare "field=value"` on
-`act`, `commit` and `reset`).
+with `ERROR | MODULE_DEMAND | MODULE name | declaration demanded before this
+action: field: why` and `NEXT | repeat the command with --declare
+"field=<text>" (one flag per field); any named, non-empty text unlocks the
+action` (`--declare "field=value"` on `act`, `commit` and `reset`).
 
 Writing one. The contract, from the architecture document's section 2.5:
 
@@ -685,11 +689,13 @@ Display strings are not frozen, and `src/assay/words.py` is the law for them.
 
 Each item is the message you see and what to do. Every refusal is one line on
 stderr, `ERROR | CODE | message`, followed by `NEXT | hint` when the error
-names a next step; the exit status says what kind of error it was: 2 for a
-request that is wrong or refused by rule, 3 when the world failed or refused
-at the kernel boundary, 4 for a bug or a corrupt file, 5 when the run can no
-longer be scored or continued. `docs/ERRORS.md` lists every code with its
-kind and meaning.
+names a next step (and by the claims table when the error carries it); the
+exit status says what kind of error it was: 2 for a request that is wrong or
+refused by rule, 3 when the world failed or refused at the kernel boundary
+(`WORLD_ERROR`, the world's own refusal, or `OBSERVATION_INVALID`, an
+observation the kernel cannot read: the adapter is broken), 4 for a bug or a
+corrupt file, 5 when the run can no longer be scored or continued.
+`docs/ERRORS.md` lists every code with its kind and meaning.
 
 - A missing or mistyped adapter file:
 

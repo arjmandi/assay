@@ -261,9 +261,10 @@ what kind it was: 2 for a request that is wrong or refused by rule (the
 budget, a gate, a module demand), 3 when the world failed or refused, 4 for a
 bug (the traceback is in `.assay/last_error.txt`), 5 when the run can no
 longer be scored or continued (a tampered file, a diverged chain or replay).
-`docs/ERRORS.md` lists every code. `status`, `view`, `audit`, `act`, `commit`,
-`reset`, `channel list` and `module list` take `--json` and print the result
-record, or the error object, as one JSON document instead of the lines.
+`docs/ERRORS.md` lists every code. Every command takes `--json` and prints
+one JSON document instead of the lines: the result record (`status`, `view`,
+`audit`, `act`, `commit`, `reset`, `channel list`, `module list`), the lines
+as `{"lines": [...]}` for the others, or the error object on a refusal.
 
 ## 8. Honest limits (1.2.0)
 
