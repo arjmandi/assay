@@ -138,8 +138,8 @@ def test_a_malformed_chain_file_is_diverged_not_behind_or_absent(tmp_path, store
     from assay.integrity import audit
 
     report = audit(lenient)
-    assert report["chain"] == "DIVERGED" and report["invalid_for_scoring"] is True
-    assert any(expected in problem for problem in report["problems"])
+    assert report.chain == "DIVERGED" and report.invalid_for_scoring is True
+    assert any(expected in problem for problem in report.problems)
 
 
 def test_a_diverged_chain_refuses_strict_and_is_reported_lenient(tmp_path):
@@ -256,8 +256,8 @@ def test_a_malformed_line_is_a_finding_for_the_readers_and_a_refusal_for_a_start
     from assay.integrity import audit
 
     report = audit(Run.load(paths, strict=False))
-    assert report["events"] == 2 and report["invalid_for_scoring"] is True
-    assert report["problems"] == ["journal: line 3 malformed: Expecting value: line 1 column 1 (char 0)"]
+    assert report.events == 2 and report.invalid_for_scoring is True
+    assert report.problems == ("journal: line 3 malformed: Expecting value: line 1 column 1 (char 0)",)
 
 
 def test_a_byte_that_is_not_utf8_is_a_malformed_line(tmp_path):

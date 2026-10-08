@@ -292,37 +292,67 @@ def import_knowledge(run: Run, source: Path) -> dict[str, Any]:
     return summary
 
 
-def foreign_lines(run: Run) -> list[str]:
-    """The status FOREIGN block for an importing run."""
+def foreign_facts(run: Run) -> dict[str, Any] | None:
+    """The FOREIGN block's facts for an importing run, or None: the source
+    world and its digest, whether the prior notes are beside the journal,
+    the count of verifier candidates (None without the directory), whether a
+    model was imported, and the imported hazard tags still active."""
     paths = run.paths
     knowledge = read_json(paths.state / "imported" / "knowledge.json", None)
     if not isinstance(knowledge, dict):
-        return []
+        return None
     digest = knowledge.get("digest") or {}
+    candidates = paths.root / "imported_verifiers"
+    return {
+        "world": knowledge.get("game_id"),
+        "paid": digest.get("paid"),
+        "final_state": digest.get("final_state"),
+        "prior_notes": (paths.state / PRIOR_NOTES).exists(),
+        "verifier_candidates": len(list(candidates.glob("*.py"))) if candidates.is_dir() else None,
+        "imported_model": (paths.root / "imported_model.py").exists(),
+        "active_hazards": sum(
+            1 for tag in load_hazards(paths) if tag.get("origin") == "import" and tag.get("active")
+        ),
+    }
+
+
+def foreign_text(
+    world: Any,
+    paid: Any,
+    final_state: Any,
+    prior_notes: bool,
+    verifier_candidates: int | None,
+    imported_model: bool,
+    active_hazards: int,
+) -> list[str]:
     lines = [
-        f"FOREIGN | imported knowledge from world {knowledge.get('game_id')} "
-        f"({digest.get('paid')} paid actions, final {digest.get('final_state')}); "
+        f"FOREIGN | imported knowledge from world {world} "
+        f"({paid} paid actions, final {final_state}); "
         "everything below is demoted until re-earned here"
     ]
-    if (paths.state / PRIOR_NOTES).exists():
+    if prior_notes:
         lines.append(
             f"FOREIGN | prior notes: .assay/{PRIOR_NOTES} (Verified lines are Assumed here)"
         )
-    if (paths.root / "imported_verifiers").is_dir():
-        count = len(list((paths.root / "imported_verifiers").glob("*.py")))
+    if verifier_candidates is not None:
         lines.append(
-            f"FOREIGN | {count} verifier candidate(s) in imported_verifiers/; they "
+            f"FOREIGN | {verifier_candidates} verifier candidate(s) in imported_verifiers/; they "
             "earn standing only by being claimed and graded again"
         )
-    if (paths.root / "imported_model.py").exists():
+    if imported_model:
         lines.append(
             "FOREIGN | imported_model.py carries NO batching rights; re-earn via "
             "`assay model replay` on this run's journal"
         )
-    active = sum(1 for tag in load_hazards(paths) if tag.get("origin") == "import" and tag.get("active"))
-    if active:
+    if active_hazards:
         lines.append(
-            f"FOREIGN | {active} imported hazard tag(s) ACTIVE (declaration demand "
+            f"FOREIGN | {active_hazards} imported hazard tag(s) ACTIVE (declaration demand "
             "retained on import, the carve-out)"
         )
     return lines
+
+
+def foreign_lines(run: Run) -> list[str]:
+    """The status FOREIGN block for an importing run."""
+    facts = foreign_facts(run)
+    return [] if facts is None else foreign_text(**facts)

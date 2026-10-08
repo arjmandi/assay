@@ -201,6 +201,29 @@ def refuse_unknown(obj: Mapping[str, Any], record: str, known: frozenset[str]) -
             raise TypeError(f"{record}.{key} is not a field of the record")
 
 
+def plain(value: Any) -> Any:
+    """A record as JSON data, for the result records of the offline commands
+    (`--json`, docs/ARCHITECTURE.md section 7.3): a record that writes its
+    own form (`to_json`) does so; any other frozen dataclass becomes an
+    object of its fields; tuples become lists."""
+    to_json = getattr(value, "to_json", None)
+    if callable(to_json) and not isinstance(value, type):
+        return to_json()
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return plain_fields(value)
+    if isinstance(value, (list, tuple)):
+        return [plain(item) for item in value]
+    if isinstance(value, Mapping):
+        return {str(key): plain(item) for key, item in value.items()}
+    return value
+
+
+def plain_fields(record: Any) -> dict[str, Any]:
+    """A dataclass as the object of its fields, each as JSON data; what a
+    record's own `to_json` calls."""
+    return {field.name: plain(getattr(record, field.name)) for field in dataclasses.fields(record)}
+
+
 # --- claims and grades --------------------------------------------------------
 
 _CLAIM_OPTIONAL = (

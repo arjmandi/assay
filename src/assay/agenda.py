@@ -27,6 +27,7 @@ from __future__ import annotations
 import hashlib
 import secrets
 import time
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -276,28 +277,44 @@ def emergence_meter(run: Run) -> dict[str, int]:
     }
 
 
-def emergence_line(run: Run) -> str:
-    meter = emergence_meter(run)
+def emergence_text(verifiers: int, channels: int, model_replays: int, goal_proposals: int) -> str:
     return (
-        f"EMERGENCE | self-authored verifiers {meter['verifiers']} | declared "
-        f"channels {meter['channels']} | model replays {meter['model_replays']} | "
-        f"goal proposals {meter['goal_proposals']}"
+        f"EMERGENCE | self-authored verifiers {verifiers} | declared "
+        f"channels {channels} | model replays {model_replays} | "
+        f"goal proposals {goal_proposals}"
     )
+
+
+def emergence_line(run: Run) -> str:
+    return emergence_text(**emergence_meter(run))
+
+
+def agenda_text(
+    goal_text: str, goal_source: str, achieved: bool, pending: Sequence[tuple[int, str]]
+) -> list[str]:
+    """The AGENDA lines from their facts: the standing goal with its source,
+    whether it is achieved, and the pending proposals (id, text), the newest
+    last."""
+    lines = [
+        f"AGENDA | goal ({goal_source}): {goal_text} | "
+        f"{'ACHIEVED' if achieved else 'not achieved'}"
+    ]
+    if pending:
+        newest_id, newest_text = pending[-1]
+        lines.append(
+            f"AGENDA | {len(pending)} goal proposal(s) awaiting the owner; newest "
+            f"#{newest_id}: {str(newest_text)[:120]}"
+        )
+    return lines
 
 
 def agenda_lines(run: Run) -> list[str]:
     goal = standing_goal(run)
     events = run.events
     achieved = bool(events) and str(events[-1].state) == "WIN"
-    lines = [
-        f"AGENDA | goal ({goal['source']}): {goal['text']} | "
-        f"{'ACHIEVED' if achieved else 'not achieved'}"
+    pending = [
+        (int(item["id"]), str(item["text"]))
+        for item in list_proposals(run)
+        if item["status"] == "pending"
     ]
-    pending = [item for item in list_proposals(run) if item["status"] == "pending"]
-    if pending:
-        newest = pending[-1]
-        lines.append(
-            f"AGENDA | {len(pending)} goal proposal(s) awaiting the owner; newest "
-            f"#{newest['id']}: {str(newest['text'])[:120]}"
-        )
-    return lines
+    return agenda_text(str(goal["text"]), str(goal["source"]), achieved, pending)

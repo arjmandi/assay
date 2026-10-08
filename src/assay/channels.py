@@ -33,6 +33,7 @@ declarations (`channels.json`, written by the CLI) and the readings cache
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import json
 import re
@@ -300,36 +301,144 @@ def _render(value: Any) -> str:
     return text if len(text) <= 40 else text[:39] + "…"
 
 
-def channel_lines(run: Run, event: Event, *, fresh: bool = False) -> list[str]:
+@dataclasses.dataclass(frozen=True, slots=True)
+class HostReading:
+    """One host channel's reading at the event: the value, or the reason it
+    could not be read."""
+
+    name: str
+    ok: bool
+    value: Any
+    problem: str | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class DeclaredReading:
+    """One declared channel's reading: read live from the event (a path
+    channel, or an extractor run fresh), taken from the daemon's cache with
+    the event it was graded on, or not yet graded."""
+
+    name: str
+    form: str
+    source: str  # live, cached or none
+    ok: bool
+    value: Any
+    problem: str | None
+    event: int | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ChannelReadings:
+    """The CHANNELS block's facts (docs/ARCHITECTURE.md section 7.4): the
+    registered names, the host values and the declared readings."""
+
+    registered: tuple[str, ...]
+    host: tuple[HostReading, ...]
+    declared: tuple[DeclaredReading, ...]
+
+
+def channel_readings(run: Run, event: Event, *, fresh: bool = False) -> ChannelReadings:
     """The CHANNELS block: host values, path values read from the event, and
     extractor values from the cache (or computed fresh when asked). Never
     spawns a subprocess unless fresh is true."""
     declared = load_declared(run.paths)
-    lines = ["CHANNELS | registered: " + " · ".join(known_channels(run))]
-    host = []
+    host: list[HostReading] = []
     for name in HOST_CHANNELS:
         ok, value = channel_value(run, name, event)
-        host.append(f"{name}={_render(value) if ok else 'n/a'}")
-    lines.append("CHANNELS | host: " + " · ".join(host))
-    if not declared:
-        return lines
+        host.append(HostReading(name, ok, value if ok else None, None if ok else str(value)))
     readings = load_readings(run.paths)
-    rendered = []
+    rendered: list[DeclaredReading] = []
     for name, spec in sorted(declared.items()):
-        if spec["form"] == "path" or fresh:
+        form = str(spec["form"])
+        if form == "path" or fresh:
             ok, value = channel_value(run, name, event)
             rendered.append(
-                f"{name}={_render(value) if ok else 'unreadable'} ({spec['form']})"
+                DeclaredReading(name, form, "live", ok, value if ok else None, None if ok else str(value), None)
             )
             continue
         last = readings.get(name)
         if isinstance(last, dict) and last.get("event") is not None:
             rendered.append(
-                f"{name}={_render(last.get('value'))} @e{last['event']} (extractor, last graded)"
+                DeclaredReading(name, form, "cached", True, last.get("value"), None, int(last["event"]))
             )
         else:
-            rendered.append(f"{name}=not yet graded (extractor)")
+            rendered.append(DeclaredReading(name, form, "none", False, None, None, None))
+    return ChannelReadings(
+        registered=tuple(known_channels(run)), host=tuple(host), declared=tuple(rendered)
+    )
+
+
+def channel_text(readings: ChannelReadings) -> list[str]:
+    lines = ["CHANNELS | registered: " + " · ".join(readings.registered)]
+    host = [f"{item.name}={_render(item.value) if item.ok else 'n/a'}" for item in readings.host]
+    lines.append("CHANNELS | host: " + " · ".join(host))
+    if not readings.declared:
+        return lines
+    rendered = []
+    for item in readings.declared:
+        if item.source == "live":
+            rendered.append(f"{item.name}={_render(item.value) if item.ok else 'unreadable'} ({item.form})")
+        elif item.source == "cached":
+            rendered.append(f"{item.name}={_render(item.value)} @e{item.event} (extractor, last graded)")
+        else:
+            rendered.append(f"{item.name}=not yet graded (extractor)")
     lines.append("CHANNELS | declared: " + " · ".join(rendered))
+    return lines
+
+
+def channel_lines(run: Run, event: Event, *, fresh: bool = False) -> list[str]:
+    return channel_text(channel_readings(run, event, fresh=fresh))
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class DeclaredChannel:
+    name: str
+    form: str
+    path: str | None
+    hash: str | None
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ChannelList:
+    """What `assay channel list` knows: the registered names, the readings
+    at the last event (None on a run without events) and the declarations
+    with their path or extractor hash."""
+
+    registered: tuple[str, ...]
+    readings: ChannelReadings | None
+    declared: tuple[DeclaredChannel, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        from .records import plain
+
+        return {
+            "registered": list(self.registered),
+            "readings": None if self.readings is None else plain(self.readings),
+            "declared": [plain(item) for item in self.declared],
+        }
+
+
+def channel_list_of(run: Run, *, fresh: bool = False) -> ChannelList:
+    events = run.events
+    declared = load_declared(run.paths)
+    return ChannelList(
+        registered=tuple(known_channels(run)),
+        readings=channel_readings(run, events[-1], fresh=fresh) if events else None,
+        declared=tuple(
+            DeclaredChannel(name, str(spec["form"]), spec.get("path"), spec.get("hash"))
+            for name, spec in sorted(declared.items())
+        ),
+    )
+
+
+def channel_list_text(listing: ChannelList) -> list[str]:
+    if listing.readings is not None:
+        lines = channel_text(listing.readings)
+    else:
+        lines = ["CHANNELS | " + " · ".join(listing.registered)]
+    for item in listing.declared:
+        detail = item.path or (item.hash or "")[:12]
+        lines.append(f"  {item.name}: {item.form} {detail}")
     return lines
 
 

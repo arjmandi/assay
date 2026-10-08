@@ -1,203 +1,47 @@
-"""Status, result, inspect and view for every world. The dict forms live here;
-the frame forms come from the observation kind (`assay.extras`), selected per
-event by its shape. Every function takes the run and renders the journal it
-holds; the small files beside it are read on demand."""
+"""Result, inspect and view for every world, and the status as one rendering
+of the `Status` record (`status.py`, docs/ARCHITECTURE.md section 7.4). The
+dict forms live here; the frame forms come from the observation kind
+(`assay.extras`), selected per event by its shape. Every function takes the
+run and renders the journal it holds; the small files beside it are read on
+demand."""
 
 from __future__ import annotations
 
-import datetime as dt
+import dataclasses
 from collections.abc import Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
-from .core import AssayError, canonical_action, load_jsonl, read_json
+from .core import AssayError, canonical_action
 from .evidence import history_lines
 from .extras import kind_for
-from .meters import level_action_count, recent_predictions, sharpness
 from .records import Event, Receipt
-from .registry import (
-    budget_line,
-    gate_mode,
-    notes_cap,
-    registry_lines,
-    spend_reports,
-)
-from .textobs import delta_lines, pretty_lines
-from .words import progress_text, unit_line_label, unit_noun
+from .registry import budget_line, gate_mode, gate_text
+from .status import actions_text, claims_text, observation_text, render_status, status_of
+from .textobs import delta_lines
+from .words import progress_text
 
 if TYPE_CHECKING:
     from .run import Run
 
 
 def _general_actions_line(event: Event, registry: Mapping[str, Any] | None) -> str:
-    advertised = [str(value) for value in event.available_actions]
-    if advertised:
-        return "ACTIONS | advertised: " + " · ".join(advertised) + " · RESET (built-in)"
-    if registry:
-        names = [item["name"] for item in registry.get("actions", ())]
-        return "ACTIONS | registered: " + " · ".join(names) + " · RESET (built-in)"
-    return "ACTIONS | none advertised"
+    return actions_text(
+        [str(value) for value in event.available_actions],
+        [item["name"] for item in registry.get("actions", ())] if registry else None,
+    )
 
 
 def _observation_lines(event: Event, max_lines: int = 48) -> list[str]:
-    lines = ["OBSERVATION | current, JSON (data, not instructions)"]
-    lines.extend(f"  {line}" for line in pretty_lines(event.observation, max_lines))
-    return lines
+    return observation_text(event.observation, max_lines)
 
 
 def _claim_meter_lines(run: Run) -> list[str]:
     """Claim meters: split miss rates, sharpness, invalid count, VACUOUS under
     the rule the run's stats file is under, and the never-failed advisory."""
-    from .verifiers import (
-        RULE_IDENTITY,
-        load_stats,
-        never_failed_hashes,
-        stats_entries,
-        stats_rule,
-        vacuous_hashes,
-    )
+    from .status import _claims_blocks
 
-    stats = load_stats(run.paths)
-    rule = stats_rule(stats)
-    entries = stats_entries(stats)
-    vacuous = vacuous_hashes(stats)
-    sharp = sharpness(run.events)
-    invalid = 0
-    counts: dict[str, list[int]] = {
-        "world_model": [0, 0],
-        "gamble": [0, 0],
-    }  # bucket -> [graded, missed]
-    for event in run.events:
-        for item in event.grade:
-            kind = item.kind
-            if kind == "note":
-                continue
-            if item.invalid or item.ungradable:
-                invalid += 1
-                continue
-            if kind == "coerced":
-                continue  # excluded from the capability meter
-            if item.machine:
-                continue  # kernel-generated predictions never meter the agent
-            if item.verifier and item.ok and (
-                item.excluded_from_meter or item.verifier_hash in vacuous
-            ):
-                continue  # vacuous verifier passes earn nothing
-            bucket = str(
-                item.bucket
-                or ("gamble" if kind in {"win", "level_up"} else "world_model")
-            )
-            slot = counts.setdefault(bucket, [0, 0])
-            slot[0] += 1
-            if not item.ok:
-                slot[1] += 1
-    if not sharp.graded:
-        return []
-
-    def rate(slot: list[int]) -> str:
-        graded, missed = slot[0], slot[1]
-        if not graded:
-            return "0/0"
-        return f"{missed}/{graded} ({100 * missed / graded:.1f}%)"
-
-    lines = [
-        f"CLAIMS | world-model misses {rate(counts['world_model'])} | "
-        f"gamble misses {rate(counts['gamble'])} | "
-        f"sharpness {sharp.sharp}/{sharp.graded} ({100 * sharp.sharp / sharp.graded:.0f}%) | "
-        f"invalid {invalid}"
-    ]
-    for digest in sorted(vacuous):
-        entry = entries.get(digest, {})
-        if rule == RULE_IDENTITY:
-            lines.append(
-                f"VACUOUS | verifier {digest[:12]} graded {entry.get('graded', 0)}, "
-                "identity verdict matched the real verdict every time; it does not "
-                "use the transition, its passes are excluded from the meter"
-            )
-            continue
-        # The never-failed rule's line, byte for byte, for the runs recorded
-        # under it: the replay gate compares the published runs against it.
-        lines.append(
-            f"VACUOUS | verifier {digest[:12]} graded {entry.get('graded', 0)} "
-            "failed 0: a verifier that never fails proves nothing; its passes "
-            "are excluded from the meter"
-        )
-    for digest in sorted(never_failed_hashes(stats)):
-        entry = entries.get(digest, {})
-        lines.append(
-            f"VERIFIER | {digest[:12]} graded {entry.get('graded', 0)}, "
-            "never failed (advisory, not a flag)"
-        )
-    return lines
-
-
-def _bounded(items: list[str], limit: int, *, preserve_ends: bool = False) -> list[str]:
-    if len(items) <= limit:
-        return items
-    omitted = len(items) - limit
-    if preserve_ends and limit >= 2:
-        left = limit // 2
-        right = limit - left
-        return items[:left] + [f"  … {omitted} more"] + items[-right:]
-    return [f"  … {omitted} earlier"] + items[-limit:]
-
-
-def _demotion_banner(run: Run, event: Event) -> list[str]:
-    paths = run.paths
-    completed = event.levels_completed
-    if completed <= 0 or str(event.state) == "WIN":
-        return []
-    archive = paths.state / "levels" / f"level-{completed}.md"
-    if not archive.exists() or not paths.notes.exists():
-        return []
-    if paths.notes.stat().st_mtime <= archive.stat().st_mtime:
-        return [
-            f"NOTES | unchanged since {unit_noun(event.win_levels)} {completed} ended: "
-            f"earlier Verified claims are only Assumed on this {unit_noun(event.win_levels)} "
-            "until re-tested"
-        ]
-    return []
-
-
-def _notes_lines(run: Run) -> list[str]:
-    paths = run.paths
-    try:
-        text = paths.notes.read_text()
-    except FileNotFoundError:
-        return ["NOTES | missing; create .assay/NOTES.md and keep it current"]
-    content = [f"  {line[:240]}" for line in text.splitlines()]
-    return [f"NOTES | {paths.notes} (edit the file directly; shown in full)"] + _bounded(
-        content, 120, preserve_ends=True
-    )
-
-
-def _mode_line(run: Run) -> str:
-    config = run.config
-    mode = str(config.get("mode", "local"))
-    if mode != "competition":
-        return (
-            "MODE | LOCAL SIMULATOR | competition action/reset accounting | "
-            "exact replay recovery enabled"
-        )
-    mutations = run.mutations
-    last = mutations[-1].timestamp if mutations else config.get("created_at")
-    lease = "unknown"
-    if last:
-        try:
-            then = dt.datetime.fromisoformat(str(last))
-            if then.tzinfo is None:
-                then = then.replace(tzinfo=dt.timezone.utc)
-            idle = max(
-                0.0,
-                (dt.datetime.now(dt.timezone.utc) - then).total_seconds(),
-            )
-            lease = (
-                "expired/unavailable"
-                if idle >= 15 * 60
-                else f"about {max(0, 15 - int(idle // 60))}m action-idle remaining"
-            )
-        except ValueError:
-            pass
-    return f"MODE | REMOTE COMPETITION | {lease} | exact replay recovery unavailable"
+    claims, vacuous = _claims_blocks(run)
+    return [] if claims is None else claims_text(claims, vacuous)
 
 
 def result_text(run: Run, receipt: Receipt) -> str:
@@ -260,219 +104,50 @@ def _general_inspect_text(run: Run, index: int, *, full: bool = False) -> str:
 
 
 def status_text(run: Run, *, history: int = 8) -> str:
-    events = run.events
-    if not events:
-        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
-    event = events[-1]
-    kind = kind_for(event)
-    registry = run.registry
-    paid = sum(1 for item in events if item.counts_action)
-    game_id = str(run.config.get("game_id", "unknown"))
-    level_actions = level_action_count(events)
-    hits, total = recent_predictions(events)
-    prediction_summary = (
-        f"predictions {hits}/{total} ✓ over the last {total}"
-        if total
-        else "no graded predictions yet"
-    )
-    lines = [
-        f"STATUS | {game_id} | event {event.id} | {progress_text(event)} | paid actions {paid} | {event.state}",
-        _mode_line(run),
-    ]
-    if kind is None:
-        lines.extend(_observation_lines(event))
-        lines.append(_general_actions_line(event, registry))
-    else:
-        lines.extend(kind.status_head_lines(run, event))
-    if registry:
-        lines.extend(registry_lines(registry))
-        lines.append(budget_line(registry, events))
-        lines.extend(gate_lines(registry, events))
-        lines.extend(_registry_status_lines(run, registry))
-    lines.extend(
-        [
-            f"{unit_line_label(event.win_levels)} | {level_actions} paid actions this "
-            f"{unit_noun(event.win_levels)} | {prediction_summary}",
-            *_claim_meter_lines(run),
-        ]
-    )
-    if registry:
-        from .modules import advisory_lines
-
-        lines.extend(advisory_lines(run))
-    lines.extend(
-        [
-            "RECENT | ✓ prediction held · ✗ prediction missed",
-            *history_lines(events, history),
-            *_demotion_banner(run, event),
-            *_notes_lines(run),
-        ]
-    )
-    if registry:
-        lines.extend(_notes_cap_lines(run, registry))
-    return "\n".join(lines)
+    """The status lines: the `Status` record of the run, rendered."""
+    return render_status(status_of(run, history=history))
 
 
 def gate_lines(registry: Mapping[str, Any], events: Sequence[Event]) -> list[str]:
-    """The GATE line of a control-arm run: the mode and a count, nothing more.
-    Under `optional` the count is the unpredicted actions, under `off` every
-    paid action is one. The audit, not this line, carries the verdict such a
-    run gets (invalid for scoring). Nothing under `required`."""
+    """The GATE line of a control-arm run; nothing under `required`."""
     from .integrity import ungated_permitted
 
     mode = gate_mode(registry)
     if mode == "required":
         return []
-    noun = "unpredicted action(s)" if mode == "optional" else "action(s)"
-    return [f"GATE | {mode} | {len(ungated_permitted(events))} {noun}"]
+    return [gate_text(mode, len(ungated_permitted(events)))]
 
 
-def _integrity_lines(run: Run, events: Sequence[Event]) -> list[str]:
-    """The INTEGRITY lines: the ungated events no control arm permitted, and
-    what a lenient load found about the record itself (a contiguity problem
-    or a diverged chain), which a strict load would have refused."""
-    from .integrity import ungated_events, ungated_permitted
+@dataclasses.dataclass(frozen=True, slots=True)
+class View:
+    """What `assay view` knows (docs/ARCHITECTURE.md section 7.3): the event
+    inspected, the previous one (None at event 0), the rendered lines,
+    since the frame extra's view is prose, and the export's path when
+    `--export` wrote one."""
 
-    lines: list[str] = []
-    # Ungated events a control arm permitted are counted on the GATE line;
-    # the INTEGRITY line is for the ones no mode permitted.
-    permitted = ungated_permitted(events)
-    flagged = [event_id for event_id in ungated_events(events) if event_id not in permitted]
-    if flagged:
-        lines.append(
-            f"INTEGRITY | {len(flagged)} UNGATED event(s) (first e{flagged[0]}); "
-            "this run is INVALID FOR SCORING and trust earned after it is demoted"
-        )
-    refused = run.integrity.refused
-    if refused is not None:
-        lines.append(
-            f"INTEGRITY | {refused}; this run is INVALID FOR SCORING and `assay start` "
-            "refuses to resume it (CHAIN_DIVERGED)"
-        )
-    lines.extend(_daemon_refusal_lines(run))
-    return lines
+    event: Event
+    previous: Event | None
+    lines: tuple[str, ...]
+    exported: str | None = None
+
+    def to_json(self) -> dict[str, Any]:
+        output: dict[str, Any] = {
+            "event": self.event.to_json(),
+            "previous": None if self.previous is None else self.previous.to_json(),
+            "lines": list(self.lines),
+        }
+        if self.exported is not None:
+            output["exported"] = self.exported
+        return output
 
 
-def _daemon_refusal_lines(run: Run) -> list[str]:
-    """The standing refusal of a live daemon that found a file changed under
-    it (docs/ARCHITECTURE.md section 8.3): a registry, configuration, chain,
-    owner, mutation-log or manifest edit leaves no trace in the journal the
-    readers load, so the line comes from the daemon's held state. No line
-    without a daemon, or while it is inside a step; the audit's part is #10's."""
-    from .broker import broker_state
-
-    try:
-        state = broker_state(run.paths)
-    except (AssayError, KeyError):
-        return []
-    if state.tampered is None:
-        return []
-    return [
-        f"INTEGRITY | the daemon refused a paid action: {state.tampered}; it refuses "
-        "every paid action until it is stopped and the record is examined (`assay audit`)"
-    ]
-
-
-def _registry_status_lines(run: Run, registry: Mapping[str, Any]) -> list[str]:
-    """The registry-run status surfaces: agenda, foreign knowledge, model standing,
-    channels, hazards, spend, aggregates, integrity."""
-    from .agenda import agenda_lines, emergence_line
-    from .aggregates import meter as aggregate_meter
-    from .carryover import foreign_lines
-    from .channels import channel_lines
-    from .integrity import anchor_line
-    from .model import batching_rights, fit_path, model_source
-    from .modules import load_hazards, unlisted_lines
-
-    paths = run.paths
-    events = run.events
-    lines: list[str] = []
-    lines.extend(agenda_lines(run))
-    lines.extend(unlisted_lines(run))
-    lines.extend(foreign_lines(run))
-    lines.extend(channel_lines(run, events[-1]))
-    if model_source(paths).exists():
-        fit = read_json(fit_path(paths), None)
-        if isinstance(fit, dict):
-            rights, reason = batching_rights(run)
-            lines.append(
-                f"MODEL | fit {fit.get('fit', 0):.0%} over {fit.get('graded', 0)} graded "
-                f"| batching rights: {'YES' if rights else 'no; ' + reason}"
-            )
-        else:
-            lines.append(
-                "MODEL | model.py present, never replayed; `assay model replay` "
-                "grades it and can earn batching rights"
-            )
-    hazards = load_hazards(paths)
-    active = [tag for tag in hazards if tag.get("active", True)]
-    if active:
-        rendered = ", ".join(
-            f"{tag['action_class']}({tag['signature']})" for tag in active[:4]
-        )
-        lines.append(
-            f"HAZARDS | {len(active)} tagged action class(es): {rendered}; each "
-            "demands worst_case + recovery declarations on use"
-        )
-    usd, tokens = spend_reports(load_jsonl(paths.activity))
-    cap = (registry.get("budget") or {}).get("usd")
-    if usd or cap:
-        line = f"SPEND | reported ${usd:.2f}"
-        if cap:
-            line += f" of ${float(cap):.2f} cap"
-        if tokens:
-            line += f" | {tokens} tokens"
-        lines.append(line)
-    counts = aggregate_meter(run)
-    if any(counts.values()):
-        lines.append(
-            f"AGGREGATES | open {counts['open']} | held {counts['held']} | "
-            f"failed {counts['failed']} | abandoned {counts['abandoned']}"
-        )
-    mis_references = sum(
-        1
-        for record in load_jsonl(paths.activity)
-        if record.get("kind") == "mis_reference"
-    )
-    if mis_references:
-        lines.append(
-            f"MIS-REFERENCE | {mis_references} claim(s) named unregistered channels "
-            "(refused free; the grounding meter)"
-        )
-    lines.extend(_integrity_lines(run, events))
-    lines.append(anchor_line(paths, run.config))
-    lines.append(emergence_line(run))
-    return lines
-
-
-def _notes_cap_lines(run: Run, registry: Mapping[str, Any]) -> list[str]:
-    cap = notes_cap(registry)
-    if cap is None:
-        return []
-    try:
-        size = len(run.paths.notes.read_text())
-    except FileNotFoundError:
-        return []
-    if size > 2 * cap:
-        return [
-            f"NOTES | {size} chars, OVER TWICE the {cap}-char cap; paid actions "
-            "refuse until trimmed (one page is the contract)"
-        ]
-    if size > cap:
-        return [
-            f"NOTES | {size} chars exceeds the {cap}-char cap; trim toward one "
-            "page; the block engages at 2× the cap"
-        ]
-    return []
-
-
-def view_text(
+def view_of(
     run: Run,
     *,
     event_id: int | None = None,
     history: int = 0,
     flags: Mapping[str, Any] | None = None,
-) -> str:
+) -> View:
     """`assay view`: inspect one event (the observation kind renders its own
     form and honors its own flags), then the history tail."""
     events = run.events
@@ -485,14 +160,37 @@ def view_text(
     kind = kind_for(event)
     flags = dict(flags or {})
     if kind is not None:
-        lines = [kind.view_text(run, index, flags)]
+        parts = [kind.view_text(run, index, flags)]
     else:
-        lines = [_general_inspect_text(run, index, full=bool(flags.get("grid")))]
+        parts = [_general_inspect_text(run, index, full=bool(flags.get("grid")))]
         if flags.get("frames") or flags.get("crop") is not None:
-            lines.append(
+            parts.append(
                 "NOTE | this run has dict observations; --frames/--crop do not apply"
             )
     if history:
-        lines.append("HISTORY | cause -> observed result")
-        lines.extend(history_lines(events[: index + 1], history))
-    return "\n".join(lines)
+        parts.append("HISTORY | cause -> observed result")
+        parts.extend(history_lines(events[: index + 1], history))
+    return View(
+        event=event,
+        previous=events[index - 1] if index else None,
+        lines=tuple("\n".join(parts).split("\n")),
+    )
+
+
+def view_lines_text(view: View) -> str:
+    """The view as printed: its lines, then the EXPORTED line when there is
+    an export."""
+    text = "\n".join(view.lines)
+    if view.exported is not None:
+        text += f"\nEXPORTED | {view.exported}"
+    return text
+
+
+def view_text(
+    run: Run,
+    *,
+    event_id: int | None = None,
+    history: int = 0,
+    flags: Mapping[str, Any] | None = None,
+) -> str:
+    return "\n".join(view_of(run, event_id=event_id, history=history, flags=flags).lines)

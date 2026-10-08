@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING, Any
 import numpy as np
 from PIL import Image
 
-from assay.core import AssayError, RunPaths, canonical_action, frame_at
+from assay.core import AssayError, RunPaths, frame_at
 from assay.records import Event
 
 if TYPE_CHECKING:
@@ -82,16 +82,13 @@ def current_image(run: Run) -> Path:
     return destination.resolve()
 
 
-def history_line(events: Sequence[Event], event: Event, paid: int, mark: str) -> str:
+def history_change(events: Sequence[Event], event: Event) -> str:
+    """The frame form of a history line's change: the cells that differ
+    from the previous settled frame."""
     grid = frame_at(event)
     previous = frame_at(events[event.id - 1]) if event.id else None
-    changed = (
+    return (
         "start"
         if previous is None or previous.shape != grid.shape
         else f"{int(np.count_nonzero(previous != grid))} cells"
-    )
-    return (
-        f"  e{event.id:04d} a{paid:04d} "
-        f"L{min(event.win_levels, event.levels_completed + 1)} {canonical_action(event)}{mark} | {changed} | "
-        f"frames={len(event.frames or ())} | {event.state}"
     )

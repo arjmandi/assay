@@ -41,7 +41,7 @@ from .carryover import (
     import_knowledge,
     registry_hash_of,
 )
-from .channels import channel_lines, declare_channel, known_channels, load_declared
+from .channels import channel_list_of, channel_list_text, declare_channel
 from .integrity import anchor_line, anchor_status, audit, audit_lines, environment_anchor_file
 from .model import (
     fit_lines,
@@ -50,11 +50,10 @@ from .model import (
     solve_model,
 )
 from .modules import (
-    ModuleView,
-    active_modules,
+    module_list_of,
+    module_list_text,
     pin_external_modules,
     reconstruct_manifest,
-    unlisted_lines,
 )
 from .sandbox import (
     FORCE_VARIABLE,
@@ -81,7 +80,7 @@ from .core import (
 )
 from .errors import exit_code
 from .extras import require_kind
-from .inspect import result_text, status_text, view_text
+from .inspect import result_text, status_text, view_lines_text, view_of
 from .live import split_step
 from .ops import (
     ACT,
@@ -106,6 +105,7 @@ from .registry import (
     validate_registry,
 )
 from .run import Run
+from .status import render_status, status_of
 
 
 USAGE_HINT = "`assay --help` lists the commands and `assay COMMAND --help` a command's flags"
@@ -888,19 +888,19 @@ def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
 
 
 def status_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    print(status_text(run, history=args.history))
+    print(render_status(status_of(run, history=args.history)))
 
 
 def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     events = run.events
     flags = {"grid": args.grid, "frames": args.frames, "crop": args.crop}
-    print(view_text(run, event_id=args.event, history=args.history, flags=flags))
+    view = view_of(run, event_id=args.event, history=args.history, flags=flags)
     export = args.export
     if export:
         destination = export if export.is_absolute() else paths.root / export
-        print(
-            f"EXPORTED | {require_kind(events[-1] if events else None, 'export').export_history(run, destination)}"
-        )
+        exported = require_kind(events[-1] if events else None, "export").export_history(run, destination)
+        view = dataclasses.replace(view, exported=str(exported))
+    print(view_lines_text(view))
 
 
 def _paid(
@@ -977,15 +977,7 @@ def channel_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argp
 
 
 def channel_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    declared = load_declared(paths)
-    events = run.events
-    if events:
-        print("\n".join(channel_lines(run, events[-1], fresh=args.read)))
-    else:
-        print("CHANNELS | " + " · ".join(known_channels(run)))
-    for name, spec in sorted(declared.items()):
-        detail = spec.get("path") or spec.get("hash", "")[:12]
-        print(f"  {name}: {spec['form']} {detail}")
+    print("\n".join(channel_list_text(channel_list_of(run, fresh=args.read))))
 
 
 def model_init(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1025,21 +1017,7 @@ def model_solve(paths: RunPaths, run: Run, status: CommandStatus, args: argparse
 
 
 def module_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
-    origins = {
-        str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest
-    }
-    view = ModuleView(run)
-    print("MODULES | active (name, mode, origin), constitution, telemetry")
-    for item, mode in active_modules(run):
-        print(f"  {item.NAME} | {mode} | {origins.get(item.NAME, 'built-in')}")
-        print(f"    constitution: {item.CONSTITUTION}")
-        try:
-            telemetry = item.telemetry(view)
-        except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
-            telemetry = {"error": f"{type(error).__name__}: {error}"}
-        print(f"    telemetry: {json.dumps(telemetry, sort_keys=True, default=str)}")
-    for line in unlisted_lines(run):
-        print(line)
+    print("\n".join(module_list_text(module_list_of(run))))
 
 
 def module_install(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:

@@ -199,16 +199,16 @@ def test_chain_extend_and_audit(tmp_path, monkeypatch):
                                      predict_ok=None if i == 0 else True,
                                      grade=None if i == 0 else _event(i)["grade"])))
     report = audit(run)
-    assert report["chain"] == "intact"
-    assert report["contiguous"] and not report["ungated"]
-    assert not report["invalid_for_scoring"]
+    assert report.chain == "intact"
+    assert report.contiguous and not report.ungated
+    assert not report.invalid_for_scoring
     # Tampering: rewrite an early line -> recomputed head diverges from stored.
     lines = paths.events.read_text().splitlines()
     lines[1] = lines[1].replace('"GO"', '"XX"')
     paths.events.write_text("\n".join(lines) + "\n")
     report = audit(Run.load(paths, strict=False))
-    assert report["chain"] == "DIVERGED"
-    assert report["invalid_for_scoring"]
+    assert report.chain == "DIVERGED"
+    assert report.invalid_for_scoring
 
 
 def test_ungated_definition(tmp_path):

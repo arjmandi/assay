@@ -66,7 +66,9 @@ Built-ins (the standing nudge table plus the first structural module):
 
 from __future__ import annotations
 
+import dataclasses
 import hashlib
+import json
 import shutil
 import time
 from collections.abc import Mapping, Sequence
@@ -830,14 +832,81 @@ def _load_external(run: Run) -> list[Module]:
     return loaded
 
 
-def unlisted_lines(run: Run) -> list[str]:
-    ignored = module_inventory(run)["ignored"]
+def ignored_modules(run: Run) -> list[str]:
+    """The files in `.assay/modules` the manifest does not cover, each with
+    its reason."""
+    ignored: list[str] = module_inventory(run)["ignored"]
+    return ignored
+
+
+def ignored_text(ignored: Sequence[str]) -> list[str]:
     if not ignored:
         return []
     return [
         f"MODULES | {len(ignored)} file(s) in .assay/modules ignored (not installed "
         f"through the registry or `assay module install`): {', '.join(ignored)}"
     ]
+
+
+def unlisted_lines(run: Run) -> list[str]:
+    return ignored_text(ignored_modules(run))
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ModuleEntry:
+    name: str
+    mode: str
+    origin: str
+    constitution: str
+    telemetry: dict[str, Any]
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class ModuleList:
+    """What `assay module list` knows: the active modules with their mode,
+    origin, constitution and telemetry, and the ignored files."""
+
+    modules: tuple[ModuleEntry, ...]
+    ignored: tuple[str, ...]
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "modules": [dataclasses.asdict(entry) for entry in self.modules],
+            "ignored": list(self.ignored),
+        }
+
+
+def module_list_of(run: Run) -> ModuleList:
+    origins = {str(entry.get("name")): str(entry.get("origin")) for entry in run.manifest}
+    view = ModuleView(run)
+    entries: list[ModuleEntry] = []
+    for item, mode in active_modules(run):
+        try:
+            telemetry = item.telemetry(view)
+        except Exception as error:  # noqa: BLE001 - a module's counters never break the listing
+            telemetry = {"error": f"{type(error).__name__}: {error}"}
+        entries.append(
+            ModuleEntry(
+                name=str(item.NAME),
+                mode=str(mode),
+                origin=origins.get(item.NAME, "built-in"),
+                constitution=str(item.CONSTITUTION),
+                # As JSON data: a counter a module keeps in another type is
+                # rendered through `str`, as the listing always printed it.
+                telemetry=json.loads(json.dumps(telemetry, sort_keys=True, default=str)),
+            )
+        )
+    return ModuleList(modules=tuple(entries), ignored=tuple(ignored_modules(run)))
+
+
+def module_list_text(listing: ModuleList) -> list[str]:
+    lines = ["MODULES | active (name, mode, origin), constitution, telemetry"]
+    for entry in listing.modules:
+        lines.append(f"  {entry.name} | {entry.mode} | {entry.origin}")
+        lines.append(f"    constitution: {entry.constitution}")
+        lines.append(f"    telemetry: {json.dumps(entry.telemetry, sort_keys=True)}")
+    lines.extend(ignored_text(listing.ignored))
+    return lines
 
 
 def active_modules(run: Run) -> list[tuple[Module, str]]:

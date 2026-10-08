@@ -677,9 +677,8 @@ def check_usd_budget(
         )
 
 
-def budget_line(registry: Mapping[str, Any], events: Sequence[Event]) -> str:
-    spent = spent_actions(events)
-    cap = (registry.get("budget") or {}).get("actions")
+def budget_text(spent: int, cap: int | None) -> str:
+    """The BUDGET line from its facts."""
     if cap is None:
         return f"BUDGET | paid actions {spent} | no cap registered"
     remaining = max(0, int(cap) - spent)
@@ -687,3 +686,16 @@ def budget_line(registry: Mapping[str, Any], events: Sequence[Event]) -> str:
     if remaining == 0:
         line += "; act/commit/reset are refused (BUDGET_EXHAUSTED)"
     return line
+
+
+def budget_line(registry: Mapping[str, Any], events: Sequence[Event]) -> str:
+    return budget_text(spent_actions(events), (registry.get("budget") or {}).get("actions"))
+
+
+def gate_text(mode: str, unpredicted: int) -> str:
+    """The GATE line of a control-arm run: the mode and a count, nothing
+    more. Under `optional` the count is the unpredicted actions, under `off`
+    every paid action is one. The audit, not this line, carries the verdict
+    such a run gets (invalid for scoring)."""
+    noun = "unpredicted action(s)" if mode == "optional" else "action(s)"
+    return f"GATE | {mode} | {unpredicted} {noun}"
