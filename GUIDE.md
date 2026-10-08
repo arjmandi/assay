@@ -267,6 +267,17 @@ one JSON document instead of the lines: the result record (`status`, `view`,
 `audit`, `act`, `commit`, `reset`, `channel list`, `module list`), the lines
 as `{"lines": [...]}` for the others, or the error object on a refusal.
 
+`assay status --brief` is the short form: it drops the lowest-value blocks
+(the notes tail, the observation tail, the registry descriptions, the history
+beyond four lines, in that order and only as far as needed) to fit the
+registry's `status_budget`, or 1500 tokens when the registry sets none, and
+ends with one line, `TRUNCATED | <blocks> dropped to fit N tokens; assay view
+and assay channel list show them`. A registry `status_budget` applies to every
+status, `--brief` or not. Under `--json`, `status`, `act`, `commit` and
+`reset` also carry `estimated_tokens`, an estimate of the prose they would
+have printed (characters over four, no tokenizer), and `status` carries
+`truncated`, the blocks the budget dropped, with the record always whole.
+
 ## 8. Honest limits (1.2.0)
 
 One adapter = one observer stream; turn-based synchronous worlds only;

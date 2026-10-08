@@ -12,7 +12,7 @@ from collections.abc import Mapping
 from typing import Any
 
 _VALUE_LIMIT = 60
-_LINE_LIMIT = 200
+LINE_LIMIT = 200  # characters a pretty-printed line is cut to
 
 
 def flatten(value: Any, prefix: str = "") -> dict[str, Any]:
@@ -71,19 +71,41 @@ def delta_lines(before: Any, after: Any, limit: int = 24) -> list[str]:
     return lines
 
 
-def pretty_lines(data: Any, max_lines: int = 48) -> list[str]:
-    """Pretty JSON for an observation, truncated in the middle when long."""
+def _pretty(data: Any) -> tuple[list[str], int]:
+    """Every line of the pretty JSON, each cut to the width, and how many
+    were cut."""
     try:
         text = json.dumps(data, indent=2, sort_keys=True, default=str)
     except (TypeError, ValueError):
         text = repr(data)
-    lines = [
-        line if len(line) <= _LINE_LIMIT else line[: _LINE_LIMIT - 1] + "…"
-        for line in text.splitlines()
-    ]
+    lines: list[str] = []
+    shortened = 0
+    for line in text.splitlines():
+        if len(line) > LINE_LIMIT:
+            shortened += 1
+            line = line[: LINE_LIMIT - 1] + "…"
+        lines.append(line)
+    return lines, shortened
+
+
+def pretty_lines(data: Any, max_lines: int = 48, *, head_only: bool = False) -> list[str]:
+    """Pretty JSON for an observation, truncated in the middle when long, or
+    after the head when a status budget dropped the tail (`head_only`,
+    docs/ARCHITECTURE.md section 7.6)."""
+    lines, _ = _pretty(data)
     if len(lines) <= max_lines:
         return lines
+    if head_only:
+        return lines[:max_lines] + [f"… {len(lines) - max_lines} lines omitted …"]
     head = max_lines * 2 // 3
     tail = max_lines - head
     omitted = len(lines) - head - tail
     return lines[:head] + [f"… {omitted} lines omitted …"] + lines[-tail:]
+
+
+def pretty_cuts(data: Any, max_lines: int = 48) -> tuple[int, int, int]:
+    """What `pretty_lines` leaves out at this cap: the lines of the whole
+    pretty print, the lines the cap omits and the lines cut to the width."""
+    lines, shortened = _pretty(data)
+    omitted = len(lines) - max_lines if len(lines) > max_lines else 0
+    return len(lines), omitted, shortened

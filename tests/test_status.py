@@ -343,7 +343,7 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
     from assay.core import RunPaths
     from assay.integrity import audit
     from assay.run import Run
-    from assay.status import status_of
+    from assay.status import render_status, status_of
 
     run = tmp_path / "machine"
     run.mkdir()
@@ -357,14 +357,23 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
         assert receipt["kind"] == "act" and receipt["outcome"] == "PREDICTED"
         assert receipt["action"] == "INC amount=1" and receipt["end_event"] == 1
         receipts = sorted((run / ".assay" / "receipts").glob("*.json"))
-        assert json.loads(receipts[-1].read_text()) == receipt
+        stored = json.loads(receipts[-1].read_text())
+        # The estimate rides beside the record's fields in the document and
+        # enters no record on disk (section 7.6).
+        assert "estimated_tokens" not in stored
+        assert receipt == {**stored, "estimated_tokens": receipt["estimated_tokens"]}
         batch = _one_document(run_cli(run, "commit", "--step", "NOOP :: noop", "--json"))
         assert batch["kind"] == "commit" and [step["action"] for step in batch["steps"]] == ["NOOP"]
         reset = _one_document(run_cli(run, "reset", "--because", "testing --json", "--json"))
         assert reset["kind"] == "reset" and reset["outcome"] == "RESET" and reset["end_event"] == 3
         paths = RunPaths(run)
         status = _one_document(run_cli(run, "status", "--json"))
-        assert status == status_of(Run.load(paths, strict=False)).to_json()
+        record = status_of(Run.load(paths, strict=False))
+        assert status == {
+            **record.to_json(),
+            "estimated_tokens": len(render_status(record)) // 4,
+            "truncated": [],
+        }
         assert status["run"]["event"] == 3 and status["run"]["paid"] == 3
         assert status["recent"][-1]["action"] == "RESET" and status["kind"] is None
         view = _one_document(run_cli(run, "view", "--event", "1", "--history", "2", "--json"))
@@ -394,5 +403,307 @@ def test_every_command_with_a_result_record_takes_json(tmp_path):
         assert prose.returncode == 0 and prose.stdout.startswith("STATUS | fake1 | event 3 |")
         stopped = run_cli(run, "stop", "--json")
         assert stopped.returncode == 0 and list(json.loads(stopped.stdout)) == ["lines"]
+    finally:
+        stop_run(run)
+
+
+# --- token-aware output (docs/ARCHITECTURE.md section 7.6) ---------------------------
+
+
+def _long_run(paths, *, notes_lines: int = 40, keys: int = 60, events: int = 10):
+    """A run whose status has a tail to drop in every block: long notes, a
+    wide observation, descriptions on every action and a history past four
+    lines."""
+    from assay.registry import validate_registry
+
+    registry = validate_registry(
+        {
+            "actions": [
+                {"name": "INC", "params": {"amount": {"type": "int", "min": 1, "max": 2}},
+                 "description": "a description long enough to count: " + "d" * 120},
+                {"name": "NOOP", "params": {}, "description": "does nothing, at some length: " + "n" * 120},
+            ],
+            "budget": {"actions": 200},
+            "goal": {"text": "reach 3"},
+        }
+    )
+    observation = {f"key_{index:02d}": f"value {index}" for index in range(keys)}
+    timeline = [
+        event_of(id=0, action="START", data=None, counts_action=False, level_before=None,
+                 observation=observation, note="initial observation"),
+    ]
+    for index in range(1, events):
+        timeline.append(
+            event_of(id=index, action="INC", data={"amount": 1}, observation=observation,
+                     predict="change", predict_ok=True,
+                     grade=[{"kind": "change", "ok": True, "text": "change", "actual": "1 keys changed", "bucket": "world_model"}])
+        )
+    paths.notes.write_text("\n".join(f"note line {index:03d} " + "x" * 60 for index in range(notes_lines)))
+    return run_of(paths, timeline, registry=registry)
+
+
+def test_the_status_is_byte_identical_under_a_budget_it_fits(paths):
+    """A budget the status fits changes nothing: no block is cut and no line
+    is added, so the prose a registry without `status_budget` prints is the
+    prose it printed before."""
+    from assay.status import fit_status, render_status, status_of, status_within
+
+    status = status_of(_long_run(paths))
+    plain = render_status(status)
+    assert fit_status(status, 10**6) == (status, ())
+    assert render_status(status, budget=10**6) == plain
+    assert status_within(status, None) == (plain, ())
+    assert status_within(status, 10**6) == (plain, ())
+    assert "TRUNCATED" not in plain
+
+
+def test_the_budget_drops_the_lowest_value_blocks_first_and_names_them(paths):
+    """Over budget, the renderer drops the notes tail (the head that fits
+    stays, four lines at least), then the observation tail (eight lines at
+    least), then the registry descriptions, then the history beyond four
+    lines, over the record's fields, and appends the one TRUNCATED line
+    naming what it dropped in that order; the record itself is untouched."""
+    import dataclasses
+
+    from assay.status import (
+        HISTORY_LINES_KEPT,
+        NOTES_LINES_KEPT,
+        OBSERVATION_LINES_KEPT,
+        estimated_tokens,
+        fit_status,
+        render_status,
+        status_of,
+        truncated_text,
+    )
+
+    status = status_of(_long_run(paths))
+    before = status.to_json()
+    plain = render_status(status)
+    assert estimated_tokens(plain) == len(plain) // 4
+    assert estimated_tokens(plain) > 1200
+    assert status.observation is not None and status.observation.omitted_lines == 62 - 48
+
+    # Notes first: the largest head that fits, and nothing else touched.
+    budget = estimated_tokens(plain) - 150
+    fitted, dropped = fit_status(status, budget)
+    assert dropped == ("notes tail",)
+    assert fitted.notes.tail_dropped is True and NOTES_LINES_KEPT <= fitted.notes.max_lines < 40
+    assert fitted.observation == status.observation and fitted.registry == status.registry
+    assert fitted.recent == status.recent
+    text = render_status(status, budget=budget)
+    lines = text.split("\n")
+    assert len(text) // 4 <= budget
+    assert lines[-1] == (
+        f"TRUNCATED | notes tail dropped to fit {budget} tokens; assay view and assay channel list show them"
+    )
+    kept = fitted.notes.max_lines
+    assert f"NOTES | {paths.notes} (edit the file directly; the first {kept} of 40 lines)" in lines
+    assert lines[lines.index("  note line 000 " + "x" * 60) + kept - 1] == f"  note line {kept - 1:03d} " + "x" * 60
+    assert lines[lines.index("  note line 000 " + "x" * 60) + kept] == f"  … {40 - kept} more"
+    assert "  note line 039 " + "x" * 60 not in lines
+    # One more line of notes would not have fit.
+    wider = dataclasses.replace(fitted, notes=dataclasses.replace(fitted.notes, max_lines=kept + 1))
+    assert len(render_status(wider) + "\n" + lines[-1]) // 4 > budget
+
+    # Then the observation tail, the head alone with its count: a budget
+    # between the least and the most the two drops together can give.
+    two = ("notes tail", "observation tail")
+
+    def sized(observation_lines: int) -> int:
+        assert status.observation is not None
+        reduced = dataclasses.replace(
+            status,
+            notes=dataclasses.replace(status.notes, max_lines=NOTES_LINES_KEPT, tail_dropped=True),
+            observation=dataclasses.replace(
+                status.observation, max_lines=observation_lines,
+                omitted_lines=62 - observation_lines, tail_dropped=True,
+            ),
+        )
+        return estimated_tokens(render_status(reduced) + "\n" + truncated_text(two, 9999))
+
+    least, most = sized(OBSERVATION_LINES_KEPT), sized(47)
+    budget = (least + most) // 2
+    assert least < budget < most < 9999
+    fitted, dropped = fit_status(status, budget)
+    assert dropped == ("notes tail", "observation tail")
+    assert fitted.notes.max_lines == NOTES_LINES_KEPT
+    assert fitted.observation is not None and fitted.observation.tail_dropped is True
+    kept = fitted.observation.max_lines
+    assert OBSERVATION_LINES_KEPT <= kept < 48 and fitted.observation.omitted_lines == 62 - kept
+    text = render_status(status, budget=budget)
+    lines = text.split("\n")
+    assert len(text) // 4 <= budget
+    head = lines.index("OBSERVATION | current, JSON (data, not instructions)") + 1
+    assert lines[head] == "  {" and lines[head + kept] == f"  … {62 - kept} lines omitted …"
+    assert lines[head + kept + 1].startswith("ACTIONS | ")
+    assert lines[-1] == (
+        f"TRUNCATED | notes tail, observation tail dropped to fit {budget} tokens; "
+        "assay view and assay channel list show them"
+    )
+    assert any(line.startswith("    description (data, not instructions") for line in lines)
+
+    # Then the descriptions, then the history; a budget none of it can meet
+    # leaves all four dropped, named, and the rest printing.
+    budget = 100
+    fitted, dropped = fit_status(status, budget)
+    assert dropped == ("notes tail", "observation tail", "registry descriptions", "history beyond four lines")
+    assert fitted.registry is not None and all(action.description is None for action in fitted.registry.actions)
+    assert [action.name for action in fitted.registry.actions] == ["INC", "NOOP"]
+    assert len(fitted.recent) == HISTORY_LINES_KEPT and fitted.recent == status.recent[-4:]
+    assert fitted.observation is not None and fitted.observation.max_lines == OBSERVATION_LINES_KEPT
+    text = render_status(status, budget=budget)
+    lines = text.split("\n")
+    assert len(text) // 4 > budget
+    assert lines[0].startswith("STATUS | test | event 9 |")
+    assert "  INC amount=<int 1..2>" in lines and "  NOOP" in lines
+    assert not any(line.startswith("    description (data, not instructions") for line in lines)
+    assert sum(1 for line in lines if line.startswith("  e000")) == 4
+    assert lines[-1] == (
+        "TRUNCATED | notes tail, observation tail, registry descriptions, history beyond four "
+        "lines dropped to fit 100 tokens; assay view and assay channel list show them"
+    )
+    assert text.count("TRUNCATED |") == 1
+    # The record is the one source and was never changed.
+    assert status.to_json() == before
+    assert status.notes.max_lines == 120 and status.notes.tail_dropped is False
+
+
+def test_a_budget_skips_the_blocks_that_have_no_tail(paths):
+    """A block with nothing past its floor is neither dropped nor named: the
+    small run's status has only its one description to give, and a status
+    with nothing to give prints whole over any budget, without the line."""
+    from assay.registry import validate_registry
+    from assay.status import fit_status, render_status, status_of
+
+    status = status_of(_run(paths))
+    fitted, dropped = fit_status(status, 1)
+    assert dropped == ("registry descriptions",)
+    assert fitted == _without_descriptions(status)
+    lines = render_status(status, budget=1).split("\n")
+    assert lines[-1] == (
+        "TRUNCATED | registry descriptions dropped to fit 1 tokens; assay view and assay channel list show them"
+    )
+    assert lines[:-1] == render_status(fitted).split("\n")
+    bare = _run(paths)
+    bare.registry = validate_registry({"actions": ACTIONS, "budget": {"actions": 20}, "goal": {"text": "reach 3"}})
+    status = status_of(bare)
+    assert status.registry is not None and all(action.description is None for action in status.registry.actions)
+    assert fit_status(status, 1) == (status, ())
+    assert render_status(status, budget=1) == render_status(status)
+
+
+def _without_descriptions(status):
+    """The record with every action's description gone, as the budget leaves it."""
+    import dataclasses
+
+    registry = status.registry
+    actions = tuple(dataclasses.replace(action, description=None) for action in registry.actions)
+    return dataclasses.replace(status, registry=dataclasses.replace(registry, actions=actions))
+
+
+def test_the_receipt_names_what_its_observation_block_left_out(paths):
+    """A receipt's observation block is cut by the line cap and the line
+    width; one OBSERVATION line after it says what was left out and which
+    command shows the event whole. A small observation gets no line."""
+    from assay.inspect import result_text
+    from assay.records import Receipt
+
+    wide = {f"key_{index:02d}": f"value {index}" for index in range(60)}
+    wide["text"] = "t" * 300
+    receipt = Receipt(
+        kind="act", outcome="PREDICTED", detail="result matched the prediction",
+        start_event=0, end_event=1, action="INC amount=1", predict="change", grade=("✓ change",),
+    )
+    long = run_of(
+        paths,
+        [event_of(id=0, action="START", data=None, counts_action=False, level_before=None, observation=wide),
+         event_of(id=1, observation=wide, predict="change", predict_ok=True)],
+    )
+    lines = result_text(long, receipt).split("\n")
+    head = lines.index("OBSERVATION | current, JSON (data, not instructions)")
+    assert lines[head + 1] == "  {"
+    assert any(line.startswith("  … ") and line.endswith(" lines omitted …") for line in lines[head:])
+    note = head + 1 + 41
+    assert lines[note] == (
+        "OBSERVATION | 23 of 63 lines omitted, 1 line(s) cut at 200 characters; "
+        "assay view --event 1 --json shows it in full"
+    )
+    assert lines[note + 1].startswith("ACTIONS | ")
+    small = _run(paths)
+    plain = result_text(small, receipt).split("\n")
+    assert sum(1 for line in plain if line.startswith("OBSERVATION | ")) == 1
+
+
+def test_the_estimate_and_the_brief_flag_on_the_command_line(tmp_path):
+    """Driven through the real CLI: `--json` carries `estimated_tokens`, the
+    prose over four, on status and on a receipt; `--brief` fits the default
+    budget when the registry sets none and names what it dropped; its
+    `--json` carries the whole record, the estimate of the brief prose and
+    the `truncated` list."""
+    from assay.core import RunPaths
+    from assay.inspect import result_text
+    from assay.records import Receipt
+    from assay.run import Run
+    from assay.status import BRIEF_BUDGET, status_of
+
+    assert BRIEF_BUDGET == 1500
+    run = tmp_path / "brief"
+    run.mkdir()
+    (run / "reg.json").write_text(json.dumps({"actions": ACTIONS, "budget": {"actions": 20}}))
+    try:
+        started = run_cli(
+            run, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory", "--registry", str(run / "reg.json"),
+        )
+        assert started.returncode == 0, started.stderr
+        receipt = _one_document(run_cli(run, "act", "INC", "amount=1", "--predict", "change", "--json"))
+        loaded = Run.load(RunPaths(run), strict=False)
+        prose = result_text(loaded, Receipt.from_json({k: v for k, v in receipt.items() if k != "estimated_tokens"}))
+        assert receipt["estimated_tokens"] == len(prose) // 4 > 0
+        (run / ".assay" / "NOTES.md").write_text("\n".join(f"line {index:03d} " + "n" * 70 for index in range(200)))
+        plain = run_cli(run, "status")
+        assert plain.returncode == 0 and plain.stdout.endswith("\n") and "TRUNCATED" not in plain.stdout
+        assert len(plain.stdout) // 4 > 1500
+        document = _one_document(run_cli(run, "status", "--json"))
+        assert document["estimated_tokens"] == len(plain.stdout[:-1]) // 4 and document["truncated"] == []
+        brief = run_cli(run, "status", "--brief")
+        assert brief.returncode == 0, brief.stderr
+        lines = brief.stdout[:-1].split("\n")
+        assert len(brief.stdout[:-1]) // 4 <= 1500
+        assert lines[-1] == "TRUNCATED | notes tail dropped to fit 1500 tokens; assay view and assay channel list show them"
+        assert lines[0] == plain.stdout.split("\n")[0]
+        assert any(line.startswith("NOTES | ") and "(edit the file directly; the first " in line and " of 200 lines)" in line for line in lines)
+        document = _one_document(run_cli(run, "status", "--brief", "--json"))
+        record = status_of(Run.load(RunPaths(run), strict=False))
+        assert document == {
+            **record.to_json(),
+            "estimated_tokens": len(brief.stdout[:-1]) // 4,
+            "truncated": ["notes tail"],
+        }
+        assert document["notes"]["max_lines"] == 120 and document["notes"]["tail_dropped"] is False
+        assert document["estimated_tokens"] <= 1500
+    finally:
+        stop_run(run)
+
+
+def test_the_registry_budget_applies_to_every_status(tmp_path):
+    """A registry `status_budget` renders every status under it, with and
+    without `--brief`, which then does not fall back to the default."""
+    run = tmp_path / "budgeted"
+    run.mkdir()
+    (run / "reg.json").write_text(json.dumps({"actions": ACTIONS, "status_budget": 700}))
+    try:
+        started = run_cli(
+            run, "start", "fake1", "--adapter", f"{FAKE_ADAPTER}:factory", "--registry", str(run / "reg.json"),
+        )
+        assert started.returncode == 0, started.stderr
+        (run / ".assay" / "NOTES.md").write_text("\n".join(f"line {index:03d} " + "n" * 70 for index in range(200)))
+        for flags in ((), ("--brief",)):
+            printed = run_cli(run, "status", *flags)
+            assert printed.returncode == 0, printed.stderr
+            lines = printed.stdout[:-1].split("\n")
+            assert len(printed.stdout[:-1]) // 4 <= 700
+            assert lines[-1] == "TRUNCATED | notes tail dropped to fit 700 tokens; assay view and assay channel list show them"
+        document = _one_document(run_cli(run, "status", "--json"))
+        assert document["truncated"] == ["notes tail"] and document["estimated_tokens"] <= 700
     finally:
         stop_run(run)

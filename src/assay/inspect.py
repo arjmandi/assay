@@ -15,13 +15,16 @@ from .core import AssayError, canonical_action
 from .evidence import history_lines
 from .extras import kind_for
 from .records import Event, Receipt
-from .registry import budget_line, gate_mode, gate_text
+from .registry import budget_line, gate_mode, gate_text, status_budget
 from .status import actions_text, claims_text, observation_text, render_status, status_of
-from .textobs import delta_lines
+from .textobs import LINE_LIMIT, delta_lines, pretty_cuts
 from .words import progress_text
 
 if TYPE_CHECKING:
     from .run import Run
+
+# The lines a receipt shows of the observation at most (status shows 48).
+RECEIPT_OBSERVATION_LINES = 40
 
 
 def _general_actions_line(event: Event, registry: Mapping[str, Any] | None) -> str:
@@ -33,6 +36,25 @@ def _general_actions_line(event: Event, registry: Mapping[str, Any] | None) -> s
 
 def _observation_lines(event: Event, max_lines: int = 48) -> list[str]:
     return observation_text(event.observation, max_lines)
+
+
+def _observation_note(event: Event, max_lines: int) -> str | None:
+    """The receipt's line on what its observation block left out
+    (docs/ARCHITECTURE.md section 7.6): the lines the cap omitted and the
+    lines cut to the width, and the command that shows the event whole;
+    None when nothing was cut."""
+    total, omitted, shortened = pretty_cuts(event.observation, max_lines)
+    cuts: list[str] = []
+    if omitted:
+        cuts.append(f"{omitted} of {total} lines omitted")
+    if shortened:
+        cuts.append(f"{shortened} line(s) cut at {LINE_LIMIT} characters")
+    if not cuts:
+        return None
+    return (
+        f"OBSERVATION | {', '.join(cuts)}; assay view --event {event.id} --json "
+        "shows it in full"
+    )
 
 
 def _claim_meter_lines(run: Run) -> list[str]:
@@ -77,7 +99,10 @@ def result_text(run: Run, receipt: Receipt) -> str:
             f"  {item}"
             for item in delta_lines(previous.observation, event.observation)
         )
-    lines.extend(_observation_lines(event, max_lines=40))
+    lines.extend(_observation_lines(event, max_lines=RECEIPT_OBSERVATION_LINES))
+    note = _observation_note(event, RECEIPT_OBSERVATION_LINES)
+    if note is not None:
+        lines.append(note)
     lines.append(_general_actions_line(event, registry))
     if registry:
         lines.append(budget_line(registry, events))
@@ -104,8 +129,10 @@ def _general_inspect_text(run: Run, index: int, *, full: bool = False) -> str:
 
 
 def status_text(run: Run, *, history: int = 8) -> str:
-    """The status lines: the `Status` record of the run, rendered."""
-    return render_status(status_of(run, history=history))
+    """The status lines: the `Status` record of the run, rendered, under the
+    registry's `status_budget` when it sets one (docs/ARCHITECTURE.md
+    section 7.6)."""
+    return render_status(status_of(run, history=history), budget=status_budget(run.registry))
 
 
 def gate_lines(registry: Mapping[str, Any], events: Sequence[Event]) -> list[str]:

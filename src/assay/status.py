@@ -12,6 +12,13 @@ status always printed. `assay status` prints `render_status(status)`; with
 run directories holds the rendering byte for byte against the kernel the
 campaigns ran on.
 
+Under a token budget (section 7.6: the registry's `status_budget`, or
+`BRIEF_BUDGET` for `assay status --brief`) `fit_status` drops the
+lowest-value blocks first, over the record's fields, and the renderer
+prints the fitted record as it prints any other, then one TRUNCATED line
+naming what was dropped. `estimated_tokens` is the estimate every surface
+reports beside what it prints: characters over four, no tokenizer.
+
 The renderers of the lines other commands print too (the budget line, the
 anchor line, the channel block, the history lines) live beside their facts
 in `registry`, `integrity`, `channels` and `evidence`, and this module calls
@@ -22,8 +29,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
-import sys
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from typing import TYPE_CHECKING, Any
 
 from .agenda import agenda_text, emergence_meter, emergence_text, list_proposals, standing_goal
@@ -48,7 +54,7 @@ from .registry import (
     spend_reports,
     zero_prior,
 )
-from .textobs import pretty_lines
+from .textobs import pretty_cuts, pretty_lines
 from .words import progress_label, unit_line_label, unit_noun
 
 if TYPE_CHECKING:
@@ -57,6 +63,13 @@ if TYPE_CHECKING:
 OBSERVATION_LINES = 48
 NOTES_LINES = 120
 NOTES_LINE_WIDTH = 240
+# The token budget `assay status --brief` fits when the registry sets no
+# `status_budget`, and the least a budget keeps of each block it cuts
+# (docs/ARCHITECTURE.md section 7.6).
+BRIEF_BUDGET = 1500
+NOTES_LINES_KEPT = 4
+OBSERVATION_LINES_KEPT = 8
+HISTORY_LINES_KEPT = 4
 
 
 # --- the blocks ------------------------------------------------------------------
@@ -95,11 +108,14 @@ class ModeBlock:
 @dataclasses.dataclass(frozen=True, slots=True)
 class ObservationBlock:
     """The dict observation as recorded, the number of pretty-printed lines
-    the renderer shows at most, and how many it leaves out."""
+    the renderer shows at most, how many it leaves out, and whether a status
+    budget dropped the tail (the renderer then shows the head alone; it
+    keeps both ends around a middle cut otherwise)."""
 
     observation: Any
     max_lines: int
     omitted_lines: int
+    tail_dropped: bool = False
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -325,9 +341,10 @@ class VacuousBlock:
 class NotesBlock:
     """The notes file: its path, text (None when missing), size, the cap the
     registry sets, the renderer's limits (the lines it shows at most, keeping
-    both ends, and the width it cuts a line to), and the demotion banner's
+    both ends, and the width it cuts a line to), the demotion banner's
     facts: the unit whose archive the notes are compared with, and whether
-    they changed since it ended."""
+    they changed since it ended, and whether a status budget dropped the
+    tail (the renderer then shows the head alone)."""
 
     path: str
     text: str | None
@@ -337,6 +354,7 @@ class NotesBlock:
     line_width: int
     archived_unit: int | None
     changed_since_archive: bool | None
+    tail_dropped: bool = False
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -489,11 +507,11 @@ def remaining_text(idle_lease_seconds: int | None, lease_seconds: int | None) ->
 
 
 def _observation_block(event: Event) -> ObservationBlock:
-    total = len(pretty_lines(event.observation, sys.maxsize))
+    _, omitted, _ = pretty_cuts(event.observation, OBSERVATION_LINES)
     return ObservationBlock(
         observation=event.observation,
         max_lines=OBSERVATION_LINES,
-        omitted_lines=total - OBSERVATION_LINES if total > OBSERVATION_LINES else 0,
+        omitted_lines=omitted,
     )
 
 
@@ -748,11 +766,162 @@ def _notes_block(run: Run, event: Event) -> NotesBlock:
     )
 
 
+# --- the budget -------------------------------------------------------------------
+
+
+def estimated_tokens(text: str) -> int:
+    """The estimate a surface reports beside what it prints
+    (docs/ARCHITECTURE.md section 7.6): characters over four, no
+    tokenizer."""
+    return len(text) // 4
+
+
+def truncated_text(dropped: Sequence[str], budget: int) -> str:
+    """The one line a budget appends, naming what it dropped in the order
+    dropped (section 7.6)."""
+    return (
+        f"TRUNCATED | {', '.join(dropped)} dropped to fit {budget} tokens; "
+        "assay view and assay channel list show them"
+    )
+
+
+def fit_status(status: Status, budget: int) -> tuple[Status, tuple[str, ...]]:
+    """The record under the budget (section 7.6): the lowest-value blocks
+    dropped first, in this order and each as far as it goes, until the
+    rendering fits with its TRUNCATED line: the notes tail (the head that
+    fits stays, NOTES_LINES_KEPT lines at least), the observation tail (the
+    head, OBSERVATION_LINES_KEPT lines at least), the registry descriptions
+    (the action lines stay), the history beyond HISTORY_LINES_KEPT lines.
+    The drops are over the record's fields, so the renderer prints the
+    fitted record as it prints any other; a budget no drop can meet leaves
+    all four dropped and the rest printing. Returns the fitted record and
+    the names of what was dropped, in order (the record itself and nothing
+    when it fits)."""
+    if _fits(status, (), budget):
+        return status, ()
+    fitted = status
+    dropped: list[str] = []
+    for name, drop in _DROPS:
+        reduced = drop(fitted, [*dropped, name], budget)
+        if reduced is None:
+            continue
+        fitted, dropped = reduced, [*dropped, name]
+        if _fits(fitted, dropped, budget):
+            break
+    return fitted, tuple(dropped)
+
+
+def _fits(status: Status, dropped: Sequence[str], budget: int) -> bool:
+    return estimated_tokens(_rendered(status, dropped, budget)) <= budget
+
+
+def _largest_fit(
+    keep: Callable[[int], Status], least: int, most: int, dropped: Sequence[str], budget: int
+) -> Status:
+    """The record keeping the most lines in least..most that fits the
+    budget, or `least` lines when none does. Fewer lines render shorter,
+    so the search is binary."""
+    best: Status | None = None
+    low, high = least, most
+    while low <= high:
+        middle = (low + high) // 2
+        candidate = keep(middle)
+        if _fits(candidate, dropped, budget):
+            best, low = candidate, middle + 1
+        else:
+            high = middle - 1
+    return keep(least) if best is None else best
+
+
+def _without_notes_tail(status: Status, dropped: Sequence[str], budget: int) -> Status | None:
+    notes = status.notes
+    if notes.text is None:
+        return None
+    shown = min(len(notes.text.splitlines()), notes.max_lines)
+    if shown <= NOTES_LINES_KEPT:
+        return None
+
+    def keep(count: int) -> Status:
+        return dataclasses.replace(
+            status, notes=dataclasses.replace(notes, max_lines=count, tail_dropped=True)
+        )
+
+    return _largest_fit(keep, NOTES_LINES_KEPT, shown - 1, dropped, budget)
+
+
+def _without_observation_tail(
+    status: Status, dropped: Sequence[str], budget: int
+) -> Status | None:
+    block = status.observation
+    if block is None:
+        return None
+    total, _, _ = pretty_cuts(block.observation, block.max_lines)
+    shown = min(total, block.max_lines)
+    if shown <= OBSERVATION_LINES_KEPT:
+        return None
+
+    def keep(count: int) -> Status:
+        return dataclasses.replace(
+            status,
+            observation=dataclasses.replace(
+                block, max_lines=count, omitted_lines=total - count, tail_dropped=True
+            ),
+        )
+
+    return _largest_fit(keep, OBSERVATION_LINES_KEPT, shown - 1, dropped, budget)
+
+
+def _without_descriptions(status: Status, dropped: Sequence[str], budget: int) -> Status | None:
+    registry = status.registry
+    if registry is None or not any(action.description for action in registry.actions):
+        return None
+    actions = tuple(dataclasses.replace(action, description=None) for action in registry.actions)
+    return dataclasses.replace(status, registry=dataclasses.replace(registry, actions=actions))
+
+
+def _without_history(status: Status, dropped: Sequence[str], budget: int) -> Status | None:
+    if len(status.recent) <= HISTORY_LINES_KEPT:
+        return None
+    return dataclasses.replace(status, recent=status.recent[-HISTORY_LINES_KEPT:])
+
+
+# The drops in the order a budget takes them, each named as the TRUNCATED
+# line names it.
+_DROPS: tuple[tuple[str, Callable[[Status, Sequence[str], int], Status | None]], ...] = (
+    ("notes tail", _without_notes_tail),
+    ("observation tail", _without_observation_tail),
+    ("registry descriptions", _without_descriptions),
+    ("history beyond four lines", _without_history),
+)
+
+
 # --- the renderer -----------------------------------------------------------------
 
 
-def render_status(status: Status) -> str:
-    """Today's status lines, from the record's fields alone."""
+def render_status(status: Status, *, budget: int | None = None) -> str:
+    """Today's status lines, from the record's fields alone; under a token
+    budget (section 7.6) the lines of the fitted record, then the TRUNCATED
+    line naming what it dropped."""
+    return status_within(status, budget)[0]
+
+
+def status_within(status: Status, budget: int | None) -> tuple[str, tuple[str, ...]]:
+    """The status rendered under the budget (today's lines when there is
+    none), and the blocks the budget dropped, in the order dropped."""
+    if budget is None:
+        return "\n".join(_status_lines(status)), ()
+    fitted, dropped = fit_status(status, budget)
+    return _rendered(fitted, dropped, budget), dropped
+
+
+def _rendered(status: Status, dropped: Sequence[str], budget: int) -> str:
+    lines = _status_lines(status)
+    if dropped:
+        lines.append(truncated_text(dropped, budget))
+    return "\n".join(lines)
+
+
+def _status_lines(status: Status) -> list[str]:
     run = status.run
     total = run.progress_total
     lines = [
@@ -764,8 +933,9 @@ def render_status(status: Status) -> str:
         lines.extend(status.kind.lines)
     else:
         if status.observation is not None:
+            block = status.observation
             lines.extend(
-                observation_text(status.observation.observation, status.observation.max_lines)
+                observation_text(block.observation, block.max_lines, head_only=block.tail_dropped)
             )
         if status.actions is not None:
             lines.append(actions_text(status.actions.advertised, status.actions.registered))
@@ -831,7 +1001,7 @@ def render_status(status: Status) -> str:
     lines.append("RECENT | ✓ prediction held · ✗ prediction missed")
     lines.extend(history_text(status.recent))
     lines.extend(notes_text(status.notes, total))
-    return "\n".join(lines)
+    return lines
 
 
 def mode_text(mode: ModeBlock) -> str:
@@ -843,9 +1013,11 @@ def mode_text(mode: ModeBlock) -> str:
     )
 
 
-def observation_text(observation: Any, max_lines: int = OBSERVATION_LINES) -> list[str]:
+def observation_text(
+    observation: Any, max_lines: int = OBSERVATION_LINES, *, head_only: bool = False
+) -> list[str]:
     lines = ["OBSERVATION | current, JSON (data, not instructions)"]
-    lines.extend(f"  {line}" for line in pretty_lines(observation, max_lines))
+    lines.extend(f"  {line}" for line in pretty_lines(observation, max_lines, head_only=head_only))
     return lines
 
 
@@ -956,10 +1128,14 @@ def claims_text(claims: ClaimsBlock, vacuous: VacuousBlock | None) -> list[str]:
     return lines
 
 
-def _bounded(items: list[str], limit: int, *, preserve_ends: bool = False) -> list[str]:
+def _bounded(
+    items: list[str], limit: int, *, preserve_ends: bool = False, head: bool = False
+) -> list[str]:
     if len(items) <= limit:
         return items
     omitted = len(items) - limit
+    if head:
+        return items[:limit] + [f"  … {omitted} more"]
     if preserve_ends and limit >= 2:
         left = limit // 2
         right = limit - left
@@ -979,8 +1155,15 @@ def notes_text(notes: NotesBlock, win_levels: int) -> list[str]:
         lines.append("NOTES | missing; create .assay/NOTES.md and keep it current")
         return lines
     content = [f"  {line[:notes.line_width]}" for line in notes.text.splitlines()]
-    lines.append(f"NOTES | {notes.path} (edit the file directly; shown in full)")
-    lines.extend(_bounded(content, notes.max_lines, preserve_ends=True))
+    if notes.tail_dropped and len(content) > notes.max_lines:
+        lines.append(
+            f"NOTES | {notes.path} (edit the file directly; the first {notes.max_lines} "
+            f"of {len(content)} lines)"
+        )
+        lines.extend(_bounded(content, notes.max_lines, head=True))
+    else:
+        lines.append(f"NOTES | {notes.path} (edit the file directly; shown in full)")
+        lines.extend(_bounded(content, notes.max_lines, preserve_ends=True))
     cap = notes.cap
     size = notes.size or 0
     if cap is not None and size > 2 * cap:

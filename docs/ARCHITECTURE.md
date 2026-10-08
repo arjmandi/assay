@@ -127,8 +127,8 @@ can be inspected but not resumed.
 
 **Contract.** The JSON schema in the `registry.py` module docstring, validated
 key by key. Top-level keys: `actions` (required), `budget`, `goal`, `batching`,
-`notes_cap`, `zero_prior`, `modules`, `module_modes`, `secrets`, `observers`,
-`control`, `mode_note`, `gate`. Unknown keys are refused. Per action: `name`
+`notes_cap`, `status_budget`, `zero_prior`, `modules`, `module_modes`, `secrets`,
+`observers`, `control`, `mode_note`, `gate`. Unknown keys are refused. Per action: `name`
 matching `^[A-Za-z][A-Za-z0-9_]{0,31}$` (upper-cased, `RESET` refused because it
 is built in), `params` (each `{"type": int|float|str, "min"?, "max"?, "enum"?}`,
 every registered parameter is required on the command line and coerced and
@@ -140,7 +140,9 @@ only), `description` (admissible, untrusted, rendered as data, withheld under
 Defaults when a key is absent: `batching.hand_cap` is 3 (the batching law,
 `registry.hand_cap`), `notes_cap` is 16000 characters (`registry.notes_cap`),
 `zero_prior` is false, `gate` is `required`, no action cap means no cap, no
-`usd` cap means no spend ceiling. `budget.actions` is checked by
+`usd` cap means no spend ceiling, no `status_budget` means the status prints
+whole and `assay status --brief` fits `status.BRIEF_BUDGET`, 1500 tokens
+(section 7.6). `budget.actions` is checked by
 `registry.check_budget` before every spend with the planned count, so a batch
 that would cross the cap is refused whole.
 
@@ -1335,16 +1337,19 @@ drops blocks under the budget.
 Status (#13): landed in `src/assay/status.py` (`status_of`, `render_status`, the blocks),
 with `inspect.status_text` kept as the rendering of the record. Differences from the
 list above: `ignored_modules` (the files in `.assay/modules` the manifest does not
-cover, the MODULES line) is a field the list did not name, and `estimated_tokens` waits
-for #23. No block holds rendered text: `recent` records carry `predict_ok`, `changed`
+cover, the MODULES line) is a field the list did not name, and `estimated_tokens` is not
+a field of the record: it rides beside the record's fields in the `--json` document (#23,
+section 7.6). No block holds rendered text: `recent` records carry `predict_ok`, `changed`
 (a count) with `changed_unit` (the noun the observation kind supplies through
 `history_change`: keys or cells) and `frames` (the animation frame count, None on a dict
 world) so one renderer prints both forms; `mode` carries the declared `idle_lease_seconds`,
 the `lease_seconds` left on it and `replayable`, from the session declaration recorded in
 `config.json` (#21); `anchors`
 carries `failed_event` and `failed_error`; the observation and notes blocks carry the
-limits the renderer applies (`max_lines`, `line_width`), which `--brief` (#23) will
-lower; `gate` is always present with the mode (None only without a registry), and the
+limits the renderer applies (`max_lines`, `line_width`) and, from #23, `tail_dropped`,
+which a status budget sets on the fitted copy the renderer prints (the head alone,
+`max_lines` long; `--json` prints the record itself, never the fitted copy, so there it
+is always false); `gate` is always present with the mode (None only without a registry), and the
 budget cap lives in the budget block alone. The `vacuous` block lists every flagged
 verifier with its counters and whether it is vacuous under the file's rule, the
 never-failed advisory being the rest; the module advisory lines and the kind's lines
@@ -1379,6 +1384,34 @@ one line, `TRUNCATED | <blocks> dropped to fit <budget> tokens; assay view and a
 channel list show them`. The estimate appears in `--json` output only. The prose status
 truncates only under `--brief` or when the registry sets `status_budget`; no published
 registry sets it, so the replay gate is unaffected.
+
+Status (#23): landed as written, with these particulars. The estimate is
+`status.estimated_tokens(text)`, `len(text) // 4` over the prose as printed, added to the
+`--json` document beside the record's fields by the command line (`cli._emit`) on `status`,
+`act`, `commit` and `reset`; it enters no record on disk (the daemon writes the receipt to
+`.assay/receipts/` and the activity log before the client renders it, so the `Receipt`
+record's `estimated_tokens` field of section 6.2 stays unset). The registry key
+`status_budget`, a positive integer of tokens (`registry.status_budget`; anything else is
+`REGISTRY_INVALID` with a hint naming the form), applies to every status, the one `assay
+start` prints included; `--brief` without it fits `status.BRIEF_BUDGET`, 1500 tokens, and
+with it fits the registry's. `status.fit_status` drops over the record's fields, in this
+order and each as far as it goes, until the rendering fits with its TRUNCATED line: the
+notes tail (the head that fits stays, four lines at least, and the NOTES header then says
+`the first N of M lines`), the observation tail (the head, eight lines at least), the
+registry descriptions (the action lines stay), the history beyond four lines (the last
+four stay). A budget none of it can meet leaves all four dropped, named, and the rest
+printing; a block with nothing past its floor is neither dropped nor named, so a short
+status prints whole over any budget. The fitted copy is a `Status` whose observation and
+notes blocks carry `tail_dropped`, rendered by the one renderer. `status --json` carries
+the record itself (never the fitted copy), `estimated_tokens` of the prose the same call
+would print, and `truncated`, the names dropped in order (empty when none), with or
+without `--brief`. The receipt's observation block is cut by `textobs.pretty_lines` (40
+lines with the middle omitted, and 200 characters a line), the rule status and view
+share, whose markers are unchanged; when anything was cut, one line follows the block:
+`OBSERVATION | N of M lines omitted, K line(s) cut at 200 characters; assay view --event E
+--json shows it in full`, each part present when it applies. Without `--brief` and
+without the key the prose status is byte-identical to before, which the replay gate
+proves.
 
 ## 8. The trust model (1.2.0, design note 3)
 

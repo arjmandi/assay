@@ -60,7 +60,9 @@ an experiment with a written expectation.
    `Verified (cite event ids)`, `Assumed / open questions`, `Plan`. After a ✗,
    fix the notes before the next action. `assay status` prints the file in full,
    so it is also your recovery story: **after any context loss, run
-   `assay status` first.**
+   `assay status` first.** `assay status --brief` is the short form; a status
+   that ends with a TRUNCATED line names the blocks it dropped, which
+   `assay view` and `assay channel list` show in full.
 
 ## The claim grammar
 

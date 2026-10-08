@@ -48,8 +48,8 @@ outside the run directory, and the agent's session begins at `assay status`
 
 ## The registry, key by key
 
-Every key beyond `actions` is optional. This file sets all of them so the
-shape is visible. Delete what you do not need.
+Every key beyond `actions` is optional. This file sets all of them but
+`status_budget`, so the shape is visible. Delete what you do not need.
 
 | key | what it does here |
 |---|---|
@@ -63,6 +63,7 @@ shape is visible. Delete what you do not need.
 | `goal.text` | the standing goal shown in every status until the world reports WIN |
 | `batching.hand_cap` | hand-written batches cap at 3 steps (the default), and a replay-fit model lifts it |
 | `notes_cap` | `.assay/NOTES.md` size in characters (default 16000); paid actions refuse past twice the cap |
+| `status_budget` | not set here, so every status prints whole. The tokens one status may print (an estimate, characters over four): the renderer drops the notes tail, the observation tail, the registry descriptions and the history beyond four lines, in that order, and names them on a TRUNCATED line; `assay status --brief` fits 1500 tokens without it |
 | `zero_prior` | true withholds every description |
 | `modules` | paths to external behavior module files, pinned at start with a manifest |
 | `module_modes` | `off`, `advise` or `block` per module, built-ins included |

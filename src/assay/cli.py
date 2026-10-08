@@ -109,16 +109,20 @@ from .registry import (
     parse_registry_action,
     require_registry,
     spend_reports,
+    status_budget,
     validate_registry,
 )
 from .run import Run
 from .status import (
+    BRIEF_BUDGET,
+    estimated_tokens,
     idle_seconds,
     lease_left,
     lease_text,
     remaining_text,
     render_status,
     status_of,
+    status_within,
 )
 
 
@@ -990,8 +994,14 @@ def doctor_command(paths: RunPaths, args: argparse.Namespace) -> int:
 
 
 def status_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    # The registry's budget on every status, the brief default without one
+    # (docs/ARCHITECTURE.md section 7.6); the document carries the whole
+    # record either way, with the estimate of the prose this call prints
+    # and the blocks the budget dropped beside it.
     record = status_of(run, history=args.history)
-    _emit(args, record, render_status(record))
+    budget = status_budget(run.registry) or (BRIEF_BUDGET if args.brief else None)
+    text, dropped = status_within(record, budget)
+    _emit(args, record, text, estimated_tokens=estimated_tokens(text), truncated=list(dropped))
 
 
 def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1007,16 +1017,19 @@ def view_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpars
 
 
 # The result record the running command emitted under --json, at most one,
-# printed by `_machine_run` once the command returns.
-_RESULT: list[Any] = []
+# with the keys that ride beside it, printed by `_machine_run` once the
+# command returns.
+_RESULT: list[tuple[Any, dict[str, Any]]] = []
 
 
-def _emit(args: argparse.Namespace, record: Any, text: str) -> None:
+def _emit(args: argparse.Namespace, record: Any, text: str, **beside: Any) -> None:
     """The one printer of a result record (docs/ARCHITECTURE.md section
     7.3): the record, held for the one JSON document under `--json`, its
-    rendering printed otherwise."""
+    rendering printed otherwise. The keyword values ride beside the record's
+    fields in the document and enter nothing on disk: the estimate of the
+    prose and what a status budget dropped (section 7.6)."""
     if getattr(args, "json", False):
-        _RESULT.append(record)
+        _RESULT.append((record, beside))
     else:
         print(text)
 
@@ -1041,7 +1054,8 @@ def _paid(
     appended what the client does not hold."""
     receipt = broker_gated(paths, operation, request, steps=steps)
     status.run = Run.load(paths, strict=False)
-    _emit(args, receipt, result_text(status.run, receipt))
+    text = result_text(status.run, receipt)
+    _emit(args, receipt, text, estimated_tokens=estimated_tokens(text))
 
 
 def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
@@ -1269,7 +1283,11 @@ def _machine_run(paths: RunPaths, args: argparse.Namespace) -> int:
     buffer = io.StringIO()
     with contextlib.redirect_stdout(buffer):
         code = _run(paths, args)
-    document = _RESULT[-1].to_json() if _RESULT else {"lines": buffer.getvalue().splitlines()}
+    if _RESULT:
+        record, beside = _RESULT[-1]
+        document = {**record.to_json(), **beside}
+    else:
+        document = {"lines": buffer.getvalue().splitlines()}
     print(_document(document))
     return code
 
@@ -1404,7 +1422,15 @@ COMMANDS: tuple[Command, ...] = (
         "status",
         "full picture: progress, image, actions, recent results, notes",
         status_command,
-        arguments=(arg("--history", type=int, default=8),),
+        arguments=(
+            arg("--history", type=int, default=8),
+            arg(
+                "--brief",
+                action="store_true",
+                help="a short status: the lowest-value blocks are dropped to fit the registry's "
+                "status_budget, or 1500 tokens without one, and a TRUNCATED line names them",
+            ),
+        ),
     ),
     Command(
         "view",

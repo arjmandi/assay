@@ -75,6 +75,24 @@ Left on the experiment branch, deliberately:
 
 ### Added
 
+- Token-aware output (#23, design note 2 section 7.6). `--json` on `status`,
+  `act`, `commit` and `reset` carries `estimated_tokens`, the prose the call
+  would have printed in characters over four (an estimate, no tokenizer),
+  beside the record's fields; it enters no record on disk. The registry key
+  `status_budget`, a positive integer of tokens (anything else is
+  `REGISTRY_INVALID` with a hint naming the form), renders every status under
+  it; `assay status --brief` fits it, or 1500 tokens when the registry sets
+  none. Over budget the renderer drops the lowest-value blocks first, over the
+  `Status` record's fields and each only as far as needed: the notes tail (the
+  head that fits, four lines at least), the observation tail (eight lines at
+  least), the registry descriptions, the history beyond four lines; then one
+  line, `TRUNCATED | <blocks> dropped to fit N tokens; assay view and assay
+  channel list show them`. `status --json` carries the whole record either way,
+  with `truncated`, the blocks dropped. A receipt whose observation block was
+  cut (40 lines, 200 characters a line) says so on one line after it,
+  `OBSERVATION | N of M lines omitted, K line(s) cut at 200 characters; assay
+  view --event E --json shows it in full`. Without `--brief` and without the
+  key the status prose is unchanged, which the replay gate proves.
 - The error catalogue and `docs/ERRORS.md` (#13, design note 2 section 7.1).
   `AssayError(message, *, code, kind, hint, detail)` in `core.py`; `errors.py`
   lists 61 codes, each with its kind and a one-line meaning, and renders
