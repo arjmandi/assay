@@ -638,7 +638,8 @@ def _module_object(module: Any, file: Path) -> Module:
         if not hasattr(candidate, attr):
             raise AssayError(
                 f"module {file.name} lacks {attr!r}; the module contract is "
-                "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()"
+                "NAME, CONSTITUTION, MODE, trigger(), demand(), telemetry()",
+                code="MODULE_CONTRACT",
             )
     loaded: Module = candidate
     return loaded
@@ -655,12 +656,14 @@ def _check_name(name: str, file: Path, taken: Mapping[str, str]) -> None:
     if name in builtin:
         raise AssayError(
             f"module file {file.name} declares NAME {name!r}, which is a built-in; "
-            "external modules need their own name"
+            "external modules need their own name",
+            code="MODULE_CONTRACT",
         )
     if name in taken and taken[name] != file.name:
         raise AssayError(
             f"module file {file.name} declares NAME {name!r}, already provided by "
-            f"{taken[name]}"
+            f"{taken[name]}",
+            code="MODULE_CONTRACT",
         )
 
 
@@ -691,7 +694,7 @@ def pin_external_modules(paths: RunPaths, registry: Mapping[str, Any] | None) ->
         if not source.is_absolute():
             source = paths.root / source
         if not source.exists():
-            raise AssayError(f"registered module file not found: {entry}")
+            raise AssayError(f"registered module file not found: {entry}", code="FILE_NOT_FOUND")
         pinned = target / source.name
         shutil.copy2(source, pinned)
         name = module_name_of(pinned)
@@ -721,9 +724,9 @@ def install_module(run: Run, source: Path, token: str | None) -> dict[str, Any]:
     require_owner(run, token)
     paths = run.paths
     if not source.is_file():
-        raise AssayError(f"module file not found: {source}")
+        raise AssayError(f"module file not found: {source}", code="FILE_NOT_FOUND")
     if source.suffix != ".py":
-        raise AssayError("a module is one Python file (.py)")
+        raise AssayError("a module is one Python file (.py)", code="MODULE_CONTRACT")
     target = modules_dir(paths)
     target.mkdir(parents=True, exist_ok=True)
     entries = [entry for entry in run.manifest if entry.get("file") != source.name]
@@ -866,7 +869,9 @@ def consult_modules(run: Run, pending: Mapping[str, Any] | None) -> list[str]:
             reasons = "; ".join(f"{field}: {why}" for field, why in sorted(demands.items()))
             raise AssayError(
                 f"MODULE {module.NAME} | declaration demanded before this action: "
-                f"{wanted} ({reasons}); the demand is structural; it never bans"
+                f"{wanted} ({reasons}); the demand is structural; it never bans",
+                code="MODULE_DEMAND",
+                hint=f"repeat the command with {wanted}; declaring always unlocks the action",
             )
         message = module.trigger(view, pending)
         if message:

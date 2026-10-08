@@ -235,7 +235,7 @@ def model_hash(paths: RunPaths) -> str | None:
 def init_model(paths: RunPaths) -> Path:
     target = model_source(paths)
     if target.exists():
-        raise AssayError(f"{target} already exists; edit it in place")
+        raise AssayError(f"{target} already exists; edit it in place", code="COMMAND_ARGS")
     target.write_text(MODEL_TEMPLATE)
     return target
 
@@ -255,7 +255,8 @@ def _channel_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
         else:
             raise AssayError(
                 f"model declares unregistered channel {name!r}; declare it with "
-                "`assay channel declare` first (referents are registered, never assumed)"
+                "`assay channel declare` first (referents are registered, never assumed)",
+                code="CHANNEL_UNKNOWN",
             )
     return specs
 
@@ -293,12 +294,12 @@ def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> di
         cpu_seconds=max(2, int(timeout)),
     )
     if outcome["status"] != "ok":
-        raise AssayError(_invalid_reason(outcome, timeout))
+        raise AssayError(_invalid_reason(outcome, timeout), code="MODEL_FAILED")
     result = outcome["result"]
     if not isinstance(result, dict):
-        raise AssayError(f"malformed model output: {json.dumps(result)[:160]!r}")
+        raise AssayError(f"malformed model output: {json.dumps(result)[:160]!r}", code="MODEL_FAILED")
     if result.get("error"):
-        raise AssayError(f"model error: {result['error']}")
+        raise AssayError(f"model error: {result['error']}", code="MODEL_FAILED")
     return result
 
 
@@ -307,7 +308,7 @@ def _declared_channels(run: Run) -> list[str]:
     paths = run.paths
     source = model_source(paths)
     if not source.exists():
-        raise AssayError("no model.py in the run root; `assay model init` creates one")
+        raise AssayError("no model.py in the run root; `assay model init` creates one", code="MODEL_INVALID")
     payload = {
         "mode": "replay",
         "model_path": str(source.resolve()),
@@ -319,7 +320,8 @@ def _declared_channels(run: Run) -> list[str]:
     if not declared:
         raise AssayError(
             "model.py declares no CHANNELS; a model without declared channels "
-            "grades nothing and earns nothing"
+            "grades nothing and earns nothing",
+            code="MODEL_INVALID",
         )
     return declared
 
@@ -515,7 +517,7 @@ def parse_goal_expression(text: str) -> dict[str, Any]:
         r"\s*ch\s+([A-Za-z][A-Za-z0-9_]{0,31})\s*=\s*(\S+)\s*", text or ""
     )
     if not found:
-        raise AssayError('solve goal is `--to "ch NAME = VALUE"`')
+        raise AssayError('solve goal is `--to "ch NAME = VALUE"`', code="COMMAND_ARGS")
     from .predictions import _parse_value
 
     return {"channel": found.group(1).lower(), "value": _parse_value(found.group(2))}
@@ -535,12 +537,13 @@ def solve_model(
     if goal["channel"] not in declared:
         raise AssayError(
             f"solve goal channel {goal['channel']!r} is not in the model's declared "
-            f"channels {declared}"
+            f"channels {declared}",
+            code="MODEL_INVALID",
         )
     specs = _channel_specs_for_sandbox(run, declared)
     events = run.events
     if not events:
-        raise AssayError("timeline is empty")
+        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     payload = {
         "mode": "solve",
         "model_path": str(model_source(paths).resolve()),
@@ -552,7 +555,7 @@ def solve_model(
     result = _run_sandbox(paths, payload, timeout=seconds + 15.0)
     plan_steps = result.get("plan")
     if plan_steps is not None and not isinstance(plan_steps, list):
-        raise AssayError("malformed model output: the plan is not a list")
+        raise AssayError("malformed model output: the plan is not a list", code="MODEL_FAILED")
     record: dict[str, Any] = {
         "kind": "model-plan",
         "goal": goal,

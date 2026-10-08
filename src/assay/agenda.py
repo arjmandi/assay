@@ -78,12 +78,15 @@ def require_owner(run: Run, token: str | None) -> None:
     """The owner token against the held hash."""
     if not run.owner_hash:
         raise AssayError(
-            "no owner token was minted for this run; owner operations are unavailable"
+            "no owner token was minted for this run; owner operations are unavailable",
+            code="OWNER_TOKEN",
         )
     if not token or hashlib.sha256(token.encode()).hexdigest() != run.owner_hash:
         raise AssayError(
             "owner authority required: pass --token <the token printed at start>. "
-            "The agent proposes; the owner ratifies."
+            "The agent proposes; the owner ratifies.",
+            code="OWNER_TOKEN",
+            hint="the operator holds the token (or the file --owner-token-file wrote); the agent never does",
         )
 
 
@@ -104,7 +107,7 @@ def standing_goal(run: Run) -> dict[str, Any]:
 
 def propose_goal(run: Run, text: str, because: str | None) -> dict[str, Any]:
     if not text or not text.strip():
-        raise AssayError("a goal proposal needs non-empty text")
+        raise AssayError("a goal proposal needs non-empty text", code="COMMAND_ARGS")
     proposals = load_jsonl(proposals_path(run.paths))
     record = {
         "kind": "goal_proposed",
@@ -139,9 +142,9 @@ def ratify_goal(run: Run, proposal_id: int, token: str | None) -> dict[str, Any]
     proposals = {int(item["id"]): item for item in list_proposals(run)}
     proposal = proposals.get(int(proposal_id))
     if proposal is None:
-        raise AssayError(f"no goal proposal with id {proposal_id}")
+        raise AssayError(f"no goal proposal with id {proposal_id}", code="GOAL_PROPOSAL")
     if proposal["status"] != "pending":
-        raise AssayError(f"proposal {proposal_id} is already {proposal['status']}")
+        raise AssayError(f"proposal {proposal_id} is already {proposal['status']}", code="GOAL_PROPOSAL")
     append_jsonl(
         proposals_path(run.paths),
         {"kind": "goal_resolved", "id": int(proposal_id), "status": "ratified"},
@@ -175,13 +178,15 @@ def consume_approval(run: Run, action: str) -> None:
     if not isinstance(entry, dict) or entry.get("used"):
         raise AssayError(
             f"{action} is approval-gated (default-deny): the owner grants one use "
-            f"with `assay approve {action} --token ...`"
+            f"with `assay approve {action} --token ...`",
+            code="APPROVAL_REQUIRED",
         )
     age = time.time() - float(entry.get("granted_at", 0))
     if age > APPROVAL_EXPIRY_SECONDS:
         raise AssayError(
             f"{action}'s approval expired after {int(APPROVAL_EXPIRY_SECONDS)}s "
-            "(default-deny with timeout); ask the owner to approve again"
+            "(default-deny with timeout); ask the owner to approve again",
+            code="APPROVAL_REQUIRED",
         )
     entry["used"] = True
     entry["used_at"] = time.time()
@@ -193,7 +198,7 @@ def grant_waiver(run: Run, action: str, token: str | None, because: str) -> None
     """Owner waiver for a liveness rehearsal quota: explicit and journaled."""
     require_owner(run, token)
     if not because or not because.strip():
-        raise AssayError("a liveness waiver needs --because <why it is safe now>")
+        raise AssayError("a liveness waiver needs --because <why it is safe now>", code="COMMAND_ARGS")
     state = read_json(waivers_path(run.paths), {})
     if not isinstance(state, dict):
         state = {}
@@ -243,7 +248,8 @@ def check_rehearsal(run: Run, action: str) -> None:
         f"{action} is a LIVE actuator with a rehearsal quota of {quota}: import a "
         "sim-binding run's knowledge (same registry, different binding) with "
         f">= {quota} graded attempts, or the owner journals "
-        f"`assay waive {action} --token ... --because ...` (default-deny)"
+        f"`assay waive {action} --token ... --because ...` (default-deny)",
+        code="REHEARSAL_REQUIRED",
     )
 
 

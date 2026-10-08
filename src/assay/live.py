@@ -103,12 +103,18 @@ def head_events(run: Run, at_event: int | None) -> list[Event]:
     caller's event guard; a snapshot, so a later append leaves it alone."""
     events = run.events
     if not events:
-        raise AssayError("timeline is empty")
+        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     if events[-1].state == "WIN":
-        raise AssayError("the goal is already reached; this run is complete")
+        raise AssayError(
+            "the goal is already reached; this run is complete",
+            code="RUN_COMPLETE",
+            hint="`assay audit` gives the verdict and `assay export` the knowledge file for the next run",
+        )
     if at_event is not None and at_event != events[-1].id:
         raise AssayError(
-            f"event guard failed: requested {at_event}, current {events[-1].id}"
+            f"event guard failed: requested {at_event}, current {events[-1].id}",
+            code="EVENT_GUARD",
+            hint="rerun `assay status` and pass the current event to --at",
         )
     return list(events)
 
@@ -126,7 +132,7 @@ def paid_step(
     prior = run.events[-1]
     name, data = parse_action(token, registry)
     if name == "RESET":
-        raise AssayError("use `assay reset`; reset cannot hide inside a batch")
+        raise AssayError("use `assay reset`; reset cannot hide inside a batch", code="BATCH_FORBIDDEN")
     kind = kind_for(prior)
     # A frame world advertises bare ids; the kind renders them as names.
     advertised: Sequence[Any] = (
@@ -170,7 +176,8 @@ def _notes_hard_stop(run: Run) -> None:
         raise AssayError(
             f"NOTES.md is {size} chars, more than twice the {cap}-char cap. One "
             "page is the contract: archive detail elsewhere and trim before the "
-            "next paid action (overflow is auto-archived when a progress unit completes)"
+            "next paid action (overflow is auto-archived when a progress unit completes)",
+            code="NOTES_CAP",
         )
 
 
@@ -198,7 +205,8 @@ def _enforce_registry_gates(
                 raise AssayError(
                     f"{name} is registered destructive: destructive actions are "
                     "banned inside batches; take it as a single "
-                    "`assay act` with its declaration"
+                    "`assay act` with its declaration",
+                    code="BATCH_FORBIDDEN",
                 )
             worst = str(declares.get("worst_case", "")).strip()
             recovery = str(declares.get("recovery", "")).strip()
@@ -209,12 +217,15 @@ def _enforce_registry_gates(
                     '"worst_case=<what the worst outcome is>" --declare '
                     '"recovery=<how the run recovers>"; the demand is structural '
                     "(named, non-empty), never a demand for optimism; declaring "
-                    "always unlocks the action"
+                    "always unlocks the action",
+                    code="DESTRUCTIVE_UNDECLARED",
                 )
         if spec.get("approval"):
             if in_batch:
                 raise AssayError(
-                    f"{name} is approval-gated and cannot hide inside a batch"
+                    f"{name} is approval-gated and cannot hide inside a batch",
+                    code="BATCH_FORBIDDEN",
+                    hint=f"take it as a single `assay act {name} ...` once the owner has run `assay approve {name}`",
                 )
             consume_approval(run, name)
         check_rehearsal(run, name)
@@ -278,7 +289,8 @@ def _ungated_act(registry: Mapping[str, Any] | None, predict: str | None) -> boo
             raise AssayError(
                 "the prediction gate is off for this run (registry gate: off): "
                 "`assay act` takes no --predict here, nothing is graded, and the "
-                "audit marks the run invalid for scoring"
+                "audit marks the run invalid for scoring",
+                code="GATE_OFF",
             )
         return True
     return mode == "optional" and bare
@@ -467,7 +479,8 @@ def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
         return action.strip(), ""  # gate: optional, an unpredicted step
     if not separator or not action.strip() or not predict.strip():
         raise AssayError(
-            'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
+            'each step needs its own prediction: --step "NAME pname=value :: <claims>"',
+            code="PREDICTION_REQUIRED",
         )
     # Case is normalized later by parse_action (action names only); parameter
     # values in registry runs keep the case the agent typed.
@@ -481,7 +494,7 @@ def validate_batch_tokens(
     for token in tokens:
         name, _ = parse_action(token, registry)
         if name == "RESET":
-            raise AssayError("use `assay reset`; reset cannot hide inside a batch")
+            raise AssayError("use `assay reset`; reset cannot hide inside a batch", code="BATCH_FORBIDDEN")
 
 
 def execute_steps(
@@ -493,7 +506,11 @@ def execute_steps(
     stepper: Stepper,
 ) -> Receipt:
     if not raw_steps:
-        raise AssayError("no steps supplied")
+        raise AssayError(
+            "no steps supplied",
+            code="COMMAND_ARGS",
+            hint='pass --step "NAME pname=value :: claims", repeated in execution order',
+        )
     registry = require_registry(run)
     cap = hand_cap(registry)
     if cap is not None and len(raw_steps) > cap:
@@ -503,7 +520,8 @@ def execute_steps(
         raise AssayError(
             f"the batching law caps hand-written batches at {cap} steps "
             f"(got {len(raw_steps)}); longer batches belong to a replay-fit model "
-            f"plan (`assay model replay` then `assay model solve`); currently: {reason}"
+            f"plan (`assay model replay` then `assay model solve`); currently: {reason}",
+            code="BATCH_CAP",
         )
     mode = gate_mode(registry)
     bare_ok = mode in _UNGATED_MARKER
@@ -515,7 +533,8 @@ def execute_steps(
             raise AssayError(
                 "the prediction gate is off for this run (registry gate: off): "
                 'steps are bare (`--step "ACTION"`), nothing is graded, and the '
-                "audit marks the run invalid for scoring"
+                "audit marks the run invalid for scoring",
+                code="GATE_OFF",
             )
         claims = [] if bare_ok and not predict else parse_claims(predict)
         parsed.append((token, predict, claims))
@@ -657,27 +676,36 @@ def execute_model_plan(
     try:
         path.resolve().relative_to(paths.root.resolve())
     except ValueError as error:
-        raise AssayError("plan reference must stay inside the run directory") from error
+        raise AssayError(
+            "plan reference must stay inside the run directory",
+            code="PATH_INVALID",
+            hint="pass @.assay/model_plan.json, the file `assay model solve` writes",
+        ) from error
     plan = read_json(path)
     if not isinstance(plan, dict) or plan.get("kind") != "model-plan":
         raise AssayError(
             "commit on a registry run accepts only a model plan written by "
-            "`assay model solve` (or --step batches under the hand cap)"
+            "`assay model solve` (or --step batches under the hand cap)",
+            code="PLAN_INVALID",
         )
     if str(path.resolve()) != str(plan_path(paths).resolve()):
-        raise AssayError("model plans execute from .assay/model_plan.json only")
+        raise AssayError("model plans execute from .assay/model_plan.json only", code="PLAN_INVALID")
     rights, reason = batching_rights(run)
     if not rights:
-        raise AssayError(f"model plan refused: {reason}")
+        raise AssayError(
+            f"model plan refused: {reason}",
+            code="BATCHING_RIGHTS",
+            hint="`assay model replay` grades the model on this journal and can earn batching rights",
+        )
     source = plan.get("source") or {}
     if source.get("model_hash") != model_hash(paths):
-        raise AssayError("plan is stale (model.py changed); rerun `assay model solve`")
+        raise AssayError("plan is stale (model.py changed); rerun `assay model solve`", code="PLAN_STALE")
     if int(source.get("event", -1)) != events[-1].id:
-        raise AssayError("plan is stale (the journal moved); rerun `assay model solve`")
+        raise AssayError("plan is stale (the journal moved); rerun `assay model solve`", code="PLAN_STALE")
     actions = [str(item) for item in plan.get("actions") or ()]
     predictions = plan.get("predictions") or ()
     if not actions or len(actions) != len(predictions):
-        raise AssayError("plan needs one prediction per action; rerun `assay model solve`")
+        raise AssayError("plan needs one prediction per action; rerun `assay model solve`", code="PLAN_INVALID")
     validate_batch_tokens(actions, registry)
     # The modules' advisories ride on this receipt like on an act's or a
     # hand batch's; they were consulted and discarded before #24.
@@ -818,7 +846,8 @@ def reset_level(
     elif not reason:
         raise AssayError(
             'reset needs --because "<why this state is worth abandoning>" '
-            "(GAME_OVER excepted)"
+            "(GAME_OVER excepted)",
+            code="RESET_REASON",
         )
     secrets = tuple(registry.get("secrets") or ())
     reason = redact(reason, secrets) or reason

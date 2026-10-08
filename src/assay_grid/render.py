@@ -51,7 +51,7 @@ def render_grid(grid: np.ndarray[Any, Any], destination: Path, *, scale: int = 8
     if array.ndim != 2 or (
         array.size and (int(array.min()) < 0 or int(array.max()) > 15)
     ):
-        raise AssayError("cannot render a grid with colors outside 0..15")
+        raise AssayError("cannot render a grid with colors outside 0..15", code="CORRUPT_RECORD")
     destination.parent.mkdir(parents=True, exist_ok=True)
     image = Image.fromarray(PALETTE[array].astype(np.uint8), mode="RGB")
     image = image.resize(
@@ -75,7 +75,7 @@ def render_event(paths: RunPaths, event: Event, *, all_frames: bool = False) -> 
 def current_image(run: Run) -> Path:
     events = run.events
     if not events:
-        raise AssayError("timeline is empty")
+        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     destination = image_path(run.paths, events[-1].id)
     if not destination.exists():
         render_event(run.paths, events[-1])

@@ -197,15 +197,16 @@ def import_knowledge(run: Run, source: Path) -> dict[str, Any]:
     try:
         raw = source.read_text()
     except OSError as error:
-        raise AssayError(f"unreadable knowledge file {source}: {error}") from error
+        raise AssayError(f"unreadable knowledge file {source}: {error}", code="KNOWLEDGE_INVALID") from error
     sha = hashlib.sha256(raw.encode()).hexdigest()
     try:
         knowledge = json.loads(raw)
     except json.JSONDecodeError as error:
-        raise AssayError(f"knowledge file is not valid JSON: {error}") from error
+        raise AssayError(f"knowledge file is not valid JSON: {error}", code="KNOWLEDGE_INVALID") from error
     if not isinstance(knowledge, dict) or knowledge.get("knowledge_format") != KNOWLEDGE_FORMAT:
         raise AssayError(
-            f"unsupported knowledge format (this build reads {KNOWLEDGE_FORMAT})"
+            f"unsupported knowledge format (this build reads {KNOWLEDGE_FORMAT})",
+            code="KNOWLEDGE_INVALID",
         )
     paths = run.paths
     config = run.config

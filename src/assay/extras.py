@@ -144,7 +144,7 @@ def _grid_kind() -> ObservationKind:
     try:
         from assay_grid import KIND
     except ImportError as error:
-        raise AssayError(f"{_MISSING} ({error})") from error
+        raise AssayError(f"{_MISSING} ({error})", code="EXTRA_MISSING") from error
     return KIND
 
 
@@ -170,5 +170,5 @@ def all_kinds() -> list[ObservationKind]:
 def require_kind(event: Event | None, what: str) -> ObservationKind:
     kind = kind_for(event)
     if kind is None:
-        raise AssayError(f"{what} applies to frame worlds; this run has dict observations")
+        raise AssayError(f"{what} applies to frame worlds; this run has dict observations", code="COMMAND_ARGS")
     return kind

@@ -79,6 +79,7 @@ from .core import (
     require_run,
     run_lock,
 )
+from .errors import exit_code
 from .extras import require_kind
 from .inspect import result_text, status_text, view_text
 from .ops import (
@@ -98,15 +99,19 @@ from .registry import gate_mode, load_registry_file, spend_reports, validate_reg
 from .run import Run
 
 
+USAGE_HINT = "`assay --help` lists the commands and `assay COMMAND --help` a command's flags"
+
+
 class Parser(argparse.ArgumentParser):
-    """argparse with the kernel's error voice, and an epilog that is built only
-    when help is rendered, so listing the claim forms of an installed
-    observation kind never imports that kind on an ordinary command."""
+    """argparse with the kernel's error voice (`CLI_USAGE`), and an epilog
+    that is built only when help is rendered, so listing the claim forms of an
+    installed observation kind never imports that kind on an ordinary
+    command."""
 
     lazy_epilog: Any = None
 
     def error(self, message: str) -> NoReturn:
-        raise AssayError(message)
+        raise AssayError(message, code="CLI_USAGE", hint=USAGE_HINT)
 
     def format_help(self) -> str:
         if self.lazy_epilog is not None:
@@ -250,7 +255,7 @@ def command_of(args: argparse.Namespace) -> Command:
     for command in COMMANDS:
         if command.path == path:
             return command
-    raise AssayError(f"unsupported command {args.command}")
+    raise AssayError(f"unsupported command {args.command}", code="CLI_USAGE", hint=USAGE_HINT)
 
 
 def _parse_declares(raw: list[str]) -> dict[str, str]:
@@ -258,7 +263,7 @@ def _parse_declares(raw: list[str]) -> dict[str, str]:
     for item in raw or ():
         field, separator, value = str(item).partition("=")
         if not separator or not field.strip():
-            raise AssayError(f'declarations are --declare "field=value", got {item!r}')
+            raise AssayError(f'declarations are --declare "field=value", got {item!r}', code="COMMAND_ARGS")
         declares[field.strip()] = value.strip()
     return declares
 
@@ -279,7 +284,8 @@ def _owner_token_file(paths: RunPaths, args: argparse.Namespace) -> Path | None:
     except ValueError:
         return target
     raise AssayError(
-        f"--owner-token-file must point outside the run directory, got {target}"
+        f"--owner-token-file must point outside the run directory, got {target}",
+        code="PATH_INVALID",
     )
 
 
@@ -326,7 +332,8 @@ def _start(paths: RunPaths, args: argparse.Namespace) -> None:
     if forced_sandbox is not None and forced_sandbox != PROCESS_ISOLATION_ONLY:
         raise AssayError(
             f"{FORCE_VARIABLE} must be {PROCESS_ISOLATION_ONLY!r} (the forced fallback) "
-            f"or unset, got {forced_sandbox!r}"
+            f"or unset, got {forced_sandbox!r}",
+            code="COMMAND_ARGS",
         )
     requested = normalize_game_id(args.game_id)
     registry_spec = load_registry_file(args.registry) if args.registry is not None else None
@@ -348,26 +355,31 @@ def _check_resume(
     if getattr(args, "import_knowledge", None) is not None:
         raise AssayError(
             "knowledge imports happen at run start; this directory already "
-            "owns a run"
+            "owns a run",
+            code="RESUME_REFUSED",
         )
     if read_json(paths.registry, None) is None:
         raise AssayError(
             "this directory owns a run without a registry, from before 1.2.0: "
-            "it can be inspected (status, view, audit) but not resumed"
+            "it can be inspected (status, view, audit) but not resumed",
+            code="REGISTRY_MISSING",
         )
     if registry_spec is not None and registry_spec != read_json(paths.registry):
         raise AssayError(
             "this directory already owns a run with a different registry; "
-            "the registry cannot change in place"
+            "the registry cannot change in place",
+            code="RESUME_REFUSED",
         )
     if existing.get("game_id") != requested:
         raise AssayError(
-            f"this directory already owns {existing.get('game_id')}; use a fresh directory for {requested}"
+            f"this directory already owns {existing.get('game_id')}; use a fresh directory for {requested}",
+            code="RESUME_REFUSED",
         )
     existing_mode = str(existing.get("mode", LOCAL_MODE)).lower()
     if args.mode is not None and args.mode != existing_mode:
         raise AssayError(
-            f"this directory already owns a {existing_mode} run; mode cannot be changed in place"
+            f"this directory already owns a {existing_mode} run; mode cannot be changed in place",
+            code="RESUME_REFUSED",
         )
     recorded_python = existing.get("python")
     if isinstance(recorded_python, str) and recorded_python != sys.executable:
@@ -417,7 +429,9 @@ def _resume_remote(paths: RunPaths, run: Run, requested: str) -> None:
     idle = _remote_idle_seconds(run)
     if idle >= 15 * 60:
         raise AssayError(
-            "REMOTE_LEASE_EXPIRED | no live action was recorded for at least 15 minutes. The remote competition run is not recoverable; preserve this directory and use a fresh one"
+            "no live action was recorded for at least 15 minutes. The remote competition "
+            "run is not recoverable; preserve this directory and use a fresh one",
+            code="REMOTE_LEASE_EXPIRED",
         )
     if not broker_ping(paths):
         if find_daemon(paths) is None:
@@ -425,11 +439,15 @@ def _resume_remote(paths: RunPaths, run: Run, requested: str) -> None:
             # before refusing, so the record is complete.
             reconcile_mutations(run)
         raise AssayError(
-            "the remote competition owner is unavailable and cannot be reconstructed; preserve this directory and use a fresh one"
+            "the remote competition owner is unavailable and cannot be reconstructed; "
+            "preserve this directory and use a fresh one",
+            code="REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE",
         )
     if not broker_matches_latest_event(run):
         raise AssayError(
-            "REMOTE_STATE_DIVERGED | the live remote observation differs from the append-only timeline; stop using this run"
+            "the live remote observation differs from the append-only timeline; stop using this run",
+            code="REMOTE_STATE_DIVERGED",
+            hint="preserve this directory and use a fresh one for another run",
         )
     print(
         f"RESUMED | {requested} | REMOTE competition | action-idle lease about {max(0, 15 - int(idle // 60))}m"
@@ -459,7 +477,8 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
             raise AssayError(
                 f"the environment owner is busy or hung (pid {daemon.pid}, "
                 f"started {when}); wait and rerun `assay start`, or run "
-                "`assay stop` (it exits after the current step)"
+                "`assay stop` (it exits after the current step)",
+                code="DAEMON_BUSY",
             )
         if daemon is not None:
             # Alive but unreachable (its socket is gone): stop it
@@ -468,7 +487,8 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
             if not result["stopped"]:
                 raise AssayError(
                     f"the environment owner (pid {daemon.pid}) is "
-                    f"{result['reason']}; wait and rerun `assay start`"
+                    f"{result['reason']}; wait and rerun `assay start`",
+                    code="DAEMON_BUSY",
                 )
         # Confirmed dead or absent: safe to recover orphaned spends.
         recovered = reconcile_mutations(run)
@@ -477,7 +497,10 @@ def _resume_local(paths: RunPaths, run: Run, requested: str) -> int:
         restarted = True
     if not broker_matches_latest_event(run):
         raise AssayError(
-            "LOCAL_REPLAY_DIVERGED | reconstructed simulator state differs from the latest timeline event"
+            "reconstructed simulator state differs from the latest timeline event",
+            code="LOCAL_REPLAY_DIVERGED",
+            hint="the world no longer reproduces this journal; preserve the directory and "
+            "start another run in a fresh one",
         )
     verb = "RECOVERED" if restarted else "RESUMED"
     print(
@@ -496,20 +519,23 @@ def _fresh_start(
         raise AssayError(
             "a fresh run needs --registry FILE: the registry names the actions, "
             "their parameter schemas and the action budget (examples/example_registry.json "
-            "is the smallest one)"
+            "is the smallest one)",
+            code="COMMAND_ARGS",
         )
     orphan = find_daemon(paths)
     if orphan is not None:
         raise AssayError(
             f"a live environment owner (pid {orphan.pid}) still serves this "
             "directory but its run state is missing (was `.assay` removed by "
-            "hand?); run `assay stop` here first, then start again"
+            "hand?); run `assay stop` here first, then start again",
+            code="RESUME_REFUSED",
         )
     token_file = _owner_token_file(paths, args)
     mode = str(args.mode or os.getenv("ASSAY_MODE", LOCAL_MODE)).lower()
     if mode not in {LOCAL_MODE, REMOTE_MODE}:
         raise AssayError(
-            f"ASSAY_MODE must be {LOCAL_MODE!r} or {REMOTE_MODE!r}, got {mode!r}"
+            f"ASSAY_MODE must be {LOCAL_MODE!r} or {REMOTE_MODE!r}, got {mode!r}",
+            code="COMMAND_ARGS",
         )
     adapter_spec: str | None = None
     if args.adapter:
@@ -811,7 +837,8 @@ def _stop(paths: RunPaths) -> None:
         return
     raise AssayError(
         f"the environment owner (pid {result['pid']}) is {result['reason']}; "
-        "rerun `assay stop` after it, or wait"
+        "rerun `assay stop` after it, or wait",
+        code="DAEMON_BUSY",
     )
 
 
@@ -900,7 +927,8 @@ def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
     if bool(args.plan) == bool(args.step):
         raise AssayError(
             "commit takes either @plan.json (from `assay model solve`) "
-            'or one or more --step "NAME pname=value :: claims"'
+            'or one or more --step "NAME pname=value :: claims"',
+            code="COMMAND_ARGS",
         )
     request = CommitRequest(
         plan=args.plan,
@@ -1071,7 +1099,8 @@ def waive_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
 def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     if bool(args.source) == bool(args.file):
         raise AssayError(
-            "provide exactly one Python source argument or --file"
+            "provide exactly one Python source argument or --file",
+            code="COMMAND_ARGS",
         )
     source = (
         args.source if args.source is not None else args.file.read_text()
@@ -1083,16 +1112,18 @@ def python_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
 
 
 def main() -> None:
+    # Decided before the parse, so a command line that does not parse still
+    # answers in the form it asked for.
+    machine = "--json" in sys.argv[1:]
     try:
         args = _parser().parse_args()
         paths = RunPaths(Path(args.run_dir).resolve())
         os.environ["ASSAY_RUN_DIR"] = str(paths.root)
         raise SystemExit(_run(paths, args))
     except AssayError as error:
-        print(f"ERROR | {error}", file=sys.stderr)
-        raise SystemExit(2)
+        raise SystemExit(_report_error(error, machine=machine))
     except Exception as error:  # noqa: BLE001 - one error voice, traceback saved
-        raise SystemExit(_report_internal_error(error))
+        raise SystemExit(_report_internal_error(error, machine=machine))
 
 
 def _run(paths: RunPaths, args: argparse.Namespace) -> int:
@@ -1112,10 +1143,27 @@ def _run(paths: RunPaths, args: argparse.Namespace) -> int:
     return 0
 
 
-def _report_internal_error(error: BaseException) -> int:
-    """Anything that is not an AssayError is a bug or a corrupt file. Print one
-    line in the usual voice and save the traceback where the user can find it,
-    instead of a bare Python traceback with no pointer."""
+def _report_error(error: AssayError, *, machine: bool) -> int:
+    """The error voice (docs/ARCHITECTURE.md section 7.1): `ERROR | CODE |
+    message` on stderr, `NEXT | hint` when the error names a next step, then
+    the message's further lines (the claims table); under `--json` the
+    error object alone, on stdout. The exit status follows the kind."""
+    if machine:
+        print(json.dumps(error.to_json(), ensure_ascii=False))
+    else:
+        head, _, tail = error.message.partition("\n")
+        print(f"ERROR | {error.code} | {head}", file=sys.stderr)
+        if error.hint:
+            print(f"NEXT | {error.hint}", file=sys.stderr)
+        if tail:
+            print(tail, file=sys.stderr)
+    return exit_code(error.kind)
+
+
+def _report_internal_error(error: BaseException, *, machine: bool) -> int:
+    """Anything that is not an AssayError is a bug or a corrupt file: `INTERNAL`,
+    one line in the usual voice with the traceback saved where the user can
+    find it, instead of a bare Python traceback with no pointer."""
     saved = "no run directory here, so the traceback was not saved"
     try:
         run_dir = Path(os.environ.get("ASSAY_RUN_DIR") or ".").resolve()
@@ -1126,11 +1174,12 @@ def _report_internal_error(error: BaseException) -> int:
             saved = f"traceback in {target}"
     except OSError:
         pass
-    print(
-        f"ERROR | internal: {type(error).__name__}: {str(error)[:300]} ({saved})",
-        file=sys.stderr,
+    failure = AssayError(
+        f"{type(error).__name__}: {str(error)[:300]}",
+        code="INTERNAL",
+        hint=f"{saved}; report it with the command that produced it",
     )
-    return 2
+    return _report_error(failure, machine=machine)
 
 
 # --- the tables, in the order the command line lists them --------------------

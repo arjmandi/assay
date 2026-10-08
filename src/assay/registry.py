@@ -98,6 +98,11 @@ _GATES = ("required", "optional", "off")
 
 DEFAULT_HAND_CAP = 3       # the batching law's kernel default; registry-overridable
 DEFAULT_NOTES_CAP = 16_000  # chars; generous enough that compliant runs never see it
+BUDGET_HINT = (
+    "the run takes no more paid actions; `assay audit` gives the verdict and "
+    "`assay export` the knowledge file for the next run"
+)
+SCHEMA_HINT = "the REGISTRY block of `assay status` lists the actions and their schemas"
 
 
 def load_registry_file(path: Path | str) -> dict[str, Any]:
@@ -106,90 +111,93 @@ def load_registry_file(path: Path | str) -> dict[str, Any]:
     try:
         raw = json.loads(source.read_text())
     except FileNotFoundError as error:
-        raise AssayError(f"registry file not found: {source}") from error
+        raise AssayError(f"registry file not found: {source}", code="REGISTRY_INVALID") from error
     except json.JSONDecodeError as error:
-        raise AssayError(f"registry file is not valid JSON: {error}") from error
+        raise AssayError(f"registry file is not valid JSON: {error}", code="REGISTRY_INVALID") from error
     return validate_registry(raw)
 
 
 def validate_registry(raw: Any) -> dict[str, Any]:
     if not isinstance(raw, Mapping):
-        raise AssayError("registry must be a JSON object")
+        raise AssayError("registry must be a JSON object", code="REGISTRY_INVALID")
     unknown = set(raw) - _TOP_KEYS
     if unknown:
-        raise AssayError(f"registry has unknown keys {sorted(unknown)}")
+        raise AssayError(f"registry has unknown keys {sorted(unknown)}", code="REGISTRY_INVALID")
     actions = raw.get("actions")
     if not isinstance(actions, list) or not actions:
-        raise AssayError("registry needs a non-empty 'actions' list")
+        raise AssayError("registry needs a non-empty 'actions' list", code="REGISTRY_INVALID")
     canonical_actions: list[dict[str, Any]] = []
     seen: set[str] = set()
     for index, item in enumerate(actions):
         if not isinstance(item, Mapping):
-            raise AssayError(f"registry action {index} must be an object")
+            raise AssayError(f"registry action {index} must be an object", code="REGISTRY_INVALID")
         extra = set(item) - _ACTION_KEYS
         if extra:
             raise AssayError(
-                f"registry action {index} has unknown keys {sorted(extra)}"
+                f"registry action {index} has unknown keys {sorted(extra)}",
+                code="REGISTRY_INVALID",
             )
         name = item.get("name")
         if not isinstance(name, str) or not _NAME.fullmatch(name):
             raise AssayError(
-                f"registry action {index} needs a name matching {_NAME.pattern}"
+                f"registry action {index} needs a name matching {_NAME.pattern}",
+                code="REGISTRY_INVALID",
             )
         token = name.upper()
         if token == "RESET":
-            raise AssayError("RESET is built-in and cannot be registered")
+            raise AssayError("RESET is built-in and cannot be registered", code="REGISTRY_INVALID")
         if token in seen:
-            raise AssayError(f"registry action {name!r} is registered twice")
+            raise AssayError(f"registry action {name!r} is registered twice", code="REGISTRY_INVALID")
         seen.add(token)
         params_raw = item.get("params", {})
         if not isinstance(params_raw, Mapping):
-            raise AssayError(f"params of {name!r} must be an object")
+            raise AssayError(f"params of {name!r} must be an object", code="REGISTRY_INVALID")
         params: dict[str, dict[str, Any]] = {}
         for pname, schema in params_raw.items():
             if not isinstance(pname, str) or not _NAME.fullmatch(pname):
-                raise AssayError(f"{name!r} has an invalid parameter name {pname!r}")
+                raise AssayError(f"{name!r} has an invalid parameter name {pname!r}", code="REGISTRY_INVALID")
             params[pname] = _validate_param(name, pname, schema)
         canonical: dict[str, Any] = {"name": token, "params": params}
         for flag in ("destructive", "approval"):
             if flag in item:
                 if not isinstance(item[flag], bool):
-                    raise AssayError(f"{name!r} {flag} must be true or false")
+                    raise AssayError(f"{name!r} {flag} must be true or false", code="REGISTRY_INVALID")
                 if item[flag]:
                     canonical[flag] = True
         if "liveness" in item:
             if item["liveness"] not in ("live", "sim"):
-                raise AssayError(f"{name!r} liveness must be 'live' or 'sim'")
+                raise AssayError(f"{name!r} liveness must be 'live' or 'sim'", code="REGISTRY_INVALID")
             canonical["liveness"] = item["liveness"]
         if "rehearsal_quota" in item:
             quota = item["rehearsal_quota"]
             if not isinstance(quota, int) or isinstance(quota, bool) or quota < 1:
-                raise AssayError(f"{name!r} rehearsal_quota must be a positive integer")
+                raise AssayError(f"{name!r} rehearsal_quota must be a positive integer", code="REGISTRY_INVALID")
             if canonical.get("liveness") != "live":
                 raise AssayError(
-                    f"{name!r} rehearsal_quota applies only to liveness 'live' actions"
+                    f"{name!r} rehearsal_quota applies only to liveness 'live' actions",
+                    code="REGISTRY_INVALID",
                 )
             canonical["rehearsal_quota"] = quota
         if "description" in item:
             if not isinstance(item["description"], str):
-                raise AssayError(f"{name!r} description must be a string")
+                raise AssayError(f"{name!r} description must be a string", code="REGISTRY_INVALID")
             canonical["description"] = item["description"]
         canonical_actions.append(canonical)
     output: dict[str, Any] = {"actions": canonical_actions}
     budget = raw.get("budget")
     if budget is not None:
         if not isinstance(budget, Mapping) or set(budget) - {"actions", "usd"}:
-            raise AssayError("registry budget must be {'actions': N, 'usd': X?}")
+            raise AssayError("registry budget must be {'actions': N, 'usd': X?}", code="REGISTRY_INVALID")
         entry: dict[str, Any] = {}
         cap = budget.get("actions")
         if cap is not None:
             if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
-                raise AssayError("budget.actions must be a positive integer")
+                raise AssayError("budget.actions must be a positive integer", code="REGISTRY_INVALID")
             entry["actions"] = cap
         usd = budget.get("usd")
         if usd is not None:
             if isinstance(usd, bool) or not isinstance(usd, (int, float)) or usd <= 0:
-                raise AssayError("budget.usd must be a positive number")
+                raise AssayError("budget.usd must be a positive number", code="REGISTRY_INVALID")
             entry["usd"] = float(usd)
         if entry:
             output["budget"] = entry
@@ -201,35 +209,35 @@ def validate_registry(raw: Any) -> dict[str, Any]:
             or not isinstance(goal.get("text"), str)
             or not goal["text"].strip()
         ):
-            raise AssayError("registry goal must be {'text': '<non-empty>'}")
+            raise AssayError("registry goal must be {'text': '<non-empty>'}", code="REGISTRY_INVALID")
         output["goal"] = {"text": goal["text"]}
     batching = raw.get("batching")
     if batching is not None:
         if not isinstance(batching, Mapping) or set(batching) - {"hand_cap"}:
-            raise AssayError("registry batching must be {'hand_cap': N or null}")
+            raise AssayError("registry batching must be {'hand_cap': N or null}", code="REGISTRY_INVALID")
         cap = batching.get("hand_cap")
         if cap is not None and (
             not isinstance(cap, int) or isinstance(cap, bool) or cap < 1
         ):
-            raise AssayError("batching.hand_cap must be a positive integer or null")
+            raise AssayError("batching.hand_cap must be a positive integer or null", code="REGISTRY_INVALID")
         output["batching"] = {"hand_cap": cap}
     if "notes_cap" in raw:
         cap = raw["notes_cap"]
         if cap is not None and (
             not isinstance(cap, int) or isinstance(cap, bool) or cap < 100
         ):
-            raise AssayError("notes_cap must be an integer >= 100, or null")
+            raise AssayError("notes_cap must be an integer >= 100, or null", code="REGISTRY_INVALID")
         output["notes_cap"] = cap
     if "zero_prior" in raw:
         if not isinstance(raw["zero_prior"], bool):
-            raise AssayError("zero_prior must be true or false")
+            raise AssayError("zero_prior must be true or false", code="REGISTRY_INVALID")
         output["zero_prior"] = raw["zero_prior"]
     modules = raw.get("modules")
     if modules is not None:
         if not isinstance(modules, list) or not all(
             isinstance(entry, str) and entry for entry in modules
         ):
-            raise AssayError("modules must be a list of file paths")
+            raise AssayError("modules must be a list of file paths", code="REGISTRY_INVALID")
         output["modules"] = list(modules)
     modes = raw.get("module_modes")
     if modes is not None:
@@ -238,7 +246,8 @@ def validate_registry(raw: Any) -> dict[str, Any]:
             for key, value in modes.items()
         ):
             raise AssayError(
-                f"module_modes must map module names to one of {list(MODULE_MODES)}"
+                f"module_modes must map module names to one of {list(MODULE_MODES)}",
+                code="REGISTRY_INVALID",
             )
         output["module_modes"] = dict(modes)
     secrets = raw.get("secrets")
@@ -246,23 +255,23 @@ def validate_registry(raw: Any) -> dict[str, Any]:
         if not isinstance(secrets, list) or not all(
             isinstance(entry, str) and entry for entry in secrets
         ):
-            raise AssayError("secrets must be a list of environment variable NAMES")
+            raise AssayError("secrets must be a list of environment variable NAMES", code="REGISTRY_INVALID")
         output["secrets"] = list(secrets)
     for declared_only in ("observers", "control"):
         if declared_only in raw:
             value = raw[declared_only]
             if not isinstance(value, (list, Mapping)):
-                raise AssayError(f"{declared_only} must be a JSON array or object")
+                raise AssayError(f"{declared_only} must be a JSON array or object", code="REGISTRY_INVALID")
             # 1.2.0: accepted and journaled, no runtime behavior (honest gap).
             output[declared_only] = json.loads(json.dumps(value))
     if "gate" in raw:
         if raw["gate"] not in _GATES:
-            raise AssayError(f"gate must be one of {list(_GATES)}")
+            raise AssayError(f"gate must be one of {list(_GATES)}", code="REGISTRY_INVALID")
         output["gate"] = raw["gate"]
     note = raw.get("mode_note")
     if note is not None:
         if not isinstance(note, str):
-            raise AssayError("mode_note must be a string")
+            raise AssayError("mode_note must be a string", code="REGISTRY_INVALID")
         output["mode_note"] = note
     return output
 
@@ -325,32 +334,32 @@ def gate_off(registry: Mapping[str, Any] | None) -> bool:
 def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
     where = f"{action}.{pname}"
     if not isinstance(schema, Mapping):
-        raise AssayError(f"parameter schema {where} must be an object")
+        raise AssayError(f"parameter schema {where} must be an object", code="REGISTRY_INVALID")
     extra = set(schema) - _PARAM_KEYS
     if extra:
-        raise AssayError(f"parameter schema {where} has unknown keys {sorted(extra)}")
+        raise AssayError(f"parameter schema {where} has unknown keys {sorted(extra)}", code="REGISTRY_INVALID")
     kind = schema.get("type")
     if kind not in _TYPES:
-        raise AssayError(f"parameter {where} type must be one of {list(_TYPES)}")
+        raise AssayError(f"parameter {where} type must be one of {list(_TYPES)}", code="REGISTRY_INVALID")
     output: dict[str, Any] = {"type": kind}
     for bound in ("min", "max"):
         if bound in schema:
             if kind == "str":
-                raise AssayError(f"parameter {where} is a str; {bound} does not apply")
+                raise AssayError(f"parameter {where} is a str; {bound} does not apply", code="REGISTRY_INVALID")
             value = schema[bound]
             if isinstance(value, bool) or not isinstance(value, (int, float)):
-                raise AssayError(f"parameter {where} {bound} must be a number")
+                raise AssayError(f"parameter {where} {bound} must be a number", code="REGISTRY_INVALID")
             output[bound] = value
     if (
         "min" in output
         and "max" in output
         and output["min"] > output["max"]
     ):
-        raise AssayError(f"parameter {where} has min > max")
+        raise AssayError(f"parameter {where} has min > max", code="REGISTRY_INVALID")
     if "enum" in schema:
         values = schema["enum"]
         if not isinstance(values, list) or not values:
-            raise AssayError(f"parameter {where} enum must be a non-empty list")
+            raise AssayError(f"parameter {where} enum must be a non-empty list", code="REGISTRY_INVALID")
         expected_types: dict[str, type | tuple[type, ...]] = {
             "int": int,
             "float": (int, float),
@@ -360,7 +369,8 @@ def _validate_param(action: str, pname: str, schema: Any) -> dict[str, Any]:
         for value in values:
             if isinstance(value, bool) or not isinstance(value, expected):
                 raise AssayError(
-                    f"parameter {where} enum value {value!r} does not match type {kind}"
+                    f"parameter {where} enum value {value!r} does not match type {kind}",
+                    code="REGISTRY_INVALID",
                 )
         output["enum"] = list(values)
     return output
@@ -379,7 +389,8 @@ def require_registry(run: Run) -> dict[str, Any]:
     if registry is None:
         raise AssayError(
             "this run has no registry: runs without one are not supported since "
-            "1.2.0 (`assay start` takes --registry)"
+            "1.2.0 (`assay start` takes --registry)",
+            code="REGISTRY_MISSING",
         )
     return registry
 
@@ -392,25 +403,27 @@ def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str) -> Any
             value = int(raw, 10)
         except ValueError:
             raise AssayError(
-                f"{action} {pname}={raw!r} is not an integer"
+                f"{action} {pname}={raw!r} is not an integer",
+                code="ACTION_PARAMS",
             ) from None
     elif kind == "float":
         try:
             value = float(raw)
         except ValueError:
-            raise AssayError(f"{action} {pname}={raw!r} is not a number") from None
+            raise AssayError(f"{action} {pname}={raw!r} is not a number", code="ACTION_PARAMS") from None
         if math.isnan(value) or math.isinf(value):
-            raise AssayError(f"{action} {pname}={raw!r} must be finite")
+            raise AssayError(f"{action} {pname}={raw!r} must be finite", code="ACTION_PARAMS")
     else:
         value = raw
     if "enum" in schema and value not in schema["enum"]:
         raise AssayError(
-            f"{action} {pname}={raw!r} is not one of {schema['enum']}"
+            f"{action} {pname}={raw!r} is not one of {schema['enum']}",
+            code="ACTION_PARAMS",
         )
     if "min" in schema and value < schema["min"]:
-        raise AssayError(f"{action} {pname}={raw!r} is below min {schema['min']}")
+        raise AssayError(f"{action} {pname}={raw!r} is below min {schema['min']}", code="ACTION_PARAMS")
     if "max" in schema and value > schema["max"]:
-        raise AssayError(f"{action} {pname}={raw!r} is above max {schema['max']}")
+        raise AssayError(f"{action} {pname}={raw!r} is above max {schema['max']}", code="ACTION_PARAMS")
     return value
 
 
@@ -425,18 +438,20 @@ def parse_registry_action(
     """
     parts = token.strip().split()
     if not parts:
-        raise AssayError("empty action token")
+        raise AssayError("empty action token", code="ACTION_PARAMS")
     name = parts[0].upper()
     if name == "RESET":
         if len(parts) > 1:
-            raise AssayError("RESET takes no parameters")
+            raise AssayError("RESET takes no parameters", code="ACTION_PARAMS")
         return name, None
     by_name = {item["name"]: item for item in registry.get("actions", ())}
     spec = by_name.get(name)
     if spec is None:
         raise AssayError(
             f"unknown action {parts[0]!r}; registered actions: "
-            f"{sorted(by_name)} (plus built-in RESET)"
+            f"{sorted(by_name)} (plus built-in RESET)",
+            code="ACTION_UNKNOWN",
+            hint=SCHEMA_HINT,
         )
     schemas: Mapping[str, Any] = spec.get("params", {})
     supplied: dict[str, Any] = {}
@@ -444,18 +459,20 @@ def parse_registry_action(
         pname, separator, raw = part.partition("=")
         if not separator or not pname:
             raise AssayError(
-                f"parameters are supplied as pname=value, got {part!r}"
+                f"parameters are supplied as pname=value, got {part!r}",
+                code="ACTION_PARAMS",
             )
         if pname in supplied:
-            raise AssayError(f"{name} parameter {pname!r} supplied twice")
+            raise AssayError(f"{name} parameter {pname!r} supplied twice", code="ACTION_PARAMS")
         if pname not in schemas:
             raise AssayError(
-                f"{name} has no parameter {pname!r}; it takes {sorted(schemas) or 'none'}"
+                f"{name} has no parameter {pname!r}; it takes {sorted(schemas) or 'none'}",
+                code="ACTION_PARAMS",
             )
         supplied[pname] = _coerce(name, pname, schemas[pname], raw)
     missing = [pname for pname in schemas if pname not in supplied]
     if missing:
-        raise AssayError(f"{name} is missing parameter(s): {missing}")
+        raise AssayError(f"{name} is missing parameter(s): {missing}", code="ACTION_PARAMS")
     return name, supplied or None
 
 
@@ -470,7 +487,8 @@ def check_registry_action(name: str, available: Sequence[Any]) -> None:
         return
     if name.upper() not in {value.upper() for value in advertised}:
         raise AssayError(
-            f"{name} is unavailable; advertised actions are {sorted(advertised)}"
+            f"{name} is unavailable; advertised actions are {sorted(advertised)}",
+            code="ACTION_UNAVAILABLE",
         )
 
 
@@ -493,9 +511,11 @@ def check_budget(
     remaining = max(0, int(cap) - spent)
     if planned > remaining:
         raise AssayError(
-            f"BUDGET_EXHAUSTED | action budget cap={cap} spent={spent} "
+            f"action budget cap={cap} spent={spent} "
             f"remaining={remaining}; this command needs {planned} paid action(s) "
-            "and was refused"
+            "and was refused",
+            code="BUDGET_EXHAUSTED",
+            hint=BUDGET_HINT,
         )
 
 
@@ -589,8 +609,10 @@ def check_usd_budget(
     usd, _ = spend_reports(activity)
     if usd >= float(cap):
         raise AssayError(
-            f"BUDGET_EXHAUSTED | reported spend ${usd:.2f} has reached the "
-            f"registered cap ${float(cap):.2f}; paid actions are refused"
+            f"reported spend ${usd:.2f} has reached the "
+            f"registered cap ${float(cap):.2f}; paid actions are refused",
+            code="BUDGET_EXHAUSTED",
+            hint=BUDGET_HINT,
         )
 
 

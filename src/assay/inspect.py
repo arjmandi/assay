@@ -262,7 +262,7 @@ def _general_inspect_text(run: Run, index: int, *, full: bool = False) -> str:
 def status_text(run: Run, *, history: int = 8) -> str:
     events = run.events
     if not events:
-        raise AssayError("timeline is empty")
+        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     event = events[-1]
     kind = kind_for(event)
     registry = run.registry
@@ -477,10 +477,10 @@ def view_text(
     form and honors its own flags), then the history tail."""
     events = run.events
     if not events:
-        raise AssayError("timeline is empty")
+        raise AssayError("timeline is empty", code="TIMELINE_EMPTY")
     index = len(events) - 1 if event_id is None else event_id
     if not 0 <= index < len(events):
-        raise AssayError(f"event must be in 0..{len(events) - 1}")
+        raise AssayError(f"event must be in 0..{len(events) - 1}", code="COMMAND_ARGS")
     event = events[index]
     kind = kind_for(event)
     flags = dict(flags or {})

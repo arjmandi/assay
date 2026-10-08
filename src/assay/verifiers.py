@@ -67,19 +67,21 @@ def admit_verifier(paths: RunPaths, claim: Claim) -> Claim:
     candidate = Path(reference)
     if candidate.is_absolute():
         raise AssayError(
-            f"verify: takes a path relative to the run directory, got {reference!r}"
+            f"verify: takes a path relative to the run directory, got {reference!r}",
+            code="PATH_INVALID",
         )
     source = paths.root / candidate
     try:
         source.resolve().relative_to(paths.root.resolve())
     except ValueError as error:
         raise AssayError(
-            "verifier file must stay inside the run directory"
+            "verifier file must stay inside the run directory",
+            code="PATH_INVALID",
         ) from error
     try:
         body = source.read_bytes()
     except (FileNotFoundError, IsADirectoryError) as error:
-        raise AssayError(f"verifier file not found: {reference}") from error
+        raise AssayError(f"verifier file not found: {reference}", code="FILE_NOT_FOUND") from error
     digest = hashlib.sha256(body).hexdigest()
     paths.verifiers.mkdir(parents=True, exist_ok=True)
     stored = paths.verifiers / f"{digest}.py"

@@ -434,8 +434,12 @@ OPERATIONS: tuple[Operation[Any, Any], ...] = (PING, OBSERVE, ACT, COMMIT, RESET
 
 def daemon_operation(name: Any) -> Operation[Any, Any]:
     """The operation of this name; anything else, the retired `step`
-    included, is refused by name (#13 names the code)."""
+    included, is refused by name with `UNKNOWN_OPERATION`."""
     for operation in OPERATIONS:
         if operation.name == name:
             return operation
-    raise AssayError(f"unknown broker operation {name!r}")
+    raise AssayError(
+        f"unknown broker operation {name!r}",
+        code="UNKNOWN_OPERATION",
+        hint="the operations are " + ", ".join(operation.name for operation in OPERATIONS),
+    )

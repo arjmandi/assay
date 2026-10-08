@@ -140,8 +140,9 @@ def _paid(n):
 def test_budget_refusal_embeds_code_and_remaining():
     registry = canonical()  # cap 10
     check_budget(_paid(9), registry, planned=1)  # last affordable spend passes
-    with pytest.raises(AssayError, match="BUDGET_EXHAUSTED") as error:
+    with pytest.raises(AssayError, match="^action budget cap=10 spent=10 remaining=0") as error:
         check_budget(_paid(10), registry, planned=1)
+    assert error.value.code == "BUDGET_EXHAUSTED" and error.value.kind == "refused"
     assert "remaining=0" in str(error.value)
     with pytest.raises(AssayError, match="remaining=1"):
         check_budget(_paid(9), registry, planned=3)

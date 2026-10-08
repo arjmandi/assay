@@ -106,8 +106,9 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
 
         paths = RunPaths(run)
         mutations_before = len(load_jsonl(paths.mutations))
-        with pytest.raises(AssayError, match="^AssayError: unknown broker operation 'step'$"):
+        with pytest.raises(AssayError, match="^unknown broker operation 'step'$") as refused:
             _request(paths, {"op": "step", "action": "NOOP", "data": None}, timeout=5.0)
+        assert refused.value.code == "UNKNOWN_OPERATION" and refused.value.kind == "usage"
         assert len(load_jsonl(paths.mutations)) == mutations_before
         # The chain is live and the audit is clean.
         audited = run_cli(run, "audit")

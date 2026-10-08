@@ -105,35 +105,38 @@ def declare_channel(
     paths = run.paths
     if not _NAME.fullmatch(name or ""):
         raise AssayError(
-            f"channel name {name!r} must match {_NAME.pattern} (lowercase)"
+            f"channel name {name!r} must match {_NAME.pattern} (lowercase)",
+            code="CHANNEL_DECLARE",
         )
     if name in HOST_CHANNELS:
-        raise AssayError(f"{name!r} is a host channel and cannot be redeclared")
+        raise AssayError(f"{name!r} is a host channel and cannot be redeclared", code="CHANNEL_DECLARE")
     if bool(path) == bool(file):
-        raise AssayError("declare a channel with exactly one of --path or --file")
+        raise AssayError("declare a channel with exactly one of --path or --file", code="CHANNEL_DECLARE")
     declared = load_declared(paths)
     if path is not None:
         keys = [key for key in path.split(".") if key]
         if not keys:
-            raise AssayError("--path needs dotted keys like counters.red")
+            raise AssayError("--path needs dotted keys like counters.red", code="CHANNEL_DECLARE")
         spec: dict[str, Any] = {"form": "path", "path": ".".join(keys)}
     else:
         candidate = Path(str(file))
         if candidate.is_absolute():
             raise AssayError(
-                f"--file takes a path relative to the run directory, got {file!r}"
+                f"--file takes a path relative to the run directory, got {file!r}",
+                code="PATH_INVALID",
             )
         source = paths.root / candidate
         try:
             source.resolve().relative_to(paths.root.resolve())
         except ValueError as error:
             raise AssayError(
-                "extractor file must stay inside the run directory"
+                "extractor file must stay inside the run directory",
+                code="PATH_INVALID",
             ) from error
         try:
             body = source.read_bytes()
         except (FileNotFoundError, IsADirectoryError) as error:
-            raise AssayError(f"extractor file not found: {file}") from error
+            raise AssayError(f"extractor file not found: {file}", code="FILE_NOT_FOUND") from error
         digest = hashlib.sha256(body).hexdigest()
         extractor_dir(paths).mkdir(parents=True, exist_ok=True)
         stored = extractor_dir(paths) / f"{digest}.py"
@@ -144,11 +147,13 @@ def declare_channel(
     if existing is not None and existing != spec:
         raise AssayError(
             f"channel {name!r} is already declared with a different extractor; "
-            "declare a new name instead of silently redefining a referent"
+            "declare a new name instead of silently redefining a referent",
+            code="CHANNEL_REDEFINED",
         )
     if existing is None and len(declared) >= MAX_DECLARED_CHANNELS:
         raise AssayError(
-            f"at most {MAX_DECLARED_CHANNELS} declared channels per run"
+            f"at most {MAX_DECLARED_CHANNELS} declared channels per run",
+            code="CHANNEL_LIMIT",
         )
     declared[name] = spec
     atomic_json(channels_path(paths), declared)
@@ -175,7 +180,8 @@ def check_channel_references(run: Run, claims: Sequence[Claim]) -> None:
             )
             raise AssayError(
                 f"claim names unregistered channel {name!r}; registered channels: "
-                f"{known_channels(run)}; declare one with `assay channel declare`"
+                f"{known_channels(run)}; declare one with `assay channel declare`",
+                code="CHANNEL_UNKNOWN",
             )
 
 
@@ -401,7 +407,7 @@ def grade_channel_claim(
         if op == "sign":
             ok = delta > 0 if claim.sign == "+" else delta < 0
         elif target is None:  # pragma: no cover - parser guarantees a numeric value
-            raise AssayError(f"delta claim {claim.text!r} has no numeric value")
+            raise AssayError(f"delta claim {claim.text!r} has no numeric value", code="CLAIM_SYNTAX")
         elif op == "=":
             ok = delta == target
         elif op == ">=":
@@ -409,7 +415,7 @@ def grade_channel_claim(
         elif op == "<=":
             ok = delta <= target
         else:  # pragma: no cover - parser guarantees op
-            raise AssayError(f"unknown delta op {op!r}")
+            raise AssayError(f"unknown delta op {op!r}", code="INTERNAL")
         return Grade.of(
             claim,
             ok=bool(ok),
@@ -431,4 +437,4 @@ def grade_channel_claim(
             ok=bool(ok),
             actual=f"ch {name} went {before_number:g} -> {after_number:g} (threshold {threshold:g})",
         )
-    raise AssayError(f"unknown channel claim kind {kind!r}")  # pragma: no cover
+    raise AssayError(f"unknown channel claim kind {kind!r}", code="INTERNAL")  # pragma: no cover

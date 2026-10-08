@@ -19,6 +19,7 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .errors import INTERNAL, UNSPECIFIED, kind_of
 from .records import Event
 
 if TYPE_CHECKING:
@@ -26,7 +27,61 @@ if TYPE_CHECKING:
 
 
 class AssayError(RuntimeError):
-    pass
+    """A refusal (docs/ARCHITECTURE.md section 7.1): the message, a code from
+    the catalogue (`errors.py`), the kind the code has there (`usage`,
+    `refused`, `world`, `internal` or `invalid`, which decides the exit
+    status), and the next step in one sentence, or None. `str(error)` is the
+    message alone; the code rides beside it. A raise without a code, an
+    adapter's or a module's, is `UNSPECIFIED` with the kind it asks for."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        code: str = UNSPECIFIED,
+        kind: str = "refused",
+        hint: str | None = None,
+    ) -> None:
+        super().__init__(message)
+        self.message = str(message)
+        self.code = str(code)
+        self.kind = kind_of(self.code, str(kind))
+        self.hint = hint
+
+    def __str__(self) -> str:
+        return self.message
+
+    def to_json(self) -> dict[str, Any]:
+        """The error object of the socket and of `--json`."""
+        return {"code": self.code, "kind": self.kind, "message": self.message, "hint": self.hint}
+
+    @classmethod
+    def from_json(cls, obj: Any) -> AssayError:
+        """The error a reply carried, as the same AssayError. A string is an
+        error without a code; anything else is a malformed reply."""
+        if isinstance(obj, str):
+            return cls(obj)
+        if not isinstance(obj, Mapping) or not isinstance(obj.get("message"), str):
+            return cls(
+                "malformed error object from environment owner",
+                code="PROTOCOL_MALFORMED",
+                hint="stop the daemon with `assay stop` and start it again with `assay start WORLD_ID`",
+            )
+        hint = obj.get("hint")
+        return cls(
+            obj["message"],
+            code=str(obj.get("code") or UNSPECIFIED),
+            kind=str(obj.get("kind") or "refused"),
+            hint=hint if isinstance(hint, str) else None,
+        )
+
+    @classmethod
+    def wrap(cls, error: BaseException, *, hint: str | None = None) -> AssayError:
+        """An AssayError as it is; anything else as `INTERNAL`, carrying the
+        exception's type and text."""
+        if isinstance(error, AssayError):
+            return error
+        return cls(f"{type(error).__name__}: {error}", code=INTERNAL, hint=hint)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -134,7 +189,10 @@ def normalize_game_id(value: str) -> str:
     world_id = str(value)
     problem = _world_id_problem(world_id)
     if problem is not None:
-        raise AssayError(f"invalid world id {value!r}: {problem}. {WORLD_ID_RULE[0].upper()}{WORLD_ID_RULE[1:]}")
+        raise AssayError(
+            f"invalid world id {value!r}: {problem}. {WORLD_ID_RULE[0].upper()}{WORLD_ID_RULE[1:]}",
+            code="WORLD_ID_INVALID",
+        )
     return world_id
 
 
@@ -155,7 +213,7 @@ def read_json(path: Path, default: Any = None) -> Any:
     except FileNotFoundError:
         return default
     except json.JSONDecodeError as error:
-        raise AssayError(f"corrupt JSON in {path}: {error}") from error
+        raise AssayError(f"corrupt JSON in {path}: {error}", code="CORRUPT_RECORD") from error
 
 
 def append_jsonl(path: Path, value: Mapping[str, Any]) -> dict[str, Any]:
@@ -188,7 +246,8 @@ def load_jsonl(path: Path) -> list[dict[str, Any]]:
             output.append(json.loads(line))
         except json.JSONDecodeError as error:
             raise AssayError(
-                f"corrupt JSONL in {path} line {line_number}: {error}"
+                f"corrupt JSONL in {path} line {line_number}: {error}",
+                code="CORRUPT_RECORD",
             ) from error
     return output
 
@@ -234,12 +293,15 @@ def command_status(run: Run, command: str) -> Iterator[CommandStatus]:
         yield current
     except Exception as error:
         events = current.run.events
+        failure = AssayError.wrap(error)
         record.update(
             status="ERROR",
             finished_at=now_iso(),
             elapsed_seconds=time.monotonic() - started_monotonic,
             event=events[-1].id if events else record["event"],
-            error=str(error)[:500],
+            error=failure.message[:500],
+            code=failure.code,
+            error_kind=failure.kind,
         )
         append_jsonl(run.paths.activity, {"kind": "command_end", **record})
         raise
@@ -258,7 +320,8 @@ def require_run(paths: RunPaths) -> dict[str, Any]:
     config = read_json(paths.config)
     if not isinstance(config, dict):
         raise AssayError(
-            f"{paths.root} is not initialized; run `assay start WORLD_ID`"
+            f"{paths.root} is not initialized; run `assay start WORLD_ID`",
+            code="RUN_MISSING",
         )
     return config
 
@@ -266,24 +329,24 @@ def require_run(paths: RunPaths) -> dict[str, Any]:
 def grid_to_rows(grid: Any) -> list[str]:
     array = np.asarray(grid, dtype=np.int16)
     if array.ndim != 2:
-        raise AssayError(f"frame must be 2-D, got {array.shape}")
+        raise AssayError(f"frame must be 2-D, got {array.shape}", code="WORLD_ERROR")
     if array.size and (int(array.min()) < 0 or int(array.max()) > 15):
-        raise AssayError("grid colors must be in 0..15")
+        raise AssayError("grid colors must be in 0..15", code="WORLD_ERROR")
     return ["".join(format(int(cell), "x") for cell in row) for row in array]
 
 
 def rows_to_grid(rows: Sequence[str]) -> np.ndarray[Any, Any]:
     if not rows:
-        raise AssayError("empty frame")
+        raise AssayError("empty frame", code="CORRUPT_RECORD")
     width = len(rows[0])
     if width == 0 or any(len(row) != width for row in rows):
-        raise AssayError("ragged frame encoding")
+        raise AssayError("ragged frame encoding", code="CORRUPT_RECORD")
     try:
         return np.asarray(
             [[int(cell, 16) for cell in row] for row in rows], dtype=np.int16
         )
     except ValueError as error:
-        raise AssayError("invalid frame encoding") from error
+        raise AssayError("invalid frame encoding", code="CORRUPT_RECORD") from error
 
 
 def normalize_state(value: Any) -> str:
@@ -314,12 +377,13 @@ def normalize_observation(response: Any) -> dict[str, Any]:
         # General (non-grid) adapter observation: a JSON object under "data".
         data = response["data"]
         if not isinstance(data, Mapping):
-            raise AssayError("adapter observation 'data' must be a JSON object")
+            raise AssayError("adapter observation 'data' must be a JSON object", code="WORLD_ERROR")
         try:
             payload = json.loads(json.dumps(data, sort_keys=True))
         except (TypeError, ValueError) as error:
             raise AssayError(
-                f"adapter observation is not JSON-serializable: {error}"
+                f"adapter observation is not JSON-serializable: {error}",
+                code="WORLD_ERROR",
             ) from error
         available = sorted(
             {
@@ -348,7 +412,7 @@ def normalize_observation(response: Any) -> dict[str, Any]:
         available = response.available_actions
     frames = [np.asarray(frame, dtype=np.int16) for frame in raw_frames]
     if not frames:
-        raise AssayError("environment returned no frames")
+        raise AssayError("environment returned no frames", code="WORLD_ERROR")
     return {
         "state": normalize_state(state),
         "levels_completed": int(completed),
@@ -390,7 +454,10 @@ def make_event(
 
 def frame_at(event: Event, frame: int = -1) -> np.ndarray[Any, Any]:
     if event.frames is None:
-        raise AssayError("this event has dict observations; there is no frame to decode")
+        raise AssayError(
+            "this event has dict observations; there is no frame to decode",
+            code="COMMAND_ARGS",
+        )
     return rows_to_grid(event.frames[frame])
 
 
@@ -429,7 +496,7 @@ def import_path(path: Path, prefix: str) -> Iterator[ModuleType]:
     unique = f"_{prefix}_{time.time_ns()}_{uuid.uuid4().hex}"
     spec = importlib.util.spec_from_file_location(unique, path)
     if spec is None or spec.loader is None:
-        raise AssayError(f"cannot import {path}")
+        raise AssayError(f"cannot import {path}", code="MODULE_CONTRACT")
     module = importlib.util.module_from_spec(spec)
     try:
         sys.path.insert(0, str(path.parent))
@@ -440,7 +507,8 @@ def import_path(path: Path, prefix: str) -> Iterator[ModuleType]:
         raise
     except Exception as error:
         raise AssayError(
-            f"failed to load {path.name}: {type(error).__name__}: {error}"
+            f"failed to load {path.name}: {type(error).__name__}: {error}",
+            code="MODULE_CONTRACT",
         ) from error
     finally:
         sys.path[:] = before_path

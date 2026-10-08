@@ -55,8 +55,9 @@ def test_an_unknown_operation_is_refused_by_name():
     from assay.core import AssayError
     from assay.ops import daemon_operation
 
-    with pytest.raises(AssayError, match="^unknown broker operation 'step'$"):
+    with pytest.raises(AssayError, match="^unknown broker operation 'step'$") as refused:
         daemon_operation("step")
+    assert refused.value.code == "UNKNOWN_OPERATION" and refused.value.kind == "usage"
     with pytest.raises(AssayError, match="^unknown broker operation None$"):
         daemon_operation(None)
     assert daemon_operation("act").name == "act"
