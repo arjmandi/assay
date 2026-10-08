@@ -339,13 +339,15 @@ def test_params_json_carries_structured_values_through_the_cli_and_the_daemon(tm
              f"--params names a file that cannot be read: {run / 'nowhere.json'}: No such file or directory",
              None),
             # The wire's rules, applied here first: a repeated key, an integer
-            # past the interpreter's digit limit, a nesting it cannot read (a
-            # 20000-deep array on 3.12, 100000 on 3.14, within the size cap).
+            # past the interpreter's digit limit, a nesting past
+            # DOCUMENT_DEPTH_LIMIT (64), which every interpreter parses; the
+            # 200-deep array is 400 bytes inline, well under the 128 KiB Linux
+            # allows one argument.
             (["INC", "--params", '{"amount": 1, "amount": 2}'],
              "--params is not accepted: the key 'amount' is repeated", None),
             (["INC", "--params", '{"amount": ' + "1" * 5000 + "}"],
              "--params is not accepted: Exceeds the limit (4300 digits) for integer string conversion", None),
-            (["INC", "--params", '{"amount": ' + "[" * 100_000 + "]" * 100_000 + "}"],
+            (["INC", "--params", '{"amount": ' + "[" * 200 + "]" * 200 + "}"],
              "--params is nested too deep", None),
         ):
             refused = run_cli(run, "act", *arguments, "--predict", "change")
@@ -353,6 +355,15 @@ def test_params_json_carries_structured_values_through_the_cli_and_the_daemon(tm
             assert refused.stderr.startswith(f"ERROR | COMMAND_ARGS | {message}"), refused.stderr
             if hint is not None:
                 assert refused.stderr == f"ERROR | COMMAND_ARGS | {message}\nNEXT | {hint}\n"
+        # An extreme depth, through @FILE since 200 KB is past what Linux
+        # allows one argument: the same refusal whether the interpreter parsed
+        # the document (3.14.5 reads 100,000 levels) or gave up on it first
+        # (3.12 does past about 20,000), since the depth is measured, never
+        # caught.
+        (run / "deep.json").write_text('{"amount": ' + "[" * 100_000 + "]" * 100_000 + "}")
+        deep = run_cli(run, "act", "INC", "--params", f"@{run / 'deep.json'}", "--predict", "change")
+        assert deep.returncode == 2
+        assert deep.stderr.startswith("ERROR | COMMAND_ARGS | --params is nested too deep\n")
         # A document past the request limit is refused before the socket.
         big = '{"amount": 1, "pad": "' + "a" * 1_000_000 + '"}'
         (run / "big.json").write_text(big)
@@ -473,8 +484,9 @@ def _raw_text(run: Path, text: bytes) -> dict:
 def test_the_daemon_caps_the_request_line_and_refuses_a_repeated_key_and_deep_nesting(tmp_path):
     """The wire's rules (#14): a line past REQUEST_LIMIT_BYTES is refused
     before parsing and the connection answered, a repeated key and a nesting
-    the interpreter cannot read are REQUEST_MALFORMED, never INTERNAL, and
-    the daemon keeps serving with nothing spent."""
+    past DOCUMENT_DEPTH_LIMIT are REQUEST_MALFORMED, never INTERNAL, whether
+    or not the interpreter could have parsed the document, and the daemon
+    keeps serving with nothing spent."""
     run = tmp_path / "limits"
     _prepare(run)
     try:
@@ -490,7 +502,23 @@ def test_the_daemon_caps_the_request_line_and_refuses_a_repeated_key_and_deep_ne
         reply = _raw_text(run, (head + '{"action": "NOOP", "action": "INC", "predict": "noop"}}').encode())
         assert reply["error"]["code"] == "REQUEST_MALFORMED"
         assert reply["error"]["message"] == "malformed request: the key 'action' is repeated"
-        reply = _raw_text(run, (head + "[" * 100_000 + "]" * 100_000 + "}").encode())
+        # A 200-deep array, which every interpreter parses, and a 100,000-deep
+        # one, which 3.12 gives up on and 3.14.5 reads: the same refusal, since
+        # the depth is measured after the parse and never left to the
+        # interpreter's recursion limit, which the thread's stack moves too.
+        for depth in (200, 100_000):
+            reply = _raw_text(run, (head + "[" * depth + "]" * depth + "}").encode())
+            assert reply["error"]["code"] == "REQUEST_MALFORMED", depth
+            assert reply["error"]["message"] == "malformed request: nested too deep", depth
+        # The limit counts the request's own wrapping: 64 levels in all (the
+        # request, args, params and 61 arrays) decode and reach the registry,
+        # 65 do not.
+        nested = '{"action": "INC", "params": {"amount": ' + "[" * 61 + "]" * 61 + '}, "predict": "change"}}'
+        reply = _raw_text(run, (head + nested).encode())
+        assert reply["error"]["code"] == "ACTION_PARAMS"
+        assert reply["error"]["message"] == "INC amount=" + "[" * 61 + "]" * 16 + "... is not an integer"
+        nested = '{"action": "INC", "params": {"amount": ' + "[" * 62 + "]" * 62 + '}, "predict": "change"}}'
+        reply = _raw_text(run, (head + nested).encode())
         assert reply["error"]["code"] == "REQUEST_MALFORMED"
         assert reply["error"]["message"] == "malformed request: nested too deep"
         digits = head + '{"action": "INC", "params": {"amount": ' + "1" * 5000 + '}, "predict": "change"}}'
@@ -503,6 +531,26 @@ def test_the_daemon_caps_the_request_line_and_refuses_a_repeated_key_and_deep_ne
         assert "Traceback" not in (run / ".assay" / "broker.log").read_text()
     finally:
         stop_run(run)
+
+
+def test_decode_json_measures_the_depth_itself_and_refuses_past_the_limit():
+    """`ops.decode_json`: a document DOCUMENT_DEPTH_LIMIT containers deep is
+    read, objects and arrays counting alike and the outermost one as the
+    first level; one level deeper is refused `DocumentTooDeep`, as is a
+    depth the interpreter may or may not parse (100,000: 3.12 gives up past
+    about 20,000, 3.14.5 reads it), so the refusal follows the limit and not
+    the platform."""
+    from assay.ops import DOCUMENT_DEPTH_LIMIT, DocumentTooDeep, decode_json, document_depth
+
+    assert DOCUMENT_DEPTH_LIMIT == 64
+    assert issubclass(DocumentTooDeep, ValueError)
+    assert document_depth(decode_json("1")) == 0
+    assert document_depth(decode_json('{"a": {"b": [1, {"c": 2}]}}')) == 4
+    assert document_depth(decode_json("[" * 64 + "]" * 64)) == 64
+    assert document_depth(decode_json('{"k": ' * 32 + "[" * 32 + "]" * 32 + "}" * 32)) == 64
+    for text in ("[" * 65 + "]" * 65, '{"k": ' * 65 + "1" + "}" * 65, "[" * 100_000 + "]" * 100_000):
+        with pytest.raises(DocumentTooDeep, match="nested too deep"):
+            decode_json(text)
 
 
 def test_split_step_and_validate_action_agree_with_the_token_parser():

@@ -104,6 +104,7 @@ from .ops import (
     ActRequest,
     ApproveRequest,
     CommitRequest,
+    DocumentTooDeep,
     GoalRatifyRequest,
     Operation,
     ReceiptResult,
@@ -1128,8 +1129,11 @@ def _json_argument(raw: str, flag: str) -> Any:
     """The JSON a flag carries: the text itself, or the content of the file
     an `@FILE` value names (relative to the working directory), under the
     wire's rules (`ops.decode_json`): at most `REQUEST_LIMIT_BYTES`, no
-    repeated key, a nesting the interpreter can read; refused here, before
-    the socket, in the command line's code."""
+    repeated key, at most `DOCUMENT_DEPTH_LIMIT` containers deep; refused
+    here, before the socket, in the command line's code. The caps apply to
+    the document however it arrives; one longer than the operating system's
+    limit on a single argument (128 KiB on Linux) is refused by the system
+    before this runs and goes through `@FILE`."""
     hint = PARAMS_HINT if flag == "--params" else STEP_FORM_HINT
     text = raw
     if raw.startswith("@"):
@@ -1153,7 +1157,7 @@ def _json_argument(raw: str, flag: str) -> Any:
         return decode_json(text)
     except json.JSONDecodeError as error:
         raise AssayError(f"{flag} is not valid JSON: {error}", code="COMMAND_ARGS", hint=hint) from None
-    except RecursionError:
+    except DocumentTooDeep:
         raise AssayError(f"{flag} is nested too deep", code="COMMAND_ARGS", hint=hint) from None
     except ValueError as error:
         raise AssayError(f"{flag} is not accepted: {error}", code="COMMAND_ARGS", hint=hint) from None

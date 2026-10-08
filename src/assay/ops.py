@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any, Generic, Protocol, Self, TypeVar
 
 from .core import AssayError
@@ -67,6 +67,18 @@ PROTOCOL_VERSION = 2
 # before the socket sees it. A parameter without `maxLength` or `maxItems` is
 # bounded by this; those keywords are the world's own caps below it.
 REQUEST_LIMIT_BYTES = 1_000_000
+# A document nests at most this many containers deep, an object or an array
+# each one level, a scalar none, the outermost container the first level (so
+# the request object itself counts on the wire, the params object on the
+# command line). The depth is measured after the parse with a stack of the
+# kernel's own (`document_depth`), never left to the interpreter's
+# `RecursionError`, whose threshold moves with the version (3.12 gives up
+# past about 20,000 levels, 3.14.5 reads 100,000) and with the thread's
+# stack. Comfortably above `registry.SCHEMA_DEPTH_LIMIT` (32), since a value
+# nests no deeper than its schema plus the few levels of the request around
+# it, and far below any interpreter's limit, so a document under it parses,
+# renders and journals on every platform.
+DOCUMENT_DEPTH_LIMIT = 64
 
 
 def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -80,13 +92,49 @@ def _strict_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     return obj
 
 
+class DocumentTooDeep(ValueError):
+    """A JSON document nested past `DOCUMENT_DEPTH_LIMIT`, or past what the
+    interpreter could parse at all; the caller words the refusal in its own
+    code."""
+
+    def __init__(self) -> None:
+        super().__init__("nested too deep")
+
+
+def document_depth(value: Any) -> int:
+    """How deep a decoded document nests: 0 for a scalar, one more than its
+    deepest member for an object or an array. Walked with an explicit stack,
+    never the interpreter's, so any depth the parse read is measured."""
+    deepest = 0
+    pending: list[tuple[Any, int]] = [(value, 1)]
+    while pending:
+        node, depth = pending.pop()
+        members: Iterable[Any]
+        if isinstance(node, dict):
+            members = node.values()
+        elif isinstance(node, list):
+            members = node
+        else:
+            continue
+        deepest = max(deepest, depth)
+        pending.extend((member, depth + 1) for member in members)
+    return deepest
+
+
 def decode_json(text: str | bytes) -> Any:
     """One JSON document under the protocol's rules: a repeated key within
-    an object is refused (`ValueError`), and a document nested past the
-    interpreter's limit raises `RecursionError`; the caller words the
+    an object is refused (`ValueError`), and a document nested past
+    `DOCUMENT_DEPTH_LIMIT` is refused (`DocumentTooDeep`), whether the
+    interpreter parsed it or gave up on it first; the caller words the
     refusal in its own code (`REQUEST_MALFORMED` on the daemon,
     `COMMAND_ARGS` on the command line)."""
-    return json.loads(text, object_pairs_hook=_strict_object)
+    try:
+        value = json.loads(text, object_pairs_hook=_strict_object)
+    except RecursionError:
+        raise DocumentTooDeep() from None
+    if document_depth(value) > DOCUMENT_DEPTH_LIMIT:
+        raise DocumentTooDeep()
+    return value
 
 
 class Record(Protocol):
