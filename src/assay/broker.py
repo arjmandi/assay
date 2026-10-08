@@ -41,6 +41,7 @@ from .ops import (
     INSTALL_MODULE,
     OBSERVE,
     PING,
+    PROTOCOL_VERSION,
     RESET,
     ActRequest,
     CommitRequest,
@@ -239,9 +240,58 @@ def _client_timeout(computed: float) -> float:
         return computed
 
 
+def _version_refusal(found: Any, *, side: str) -> AssayError:
+    """The refusal of a line without this package's protocol version, on
+    either side: the client and the daemon ship together, so a difference
+    is a daemon that outlived an upgrade, or a client that predates it."""
+    carried = "carries no protocol version" if found is None else f"speaks protocol version {found!r}"
+    return AssayError(
+        f"the {side} {carried}; this package speaks {PROTOCOL_VERSION}",
+        code="PROTOCOL_VERSION",
+        hint=RESTART_HINT,
+    )
+
+
+def _decode_reply(raw: bytes) -> dict[str, Any]:
+    """The daemon's reply line (docs/ARCHITECTURE.md section 7.2) to the
+    result it carries: the version checked before anything else, so a
+    daemon that outlived an upgrade is refused rather than misread; the
+    error object raised as the same AssayError the daemon raised."""
+    if not raw.strip():
+        raise AssayError(
+            "empty response from environment owner", code="PROTOCOL_MALFORMED", hint=RESTART_HINT
+        )
+    try:
+        response = json.loads(raw.splitlines()[0])
+    except ValueError as error:
+        raise AssayError(
+            f"malformed response from environment owner: {error}",
+            code="PROTOCOL_MALFORMED",
+            hint=RESTART_HINT,
+        ) from error
+    if not isinstance(response, dict):
+        raise AssayError(
+            "malformed response from environment owner", code="PROTOCOL_MALFORMED", hint=RESTART_HINT
+        )
+    if response.get("v") != PROTOCOL_VERSION:
+        raise _version_refusal(response.get("v"), side="environment owner")
+    if not response.get("ok"):
+        raise AssayError.from_json(response.get("error", "environment owner error"))
+    result = response.get("result")
+    if not isinstance(result, dict):
+        raise AssayError(
+            "malformed response from environment owner: no result object",
+            code="PROTOCOL_MALFORMED",
+            hint=RESTART_HINT,
+        )
+    return result
+
+
 def _request(
-    paths: RunPaths, payload: Mapping[str, Any], timeout: float = 10.0
+    paths: RunPaths, op: str, args: Mapping[str, Any], timeout: float = 10.0
 ) -> dict[str, Any]:
+    """One operation over the socket: `{"v", "token", "op", "args"}` sent,
+    the reply decoded to its result object."""
     descriptor = read_json(paths.broker)
     try:
         config = read_json(paths.config, {})
@@ -266,10 +316,8 @@ def _request(
             code="DAEMON_UNAVAILABLE",
             hint="`assay start WORLD_ID` writes a new token with the daemon it starts",
         ) from error
-    message = (
-        json.dumps({"token": token, **dict(payload)}, separators=(",", ":")).encode()
-        + b"\n"
-    )
+    line = {"v": PROTOCOL_VERSION, "token": token, "op": op, "args": dict(args)}
+    message = json.dumps(line, separators=(",", ":")).encode() + b"\n"
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
             client.settimeout(timeout)
@@ -285,27 +333,7 @@ def _request(
                     break
     except (OSError, TimeoutError) as error:
         raise AssayError(f"the environment owner stopped responding; {recovery}", code="DAEMON_UNAVAILABLE") from error
-    if not chunks:
-        raise AssayError(
-            "empty response from environment owner", code="PROTOCOL_MALFORMED", hint=RESTART_HINT
-        )
-    try:
-        response = json.loads(b"".join(chunks).splitlines()[0])
-    except ValueError as error:
-        raise AssayError(
-            f"malformed response from environment owner: {error}",
-            code="PROTOCOL_MALFORMED",
-            hint=RESTART_HINT,
-        ) from error
-    if not isinstance(response, dict):
-        raise AssayError(
-            "malformed response from environment owner", code="PROTOCOL_MALFORMED", hint=RESTART_HINT
-        )
-    if not response.get("ok"):
-        # The error object of section 7.1, raised here as the same AssayError
-        # the daemon raised.
-        raise AssayError.from_json(response.get("error", "environment owner error"))
-    return response
+    return _decode_reply(b"".join(chunks))
 
 
 PING_TIMEOUT_MIN = 0.5
@@ -323,20 +351,23 @@ def _ping_timeout() -> float:
 def call(
     paths: RunPaths, operation: Operation[Req, Res], request: Req, *, timeout: float = 10.0
 ) -> Res:
-    """One daemon operation over the socket: the request record's fields
-    under the operation's name, the reply decoded into the operation's
-    result record. The one place the client speaks the wire; #13's version
-    check lands here."""
-    response = _request(paths, {"op": operation.name, **request.to_json()}, timeout=timeout)
-    return operation.result.from_json(
-        {key: value for key, value in response.items() if key != "ok"}
-    )
+    """One daemon operation over the socket: the request record's fields as
+    the `args` of the operation's name, the reply's result decoded into the
+    operation's result record. The one place the client speaks the wire;
+    the version is checked on every reply (`_decode_reply`)."""
+    result = _request(paths, operation.name, request.to_json(), timeout=timeout)
+    return operation.result.from_json(result)
 
 
 def broker_ping(paths: RunPaths) -> bool:
+    """Whether a daemon answers on the socket. A daemon that answers in
+    another protocol version is not silent: its refusal is raised, so the
+    caller names the way back instead of waiting for a step to end."""
     try:
         return call(paths, PING, PingRequest(), timeout=_ping_timeout()).pong
-    except AssayError:
+    except AssayError as error:
+        if error.code == "PROTOCOL_VERSION":
+            raise
         return False
 
 
@@ -834,7 +865,7 @@ class _Daemon:
             try:
                 response, terminal = self.handle(_read_request(connection))
             except Exception as error:  # noqa: BLE001 - every failure answers as the error object
-                response = {"ok": False, "error": _error_reply(error)}
+                response = {"v": PROTOCOL_VERSION, "ok": False, "error": _error_reply(error)}
             try:
                 connection.sendall(
                     json.dumps(response, separators=(",", ":")).encode() + b"\n"
@@ -927,11 +958,14 @@ class _Daemon:
 
     def handle(self, request: Mapping[str, Any]) -> tuple[dict[str, Any], bool]:
         """One request line to its reply, and whether the run ended with it:
-        the token checked, the operation looked up in the table, the request
-        record decoded (a field the record does not take is refused before
+        the protocol version checked before anything else, then the token,
+        the operation looked up in the table, the request record decoded
+        from `args` (a field the record does not take is refused before
         anything spends), the name's handler called with the daemon and the
-        held run, the result encoded. An unknown operation is refused by
-        name."""
+        held run, the result encoded under `result`. An unknown operation is
+        refused by name."""
+        if request.get("v") != PROTOCOL_VERSION:
+            raise _version_refusal(request.get("v"), side="client")
         if not secrets.compare_digest(str(request.get("token", "")), self.token):
             raise AssayError("invalid environment owner token", code="BROKER_TOKEN")
         operation = daemon_operation(request.get("op"))
@@ -940,10 +974,14 @@ class _Daemon:
             # verification itself runs in `spend`, before the world step of
             # every act, commit step, model-plan step and reset.
             self.refuse_if_tampered()
-        fields = {key: value for key, value in request.items() if key not in {"token", "op"}}
-        result = HANDLERS[operation.name](self, self.run, operation.request.from_json(fields))
+        args = request.get("args", {})
+        if args is None:
+            args = {}
+        if not isinstance(args, dict):
+            raise AssayError("malformed request: args is not an object", code="MALFORMED_REQUEST")
+        result = HANDLERS[operation.name](self, self.run, operation.request.from_json(args))
         terminal = operation.paid and bool(self.run.events) and self.run.events[-1].state == "WIN"
-        return {"ok": True, **result.to_json()}, terminal
+        return {"v": PROTOCOL_VERSION, "ok": True, "result": result.to_json()}, terminal
 
 
 def serve_ping(daemon: _Daemon, run: Run, request: PingRequest) -> PingResult:
@@ -965,7 +1003,8 @@ def serve_act(daemon: _Daemon, run: Run, request: ActRequest) -> ReceiptResult:
     return ReceiptResult(
         execute_action(
             run,
-            request.action_token,
+            request.action,
+            request.params,
             predict=request.predict or "",
             because=request.because,
             at_event=request.at_event,

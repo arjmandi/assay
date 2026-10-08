@@ -58,7 +58,7 @@ from assay.ops import ACT, ActRequest
 
 paths = RunPaths(Path(sys.argv[1]))
 for _ in range(int(sys.argv[2])):
-    receipt = broker_gated(paths, ACT, ActRequest(action_token="NOOP", predict="noop", declares={}))
+    receipt = broker_gated(paths, ACT, ActRequest(action="NOOP", params=None, predict="noop", declares={}))
     assert receipt.outcome == "PREDICTED", receipt
 """
 
@@ -356,7 +356,7 @@ def test_a_changed_file_is_refused_before_the_next_paid_action(tmp_path, tamper,
         # load cannot read a corrupt configuration): refused by name.
         with pytest.raises(AssayError) as caught:
             broker_gated(
-                RunPaths(run), ACT, ActRequest(action_token="NOOP", predict="noop", declares={})
+                RunPaths(run), ACT, ActRequest(action="NOOP", params=None, predict="noop", declares={})
             )
         message = str(caught.value)
         assert caught.value.code == "TAMPER_DETECTED" and caught.value.kind == "invalid"
@@ -474,7 +474,8 @@ def test_a_field_the_request_record_does_not_take_spends_nothing(tmp_path):
         with pytest.raises(AssayError, match="^TypeError: act.bogus is not a field of the record$") as bug:
             _request(
                 paths,
-                {"op": "act", "action_token": "NOOP", "predict": "noop", "bogus": 1},
+                "act",
+                {"action": "NOOP", "params": None, "predict": "noop", "bogus": 1},
                 timeout=10.0,
             )
         assert bug.value.code == "INTERNAL" and bug.value.kind == "internal"

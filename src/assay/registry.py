@@ -395,7 +395,37 @@ def require_registry(run: Run) -> dict[str, Any]:
     return registry
 
 
+def _check_value(action: str, pname: str, schema: Mapping[str, Any], value: Any, shown: str) -> Any:
+    """One parameter value against its schema: the scalar type, finiteness,
+    the enum and the bounds. `shown` is the value as the refusal names it
+    (the token as typed, or the JSON value's repr)."""
+    kind = schema["type"]
+    if kind == "int":
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise AssayError(f"{action} {pname}={shown} is not an integer", code="ACTION_PARAMS")
+    elif kind == "float":
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise AssayError(f"{action} {pname}={shown} is not a number", code="ACTION_PARAMS")
+        value = float(value)
+        if math.isnan(value) or math.isinf(value):
+            raise AssayError(f"{action} {pname}={shown} must be finite", code="ACTION_PARAMS")
+    elif not isinstance(value, str):
+        raise AssayError(f"{action} {pname}={shown} is not a string", code="ACTION_PARAMS")
+    if "enum" in schema and value not in schema["enum"]:
+        raise AssayError(
+            f"{action} {pname}={shown} is not one of {schema['enum']}",
+            code="ACTION_PARAMS",
+        )
+    if "min" in schema and value < schema["min"]:
+        raise AssayError(f"{action} {pname}={shown} is below min {schema['min']}", code="ACTION_PARAMS")
+    if "max" in schema and value > schema["max"]:
+        raise AssayError(f"{action} {pname}={shown} is above max {schema['max']}", code="ACTION_PARAMS")
+    return value
+
+
 def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str) -> Any:
+    """A typed token's value: the string read as the schema's type, then
+    checked like a value that arrived as JSON."""
     kind = schema["type"]
     value: Any
     if kind == "int":
@@ -411,20 +441,51 @@ def _coerce(action: str, pname: str, schema: Mapping[str, Any], raw: str) -> Any
             value = float(raw)
         except ValueError:
             raise AssayError(f"{action} {pname}={raw!r} is not a number", code="ACTION_PARAMS") from None
-        if math.isnan(value) or math.isinf(value):
-            raise AssayError(f"{action} {pname}={raw!r} must be finite", code="ACTION_PARAMS")
     else:
         value = raw
-    if "enum" in schema and value not in schema["enum"]:
+    return _check_value(action, pname, schema, value, repr(raw))
+
+
+def validate_action(
+    registry: Mapping[str, Any], action: str, params: Mapping[str, Any] | None
+) -> tuple[str, dict[str, Any] | None]:
+    """The daemon's check of an action that arrived as its registered name
+    and its parameters object (docs/ARCHITECTURE.md section 7.2), before
+    any spend: the name case-folded like a typed token's, RESET without
+    parameters, every registered parameter present and no other, and each
+    value of the schema's scalar type, finite, within its bounds and its
+    enum. The same refusals as `parse_registry_action`, with the JSON
+    value where the token stood."""
+    name = str(action).strip().upper()
+    if not name:
+        raise AssayError("empty action name", code="ACTION_PARAMS")
+    supplied_raw = dict(params or {})
+    if name == "RESET":
+        if supplied_raw:
+            raise AssayError("RESET takes no parameters", code="ACTION_PARAMS")
+        return name, None
+    by_name = {item["name"]: item for item in registry.get("actions", ())}
+    spec = by_name.get(name)
+    if spec is None:
         raise AssayError(
-            f"{action} {pname}={raw!r} is not one of {schema['enum']}",
-            code="ACTION_PARAMS",
+            f"unknown action {action!r}; registered actions: "
+            f"{sorted(by_name)} (plus built-in RESET)",
+            code="ACTION_UNKNOWN",
+            hint=SCHEMA_HINT,
         )
-    if "min" in schema and value < schema["min"]:
-        raise AssayError(f"{action} {pname}={raw!r} is below min {schema['min']}", code="ACTION_PARAMS")
-    if "max" in schema and value > schema["max"]:
-        raise AssayError(f"{action} {pname}={raw!r} is above max {schema['max']}", code="ACTION_PARAMS")
-    return value
+    schemas: Mapping[str, Any] = spec.get("params", {})
+    supplied: dict[str, Any] = {}
+    for pname, value in supplied_raw.items():
+        if pname not in schemas:
+            raise AssayError(
+                f"{name} has no parameter {pname!r}; it takes {sorted(schemas) or 'none'}",
+                code="ACTION_PARAMS",
+            )
+        supplied[pname] = _check_value(name, pname, schemas[pname], value, repr(value))
+    missing = [pname for pname in schemas if pname not in supplied]
+    if missing:
+        raise AssayError(f"{name} is missing parameter(s): {missing}", code="ACTION_PARAMS")
+    return name, supplied or None
 
 
 def parse_registry_action(

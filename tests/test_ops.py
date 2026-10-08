@@ -75,6 +75,7 @@ def _samples():
         PingResult,
         ReceiptResult,
         ResetRequest,
+        Step,
     )
     from assay.records import Receipt
 
@@ -86,10 +87,13 @@ def _samples():
         PingResult(pong=True, chain_event=3, chain_head="ab" * 32, tampered="registry.json (held a, on disk b)"),
         ObserveRequest(),
         ObserveResult(observation={"state": "NOT_FINISHED", "data": {"counter": 1}}, public_info={"rooms": 2}),
-        ActRequest(action_token="INC amount=1", predict="change", because="why", at_event=4, declares={"worst_case": "x"}),
-        ActRequest(action_token="NOOP"),
+        ActRequest(action="INC", params={"amount": 1}, predict="change", because="why", at_event=4, declares={"worst_case": "x"}),
+        ActRequest(action="NOOP"),
+        ActRequest(action="SET", params={"ratio": 0.5, "name": "x", "flag": True}),
+        Step(action="INC", params={"amount": 1}, predict="change"),
+        Step(action="NOOP"),
         CommitRequest(plan="@.assay/model_plan.json", at_event=4),
-        CommitRequest(steps=("INC amount=1 :: change", "NOOP :: noop"), declares={}),
+        CommitRequest(steps=(Step(action="INC", params={"amount": 1}, predict="change"), Step(action="NOOP", predict="noop")), declares={}),
         ResetRequest(because="stuck", at_event=4, declares=None),
         ReceiptResult(receipt=receipt),
         InstallModuleRequest(path="/tmp/probe.py", owner_token="t"),
@@ -113,27 +117,51 @@ def test_records_round_trip_and_describe_themselves(record):
         type(record).from_json({**wire, "extra": 1})
 
 
-def test_request_records_read_the_wire_fields_of_today():
-    from assay.ops import ActRequest, CommitRequest, ResetRequest
+def test_request_records_read_the_wire_fields():
+    from assay.ops import ActRequest, CommitRequest, ResetRequest, Step
 
     act = ActRequest.from_json(
-        {"action_token": "NOOP", "predict": None, "because": None, "at_event": None, "declares": {}}
+        {"action": "NOOP", "params": None, "predict": None, "because": None, "at_event": None, "declares": {}}
     )
-    assert act == ActRequest(action_token="NOOP", declares={})
-    commit = CommitRequest.from_json({"plan": None, "steps": ["NOOP :: noop"], "at_event": 2, "declares": {}})
-    assert commit.steps == ("NOOP :: noop",) and commit.plan is None and commit.at_event == 2
+    assert act == ActRequest(action="NOOP", declares={})
+    assert ActRequest.from_json({"action": "INC", "params": {"amount": 1}}).params == {"amount": 1}
+    commit = CommitRequest.from_json(
+        {"plan": None, "steps": [{"action": "NOOP", "params": None, "predict": "noop"}], "at_event": 2, "declares": {}}
+    )
+    assert commit.steps == (Step(action="NOOP", predict="noop"),) and commit.plan is None and commit.at_event == 2
     assert CommitRequest.from_json({}).steps == ()
+    assert CommitRequest.from_json({"steps": [{"action": "NOOP"}]}).steps == (Step(action="NOOP"),)
     assert ResetRequest.from_json({"because": "x"}) == ResetRequest(because="x")
     with pytest.raises(KeyError):
         ActRequest.from_json({"predict": "noop"})
-    with pytest.raises(TypeError, match="^act.action_token must be a string, got int$"):
-        ActRequest.from_json({"action_token": 7})
+    with pytest.raises(TypeError, match="^act.action must be a string, got int$"):
+        ActRequest.from_json({"action": 7})
+    with pytest.raises(TypeError, match="^act.params must be a JSON object, got str$"):
+        ActRequest.from_json({"action": "INC", "params": "amount=1"})
+    with pytest.raises(TypeError, match="^act.params.amount must be a string, a number or true/false, got list$"):
+        ActRequest.from_json({"action": "INC", "params": {"amount": [1]}})
+    with pytest.raises(TypeError, match="^act.params.amount must be a string, a number or true/false, got null$"):
+        ActRequest.from_json({"action": "INC", "params": {"amount": None}})
     with pytest.raises(TypeError, match="^act.declares.k must be a string, got int$"):
-        ActRequest.from_json({"action_token": "NOOP", "declares": {"k": 1}})
-    with pytest.raises(TypeError, match="^commit.steps must be a list of lines, got int$"):
+        ActRequest.from_json({"action": "NOOP", "declares": {"k": 1}})
+    with pytest.raises(TypeError, match="^commit.steps must be a list of steps, got int$"):
         CommitRequest.from_json({"steps": [1]})
+    with pytest.raises(TypeError, match="^step.predict must be a string, got int$"):
+        CommitRequest.from_json({"steps": [{"action": "NOOP", "predict": 1}]})
     with pytest.raises(TypeError, match="^act.bogus is not a field of the record$"):
-        ActRequest.from_json({"action_token": "NOOP", "bogus": 1})
+        ActRequest.from_json({"action": "NOOP", "bogus": 1})
+    assert ActRequest.json_schema()["properties"]["params"]["type"] == ["object", "null"]
+    assert CommitRequest.json_schema()["properties"]["steps"]["items"] == Step.json_schema()
+
+
+def test_the_error_object_schema_names_the_kinds():
+    from assay.core import AssayError
+    from assay.errors import KINDS
+    from assay.ops import ERROR_SCHEMA, PROTOCOL_VERSION
+
+    assert PROTOCOL_VERSION == 2
+    assert set(ERROR_SCHEMA["properties"]) == set(AssayError("x").to_json()) == {"code", "kind", "message", "hint"}
+    assert ERROR_SCHEMA["properties"]["kind"]["enum"] == list(KINDS)
 
 
 def test_the_wire_table_imports_neither_the_daemon_nor_the_command_line():

@@ -82,6 +82,7 @@ from .core import (
 from .errors import exit_code
 from .extras import require_kind
 from .inspect import result_text, status_text, view_text
+from .live import split_step
 from .ops import (
     ACT,
     COMMIT,
@@ -93,9 +94,17 @@ from .ops import (
     ReceiptResult,
     Req,
     ResetRequest,
+    Step,
 )
 from .predictions import claims_help
-from .registry import gate_mode, load_registry_file, spend_reports, validate_registry
+from .registry import (
+    gate_mode,
+    load_registry_file,
+    parse_registry_action,
+    require_registry,
+    spend_reports,
+    validate_registry,
+)
 from .run import Run
 
 
@@ -912,9 +921,13 @@ def _paid(
 
 def act_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     # `assay act NAME pname=value ...`: the extra tokens are typed
-    # parameters; case is preserved (values may be case-sensitive).
+    # parameters, parsed here against the pinned registry into the name and
+    # the parameters object the wire carries (the daemon validates the
+    # object again before any spend); values keep the case the agent typed.
+    name, params = parse_registry_action(" ".join([args.action, *args.params]), require_registry(run))
     request = ActRequest(
-        action_token=" ".join([args.action, *args.params]),
+        action=name,
+        params=params,
         predict=args.predict,
         because=args.because,
         at_event=args.at_event,
@@ -930,13 +943,20 @@ def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
             'or one or more --step "NAME pname=value :: claims"',
             code="COMMAND_ARGS",
         )
+    steps: list[Step] = []
+    if args.step:
+        registry = require_registry(run)
+        for raw in args.step:
+            token, predict = split_step(raw)
+            name, params = parse_registry_action(token, registry)
+            steps.append(Step(action=name, params=params, predict=predict))
     request = CommitRequest(
         plan=args.plan,
-        steps=tuple(args.step),
+        steps=tuple(steps),
         at_event=args.at_event,
         declares=_parse_declares(args.declare),
     )
-    _paid(paths, status, COMMIT, request, steps=max(1, len(args.step)))
+    _paid(paths, status, COMMIT, request, steps=max(1, len(steps)))
 
 
 def reset_command(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:

@@ -36,6 +36,7 @@ from .core import (
 from .extras import kind_for
 from .integrity import redact, redact_mapping
 from .modules import consult_modules, observe_outcome
+from .ops import Step
 from .predictions import grade_lines, grade_pending, parse_claims
 from .records import Claim, Event, Grade, Mutation, Receipt, ReceiptStep
 from .registry import (
@@ -47,6 +48,7 @@ from .registry import (
     hand_cap,
     notes_cap,
     require_registry,
+    validate_action,
 )
 from .verifiers import admit_verifier
 from .words import unit_noun
@@ -121,18 +123,20 @@ def head_events(run: Run, at_event: int | None) -> list[Event]:
 
 def paid_step(
     run: Run,
-    token: str,
+    name: str,
+    data: dict[str, Any] | None,
     reasoning: Mapping[str, Any] | None = None,
     note: str = "",
     *,
     stepper: Stepper,
     claims: Sequence[Claim] | None = None,
 ) -> tuple[Event, Event, str | None, float]:
+    """One validated action (`registry.validate_action` or `parse_action`
+    ran before) through the stepper: the affordance check, the redaction,
+    the spend, the pending event with its mutation id."""
     registry = require_registry(run)
     prior = run.events[-1]
-    name, data = parse_action(token, registry)
-    if name == "RESET":
-        raise AssayError("use `assay reset`; reset cannot hide inside a batch", code="BATCH_FORBIDDEN")
+    _refuse_reset_in_batch(name)
     kind = kind_for(prior)
     # A frame world advertises bare ids; the kind renders them as names.
     advertised: Sequence[Any] = (
@@ -185,20 +189,20 @@ def _enforce_registry_gates(
     run: Run,
     *,
     kind: str,
-    tokens: Sequence[str],
-    claims_per_token: Sequence[Sequence[Claim]],
+    actions: Sequence[tuple[str, dict[str, Any] | None]],
+    claims_per_action: Sequence[Sequence[Claim]],
     declares: Mapping[str, str] | None,
     in_batch: bool,
 ) -> list[str]:
-    """All pre-spend teeth beyond schema/claims/affordance/budget. Returns
-    module advisory lines."""
+    """All pre-spend teeth beyond schema/claims/affordance/budget, over the
+    validated (name, params) of every action. Returns module advisory
+    lines."""
     registry = require_registry(run)
     check_usd_budget(load_jsonl(run.paths.activity), registry)
     _notes_hard_stop(run)
     advisories: list[str] = []
     declares = dict(declares or {})
-    for token, claims in zip(tokens, claims_per_token):
-        name, params = parse_action(token, registry)
+    for (name, params), claims in zip(actions, claims_per_action):
         spec = action_spec(registry, name) or {}
         if spec.get("destructive"):
             if in_batch:
@@ -355,7 +359,8 @@ def recovered_pending(run: Run, mutation: Mutation, prior: Event, pending: Event
 
 def execute_action(
     run: Run,
-    token: str,
+    action: str,
+    params: Mapping[str, Any] | None,
     *,
     predict: str,
     because: str | None = None,
@@ -363,7 +368,11 @@ def execute_action(
     declares: Mapping[str, str] | None = None,
     stepper: Stepper,
 ) -> Receipt:
+    """One paid action from its registered name and parameters object, as
+    the wire carries them (docs/ARCHITECTURE.md section 7.2): validated
+    against the pinned registry before anything else."""
     registry = require_registry(run)
+    name, data = validate_action(registry, action, params)
     events = head_events(run, at_event)
     # The control arms: gate optional admits a bare act, gate off admits only
     # bare acts (the instrument is removed). Either way the act is journaled
@@ -378,8 +387,8 @@ def execute_action(
     advisories = _enforce_registry_gates(
         run,
         kind="act",
-        tokens=[token],
-        claims_per_token=[claims],
+        actions=[(name, data)],
+        claims_per_action=[claims],
         declares=declares,
         in_batch=False,
     )
@@ -394,7 +403,7 @@ def execute_action(
     if declares:
         reasoning["declares"] = dict(declares)
     pending, prior, warning, elapsed = paid_step(
-        run, token, reasoning, note=because or "", stepper=stepper, claims=claims
+        run, name, data, reasoning, note=because or "", stepper=stepper, claims=claims
     )
     graded = (
         [] if ungated
@@ -473,39 +482,54 @@ def execute_action(
     return write_receipt(run, receipt)
 
 
-def parse_step(raw: str, *, allow_bare: bool = False) -> tuple[str, str]:
+STEP_SYNTAX = 'each step needs its own prediction: --step "NAME pname=value :: <claims>"'
+
+
+def split_step(raw: str) -> tuple[str, str | None]:
+    """The client's half of a step: `NAME pname=value :: claims` into the
+    action token and the claims text, None when the step carries none (no
+    `::`, or nothing after it); whether a bare step is admitted is the
+    daemon's rule (`execute_steps`), by the registry's gate. The token keeps
+    the case the agent typed; `parse_action` folds the name."""
     action, separator, predict = raw.partition("::")
-    if allow_bare and action.strip() and not predict.strip():
-        return action.strip(), ""  # gate: optional, an unpredicted step
-    if not separator or not action.strip() or not predict.strip():
-        raise AssayError(
-            'each step needs its own prediction: --step "NAME pname=value :: <claims>"',
-            code="PREDICTION_REQUIRED",
-        )
-    # Case is normalized later by parse_action (action names only); parameter
-    # values in registry runs keep the case the agent typed.
-    return action.strip(), predict.strip()
+    if not action.strip():
+        raise AssayError(STEP_SYNTAX, code="PREDICTION_REQUIRED")
+    return action.strip(), (predict.strip() or None) if separator else None
+
+
+def _refuse_reset_in_batch(name: str) -> None:
+    if name == "RESET":
+        raise AssayError("use `assay reset`; reset cannot hide inside a batch", code="BATCH_FORBIDDEN")
 
 
 def validate_batch_tokens(
     tokens: Sequence[str], registry: Mapping[str, Any]
-) -> None:
-    """Reject a bad token before any step spends an action."""
+) -> list[tuple[str, dict[str, Any] | None]]:
+    """The typed tokens of a model plan, each parsed against the registry
+    before any step spends an action; a reset is refused."""
+    actions: list[tuple[str, dict[str, Any] | None]] = []
     for token in tokens:
-        name, _ = parse_action(token, registry)
-        if name == "RESET":
-            raise AssayError("use `assay reset`; reset cannot hide inside a batch", code="BATCH_FORBIDDEN")
+        name, data = parse_action(token, registry)
+        _refuse_reset_in_batch(name)
+        actions.append((name, data))
+    return actions
 
 
 def execute_steps(
     run: Run,
-    raw_steps: Sequence[str],
+    steps: Sequence[Step],
     *,
     at_event: int | None = None,
     declares: Mapping[str, str] | None = None,
     stepper: Stepper,
 ) -> Receipt:
-    if not raw_steps:
+    """A hand-written batch of `{action, params, predict}` steps, as the
+    wire carries them (docs/ARCHITECTURE.md section 7.2): every action
+    validated against the pinned registry and every prediction parsed
+    before the first step spends. A step without a prediction is admitted
+    under `gate: optional` and `gate: off` (journaled UNGATED) and refused
+    under the required gate."""
+    if not steps:
         raise AssayError(
             "no steps supplied",
             code="COMMAND_ARGS",
@@ -513,22 +537,26 @@ def execute_steps(
         )
     registry = require_registry(run)
     cap = hand_cap(registry)
-    if cap is not None and len(raw_steps) > cap:
+    if cap is not None and len(steps) > cap:
         from .model import batching_rights
 
         _, reason = batching_rights(run)
         raise AssayError(
             f"the batching law caps hand-written batches at {cap} steps "
-            f"(got {len(raw_steps)}); longer batches belong to a replay-fit model "
+            f"(got {len(steps)}); longer batches belong to a replay-fit model "
             f"plan (`assay model replay` then `assay model solve`); currently: {reason}",
             code="BATCH_CAP",
         )
     mode = gate_mode(registry)
     bare_ok = mode in _UNGATED_MARKER
     events = head_events(run, at_event)
-    parsed: list[tuple[str, str, list[Claim]]] = []
-    for raw in raw_steps:
-        token, predict = parse_step(raw, allow_bare=bare_ok)
+    parsed: list[tuple[str, dict[str, Any] | None, str, list[Claim]]] = []
+    for step in steps:
+        name, data = validate_action(registry, step.action, step.params)
+        _refuse_reset_in_batch(name)
+        predict = (step.predict or "").strip()
+        if not predict and not bare_ok:
+            raise AssayError(STEP_SYNTAX, code="PREDICTION_REQUIRED")
         if mode == "off" and predict:
             raise AssayError(
                 "the prediction gate is off for this run (registry gate: off): "
@@ -537,18 +565,17 @@ def execute_steps(
                 code="GATE_OFF",
             )
         claims = [] if bare_ok and not predict else parse_claims(predict)
-        parsed.append((token, predict, claims))
-    validate_batch_tokens([token for token, _, _ in parsed], registry)
-    admitted: list[tuple[str, str, list[Claim]]] = []
-    for token, predict, claims in parsed:
+        parsed.append((name, data, predict, claims))
+    admitted: list[tuple[str, dict[str, Any] | None, str, list[Claim]]] = []
+    for name, data, predict, claims in parsed:
         check_channel_references(run, claims)
-        admitted.append((token, predict, _admit_claims(run, claims)))
+        admitted.append((name, data, predict, _admit_claims(run, claims)))
     parsed = admitted
     advisories = _enforce_registry_gates(
         run,
         kind="commit",
-        tokens=[token for token, _, _ in parsed],
-        claims_per_token=[claims for _, _, claims in parsed],
+        actions=[(name, data) for name, data, _, _ in parsed],
+        claims_per_action=[claims for _, _, _, claims in parsed],
         declares=declares,
         in_batch=True,
     )
@@ -561,9 +588,9 @@ def execute_steps(
     detail = f"all {len(parsed)} steps landed as predicted"
     last_warning: str | None = None
     all_claims: list[Claim] = []
-    for index, (token, predict, claims) in enumerate(parsed):
+    for index, (name, data, predict, claims) in enumerate(parsed):
         pending, prior, warning, elapsed = paid_step(
-            run, token, {"predict": predict}, stepper=stepper, claims=claims
+            run, name, data, {"predict": predict}, stepper=stepper, claims=claims
         )
         last_warning = warning or last_warning
         ungated = bare_ok and not predict
@@ -706,14 +733,14 @@ def execute_model_plan(
     predictions = plan.get("predictions") or ()
     if not actions or len(actions) != len(predictions):
         raise AssayError("plan needs one prediction per action; rerun `assay model solve`", code="PLAN_INVALID")
-    validate_batch_tokens(actions, registry)
+    parsed = validate_batch_tokens(actions, registry)
     # The modules' advisories ride on this receipt like on an act's or a
     # hand batch's; they were consulted and discarded before #24.
     advisories = _enforce_registry_gates(
         run,
         kind="commit",
-        tokens=actions,
-        claims_per_token=[[] for _ in actions],
+        actions=parsed,
+        claims_per_action=[[] for _ in parsed],
         declares=None,
         in_batch=True,
     )
@@ -723,10 +750,11 @@ def execute_model_plan(
     outcome = "PREDICTED"
     detail = f"all {len(actions)} model-plan steps landed as predicted"
     last_warning: str | None = None
-    for index, (token, expected) in enumerate(zip(actions, predictions)):
+    for index, ((name, data), expected) in enumerate(zip(parsed, predictions)):
         pending, _, warning, _ = paid_step(
             run,
-            token,
+            name,
+            data,
             {"plan": "model", "plan_step": index},
             stepper=stepper,
         )
@@ -818,8 +846,8 @@ def reset_level(
     advisories = _enforce_registry_gates(
         run,
         kind="reset",
-        tokens=[],
-        claims_per_token=[],
+        actions=[],
+        claims_per_action=[],
         declares=declared,
         in_batch=False,
     )
