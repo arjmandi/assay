@@ -3,7 +3,7 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
-## 1.2.0 (the date is set at the tag)
+## 1.2.0 (2026-10-09)
 
 The first open-source release, under the Apache License 2.0 (`LICENSE`,
 `NOTICE`), developed on `main` from commit 6ea56e4, the build the
