@@ -12,7 +12,7 @@ lost in the middle and referents drifting, and the agent cannot fill its own mod
 with things it merely said. The record lives on disk, hash-chained, replayable, and
 checkable by anyone without the harness.
 
-## Five layers
+## Reasoning layers
 
 ASSAY places what an agent needs to reason at five layers, from the most
 general to the most specific. Each layer is a place to steer the agent, and
