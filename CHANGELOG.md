@@ -986,16 +986,6 @@ Left on the experiment branch, deliberately:
   log; the greps that keep the text out are in `RELEASE_CHECKLIST.md`,
   section 3).
 
-### Known
-
-- The TRANSITION story in `assay view` and after a paid action on a frame
-  world lists its moved, resized, vanished and appeared components in an
-  order that depends on Python's per-process string hashing (a set of
-  component keys is iterated). Display only, never journaled, pre-existing.
-  The replay diff pins `PYTHONHASHSEED` for that reason. A deterministic
-  order is a one-word change in `assay_grid.perception.transition_story`,
-  kept out of the move so the replay diff stays a pure proof.
-
 ### Fixed
 
 - `assay start` stops the daemon it just started when the reconstructed
@@ -1146,6 +1136,25 @@ Left on the experiment branch, deliberately:
   too long` before the command line ran; the extreme depth goes through
   `--params @FILE` and the inline case is 200 deep. Found by the first CI
   run after the billing block, on every ubuntu cell and on macOS 3.14 (#30).
+- The TRANSITION story of a frame world, in `assay view` and after a paid
+  action, is a function of the records (#58). It visited its (color, shape)
+  groups in set order, which is the order of the interpreter's per-process
+  string hashing, so three `view` invocations on the last event of a
+  published run printed three texts, and the replay diff never saw it
+  because it pins the hash seed. Three things followed the seed: the order
+  among components of equal size, the pairing of a vanished component with
+  the appeared one it was reported as resized into, and which items the cap
+  of six per kind showed. Every list of the story is now in one stated
+  order, largest first, then top-left first (rows before columns), then
+  color, the groups are visited sorted, and a resize pairs a vanished
+  component with the largest appeared component of its color that overlaps
+  it. The suite renders the same event under three hash seeds in three
+  processes and holds the texts byte-identical, on a crafted frame pair
+  with ties on every key but position and on the last event of the
+  published ar25 journal. The replay diff drops the story's component lines
+  on both sides, since on the campaign kernel they were never a function of
+  the records (16 of the 25 views differed even at the pinned seed, 10 of
+  them in content), and keeps the block's count line.
 
 ### Regression gates
 
