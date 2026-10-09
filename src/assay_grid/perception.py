@@ -375,9 +375,9 @@ def transition_story(before: np.ndarray, after: np.ndarray) -> dict[str, Any]:
             born.extend(fresh)
 
     def ordered(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """The story's one order (#58): largest first, then top-left first
-        (the bounding box, rows before columns; a move's origin), then
-        color. The keys are visited sorted and the matching below takes its
+        """The story's one order (#58): largest first (a resized component
+        by its new size), then top-left first (the bounding box, rows before
+        columns; a move's origin), then color. The keys are visited sorted and the matching below takes its
         candidates in this order, so the story is a function of the two
         frames and never of the process's string hashing."""
         return sorted(

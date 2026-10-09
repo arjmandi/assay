@@ -811,7 +811,7 @@ auditing them.
 
 What lives in the extra, by module: `perception.py` (connected components,
 repeated shapes, lattice inference, line graph, frame delta, motion trace,
-transition story, the scene dossier), `claims.py` (the claim kinds `cell`,
+transition story, the scene dossier; the TRANSITION lines of a view are largest first, a resized component by its new size, then top-left first with rows before columns, then color, and a resize pairs a vanished component with the largest overlapping appeared component of its color, #58), `claims.py` (the claim kinds `cell`,
 `move`, `vanish`, `region` and the frame grader, which also grades the general
 forms on frames by cell comparison), `render.py` (the palette, one PNG per
 event, the frame history line, the one pillow import), `views.py` (the frame
