@@ -3,8 +3,8 @@
 ASSAY is a reasoning harness. It gives a language-model agent a world to think in
 that is not its context window. The agent names the parts of its environment it cares
 about as addressable states, reads them through the harness, and before it acts it
-says what the action will do to them. Code grades that claim against what the
-environment reports. What held goes into the record, what missed is marked, and the
+says what the action will do to them in form of predictions. Code grades these predictions against the
+environment response. What held goes into the record, what missed is marked, and the
 agent learns the world one graded claim at a time. Over a run the record becomes a
 world model the agent consults by address instead of by memory: a state is looked up,
 not recalled, so a long run does not decay the way a long context does, with details
