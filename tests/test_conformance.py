@@ -537,7 +537,7 @@ def test_new_world_template_end_to_end(tmp_path):
         config = json.loads((run / ".assay" / "config.json").read_text())
         assert config["public_info"]["rooms"] == 2
         token = token_file.read_text().strip()
-        # States, claims and a refusal through the observation.
+        # States, outcomes and a refusal through the observation.
         assert run_cli(run, "state", "declare", "dial", "--path", "dial").returncode == 0
         assert run_cli(run, "state", "declare", "door", "--path", "door").returncode == 0
         assert run_cli(run, "state", "declare", "refusals", "--path", "refusals").returncode == 0

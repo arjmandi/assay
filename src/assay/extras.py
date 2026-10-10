@@ -4,15 +4,15 @@ The kernel knows two observation shapes: a JSON object under `observation`
 (every world) and a list of integer grids under `frames` (frame worlds). The
 journal format has both, so the frame encoding stays in `core`. Everything
 else a frame world wants (rendering, a scene dossier, perception helpers, the
-grid claim forms) lives in the extra package `assay_grid`, selected here by
+grid outcome forms) lives in the extra package `assay_grid`, selected here by
 observation shape
 and never by configuration: registries are pinned per run and the published
 run directories carry no such key.
 
 A dict run never imports `assay_grid`, so the kernel can be loaded without
 pillow and without the extra at all: the parser declares the frame-only
-`view` flags itself, the claim help lists the extra's forms only
-when help is rendered, and the extra's claim forms are known here by name
+`view` flags itself, the prediction help lists the extra's forms only
+when help is rendered, and the extra's outcome forms are known here by name
 and shape (`FRAME_FORMS`), so a dict run refuses one before any spend
 whether or not the extra is installed. A frame run that cannot import the
 extra gets one clear refusal instead of a traceback.
@@ -27,7 +27,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 from .core import AssayError
-from .records import Claim, Event, Grade, Receipt
+from .records import Event, Grade, Outcome, Receipt
 
 if TYPE_CHECKING:
     from .run import Run
@@ -42,12 +42,12 @@ class ObservationKind(Protocol):
 
     def applies(self, event: Event) -> bool: ...
 
-    # Claims: extra patterns, their field extraction, their grader, the help.
-    def claim_patterns(self) -> Sequence[tuple[str, re.Pattern[str]]]: ...
-    def claim_fields(self, kind: str, match: re.Match[str]) -> dict[str, Any]: ...
-    def claims_help(self) -> str: ...
-    def grade_claims(
-        self, claims: Sequence[Claim], prior_event: Event, event: Event
+    # Outcomes: extra patterns, their field extraction, their grader, the help.
+    def outcome_patterns(self) -> Sequence[tuple[str, re.Pattern[str]]]: ...
+    def outcome_fields(self, kind: str, match: re.Match[str]) -> dict[str, Any]: ...
+    def prediction_help(self) -> str: ...
+    def grade_outcomes(
+        self, outcomes: Sequence[Outcome], prior_event: Event, event: Event
     ) -> list[Grade]: ...
 
     # After every recorded event: render, dossier.
@@ -72,8 +72,8 @@ class ObservationKind(Protocol):
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class ClaimForm:
-    """A claim form an observation kind owns: the kind's name, the claim
+class OutcomeForm:
+    """An outcome form an observation kind owns: the kind's name, the outcome
     kind and the pattern, known to the kernel so a run of another shape
     refuses the form by name without importing the kind."""
 
@@ -84,25 +84,25 @@ class ClaimForm:
 
 FRAME_KIND = "frames"
 
-# The frame world's forms (verify/CLAIM_GRAMMAR.md), the one home of their
-# patterns: `assay_grid.claims` reads them back for its own parsing and
+# The frame world's forms (verify/PREDICTION_GRAMMAR.md), the one home of their
+# patterns: `assay_grid.outcomes` reads them back for its own parsing and
 # grading. Only the exact shape names a form, so prose that opens with one of
 # the words (`move on`, `cell division`) stays commentary, as it always did.
-FRAME_FORMS: tuple[ClaimForm, ...] = (
-    ClaimForm(
+FRAME_FORMS: tuple[OutcomeForm, ...] = (
+    OutcomeForm(
         FRAME_KIND,
         "cell",
         re.compile(r"^cell\s+(\d+)\s*,\s*(\d+)\s*=\s*([0-9a-fA-F])$", re.IGNORECASE),
     ),
-    ClaimForm(
+    OutcomeForm(
         FRAME_KIND,
         "move",
         re.compile(
             r"^move\s+(\d+)\s*,\s*(\d+)\s+([+-]?\d+)\s*,\s*([+-]?\d+)$", re.IGNORECASE
         ),
     ),
-    ClaimForm(FRAME_KIND, "vanish", re.compile(r"^vanish\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)),
-    ClaimForm(
+    OutcomeForm(FRAME_KIND, "vanish", re.compile(r"^vanish\s+(\d+)\s*,\s*(\d+)$", re.IGNORECASE)),
+    OutcomeForm(
         FRAME_KIND,
         "region",
         re.compile(r"^region\s+(\d+)\s*:\s*(\d+)\s*,\s*(\d+)\s*:\s*(\d+)$", re.IGNORECASE),
@@ -110,9 +110,9 @@ FRAME_FORMS: tuple[ClaimForm, ...] = (
 )
 
 
-def foreign_form(part: str, kind: ObservationKind | None) -> ClaimForm | None:
+def foreign_form(part: str, kind: ObservationKind | None) -> OutcomeForm | None:
     """The form of another observation kind that `part` spells, if any: what
-    a run refuses by name before any spend (`predictions.parse_claims`).
+    a run refuses by name before any spend (`predictions.parse_prediction`).
     Reads the table above and imports nothing."""
     for form in FRAME_FORMS:
         if kind is not None and kind.name == form.kind:
@@ -122,11 +122,11 @@ def foreign_form(part: str, kind: ObservationKind | None) -> ClaimForm | None:
     return None
 
 
-def refusal_text(form: ClaimForm, part: str) -> str:
-    """The refusal of a claim in another kind's form, as the published
+def refusal_text(form: OutcomeForm, part: str) -> str:
+    """The refusal of an outcome in another kind's form, as the published
     journals' rule words it."""
     return (
-        f"claim {part!r} is a {form.kind}-world form and this run does "
+        f"outcome {part!r} is a {form.kind}-world form and this run does "
         "not admit it (frame-world forms are not admitted in 1.2.0)"
     )
 

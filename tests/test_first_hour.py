@@ -1,6 +1,6 @@
 """The errors a new user meets in the first hour, each answered before anything
 is spawned or written: a mistyped adapter, a missing dependency, a bad world
-id, a crash with no pointer, and a help page that leads with the general claim
+id, a crash with no pointer, and a help page that leads with the general prediction
 table."""
 
 from __future__ import annotations
@@ -157,7 +157,7 @@ def test_act_help_leads_with_the_general_table(tmp_path):
     helped = run_cli(tmp_path, "act", "--help")
     assert helped.returncode == 0, helped.stderr
     text = helped.stdout
-    general = text.index("PREDICTION CLAIMS")
+    general = text.index("PREDICTION |")
     frame = text.index("FRAME WORLDS ONLY")
     assert general < frame
     assert "ch NAME delta OP V" in text and "crosses" in text

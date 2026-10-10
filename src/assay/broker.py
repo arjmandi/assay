@@ -86,7 +86,7 @@ from .ops import (
     daemon_operation,
     decode_json,
 )
-from .records import Claim, Event, Mutation, Receipt
+from .records import Event, Mutation, Outcome, Receipt
 from .registry import action_spec
 from .run import Run
 
@@ -493,7 +493,7 @@ def broker_matches_latest_event(run: Run) -> bool:
 def reconcile_mutations(run: Run) -> int:
     """Recover a paid step journaled by the broker before a CLI process died:
     the one append outside a daemon, through the run's own writer. A record
-    that carries its claims (an act or a commit step from 1.2.0 on) is
+    that carries its outcomes (an act or a commit step from 1.2.0 on) is
     regraded against its stored response and journaled gated, with its
     prediction (docs/ARCHITECTURE.md section 6.5); a record without them
     (older, or a model-plan step) is journaled UNGATED, as it always was."""
@@ -513,7 +513,7 @@ def reconcile_mutations(run: Run) -> int:
             previous,
             note="recovered from broker mutation journal",
         ).updated(mutation_id=mutation.mutation_id)
-        if mutation.claims is not None and previous is not None:
+        if mutation.outcomes is not None and previous is not None:
             pending = recovered_pending(run, mutation, previous, pending)
         run.append(pending)
         known.add(mutation.mutation_id)
@@ -1103,11 +1103,11 @@ class _Daemon:
         data: dict[str, Any] | None,
         reasoning: Mapping[str, Any] | None,
         *,
-        claims: Sequence[Claim] | None = None,
+        outcomes: Sequence[Outcome] | None = None,
     ) -> tuple[dict[str, Any], int, str | None]:
         """The daemon-side `Stepper`: the disk verified, the world stepped,
         the mutation recorded through the run with the next id of the held
-        log and the step's parsed claims (section 6.5), all before the reply;
+        log and the step's parsed outcomes (section 6.5), all before the reply;
         no socket hop."""
         if run is not self.run:
             raise AssayError("the daemon spends only on the run it holds", code="INTERNAL")
@@ -1145,7 +1145,7 @@ class _Daemon:
                 reasoning=None if reasoning is None else dict(reasoning),
                 observation=encoded,
                 timestamp=now_iso(),
-                claims=None if claims is None else tuple(claims),
+                outcomes=None if outcomes is None else tuple(outcomes),
             )
         )
         warning: str | None = None

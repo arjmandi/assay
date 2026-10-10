@@ -7,7 +7,7 @@ The interval is the percentile bootstrap of the mean: `resamples` draws of n
 values with replacement, the mean of each, the 2.5th and 97.5th percentiles
 at the default level. With n of 2 per cell, as E1 has, the interval over a
 cell is the pair itself, which is the honest width of two seeds; the arm's
-interval over six runs is the one worth reading. Nothing here claims
+interval over six runs is the one worth reading. Nothing here asserts
 significance.
 """
 

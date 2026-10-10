@@ -83,7 +83,7 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         assert status.returncode == 0, status.stderr
         # The status line is neutral: the mode and a count. The verdict is the audit's.
         assert "GATE | off | 3 action(s)" in status.stdout
-        assert "CLAIMS |" not in status.stdout  # nothing was ever graded
+        assert "PREDICTIONS |" not in status.stdout  # nothing was ever graded
         assert "INTEGRITY" not in status.stdout
         audited = run_cli(run, "audit")
         assert "INVALID FOR SCORING" in audited.stdout

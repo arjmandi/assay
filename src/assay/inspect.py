@@ -16,7 +16,7 @@ from .evidence import history_lines
 from .extras import kind_for
 from .records import Event, Receipt
 from .registry import budget_line, gate_mode, gate_text, status_budget
-from .status import actions_text, claims_text, observation_text, render_status, status_of
+from .status import actions_text, predictions_text, observation_text, render_status, status_of
 from .textobs import LINE_LIMIT, delta_lines, pretty_cuts
 from .words import progress_text
 
@@ -57,13 +57,13 @@ def _observation_note(event: Event, max_lines: int) -> str | None:
     )
 
 
-def _claim_meter_lines(run: Run) -> list[str]:
-    """Claim meters: split miss rates, specificity, invalid count, VACUOUS under
+def _prediction_meter_lines(run: Run) -> list[str]:
+    """Prediction meters: split miss rates, specificity, invalid count, VACUOUS under
     the rule the run's stats file is under, and the never-failed advisory."""
-    from .status import _claims_blocks
+    from .status import _predictions_blocks
 
-    claims, vacuous = _claims_blocks(run)
-    return [] if claims is None else claims_text(claims, vacuous)
+    block, vacuous = _predictions_blocks(run)
+    return [] if block is None else predictions_text(block, vacuous)
 
 
 def result_text(run: Run, receipt: Receipt) -> str:

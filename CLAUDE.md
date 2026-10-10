@@ -1,7 +1,7 @@
 # ASSAY
 
 A **referee harness** that sits between an agent (human or LLM) and a world you
-register: enforced predict-before-act, code-graded claims, hash-chained
+register: enforced predict-before-act, code-graded predictions, hash-chained
 journals, and a memory/agency layer. `README.md` is the pitch, `GUIDE.md` the
 user guide, `ONBOARDING.md` the long form for attaching a world,
 `docs/ARCHITECTURE.md` the component model, `CONSTITUTION.md` the agent-facing
@@ -49,7 +49,7 @@ src/assay/           the kernel: cli.py (the command line), broker.py (daemon
                       request and result records),
                       meters.py (the journal meters the status lines and the
                       modules share)
-src/assay_grid/      the frame-world extra: perception, grid claims, rendering,
+src/assay_grid/      the frame-world extra: perception, grid outcomes, rendering,
                       views
 src/assay_cli.py     PEP 723 entry point for the zero-install launcher
 bin/assay            the launcher (ASSAY_PYTHON pins the interpreter)
@@ -84,7 +84,7 @@ bench/{arcagi,factorio,oolong}/   benchmark adapters, registries, protocols and
   the counter, grid, slow and OOLONG spam4k adapters only.
 - **`CONSTITUTION.md` is not for you.** It is the manual an agent under
   evaluation reads. You maintain the harness's source.
-- **The hash chain in `integrity.py` is the product's core trust claim**, and
+- **The hash chain in `integrity.py` is the product's core trust guarantee**, and
   the journal format is a public contract (`verify/JOURNAL_SPEC.md`).
   A change to chaining, redaction, anchors, the ungated rule, or any field
   named in `docs/ARCHITECTURE.md` section 5 needs the full suite green and the

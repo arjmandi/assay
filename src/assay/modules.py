@@ -47,7 +47,7 @@ Built-ins (the standing nudge table plus the first structural module):
 - null_forensics: a predicted-change/observed-nothing verdict flags the raw
                   observation for inspection before the hypothesis is closed
 - park_with_test: a reset should leave a re-entry test in the notes
-- specificity:    a majority of coerced free-text claims earns nothing
+- specificity:    a majority of coerced free-text outcomes earns nothing
 - hazard:         effect-signature hazard tags: entered-loss-state
                   and milestone-drop transitions tag the action class; a tagged
                   class gets the worst-case + recovery declaration demand on
@@ -257,19 +257,19 @@ class _ParkWithTest:
 class _Specificity:
     NAME = "specificity"
     CONSTITUTION = (
-        "Coerced free-text claims are excluded from every meter and promotion; "
+        "Coerced free-text outcomes are excluded from every meter and promotion; "
         "vagueness earns nothing."
     )
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        # The one count the CLAIMS line prints, over the same grades: the
-        # advisory's N/M is the CLAIMS line's at this moment.
+        # The one count the PREDICTIONS line prints, over the same grades: the
+        # advisory's N/M is the PREDICTIONS line's at this moment.
         counts = specificity(view.events)
         if counts.graded >= 20 and counts.coerced * 2 > counts.graded:
             return (
                 f"specificity is {counts.specific}/{counts.graded}: over half the graded "
-                "claims are coerced free text; they earn nothing. State checkable claims."
+                "outcomes are coerced free text; they earn nothing. State checkable outcomes."
             )
         return None
 
@@ -566,7 +566,7 @@ class _CoverageAudit:
         if _is_conclusion(pending) and not str(declares.get("coverage_audit", "")).strip():
             return {
                 "coverage_audit": (
-                    "before an impossibility or absence claim, enumerate the load-bearing "
+                    "before an impossibility or absence conclusion, enumerate the load-bearing "
                     "rules and cite the graded event ids that exercised each, and probe any "
                     "unexercised rule first"
                 )

@@ -145,7 +145,7 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(report["verdict"], "INVALID FOR SCORING")
 
     def test_injected_ungated_caught_even_with_consistent_chain(self):
-        # The attacker appends a paid, claim-free action AND recomputes the
+        # The attacker appends a paid, prediction-free action AND recomputes the
         # chain; gate compliance must fail independently of tamper-evidence.
         def mutate(events):
             events.append(_event(9, "HEAT", 23.0, True, predict=None))
@@ -169,7 +169,7 @@ class VerifyTests(unittest.TestCase):
 
     def test_reset_is_gate_exempt(self):
         report = verify(self.fresh("resetok"))
-        self.assertEqual(report["ungated"], [])  # event 4 is a claim-free RESET
+        self.assertEqual(report["ungated"], [])  # event 4 is a prediction-free RESET
 
 
 if __name__ == "__main__":

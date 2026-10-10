@@ -334,7 +334,7 @@ def test_a_single_launcher_command_naming_the_state_directory_is_allowed(tmp_pat
     _allowed(_hook(policy, _bash(f"{LAUNCHER} commit @.assay/model_plan.json"), cwd=run, project_dir=run))
     _allowed(_hook(policy, _bash(f'{LAUNCHER} act RUN --params @.assay/params.json --predict "change"'), cwd=run, project_dir=run))
     # The operators are tested outside quotes: the documented forms with a
-    # two-claim prediction or a reason holding a pipe are single commands.
+    # two-outcome prediction or a reason holding a pipe are single commands.
     _allowed(_hook(policy, _bash(f'{LAUNCHER} act RUN --params @.assay/params.json --predict "change; ch counter delta = 1"'), cwd=run, project_dir=run))
     _allowed(_hook(policy, _bash(f'{LAUNCHER} act RUN --params @.assay/params.json --predict "change" --because "a | b"'), cwd=run, project_dir=run))
     # The launcher's python and export sub-commands run code or write a
@@ -727,7 +727,7 @@ def _records(run: Path) -> list[dict]:
 
 
 PROSE_RECEIPT = (
-    "OUTCOME | PREDICTED | all 1 claims held\n"
+    "OUTCOME | PREDICTED | all 1 outcomes held\n"
     "  ✓ change\n"
     "EVENT | e3 | progress 1/1 | paid actions 3 | NOT_FINISHED\n"
     "KEY DELTA | last step (before -> after)\n"
@@ -744,7 +744,7 @@ def test_the_post_tool_use_record_joins_by_end_event(tmp_path):
     _, policy = _install(tmp_path, run)
     _run_state(run)
     json_receipt = json.dumps(
-        {"kind": "act", "outcome": "PREDICTED", "detail": "all 1 claims held", "start_event": 4, "end_event": 5, "estimated_tokens": 40}
+        {"kind": "act", "outcome": "PREDICTED", "detail": "all 1 outcomes held", "start_event": 4, "end_event": 5, "estimated_tokens": 40}
     )
     mcp_record = json.dumps({"receipt": {"kind": "act", "outcome": "SURPRISE", "start_event": 6, "end_event": 7}, "text": PROSE_RECEIPT})
     long_command = "echo " + "x" * 100

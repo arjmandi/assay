@@ -13,7 +13,7 @@ verify/JOURNAL_SPEC.md) and the 66 published journals under evidence/
 - the journal fields `levels_completed`, `win_levels`, `level_before`,
   `state`, `frames`, `n_frames`, `observation`,
 - the state values `NOT_FINISHED`, `WIN`, `GAME_OVER`,
-- the claim syntax `level+1` and `win`, and the grade `actual` texts
+- the outcome syntax `level+1` and `win`, and the grade `actual` texts
   ("level advanced", "level did not advance", "state WIN"), which are graded
   facts inside journals,
 - the host state names `goal` and `level`,

@@ -46,7 +46,7 @@ OWNER_OPERATIONS = {"install_module", "approve", "waive", "goal_ratify"}
 # the token the agent never holds) and the operator's side effects beyond
 # the run (the knowledge export and the spend feed).
 NOT_TOOLS = {"module_install", "goal_ratify", "approve", "waive", "export", "spend_report"}
-DECLARED = "STATE | declared counter (path); claims like `ch counter = V` now parse and grade"
+DECLARED = "STATE | declared counter (path); outcomes like `ch counter = V` now parse and grade"
 COUNTERS = "[t['after']['counter'] for t in transitions]"
 
 
@@ -94,7 +94,7 @@ def test_the_tool_table_is_the_agent_facing_operations():
     from assay import cli, server
     from assay.core import AssayError
     from assay.ops import OPERATIONS
-    from assay.predictions import claims_help
+    from assay.predictions import prediction_help
 
     names = [tool.name for tool in server.TOOLS]
     assert names == TOOL_NAMES
@@ -150,9 +150,9 @@ def test_the_tool_table_is_the_agent_facing_operations():
         assert server.listed_schema(act, gate)["required"] == ["action"]
     assert server.listed_schema(server.tool_named("reset"), "required")["required"] == []
     assert act.input_schema()["required"] == ["action"]  # the table is untouched by a listing
-    # The claim grammar rides on the paid tools' descriptions, as on their help.
-    assert act.listed_description() == act.description + "\n\n" + claims_help()
-    assert server.tool_named("commit").listed_description().endswith(claims_help())
+    # The prediction grammar rides on the paid tools' descriptions, as on their help.
+    assert act.listed_description() == act.description + "\n\n" + prediction_help()
+    assert server.tool_named("commit").listed_description().endswith(prediction_help())
     assert server.tool_named("status").listed_description() == server.tool_named("status").description
     with pytest.raises(AssayError, match="^unknown tool 'approve'$") as refused:
         server.tool_named("approve")

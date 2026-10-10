@@ -98,11 +98,11 @@ def test_status_shows_readings_without_spawning_extractors(tmp_path):
         assert "counter=0 (path)" in status.stdout
         assert "tens=not yet graded (extractor)" in status.stdout
         assert graded_readings() == {}  # no extractor has run
-        # A graded claim runs the extractor in the daemon and caches the reading.
+        # A graded outcome runs the extractor in the daemon and caches the reading.
         acted = run_cli(run, "act", "INC", "amount=2", "--predict", "ch tens = 20")
         assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout, acted.stdout
         assert graded_readings() == {"tens": {"event": 1, "value": 20}}
-        # Change the world without a tens claim: a fresh run would now read
+        # Change the world without a tens outcome: a fresh run would now read
         # 21 while the cache still says 20 at e1, so the two are told apart.
         moved = run_cli(run, "act", "SET_LAMP", "state=on", "--predict", "change")
         assert moved.returncode == 0 and "OUTCOME | PREDICTED" in moved.stdout, moved.stdout
@@ -170,7 +170,7 @@ def test_the_retired_command_word_answers_and_is_absent_from_the_help(tmp_path):
         assert _start(run).returncode == 0
         old = run_cli(run, "channel", "declare", "counter", "--path", "counter")
         assert old.returncode == 0, old.stderr
-        assert old.stdout.rstrip("\n") == "STATE | declared counter (path); claims like `ch counter = V` now parse and grade"
+        assert old.stdout.rstrip("\n") == "STATE | declared counter (path); outcomes like `ch counter = V` now parse and grade"
         new = run_cli(run, "state", "declare", "lamp", "--path", "lamp")
         assert new.returncode == 0 and new.stdout.startswith("STATE | declared lamp (path)")
         listed_old = run_cli(run, "channel", "list")

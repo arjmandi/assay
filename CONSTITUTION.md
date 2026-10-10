@@ -85,7 +85,7 @@ commands: `status`, `view`, `act`, `commit`, `reset`, `python`,
 `model_solve`, `module_list`, `goal_propose`, `goal_list` and `audit`; the
 owner's operations are not among them. `act` takes the fields the command
 takes: `action` (the registered name), `params` (one JSON object, or null
-for an action without parameters), `predict` (the claims, in the grammar
+for an action without parameters), `predict` (the prediction, in the grammar
 below, required exactly as `--predict` is), `because`, `at_event` and
 `declares`; on a run that requires the prediction, the tool's schema says
 so. A `commit` takes `steps` (each `{action, params, predict}`) or a
@@ -100,12 +100,12 @@ here. `python` runs your source in a fresh process per call, as the command
 does, for at most 120 seconds. Begin with the `status` tool as you would
 with the command, and keep the notes as before.
 
-## The claim grammar
+## The prediction grammar
 
-Separate several claims with `;`. Every claim is graded; a miss on any claim
-is a miss for the action.
+A prediction is one or more outcomes. Separate several outcomes with `;`.
+Every outcome is graded. A miss on any outcome is a miss for the action.
 
-| Claim | Meaning | Graded how |
+| Outcome | Meaning | Graded how |
 |---|---|---|
 | `noop` | no observed change | observation equality before/after |
 | `change` | the observation changes | complement of `noop` |
@@ -117,28 +117,29 @@ is a miss for the action.
 | `ch NAME delta sign +` or `-` | the state moves up / down | before/after delta |
 | `ch NAME crosses V [from below/above]` | the state crosses a threshold | straddle check |
 
-**Addressable states** are named readings you declare once and then claim
-against. The keyword `ch` in a claim names a state. `goal` (true at the win
+**Addressable states** are named readings you declare once and then predict
+against. The keyword `ch` in an outcome names a state. `goal` (true at the win
 state), `level` (progress units completed) and `budget_remaining` (paid
 actions left under the cap) are built in. Declare your own with
 `assay state declare NAME --path a.b.c` (a dotted path into the
 observation) or `--file extractor.py` (`def extract(obs) -> value`,
-sandboxed like a verifier). A claim naming an unregistered state is refused
-free and counted. Declare the referent first. Claims on `goal`/`level` are
-gambles; the rest meter your world model. Any claim may end with `@within Ns`
+sandboxed like a verifier). An outcome naming an unregistered state is refused
+free and counted. Declare the referent first. Outcomes on `goal`/`level` are
+gambles; the rest meter your world model. Any outcome may end with `@within Ns`
 to only grade if the result settled in time (a late settle is UNGRADABLE, not
-a miss). Statistical claims over a window (`agg ch NAME mean >= V over Na
-horizon Ma on-fail advise`) exist and are additive to a mechanical claim;
+a miss). Statistical outcomes over a window (`agg ch NAME mean >= V over Na
+horizon Ma on-fail advise`) exist and are additive to a mechanical outcome;
 `assay act --help` lists the form.
 
-## Addressable states: declare early, name referents, claim every action
+## Addressable states: declare early, name referents, predict every action
 
 The strongest runs on record share one habit: they declare states at the
-first event and never take a paid action without a state claim on it. A
-state is a referent the referee can read. A claim on it is a fact about the
-mechanics that costs nothing extra to make and is graded against the world's
-own response. Read the observation once, decide which readings matter, and
-declare them before the first action:
+first event and never take a paid action without a state outcome on it. A
+state is a referent the referee can read. An outcome on it costs nothing
+extra to write and is graded against the world's own response. When it
+holds, the record carries one more fact about the mechanics. Read the
+observation once, decide which readings matter, and declare them before the
+first action:
 
 ```bash
 "$ASSAY" state declare tick     --path tick
@@ -149,7 +150,7 @@ declare them before the first action:
 
 The dotted path walks the observation object you see under OBSERVATION, so a
 reading shown as `"tick": 360` is `--path tick`, never `--path data.tick` (the
-latter grades UNGRADABLE on every claim). Then claim against them with the
+latter grades UNGRADABLE on every outcome). Then predict against them with the
 three forms, as these predictions from a recorded run do:
 
 ```bash
@@ -170,16 +171,16 @@ path states changed.
 Frame worlds (grid observations) declare extractor states instead:
 `--file extractor.py` with `def extract(obs) -> value` over `obs["frames"]`.
 
-Free text that is not a claim is kept as commentary; if nothing gradable
+Free text that is not an outcome is kept as commentary; if nothing gradable
 remains it is coerced to `change`, journaled as its own **coerced** kind,
 excluded from the capability meter, and it lowers your specificity. The
 gate blocks emptiness, not vagueness. But vagueness earns nothing. Prefer a
-verifier: it is the most specific claim available.
+verifier: it is the most specific outcome available.
 
 ### The verifier contract (exact)
 
 A verifier is a Python file in the run directory, named with a **relative**
-path in the claim (`verify:checks/foo.py`). It must define:
+path in the outcome (`verify:checks/foo.py`). It must define:
 
 ```python
 def verify(before, after) -> tuple[bool, str]:
@@ -190,18 +191,18 @@ def verify(before, after) -> tuple[bool, str]:
   `levels_completed`, `win_levels`, `available_actions`, and `data` (the world
   state you see in OBSERVATION).
 - The returned `str` is the **mandatory counter-fact**: what actually happened,
-  stated so a reader can check it (it is shown when the claim misses).
-- At claim time the file is content-hashed and copied into
+  stated so a reader can check it (it is shown when the outcome misses).
+- At prediction time the file is content-hashed and copied into
   `.assay/verifiers/<hash>.py`; the hash is journaled on the prediction. The
   stored copy is what runs; later edits to your file do not change an
-  already-made claim.
+  outcome already written.
 - Execution: `python3 -I` in a fresh scratch directory with an empty
   environment; the observations arrive as JSON on stdin; the verdict must be
   one JSON line `{"ok": bool, "actual": str}` on stdout (the harness's runner
   emits it from your return value); 5 seconds CPU and wall time.
 - Crash, timeout, or malformed output grades as **INVALID_CLAIM**, not a
   miss, its own counter, and it halts a containing batch. Test a verifier
-  offline (`assay python`) before claiming with it.
+  offline (`assay python`) before naming it in a prediction.
 - After each grading the harness also runs your verifier on the identity
   transition (before, before) and journals both verdicts. A verifier whose
   identity verdict equals its real verdict on every one of 5+ gradings is
@@ -221,8 +222,8 @@ def verify(before, after):
 ## Batching proven mechanics
 
 Once a mechanic is verified, stop paying one command per step. Batch with a
-claim on every step; execution halts at the first miss (or invalid claim) so a
-wrong theory cannot burn the rest of the queue:
+prediction on every step; execution halts at the first miss (or invalid outcome)
+so a wrong theory cannot burn the rest of the queue:
 
 ```bash
 "$ASSAY" commit \
@@ -232,7 +233,7 @@ wrong theory cannot burn the rest of the queue:
 ```
 
 Batch only mechanics you can predict exactly; never batch exploration. All
-steps are validated (schemas, claims, budget) before the first one spends.
+steps are validated (schemas, predictions, budget) before the first one spends.
 
 **The batching law:** hand-written batches may be capped (the registry says;
 the refusal names the cap). Longer batches are EARNED through the model tier:
@@ -301,8 +302,8 @@ registered goal text no longer matches what the environment actually rewards.
 
 If status shows a FOREIGN block, a prior run's knowledge was imported:
 `.assay/PRIOR-NOTES.md` (every Verified line there is only Assumed here),
-`imported_verifiers/` (candidate checks: claim them to re-earn their
-standing), `imported_model.py` (no batching rights until it passes
+`imported_verifiers/` (candidate checks: name them in a prediction to re-earn
+their standing), `imported_model.py` (no batching rights until it passes
 `assay model replay` on THIS journal). The record is unambiguous: **graded
 mechanics and code transfer; prose plans rot. Trust the mechanics, re-derive
 the plan from the live frame.**
@@ -330,10 +331,10 @@ question, check whether the journal already answers it.
 
 ## Status meters: read them about yourself
 
-`assay status` shows split miss rates: **world-model** claims (noop/change and
-verifiers: do you understand the mechanics?) versus **gamble** claims
+`assay status` shows split miss rates: **world-model** outcomes (noop/change and
+verifiers: do you understand the mechanics?) versus **gamble** outcomes
 (win/level+1: are you converting understanding into progress?), plus your
-specificity and invalid-claim count. Specificity is the share of graded claims
-that are not coerced free text; a claim graded as `change` because the
+specificity and invalid-outcome count. Specificity is the share of graded outcomes
+that are not coerced free text; an outcome graded as `change` because the
 prediction was prose counts against it. A rising world-model miss rate means
 your notes are wrong; fix the story before spending more.

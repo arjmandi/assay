@@ -8,7 +8,8 @@ and the import discipline demotes everything:
 - imported Verified lines land in .assay/PRIOR-NOTES.md under a FOREIGN header,
   demoted to Assumed until a CURRENT-run event id supports them;
 - imported verifier sources land in imported_verifiers/ as candidate files;
-  they earn standing only by being claimed (`verify:`) and graded again;
+  they earn standing only by being named in a prediction (`verify:`) and
+  graded again;
 - an imported model NEVER carries batching rights: the fit record does not
   travel; rights are re-earned by `assay model replay` on the current journal;
 - HAZARD TAGS are the one distinguished class (the carve-out the rationality
@@ -356,7 +357,7 @@ def foreign_text(
     if verifier_candidates is not None:
         lines.append(
             f"FOREIGN | {verifier_candidates} verifier candidate(s) in imported_verifiers/; they "
-            "earn standing only by being claimed and graded again"
+            "earn standing only by being named in a prediction and graded again"
         )
     if imported_model:
         lines.append(

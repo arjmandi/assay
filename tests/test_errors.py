@@ -151,14 +151,14 @@ def test_docs_errors_md_is_the_rendered_catalogue():
 
 def test_an_aggregate_count_past_the_int_digit_limit_is_refused():
     from assay.core import AssayError
-    from assay.predictions import parse_claims
+    from assay.predictions import parse_prediction
 
     digits = "1" * 4301
     for over, horizon in ((digits, "1"), ("1", digits)):
         with pytest.raises(AssayError) as caught:
-            parse_claims(f"noop; agg ch x mean >= 1 over {over}a horizon {horizon}a on-fail advise")
-        assert caught.value.code == "CLAIM_SYNTAX" and "digits" in str(caught.value)
-    assert parse_claims("noop; agg ch x mean >= 1 over 999999999a horizon 100a on-fail advise")[1].over == 999_999_999
+            parse_prediction(f"noop; agg ch x mean >= 1 over {over}a horizon {horizon}a on-fail advise")
+        assert caught.value.code == "PREDICTION_SYNTAX" and "digits" in str(caught.value)
+    assert parse_prediction("noop; agg ch x mean >= 1 over 999999999a horizon 100a on-fail advise")[1].over == 999_999_999
 
 
 ACTIONS = [
@@ -207,7 +207,7 @@ def _start(run: Path, adapter: str = f"{FAKE_ADAPTER}:factory"):
 
 def test_the_command_line_speaks_the_error_voice(tmp_path):
     """One line `ERROR | CODE | message`, `NEXT | hint` when there is one,
-    the claims table after them, the exit status by kind, nothing on
+    the grammar table after them, the exit status by kind, nothing on
     stdout; under `--json` the error object alone on stdout."""
     run = tmp_path / "voice"
     _prepare(run)
@@ -230,20 +230,20 @@ def test_the_command_line_speaks_the_error_voice(tmp_path):
             "ERROR | EVENT_GUARD | event guard failed: requested 7, current 0\n"
             "NEXT | pass --at 0, or drop --at to act on the current event\n"
         )
-        # The claims table is the error's detail: it follows the ERROR and
+        # The grammar table is the error's detail: it follows the ERROR and
         # NEXT lines, and the message stays one line.
         bare = run_cli(run, "act", "NOOP")
         assert bare.returncode == 2
         lines = bare.stderr.splitlines()
         assert lines[0] == "ERROR | PREDICTION_REQUIRED | an empty prediction predicts nothing; say what you expect"
         assert lines[1] == (
-            'NEXT | add --predict "<claims>" (for example --predict "change"); `assay act --help` lists the forms'
+            'NEXT | add --predict "<outcomes>" (for example --predict "change"); `assay act --help` lists the forms'
         )
-        assert lines[2] == 'PREDICTION CLAIMS | separate several with ";"'
+        assert lines[2] == 'PREDICTION | one or more outcomes, separated by ";"'
         machine = run_cli(run, "act", "NOOP", "--json")
         error = json.loads(machine.stdout)
         assert error["message"] == "an empty prediction predicts nothing; say what you expect"
-        assert error["detail"].startswith('PREDICTION CLAIMS | separate several with ";"')
+        assert error["detail"].startswith('PREDICTION | one or more outcomes, separated by ";"')
         # The parameter refusal names the registered form.
         params = run_cli(run, "act", "INC", "amount=9", "--predict", "change")
         assert params.stderr == (
@@ -352,7 +352,7 @@ def test_a_command_without_a_result_record_prints_its_lines_under_json(tmp_path)
         declared = run_cli(run, "state", "declare", "counter", "--path", "counter", "--json")
         assert declared.returncode == 0 and declared.stderr == ""
         assert json.loads(declared.stdout) == {
-            "lines": ["STATE | declared counter (path); claims like `ch counter = V` now parse and grade"]
+            "lines": ["STATE | declared counter (path); outcomes like `ch counter = V` now parse and grade"]
         }
         stopped = run_cli(run, "stop", "--json")
         assert stopped.returncode == 0 and stopped.stderr == ""

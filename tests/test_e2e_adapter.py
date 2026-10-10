@@ -93,7 +93,7 @@ def test_full_general_run(tmp_path):
         assert '"counter": 0' in started.stdout
         assert "IMAGE |" not in started.stdout  # no PNG path for dict runs
 
-        # -- act with a verifier claim ----------------------------------------
+        # -- act with a verifier outcome ----------------------------------------
         acted = run_cli(
             run,
             "act",
@@ -166,7 +166,7 @@ def test_full_general_run(tmp_path):
         # -- status renders and carries the meters ------------------------------
         status = run_cli(run, "status")
         assert status.returncode == 0, status.stderr
-        assert "CLAIMS | world-model misses 1/4 (25.0%)" in status.stdout
+        assert "PREDICTIONS | world-model misses 1/4 (25.0%)" in status.stdout
         assert "invalid 1" in status.stdout
         assert "BUDGET | paid actions 4/10 | remaining 6" in status.stdout
         assert "OBSERVATION |" in status.stdout

@@ -4,10 +4,10 @@ the event append (verifiers and extractors run in that window), no other
 command may recover the mutation, or the run is double-counted the moment the
 daemon appends its own graded event.
 
-From 1.2.0 on the mutation record carries the step's parsed claims and
-recovery keeps the prediction: the claims are regraded against the stored
+From 1.2.0 on the mutation record carries the step's parsed outcomes and
+recovery keeps the prediction: the outcomes are regraded against the stored
 response and the recovered event is gated by its fields (docs/ARCHITECTURE.md
-section 6.5). A record without claims (written before 1.2.0, or by a
+section 6.5). A record without outcomes (written before 1.2.0, or by a
 model-plan step) is recovered UNGATED, as it always was, and the audit says
 why."""
 
@@ -156,12 +156,12 @@ def test_start_recovers_an_orphan_with_its_prediction_once_the_daemon_is_dead(tm
     _prepare(run)
     try:
         _crash_between_spend_and_record(run, PREDICT)
-        # The record carries the reasoning and the parsed claims, the
+        # The record carries the reasoning and the parsed outcomes, the
         # verifier's with the hash admitted before the spend.
         digest = hashlib.sha256(SLOW_VERIFIER.encode()).hexdigest()
         record = _mutations(run)[0]
         assert record["reasoning"] == {"predict": PREDICT}
-        assert [claim["kind"] for claim in record["claims"]] == ["verify", "noop"]
+        assert [outcome["kind"] for outcome in record["claims"]] == ["verify", "noop"]
         assert record["claims"][0]["verifier_hash"] == digest
         # Offline commands still do not recover; they report the gap.
         audited = run_cli(run, "audit")
@@ -177,7 +177,7 @@ def test_start_recovers_an_orphan_with_its_prediction_once_the_daemon_is_dead(tm
         event = events[1]
         assert event["mutation_id"] == 1
         assert event["note"] == RECOVERED_NOTE
-        # The recovered event keeps its prediction: the claims regraded from
+        # The recovered event keeps its prediction: the outcomes regraded from
         # the record against the stored response, the verifier through its
         # stored copy under .assay/verifiers/.
         assert event["predict"] == PREDICT
@@ -215,7 +215,7 @@ def test_start_recovers_an_orphan_with_its_prediction_once_the_daemon_is_dead(tm
         stop_run(run)
 
 
-def test_a_windowed_claim_is_ungradable_on_recovery(tmp_path):
+def test_a_windowed_outcome_is_ungradable_on_recovery(tmp_path):
     run = tmp_path / "window"
     _prepare(run)
     try:
@@ -227,9 +227,9 @@ def test_a_windowed_claim_is_ungradable_on_recovery(tmp_path):
         event = _events(run)[1]
         assert event["note"] == RECOVERED_NOTE
         assert event["predict"] == predict
-        # The step's duration died with the process: the windowed claim is
+        # The step's duration died with the process: the windowed outcome is
         # UNGRADABLE with the recovery actual, its own outcome, so predict_ok
-        # is null; the verifier claim carries no window and is graded.
+        # is null; the verifier outcome carries no window and is graded.
         assert event["predict_ok"] is None
         grades = {grade["kind"]: grade for grade in event["grade"]}
         assert grades["noop"]["ungradable"] is True and grades["noop"]["ok"] is False
@@ -245,10 +245,10 @@ def test_a_windowed_claim_is_ungradable_on_recovery(tmp_path):
         stop_run(run)
 
 
-def test_a_record_without_claims_is_recovered_ungated_and_the_audit_says_why(tmp_path):
+def test_a_record_without_outcomes_is_recovered_ungated_and_the_audit_says_why(tmp_path):
     """A record written before 1.2.0 (or by a model-plan step) carries no
-    `claims`: the event is recovered without its prediction, UNGATED as it
-    always was, and the audit says why."""
+    outcomes (no `claims` key, the spelling on disk): the event is recovered
+    without its prediction, UNGATED as it always was, and the audit says why."""
     run = tmp_path / "old"
     _prepare(run)
     try:

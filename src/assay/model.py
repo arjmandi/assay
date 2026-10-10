@@ -34,7 +34,7 @@ Trust is exactly replay-fit; no other trust states exist:
   aggregate consequence revoked them.
 - `assay model solve --to "ch NAME = V"` searches the model (sandboxed BFS) for
   a plan; every plan step carries machine-generated state predictions,
-  marked `machine`; they never enter the agent's claim meters. Plans carry
+  marked `machine`; they never enter the agent's prediction meters. Plans carry
   provenance hashes and refuse to run against a changed world or model.
 - Imported models NEVER carry rights: the fit record is never exported and
   must be re-earned on the current run's journal.

@@ -23,7 +23,7 @@ You supply exactly two things, and they divide cleanly:
 
 On top of the adapter's raw observation, **addressable states** (section 4)
 are the named, fine-grained observers: readings the agent itself declares,
-which claims and world models then grade against.
+which predictions and world models then grade against.
 
 ## 1. Requirements
 
@@ -68,20 +68,20 @@ Line by line, what actually happens:
   prints the full status: the observation, the registered actions with their
   schemas (never their meanings), the budget, and the standing goal.
 - **`act INC amount=1 --predict "change"`**: one paid action. The daemon
-  validates the name, the typed parameter, the budget, and the claim BEFORE
-  spending; applies the action; grades the claim against what actually
+  validates the name, the typed parameter, the budget, and the prediction BEFORE
+  spending; applies the action; grades the prediction against what actually
   happened. The counter moved, so: ✓ PREDICTED.
-- **`act NOOP --predict "change"`**: same claim, but NOOP changes nothing:
+- **`act NOOP --predict "change"`**: the same prediction, but NOOP changes nothing:
   ✗ SURPRISE, with the counter-fact ("no observed change (0 keys)"). Misses
   are the product, not the failure: each one corrects the agent's model at
   the price of one action.
 - **`state declare counter --path counter`**: declares an addressable
   state, a named reading of the observation (here: the `counter` key). From
-  now on claims can name it exactly (`ch counter = 3`) instead of the blunt
+  now on an outcome can name it exactly (`ch counter = 3`) instead of the blunt
   change/noop pair. Free, journaled, and it feeds the emergence meter.
   `assay channel declare`, the command's earlier name, answers for one
   release.
-- **`act INC amount=2 --predict "ch counter = 3; win"`**: two claims on one
+- **`act INC amount=2 --predict "ch counter = 3; win"`**: two outcomes on one
   action: the state reads exactly 3 afterwards, AND this reaches the goal
   state. Both grade ✓; the world reports WIN; the run is complete and the
   daemon finalizes.
@@ -190,7 +190,7 @@ That one observation object is the observer stream. The agent (or you) can
 then declare **addressable states**, named readings of it, at run time:
 `assay state declare price --path market.price` (a dotted path), or
 `--file extractor.py` for a computed reading (`def extract(obs) -> value`,
-sandboxed). States are what claims like `ch price delta >= 5` grade
+sandboxed). States are what outcomes like `ch price delta >= 5` grade
 against, and what world models declare. A `model.py` names the states it
 predicts in `STATES`. The published runs hold models that named them
 `CHANNELS`, so that name is read for one release.
@@ -208,7 +208,7 @@ Two facts worth knowing before you write an adapter:
   dependencies live there. `ASSAY_PYTHON` pins it for the launcher, and
   `assay doctor` reports it, dry-imports the adapter, and checks the registry.
 
-The declare-early, claim-every-action state pattern that the Factorio runs
+The declare-early, predict-every-action state pattern that the Factorio runs
 used is worked through in `CONSTITUTION.md` (the addressable states section)
 and in `ONBOARDING.md` chapter 7.
 
@@ -324,7 +324,7 @@ hazard fires again).
 
 ## 7. Reading the meters
 
-`assay status` is self-sufficient: the goal, budgets, the claim meters
+`assay status` is self-sufficient: the goal, budgets, the prediction meters
 (world-model misses = does the agent understand the mechanics; gamble misses
 = is it converting understanding into progress; specificity = how much of its
 talk was checkable), declared states, hazard tags, module advisories, and

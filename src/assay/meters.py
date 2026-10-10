@@ -42,10 +42,10 @@ def recent_predictions(events: Sequence[Event], window: int = 10) -> tuple[int, 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Specificity:
     """The specificity counts over every grade of the run: `graded` is every
-    grade but a note, an invalid one included, as the CLAIMS line has always
-    counted them; `coerced` the free-text claims coerced to `change`. The
-    CLAIMS line and the specificity module both read `specific` over
-    `graded`, so the advisory's N/M is the CLAIMS line's."""
+    grade but a note, an invalid one included, as the PREDICTIONS line has always
+    counted them; `coerced` the free-text outcomes coerced to `change`. The
+    PREDICTIONS line and the specificity module both read `specific` over
+    `graded`, so the advisory's N/M is the PREDICTIONS line's."""
 
     graded: int
     coerced: int
@@ -56,8 +56,8 @@ class Specificity:
 
 
 def specificity(events: Sequence[Event]) -> Specificity:
-    """The one count behind the CLAIMS line's specificity and the
-    specificity module's advisory: the share of graded claims that are not
+    """The one count behind the PREDICTIONS line's specificity and the
+    specificity module's advisory: the share of graded outcomes that are not
     coerced free text."""
     graded = coerced = 0
     for event in events:

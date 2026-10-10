@@ -25,7 +25,7 @@ import pytest
 from conftest import ASSAY_CLI, FAKE_ADAPTER, event_of, run_cli, run_of, stop_run
 from assay import sandbox
 from assay.states import state_value, declare_state
-from assay.records import Claim, Grade
+from assay.records import Grade, Outcome
 from assay.sandbox import (
     BWRAP,
     FORCE_VARIABLE,
@@ -35,7 +35,7 @@ from assay.sandbox import (
     sandbox_mode,
     sandbox_text,
 )
-from assay.verifiers import VERIFY_TIMEOUT_SECONDS, admit_verifier, grade_verifier_claim
+from assay.verifiers import VERIFY_TIMEOUT_SECONDS, admit_verifier, grade_verifier_outcome
 
 BEFORE = {
     "state": "NOT_FINISHED",
@@ -152,8 +152,8 @@ JOURNAL_LINE = '{"id": 0, "action": "START"}'
 def _graded(paths, body: str) -> Grade:
     source = paths.root / "check.py"
     source.write_text(body)
-    claim = admit_verifier(paths, Claim(kind="verify", text="verify:check.py", path="check.py"))
-    return grade_verifier_claim(paths, claim, BEFORE, AFTER)
+    outcome = admit_verifier(paths, Outcome(kind="verify", text="verify:check.py", path="check.py"))
+    return grade_verifier_outcome(paths, outcome, BEFORE, AFTER)
 
 
 def _refused(graded: Grade) -> str:

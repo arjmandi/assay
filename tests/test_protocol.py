@@ -233,7 +233,7 @@ def test_the_daemon_validates_the_params_object_against_the_registry(tmp_path):
             _request(paths, "commit", {"steps": [{"action": "NOOP", "params": None, "predict": None}]}, timeout=10.0)
         assert caught.value.code == "PREDICTION_REQUIRED"
         assert str(caught.value) == (
-            'each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+            'each step needs its own prediction: --step "NAME pname=value :: <outcomes>" '
             'or "predict" in the step object'
         )
         result = _request(
@@ -252,7 +252,7 @@ def test_the_daemon_validates_the_params_object_against_the_registry(tmp_path):
 
 
 def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_path):
-    """`assay act NAME k=v` and `--step "NAME k=v :: claims"` are parsed by
+    """`assay act NAME k=v` and `--step "NAME k=v :: outcomes"` are parsed by
     the client against the pinned registry; the journal is as it was."""
     run = tmp_path / "cli"
     _prepare(run)
@@ -278,9 +278,9 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         bare = run_cli(run, "commit", "--step", "NOOP")
         assert bare.returncode == 2
         assert bare.stderr == (
-            'ERROR | PREDICTION_REQUIRED | each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+            'ERROR | PREDICTION_REQUIRED | each step needs its own prediction: --step "NAME pname=value :: <outcomes>" '
             'or "predict" in the step object\n'
-            "NEXT | `assay act --help` lists the claim forms\n"
+            "NEXT | `assay act --help` lists the outcome forms\n"
         )
         empty = run_cli(run, "commit", "--step", ":: noop")
         assert empty.returncode == 2 and empty.stderr.startswith("ERROR | PREDICTION_REQUIRED | each step needs")
@@ -405,7 +405,7 @@ def test_params_json_carries_structured_values_through_the_cli_and_the_daemon(tm
 
 def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
     """`--step '{"action", "params", "predict"}'` and `--step @FILE` holding
-    a list of such objects (#14), beside `--step "NAME k=v :: claims"`."""
+    a list of such objects (#14), beside `--step "NAME k=v :: outcomes"`."""
     run = tmp_path / "steps"
     _prepare(run, actions=[*ACTIONS, APPLY])
     try:
@@ -419,8 +419,8 @@ def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
         assert "OUTCOME | PREDICTED | all 2 steps landed as predicted" in committed.stdout
         assert _events(run)[-2]["action"] == "SET_LAMP" and _events(run)[-2]["data"] == {"state": "on"}
         hint = (
-            'a step is `--step "NAME pname=value :: claims"`, or `--step \'{"action": "NAME", '
-            "\"params\": {...}, \"predict\": \"claims\"}'`, or `--step @FILE` holding a list of such objects"
+            'a step is `--step "NAME pname=value :: outcomes"`, or `--step \'{"action": "NAME", '
+            "\"params\": {...}, \"predict\": \"outcomes\"}'`, or `--step @FILE` holding a list of such objects"
         )
         for step, code, message, next_step in (
             ('{"action": "NOOP", "bogus": 1, "predict": "noop"}', "COMMAND_ARGS", "step.bogus is not a field of the record", hint),

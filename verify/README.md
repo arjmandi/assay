@@ -16,8 +16,8 @@ on any journal they are given.
 - **`JOURNAL_SPEC.md`**: the journal format (`assay-journal-v1`): run
   directory layout, the event schema, the chain rule, the ungated-event rule
   and the verdict semantics.
-- **`CLAIM_GRAMMAR.md`**: the prediction-claim grammar and what a graded
-  claim in a journal asserts.
+- **`PREDICTION_GRAMMAR.md`**: the prediction grammar and what a graded
+  outcome in a journal asserts.
 - **`assay_verify.py`**: the checker. One file, Python 3.10 or newer, the
   standard library only, reimplemented from the spec. It shares no code with
   the harness in `src/assay`, and `tests/test_verify_independence.py` keeps
@@ -66,7 +66,7 @@ With a run directory and this checker, a third party can verify:
    per-unit attribution recompute exactly, which makes published scores
    recomputable (for ARC-AGI-3, through `evidence/arcagi/rhae.py`).
 
-Deliberate limits, stated plainly: the checker does not re-execute claim
+Deliberate limits, stated plainly: the checker does not re-execute the
 grading (the grammar makes every predict and grade pair in a journal
 readable, re-grading is out of scope for v1). It cannot prove anything about
 live reasoning, no post-hoc tool can. Outcome truth for benchmark runs rests

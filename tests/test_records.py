@@ -15,13 +15,13 @@ import pytest
 from conftest import event_of
 
 from assay.records import (
-    Claim,
+    Outcome,
     Event,
     Grade,
     Mutation,
     Receipt,
     ReceiptStep,
-    claim_bucket,
+    outcome_bucket,
 )
 
 EVIDENCE = Path(__file__).resolve().parents[1] / "evidence"
@@ -163,25 +163,25 @@ def test_ungated_rule_and_level_advanced():
     assert event_of(level_before=None, levels_completed=1).level_advanced is False
 
 
-def test_grade_of_a_claim_keeps_the_written_form():
-    claim = Claim(kind="change", text="change (implied by free text)", coerced=True)
-    graded = Grade.of(claim, ok=True, actual="1 keys changed")
+def test_grade_of_an_outcome_keeps_the_written_form():
+    outcome = Outcome(kind="change", text="change (implied by free text)", coerced=True)
+    graded = Grade.of(outcome, ok=True, actual="1 keys changed")
     assert graded.kind == "coerced" and graded.bucket == "world_model" and graded.coerced
     assert graded.to_json() == {
         "kind": "coerced", "text": "change (implied by free text)", "coerced": True,
         "ok": True, "actual": "1 keys changed", "bucket": "world_model",
     }
-    goal = Claim(kind="channel_eq", text="ch goal = true", channel="goal", value=True)
+    goal = Outcome(kind="channel_eq", text="ch goal = true", channel="goal", value=True)
     assert Grade.of(goal, ok=False, actual="ch goal = false").bucket == "gamble"
     verified = Grade.of(
-        Claim(kind="verify", text="verify:x.py", path="x.py", verifier_hash="a" * 64),
+        Outcome(kind="verify", text="verify:x.py", path="x.py", verifier_hash="a" * 64),
         ok=True, actual="fine", verifier=True, identity_verdict=False,
     )
     assert verified.to_json()["verifier"] is True and verified.to_json()["identity_verdict"] is False
     assert "invalid" not in verified.to_json()
-    assert claim_bucket("win") == "gamble" and claim_bucket("aggregate") == "aggregate"
+    assert outcome_bucket("win") == "gamble" and outcome_bucket("aggregate") == "aggregate"
     assert Grade.from_json(verified.to_json()) == verified
-    assert Claim.from_json(goal.to_json()) == goal
+    assert Outcome.from_json(goal.to_json()) == goal
 
 
 def test_grade_keeps_numbers_as_written():
@@ -216,12 +216,12 @@ def test_act_receipt_keeps_null_predict_and_because():
     assert Receipt.from_json(rendered) == batch
 
 
-def test_mutation_round_trips_and_claims_are_optional():
+def test_mutation_round_trips_and_outcomes_are_optional():
     raw = {"mutation_id": 1, "action": "INC", "data": {"amount": 1}, "reasoning": None,
            "observation": {"state": "NOT_FINISHED"}, "timestamp": "t"}
     mutation = Mutation.from_json(raw)
-    assert mutation.claims is None and _line(mutation.to_json()) == _line(raw)
-    with_claims = Mutation.from_json({**raw, "claims": [{"kind": "noop", "text": "noop"}]})
-    assert with_claims.claims == (Claim(kind="noop", text="noop"),)
+    assert mutation.outcomes is None and _line(mutation.to_json()) == _line(raw)
+    with_outcomes = Mutation.from_json({**raw, "claims": [{"kind": "noop", "text": "noop"}]})
+    assert with_outcomes.outcomes == (Outcome(kind="noop", text="noop"),)
     with pytest.raises(KeyError, match="observation"):
         Mutation.from_json({"mutation_id": 1, "action": "INC", "data": None, "reasoning": None, "timestamp": "t"})

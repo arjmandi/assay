@@ -53,9 +53,9 @@ Each line of `events.jsonl` is one JSON object. Fields, with their writer:
 | `frames` + `n_frames` | adapter | frame worlds only: the raw observation as one or more integer grids, rows serialized as strings |
 | `observation` | adapter | non-frame worlds only: the raw observation as a JSON object |
 | `note` | **agent** | free-text rationale attached to the action |
-| `predict` | **agent** | the prediction claim string, registered **before** the action executed (grammar: `CLAIM_GRAMMAR.md`) |
-| `predict_ok` | machine | overall grade: `true` iff every claim in `predict` graded ok |
-| `grade` | machine | per-claim grades: a list of `{text, kind, ok, actual, bucket, ...}` objects, each grading one claim against the world's own response |
+| `predict` | **agent** | the prediction string, registered **before** the action executed (grammar: `PREDICTION_GRAMMAR.md`) |
+| `predict_ok` | machine | overall grade: `true` iff every outcome in `predict` graded ok |
+| `grade` | machine | per-outcome grades: a list of `{text, kind, ok, actual, bucket, ...}` objects, each grading one outcome against the world's own response |
 | `mutation_id` | machine | key into `mutations.jsonl` for crash recovery |
 
 Two writer classes matter for interpretation: **machine** and **adapter**
@@ -110,7 +110,7 @@ scoring.
 ## 6. The gate, and the ungated-event rule
 
 The harness's constitutional rule is **predict-before-act**: a paid action is
-admitted only as part of a prediction, a machine-parseable claim about what
+admitted only as part of a prediction, a machine-parseable statement of what
 the world will report, registered before the action executes and graded by
 code against the world's own response afterwards.
 
@@ -122,7 +122,7 @@ An event is **UNGATED** iff:
 
 `RESET` is the only exemption: it is the built-in whole-world reset, cannot be
 registered as an adapter action (the harness refuses the name), and spends
-budget without requiring a claim.
+budget without requiring a prediction.
 
 **One ungated event invalidates the entire run for scoring**, and the writer
 additionally demotes all trust earned after the first one. The rule is

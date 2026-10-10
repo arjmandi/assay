@@ -115,7 +115,7 @@ from .ops import (
     ResetRequest,
     Step,
 )
-from .predictions import claims_help
+from .predictions import prediction_help
 from .records import refuse_unknown, wrong_type
 from .registry import gate_mode, require_registry, status_budget, validate_action
 from .run import Run
@@ -135,7 +135,7 @@ PYTHON_TOOL_SECONDS = 120
 INSTRUCTIONS = (
     "ASSAY referee harness: look, predict, act, compare. Read CONSTITUTION.md completely "
     "first and begin with the status tool. Every paid action (act, commit, reset) needs a "
-    "prediction in the claim grammar and is graded in code against what happened; the "
+    "prediction in the prediction grammar and is graded in code against what happened; the "
     "receipt comes back as the text the command line prints (format json for the record). "
     "A refusal is a tool error carrying the error object (code, kind, message, hint, detail); "
     "docs/ERRORS.md lists the codes. Keep .assay/NOTES.md to one page; never edit anything "
@@ -426,7 +426,7 @@ class Tool:
     """One tool: the operation's name, its description, its request record
     (the `inputSchema` is the record's `json_schema()`), what runs it, the
     daemon operation it forwards to, if any, and the epilog a listing
-    appends to the description (the claim grammar, as `assay act --help`
+    appends to the description (the prediction grammar, as `assay act --help`
     shows it)."""
 
     name: str
@@ -711,20 +711,20 @@ TOOLS: tuple[Tool, ...] = (
         "act",
         "Take one registered action with a prediction; the result is graded against it and the "
         "receipt comes back as the text the command line prints (format json for the record). The "
-        "prediction is required unless the registry sets gate: optional. The claim grammar follows.",
+        "prediction is required unless the registry sets gate: optional. The prediction grammar follows.",
         ActRequest,
         _act,
         operation=ACT,
-        epilog=claims_help,
+        epilog=prediction_help,
     ),
     Tool(
         "commit",
         "Run a prediction-checked batch (steps, each with its own prediction) or a model plan "
-        "written by model_solve; halts on the first miss. The claim grammar follows.",
+        "written by model_solve; halts on the first miss. The prediction grammar follows.",
         CommitRequest,
         _commit,
         operation=COMMIT,
-        epilog=claims_help,
+        epilog=prediction_help,
     ),
     Tool(
         "reset",
@@ -745,7 +745,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "state_declare",
         "Declare an addressable state, a named reading of the observation, by a dotted path "
-        "into it or by an extractor file; claims like `ch NAME = V` then parse and grade.",
+        "into it or by an extractor file; outcomes like `ch NAME = V` then parse and grade.",
         StateDeclareRequest,
         _state_declare,
     ),

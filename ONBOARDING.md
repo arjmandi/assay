@@ -105,12 +105,12 @@ Line by line:
   Here one person plays both roles; an evaluated agent does not start the
   run (chapter 7).
 - `act INC amount=1 --predict "change"` is one paid action. The daemon
-  validates the name, the typed parameter, the budget and the claim before
-  spending, applies the action, and grades the claim against what actually
+  validates the name, the typed parameter, the budget and the prediction before
+  spending, applies the action, and grades the prediction against what actually
   happened. The counter moved, so the receipt starts with
   `OUTCOME | PREDICTED | result matched the prediction`, followed by a
   `KEY DELTA` of the changed keys and the new observation.
-- `act NOOP --predict "change"` makes the same claim, but NOOP changes
+- `act NOOP --predict "change"` makes the same prediction, but NOOP changes
   nothing. The receipt begins
 
   ```
@@ -125,9 +125,9 @@ Line by line:
   adapter put under `data`. It prints a line beginning
   `STATE | declared counter (path)`. `assay channel declare`, the command's
   earlier name, answers for one release.
-  From now on claims can name the referent exactly. The declaration is free
+  From now on an outcome can name the referent exactly. The declaration is free
   and journaled.
-- `act INC amount=2 --predict "ch counter = 3; win"` makes two claims on one
+- `act INC amount=2 --predict "ch counter = 3; win"` makes two outcomes on one
   action: the state reads exactly 3 afterwards, and this action reaches the
   goal state. Both grade, the world reports `WIN`, the receipt says
   `OUTCOME | GAME_COMPLETE | the goal is reached; this run is complete`, the
@@ -226,7 +226,7 @@ The dict observation shape (`core.normalize_observation`, dict branch):
 }
 ```
 
-`data` is where everything the agent may read and claim against goes. The
+`data` is where everything the agent may read and predict against goes. The
 kernel sorts and stringifies `available_actions` and checks each action
 against them before spend (`registry.check_registry_action`), so advertise
 what is usable. The lifecycle values the kernel reads are `NOT_FINISHED`,
@@ -527,7 +527,7 @@ order for the runs to come, and `tests/test_operator_start.py` runs the
 counter example in it.
 
 The state pattern, worked. The Factorio M2 runs declared their states
-first and claimed every action with a state form. The irongear run declared
+first and predicted every action with a state form. The irongear run declared
 seven path states at its first event, as the run issued them, under the
 command's earlier name:
 
@@ -541,7 +541,7 @@ assay channel declare gears    --path target_produced_total
 assay channel declare auto     --path target_automated_total
 ```
 
-and then claimed, verbatim from the published journal:
+and then predicted on them, verbatim from the published journal:
 
 ```
 e1 RUN  --predict "change; ch tick = 0; ch ents = 0; ch refusals = 0"
@@ -552,7 +552,7 @@ e8 WAIT --predict "verify:checks/first_window.py; ch tick = 3600; ch wins = 1; c
 e9 WAIT --predict "win; level+1; verify:checks/holdout.py; ch tick = 7200; ch wins = 2; ch gears delta >= 16; ch prod = True"
 ```
 
-Three claim forms carry the pattern. Equality, `ch tick = 360`, pins a
+Three outcome forms carry the pattern. Equality, `ch tick = 360`, pins a
 reading. Delta, `ch ents delta sign +` and `ch gears delta >= 16`, pins a
 change. Crossing, `ch automated crosses 16 from below` in the ironplate run,
 pins a threshold. The circuit run added a tolerance, `ch lastrate = 20 ± 5`.
@@ -756,7 +756,7 @@ registry sets `off`, `advise` or `block` per name:
 - `null_forensics`: a predicted change that observed nothing wants the raw
   observation read before the hypothesis is closed.
 - `park_with_test`: a reset should leave a re-entry test in the notes.
-- `specificity`: a majority of coerced free-text claims earns nothing (named
+- `specificity`: a majority of coerced free-text outcomes earns nothing (named
   `sharpness` before 1.2.0; `module_modes` still accepts that name).
 - `hazard`: an action class whose outcome entered a loss state or dropped
   progress demands `worst_case=` and `recovery=` on its next use.
@@ -786,9 +786,9 @@ observe(view, event) -> None                  optional, learn from outcomes
 telemetry(view) -> dict                       free counters
 ```
 
-`view` is `modules.ModuleView(run)`: `view.events` (the journal as `Event` records, read-only), `view.registry` (read-only), `view.paths`, and `view.record(kind, **fields)` and `view.hazards()` for what a module persists. The events and the claims are records, read by attribute: `event.predict_ok`, `claim.kind`; `pending["claims"]` holds `records.Claim` records, so a module written against 1.1 that does `claim["kind"]` gets a `TypeError` and reads `claim.kind` instead. `pending` is the
+`view` is `modules.ModuleView(run)`: `view.events` (the journal as `Event` records, read-only), `view.registry` (read-only), `view.paths`, and `view.record(kind, **fields)` and `view.hazards()` for what a module persists. The events and the outcomes are records, read by attribute: `event.predict_ok`, `outcome.kind`; `pending["outcomes"]` holds `records.Outcome` records (the key was `claims` before 1.3.0, and a module written against 1.1 that indexes a record as a dict gets a `TypeError` and reads the attribute instead). `pending` is the
 action about to be taken, `{"kind": act|commit|reset, "name", "params",
-"claims", "declares"}`, or `None` at status time. Ship at advise. Demands are
+"outcomes", "declares"}`, or `None` at status time. Ship at advise. Demands are
 for checkable structure (named, non-empty fields), never for confidence, and
 declaring always unlocks. A module makes no LLM calls and names no world.
 Expose the object as `MODULE` in the file.
@@ -832,7 +832,7 @@ worked example, and `evidence/verify_all.py` checks every one of them.
 What the public contract freezes, from the architecture document's section 5:
 the journal field names, including the historical `levels_completed`,
 `win_levels`, `level_before`, the state values `NOT_FINISHED`, `WIN` and
-`GAME_OVER`, the claim syntax, the grade `actual` texts, the host state
+`GAME_OVER`, the outcome syntax, the grade `actual` texts, the host state
 names `goal`, `level` and `budget_remaining`, the chain seed and rule, the
 ungated rule and the `RESET` exemption, the `game_id` and `source_game` keys,
 the activity kinds, the receipt outcome tokens and the state-directory layout.
@@ -842,7 +842,7 @@ Display strings are not frozen, and `src/assay/words.py` is the law for them.
 
 Each item is the message you see and what to do. Every refusal is one line on
 stderr, `ERROR | CODE | message`, followed by `NEXT | hint` when the error
-names a next step (and by the claims table when the error carries it); the
+names a next step (and by the grammar table when the error carries it); the
 exit status says what kind of error it was: 2 for a request that is wrong or
 refused by rule, 3 when the world failed or refused at the kernel boundary
 (`WORLD_ERROR`, the world's own refusal, or `OBSERVATION_INVALID`, an
@@ -866,7 +866,7 @@ corrupt file, 5 when the run can no longer be scored or continued.
 - `invalid world id 'my world': it contains whitespace. A world id is any
   non-empty string up to 64 characters with no whitespace, control characters
   or path separators, kept as given`. Choose an id that fits the rule.
-- `assay act --help` prints the general claim table first and the grid forms
+- `assay act --help` prints the general prediction table first and the grid forms
   under a section headed `FRAME WORLDS ONLY`. On a dict run those forms are
   refused by name before any spend.
 - The owner token appeared in the agent's terminal. Start the run from the
@@ -889,7 +889,7 @@ corrupt file, 5 when the run can no longer be scored or continued.
 
   Recovery happens only at `assay start`, only once the daemon is confirmed
   dead or absent. The recovered event carries its prediction and grade,
-  regraded from the record's claims against the stored response (a claim
+  regraded from the record's outcomes against the stored response (an outcome
   with an `@within` window grades UNGRADABLE, since the step's duration is
   lost), and the run stays CLEAN; a record written before 1.2.0 or by a
   model-plan step is recovered UNGATED and the audit says why.
@@ -979,8 +979,8 @@ the column the world adds to the table in `docs/ARCHITECTURE.md` section 4.
 - Constitution: `CONSTITUTION.md` unchanged, plus any world reference handed
   beside it.
 - Modules: the built-ins, hazard tags observed, external modules.
-- Addressable states: host states claimed, declared states and their form,
-  claim kinds used.
+- Addressable states: host states predicted on, declared states and their form,
+  outcome kinds used.
 - Verifiers and the world model.
 - Journal shape, audit verdict, the frame extra (frame worlds only).
 - Kernel imports from the world: none, always.

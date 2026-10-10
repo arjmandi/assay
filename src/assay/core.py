@@ -31,7 +31,7 @@ class AssayError(RuntimeError):
     a code from the catalogue (`errors.py`), the kind the code has there
     (`usage`, `refused`, `world`, `internal` or `invalid`, which decides the
     exit status), the next step in one sentence, or None, and `detail`, the
-    further lines the command line prints after the first two (the claims
+    further lines the command line prints after the first two (the grammar
     table), or None. `str(error)` is the message alone; the code rides
     beside it. A raise without a code, an adapter's or a module's, is
     `UNSPECIFIED`, outside the table, with the kind it asks for."""
@@ -100,7 +100,7 @@ def error_text(error: AssayError) -> str:
     """The refusal as the command line prints it on stderr (docs/ARCHITECTURE.md
     section 7.1), and as the tool server answers it under its text form:
     `ERROR | CODE | message`, `NEXT | hint` when the error names a next
-    step, the message's further lines, then the detail (the claims table)."""
+    step, the message's further lines, then the detail (the grammar table)."""
     head, _, tail = error.message.partition("\n")
     lines = [f"ERROR | {error.code} | {head}"]
     if error.hint:

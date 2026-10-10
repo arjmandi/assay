@@ -9,7 +9,7 @@ format has it: `frames` as hex rows, `n_frames`, and the frame branch of
 |---|---|
 | `perception.py` | connected components, repeated shapes, lattice inference, line graphs, frame deltas, motion traces, the transition story, the scene dossier |
 | `render.py` | the palette, one PNG per event under `.assay/images/`, the frame form of the history line. The one place pillow is imported |
-| `claims.py` | the four grid claim forms (`cell`, `move`, `vanish`, `region`) and the frame grader |
+| `outcomes.py` | the four grid outcome forms (`cell`, `move`, `vanish`, `region`) and the frame grader |
 | `views.py` | the frame halves of status, result, inspect, view and export: board text, diffs, scene summary, animation, click candidates, the advertised-action line |
 | `analysis.py` | the grid namespace of `assay python` |
 | `__init__.py` | `KIND`, the one object the kernel talks to |
@@ -25,12 +25,12 @@ auditing unchanged. A dict world never imports this package or pillow.
 ## What the ARC-AGI-3 adapter needs from it
 
 Rendering, the scene dossier, the inspect views and the grid namespace of
-`assay python`. Nothing else: the grid claim forms were refused on the ARC
+`assay python`. Nothing else: the grid outcome forms were refused on the ARC
 runs, and the general world model (`assay model`) was their model tier.
 
-## The rule on claim forms
+## The rule on outcome forms
 
-The grid claim forms are recognized and refused by name before any spend,
+The grid outcome forms are recognized and refused by name before any spend,
 which is the rule every published journal was recorded under. Whether frame
 worlds should admit them is a decision the owner has not made, and this extra
 does not make it.

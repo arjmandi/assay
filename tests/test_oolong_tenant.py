@@ -73,10 +73,10 @@ def test_oolong_spam4k_to_win_and_sealed_score(tmp_path):
                 "--predict", "ch banked delta = 1",
             )
             assert banked.returncode == 0 and "OUTCOME | PREDICTED" in banked.stdout, banked.stdout
-            claim = "win; level+1" if number == 5 else "level+1"
+            prediction = "win; level+1" if number == 5 else "level+1"
             submitted = run_cli(
                 run, "act", "SUBMIT", "--params", _params(answer="Answer: 1", spans=[SPAN]),
-                "--predict", claim, "--json",
+                "--predict", prediction, "--json",
             )
             assert submitted.returncode == 0, submitted.stderr
             receipt = json.loads(submitted.stdout)
@@ -145,13 +145,13 @@ def test_oolong_spam4k_batch_mode_to_win(tmp_path):
                 "--predict", "ch banked delta = 2",
             )
             assert banked.returncode == 0 and "OUTCOME | PREDICTED" in banked.stdout, banked.stdout
-            claim = "win; level+1" if number == 5 else "level+1"
+            prediction = "win; level+1" if number == 5 else "level+1"
             if number == 3:
                 submitted = run_cli(
-                    run, "act", "SUBMIT", "--params", _params(answer="February 2022"), "--predict", claim
+                    run, "act", "SUBMIT", "--params", _params(answer="February 2022"), "--predict", prediction
                 )
             else:
-                submitted = run_cli(run, "act", "SUBMIT", "answer=1", "--predict", claim)
+                submitted = run_cli(run, "act", "SUBMIT", "answer=1", "--predict", prediction)
             assert submitted.returncode == 0 and "OUTCOME | " in submitted.stdout, submitted.stdout
             assert _events(run)[-1]["levels_completed"] == number
         final = _events(run)[-1]

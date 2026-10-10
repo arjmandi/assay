@@ -23,7 +23,7 @@ latest event in-process, extractor states show their last graded value and
 the event it was graded on, cached by the daemon in `.assay/channel_readings.json`
 at grade time. `assay state list --read` computes extractor values fresh.
 
-Claims naming an unregistered state are refused before any spend and
+Outcomes naming an unregistered state are refused before any spend and
 counted on the mis-reference meter, the surviving referent-grounding
 instrument.
 
@@ -32,7 +32,7 @@ declarations (`channels.json`, written by the CLI) and the readings cache
 (written by the daemon) are small files read on demand from `run.paths`.
 
 The journal and the files beside it keep the spelling of the earlier
-releases: the claim kinds `channel_eq`, `channel_delta` and
+releases: the outcome kinds `channel_eq`, `channel_delta` and
 `channel_cross`, the keyword `ch`, the activity kind `channel_declared` with
 its `channel` field, the store `channels.json`, the extractor directory
 `channels/` and the cache `channel_readings.json`. A run directory written
@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING, Any
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
 from .sandbox import run_program
-from .records import Claim, Event, Grade
+from .records import Event, Grade, Outcome
 
 if TYPE_CHECKING:
     from .run import Run
@@ -179,18 +179,18 @@ def known_states(run: Run) -> list[str]:
     return [*HOST_STATES, *sorted(load_declared(run.paths))]
 
 
-def check_state_references(run: Run, claims: Sequence[Claim]) -> None:
-    """Refuse (free) any claim naming an unregistered state; count it."""
+def check_state_references(run: Run, outcomes: Sequence[Outcome]) -> None:
+    """Refuse (free) any outcome naming an unregistered state; count it."""
     known = set(known_states(run))
-    for claim in claims:
-        name = claim.channel
+    for outcome in outcomes:
+        name = outcome.channel
         if name is not None and name not in known:
             append_jsonl(
                 run.paths.activity,
-                {"kind": "mis_reference", "channel": name, "claim": claim.text},
+                {"kind": "mis_reference", "channel": name, "claim": outcome.text},
             )
             raise AssayError(
-                f"claim names unregistered state {name!r}",
+                f"outcome names unregistered state {name!r}",
                 code="STATE_UNKNOWN",
                 hint=(
                     f"registered states: {known_states(run)}; declare one with "
@@ -433,9 +433,9 @@ class StateList:
 
 def state_declared_text(name: str, spec: Mapping[str, Any]) -> str:
     """The line `assay state declare` prints: the name, its form and the
-    claims it now grades."""
+    outcomes it now grades."""
     return (
-        f"STATE | declared {name} ({spec['form']}); claims "
+        f"STATE | declared {name} ({spec['form']}); outcomes "
         f"like `ch {name} = V` now parse and grade"
     )
 
@@ -485,27 +485,27 @@ def _numeric(value: Any) -> float | None:
     return float(value)
 
 
-def grade_state_claim(
+def grade_state_outcome(
     run: Run,
-    claim: Claim,
+    outcome: Outcome,
     prior_event: Event,
     event: Event,
 ) -> Grade:
-    """Grade one state claim against the readings before and after."""
-    name = str(claim.channel)
+    """Grade one state outcome against the readings before and after."""
+    name = str(outcome.channel)
     ok_after, after = state_value(run, name, event, remember=True)
     if not ok_after:
-        return Grade.of(claim, ok=False, ungradable=True, actual=f"UNGRADABLE: {after}")
-    kind = claim.kind
+        return Grade.of(outcome, ok=False, ungradable=True, actual=f"UNGRADABLE: {after}")
+    kind = outcome.kind
     if kind == "channel_eq":
-        expected = claim.value
-        tol = claim.tol
+        expected = outcome.value
+        tol = outcome.tol
         actual_text = f"ch {name} = {json.dumps(after)}"
         if tol is not None:
             after_number, expected_number = _numeric(after), _numeric(expected)
             if after_number is None or expected_number is None:
                 return Grade.of(
-                    claim,
+                    outcome,
                     ok=False,
                     ungradable=True,
                     actual=f"UNGRADABLE: tolerance needs numeric values, got {json.dumps(after)}",
@@ -516,14 +516,14 @@ def grade_state_claim(
             ok = after_number is not None and after_number == float(expected)
         else:
             ok = after == expected
-        return Grade.of(claim, ok=bool(ok), actual=actual_text)
+        return Grade.of(outcome, ok=bool(ok), actual=actual_text)
     ok_before, before = state_value(run, name, prior_event)
     if not ok_before:
-        return Grade.of(claim, ok=False, ungradable=True, actual=f"UNGRADABLE: {before}")
+        return Grade.of(outcome, ok=False, ungradable=True, actual=f"UNGRADABLE: {before}")
     before_number, after_number = _numeric(before), _numeric(after)
     if before_number is None or after_number is None:
         return Grade.of(
-            claim,
+            outcome,
             ok=False,
             ungradable=True,
             actual=(
@@ -533,12 +533,12 @@ def grade_state_claim(
         )
     if kind == "channel_delta":
         delta = after_number - before_number
-        op = claim.op
-        target = _numeric(claim.value)
+        op = outcome.op
+        target = _numeric(outcome.value)
         if op == "sign":
-            ok = delta > 0 if claim.sign == "+" else delta < 0
+            ok = delta > 0 if outcome.sign == "+" else delta < 0
         elif target is None:  # pragma: no cover - parser guarantees a numeric value
-            raise AssayError(f"delta claim {claim.text!r} has no numeric value", code="CLAIM_SYNTAX")
+            raise AssayError(f"delta outcome {outcome.text!r} has no numeric value", code="PREDICTION_SYNTAX")
         elif op == "=":
             ok = delta == target
         elif op == ">=":
@@ -548,13 +548,13 @@ def grade_state_claim(
         else:  # pragma: no cover - parser guarantees op
             raise AssayError(f"unknown delta op {op!r}", code="INTERNAL")
         return Grade.of(
-            claim,
+            outcome,
             ok=bool(ok),
             actual=f"ch {name} moved {delta:+g} ({before_number:g} -> {after_number:g})",
         )
     if kind == "channel_cross":
-        threshold = float(claim.value)  # type: ignore[arg-type]  # the parser guarantees a number
-        direction = claim.direction
+        threshold = float(outcome.value)  # type: ignore[arg-type]  # the parser guarantees a number
+        direction = outcome.direction
         rose = before_number < threshold <= after_number
         fell = before_number > threshold >= after_number
         if direction == "below":
@@ -564,8 +564,8 @@ def grade_state_claim(
         else:
             ok = rose or fell
         return Grade.of(
-            claim,
+            outcome,
             ok=bool(ok),
             actual=f"ch {name} went {before_number:g} -> {after_number:g} (threshold {threshold:g})",
         )
-    raise AssayError(f"unknown state claim kind {kind!r}", code="INTERNAL")  # pragma: no cover
+    raise AssayError(f"unknown state outcome kind {kind!r}", code="INTERNAL")  # pragma: no cover

@@ -330,8 +330,8 @@ class UnitBlock:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class ClaimsBlock:
-    """The CLAIMS line's meters."""
+class PredictionsBlock:
+    """The PREDICTIONS line's meters."""
 
     world_model_graded: int
     world_model_missed: int
@@ -405,7 +405,7 @@ class Status:
     anchors: AnchorsBlock | None
     emergence: EmergenceBlock | None
     unit: UnitBlock
-    claims: ClaimsBlock | None
+    predictions: PredictionsBlock | None
     vacuous: VacuousBlock | None
     advisories: tuple[str, ...]
     recent: tuple[RecentLine, ...]
@@ -429,7 +429,7 @@ def status_of(run: Run, *, history: int = 8) -> Status:
     registry = run.registry
     paid = sum(1 for item in events if item.counts_action)
     hits, total = recent_predictions(events)
-    claims, vacuous = _claims_blocks(run)
+    predictions, vacuous = _predictions_blocks(run)
     anchors = _anchors_block(run) if registry else None
     return Status(
         run=RunBlock(
@@ -462,7 +462,7 @@ def status_of(run: Run, *, history: int = 8) -> Status:
         anchors=anchors,
         emergence=EmergenceBlock(**emergence_meter(run)) if registry else None,
         unit=UnitBlock(paid=level_action_count(events), hits=hits, total=total),
-        claims=claims,
+        predictions=predictions,
         vacuous=vacuous,
         advisories=tuple(advisory_lines(run)) if registry else (),
         recent=tuple(recent_lines(events, history)),
@@ -699,8 +699,8 @@ def _tamper_block(run: Run, anchors: AnchorsBlock | None) -> TamperBlock | None:
     return TamperBlock(records=records, state=state) if records else None
 
 
-def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
-    """The claim meters: split miss rates, specificity, the invalid count, and
+def _predictions_blocks(run: Run) -> tuple[PredictionsBlock | None, VacuousBlock | None]:
+    """The prediction meters: split miss rates, specificity, the invalid count, and
     the verifiers flagged VACUOUS under the rule the run's stats file is
     under, with the never-failed advisory. None until something is
     graded."""
@@ -748,7 +748,7 @@ def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
                 slot[1] += 1
     if not meter.graded:
         return None, None
-    claims = ClaimsBlock(
+    block = PredictionsBlock(
         world_model_graded=counts["world_model"][0],
         world_model_missed=counts["world_model"][1],
         gamble_graded=counts["gamble"][0],
@@ -775,7 +775,7 @@ def _claims_blocks(run: Run) -> tuple[ClaimsBlock | None, VacuousBlock | None]:
         )
         for digest in sorted(never_failed_hashes(stats))
     )
-    return claims, VacuousBlock(rule=rule, verifiers=tuple(verifiers))
+    return block, VacuousBlock(rule=rule, verifiers=tuple(verifiers))
 
 
 def _notes_block(run: Run, event: Event) -> NotesBlock:
@@ -1013,7 +1013,7 @@ def _status_lines(status: Status) -> list[str]:
         )
     if status.mis_references:
         lines.append(
-            f"MIS-REFERENCE | {status.mis_references} claim(s) named unregistered states "
+            f"MIS-REFERENCE | {status.mis_references} prediction(s) named unregistered states "
             "(refused free; the grounding meter)"
         )
     if status.integrity is not None:
@@ -1037,8 +1037,8 @@ def _status_lines(status: Status) -> list[str]:
     if status.emergence is not None:
         lines.append(emergence_text(**dataclasses.asdict(status.emergence)))
     lines.append(unit_text(status.unit, total))
-    if status.claims is not None:
-        lines.extend(claims_text(status.claims, status.vacuous))
+    if status.predictions is not None:
+        lines.extend(predictions_text(status.predictions, status.vacuous))
     lines.extend(status.advisories)
     lines.append("RECENT | ✓ prediction held · ✗ prediction missed")
     lines.extend(history_text(status.recent))
@@ -1130,7 +1130,7 @@ def unit_text(unit: UnitBlock, win_levels: int) -> str:
     )
 
 
-def claims_text(claims: ClaimsBlock, vacuous: VacuousBlock | None) -> list[str]:
+def predictions_text(block: PredictionsBlock, vacuous: VacuousBlock | None) -> list[str]:
     from .verifiers import RULE_IDENTITY
 
     def rate(graded: int, missed: int) -> str:
@@ -1139,10 +1139,10 @@ def claims_text(claims: ClaimsBlock, vacuous: VacuousBlock | None) -> list[str]:
         return f"{missed}/{graded} ({100 * missed / graded:.1f}%)"
 
     lines = [
-        f"CLAIMS | world-model misses {rate(claims.world_model_graded, claims.world_model_missed)} | "
-        f"gamble misses {rate(claims.gamble_graded, claims.gamble_missed)} | "
-        f"specificity {claims.specific}/{claims.graded} ({100 * claims.specific / claims.graded:.0f}%) | "
-        f"invalid {claims.invalid}"
+        f"PREDICTIONS | world-model misses {rate(block.world_model_graded, block.world_model_missed)} | "
+        f"gamble misses {rate(block.gamble_graded, block.gamble_missed)} | "
+        f"specificity {block.specific}/{block.graded} ({100 * block.specific / block.graded:.0f}%) | "
+        f"invalid {block.invalid}"
     ]
     if vacuous is None:
         return lines
@@ -1190,7 +1190,7 @@ def notes_text(notes: NotesBlock, win_levels: int) -> list[str]:
     if notes.archived_unit is not None and notes.changed_since_archive is False:
         lines.append(
             f"NOTES | unchanged since {unit_noun(win_levels)} {notes.archived_unit} ended: "
-            f"earlier Verified claims are only Assumed on this {unit_noun(win_levels)} "
+            f"earlier Verified lines are only Assumed on this {unit_noun(win_levels)} "
             "until re-tested"
         )
     if notes.text is None:

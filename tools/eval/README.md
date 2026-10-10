@@ -198,7 +198,7 @@ percentile interval of the mean (`--bootstrap-resamples`, default 2000;
 `--bootstrap-seed`, default 0; 95 percent). Deterministic under the seed.
 With two seeds per cell, as E1 has, the per-world interval is the pair
 itself; the arm's interval over its six runs is the one worth reading.
-Nothing here claims significance; the protocols read direction only.
+Nothing here asserts significance; the protocols read direction only.
 
 ```
 SUMMARY | e1 | 12 run(s) | bootstrap 2000 resamples, 95% percentile intervals of the mean, seed 0

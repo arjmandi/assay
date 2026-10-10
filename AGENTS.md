@@ -48,17 +48,17 @@ gate.
 `docs/ARCHITECTURE.md` is the component model and the single source: one
 section per component, the frame-world extra, the conformance table, and the
 list of what never changes. The public journal contract lives in `verify/`:
-`JOURNAL_SPEC.md` (`assay-journal-v1`) and `CLAIM_GRAMMAR.md`, beside the
+`JOURNAL_SPEC.md` (`assay-journal-v1`) and `PREDICTION_GRAMMAR.md`, beside the
 independent checker. The kernel must keep honoring both.
 
 ## What never changes
 
 Everything in `docs/ARCHITECTURE.md` section 5 and in the docstring of
-`src/assay/words.py`: journal field names, state values, claim syntax, grade
+`src/assay/words.py`: journal field names, state values, outcome syntax, grade
 `actual` texts, host state names, the `game_id` keys, activity kinds, receipt
 outcome tokens, the state-directory layout. `tests/test_conformance.py` and
 `tests/test_vocabulary.py` enforce it. The hash chain in `integrity.py` is the
-product's trust claim: a change there needs the full suite, not a spot check.
+product's core trust guarantee: a change there needs the full suite, not a spot check.
 
 ## The kernel's laws
 

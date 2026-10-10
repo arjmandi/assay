@@ -16,7 +16,7 @@ cite it.
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row per run,
   with the checker's verdict on the published copy, the cost at list price
-  and the count of channel claims on paid actions.
+  and the count of channel outcomes on paid actions.
 - **`<run>/`**, one folder per run:
   - `journal.jsonl.gz`: the complete journal (every prediction registered
     before its action, every machine grade, the agent's notes in full).
@@ -48,4 +48,4 @@ as `intact` as well as recomputing the head. The other heads are in
 Iron plate won in 5 paid actions (August: 5) and electronic circuit in 15
 (August: 9), both inside the pre-registered bands of twice the August count,
 zero programs refused by the screen, and every paid action carrying at least
-one channel claim. This pack publishes the record and does not interpret it.
+one channel outcome. This pack publishes the record and does not interpret it.
