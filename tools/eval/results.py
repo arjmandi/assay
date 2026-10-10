@@ -4,7 +4,7 @@ it and from the runner's own session ledger.
 Today the facts come from the files under `.assay/`: the journal
 (`events.jsonl`, the public contract: `counts_action`, `state`,
 `levels_completed`, `win_levels`, `predict`), the receipts
-(`receipts/*.json`, one per paid command, tallied by their frozen outcome
+(`receipts/*.json`, one per paid command, tallied by their frozen result
 tokens), the activity log (`activity.jsonl`: command records, among them a
 prediction refused under `gate: off`) and `chain.json` (the head). Tokens and
 dollars come from the player's own report: the JSON document `claude -p

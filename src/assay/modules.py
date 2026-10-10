@@ -8,7 +8,7 @@ the `Module` protocol below:
     MODE: "advise"|"block"   # default; registry module_modes overrides per run
     trigger(view, pending) -> str | None      # advisory message when it fires
     demand(view, pending) -> dict[str,str] | None   # {field: why}, structural
-    observe(view, event) -> None              # optional: learn from outcomes
+    observe(view, event) -> None              # optional: learn from results
     telemetry(view) -> dict                    # free counters
 
 `view` is a `ModuleView` over the run: the events (read-only, as `Event`
@@ -47,7 +47,7 @@ Built-ins (the standing nudge table plus the first structural module):
 - null_forensics: a predicted-change/observed-nothing verdict flags the raw
                   observation for inspection before the hypothesis is closed
 - park_with_test: a reset should leave a re-entry test in the notes
-- specificity:    a majority of coerced free-text claims earns nothing
+- specificity:    a majority of coerced free-text outcomes earns nothing
 - hazard:         effect-signature hazard tags: entered-loss-state
                   and milestone-drop transitions tag the action class; a tagged
                   class gets the worst-case + recovery declaration demand on
@@ -257,19 +257,19 @@ class _ParkWithTest:
 class _Specificity:
     NAME = "specificity"
     CONSTITUTION = (
-        "Coerced free-text claims are excluded from every meter and promotion; "
+        "Coerced free-text outcomes are excluded from every meter and promotion; "
         "vagueness earns nothing."
     )
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        # The one count the CLAIMS line prints, over the same grades: the
-        # advisory's N/M is the CLAIMS line's at this moment.
+        # The one count the PREDICTIONS line prints, over the same grades: the
+        # advisory's N/M is the PREDICTIONS line's at this moment.
         counts = specificity(view.events)
         if counts.graded >= 20 and counts.coerced * 2 > counts.graded:
             return (
                 f"specificity is {counts.specific}/{counts.graded}: over half the graded "
-                "claims are coerced free text; they earn nothing. State checkable claims."
+                "outcomes are coerced free text; they earn nothing. State checkable outcomes."
             )
         return None
 
@@ -284,7 +284,7 @@ class _Hazard:
     NAME = "hazard"
     CONSTITUTION = (
         "Hazards are effect signatures, not action identities: an action class "
-        "whose graded outcome entered a loss state or dropped banked progress "
+        "whose graded result entered a loss state or dropped banked progress "
         "gets a worst-case + recovery declaration demand on its next use. The "
         "demand is cheap and structural; it never bans."
     )
@@ -566,7 +566,7 @@ class _CoverageAudit:
         if _is_conclusion(pending) and not str(declares.get("coverage_audit", "")).strip():
             return {
                 "coverage_audit": (
-                    "before an impossibility or absence claim, enumerate the load-bearing "
+                    "before an impossibility or absence conclusion, enumerate the load-bearing "
                     "rules and cite the graded event ids that exercised each, and probe any "
                     "unexercised rule first"
                 )
@@ -984,8 +984,8 @@ def consult_modules(run: Run, pending: Mapping[str, Any] | None) -> list[str]:
     return lines
 
 
-def observe_outcome(run: Run, event: Event) -> None:
-    """Let modules learn from a graded outcome (hazard tagging etc.)."""
+def observe_result(run: Run, event: Event) -> None:
+    """Let modules learn from a graded result (hazard tagging etc.)."""
     view = ModuleView(run)
     for module, _ in active_modules(run):
         observe = getattr(module, "observe", None)

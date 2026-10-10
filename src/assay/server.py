@@ -115,7 +115,7 @@ from .ops import (
     ResetRequest,
     Step,
 )
-from .predictions import claims_help
+from .predictions import prediction_help
 from .records import refuse_unknown, wrong_type
 from .registry import gate_mode, require_registry, status_budget, validate_action
 from .run import Run
@@ -135,7 +135,7 @@ PYTHON_TOOL_SECONDS = 120
 INSTRUCTIONS = (
     "ASSAY referee harness: look, predict, act, compare. Read CONSTITUTION.md completely "
     "first and begin with the status tool. Every paid action (act, commit, reset) needs a "
-    "prediction in the claim grammar and is graded in code against what happened; the "
+    "prediction in the prediction grammar and is graded in code against what happened; the "
     "receipt comes back as the text the command line prints (format json for the record). "
     "A refusal is a tool error carrying the error object (code, kind, message, hint, detail); "
     "docs/ERRORS.md lists the codes. Keep .assay/NOTES.md to one page; never edit anything "
@@ -402,7 +402,7 @@ class GoalListRequest(_OfflineRequest):
 
 
 @dataclasses.dataclass(frozen=True)
-class Outcome:
+class ToolResult:
     """What a tool call produced: the record's fields (or `{"lines": [...]}`
     for an operation without a record, as under `--json`), the prose the
     command line prints, and the keys that ride beside the record's fields
@@ -418,7 +418,7 @@ class Outcome:
         return {**self.record, **self.beside}
 
 
-Runner = Callable[[RunPaths, CommandStatus, Any], Outcome]
+Runner = Callable[[RunPaths, CommandStatus, Any], ToolResult]
 
 
 @dataclasses.dataclass(frozen=True)
@@ -426,7 +426,7 @@ class Tool:
     """One tool: the operation's name, its description, its request record
     (the `inputSchema` is the record's `json_schema()`), what runs it, the
     daemon operation it forwards to, if any, and the epilog a listing
-    appends to the description (the claim grammar, as `assay act --help`
+    appends to the description (the prediction grammar, as `assay act --help`
     shows it)."""
 
     name: str
@@ -466,10 +466,10 @@ def _require_predict(schema: dict[str, Any]) -> None:
     schema["required"] = [*schema["required"], "predict"]
 
 
-def _lines(lines: Sequence[str]) -> Outcome:
-    """The outcome of an operation without a result record: its lines, as
+def _lines(lines: Sequence[str]) -> ToolResult:
+    """The result of an operation without a result record: its lines, as
     `--json` prints them."""
-    return Outcome({"lines": list(lines)}, "\n".join(lines))
+    return ToolResult({"lines": list(lines)}, "\n".join(lines))
 
 
 def _paid(
@@ -479,17 +479,17 @@ def _paid(
     request: Req,
     *,
     steps: int = 1,
-) -> Outcome:
+) -> ToolResult:
     """A paid operation forwarded to the daemon, the gate enforced where the
     session lives; the run is reloaded for the receipt, since the daemon
     appended what this process does not hold (as the command line does)."""
     receipt = broker_gated(paths, operation, request, steps=steps)
     status.run = Run.load(paths, strict=False)
     text = result_text(status.run, receipt)
-    return Outcome(receipt.to_json(), text, {"estimated_tokens": estimated_tokens(text)})
+    return ToolResult(receipt.to_json(), text, {"estimated_tokens": estimated_tokens(text)})
 
 
-def _act(paths: RunPaths, status: CommandStatus, request: ActRequest) -> Outcome:
+def _act(paths: RunPaths, status: CommandStatus, request: ActRequest) -> ToolResult:
     # The parameters validated against the pinned registry here, before the
     # socket, as the command line validates `--params`; the daemon validates
     # them again before any spend.
@@ -497,7 +497,7 @@ def _act(paths: RunPaths, status: CommandStatus, request: ActRequest) -> Outcome
     return _paid(paths, status, ACT, dataclasses.replace(request, action=name, params=params))
 
 
-def _commit(paths: RunPaths, status: CommandStatus, request: CommitRequest) -> Outcome:
+def _commit(paths: RunPaths, status: CommandStatus, request: CommitRequest) -> ToolResult:
     if bool(request.plan) == bool(request.steps):
         raise AssayError(
             "commit takes either a plan (from model_solve) or one or more steps, not both",
@@ -512,11 +512,11 @@ def _commit(paths: RunPaths, status: CommandStatus, request: CommitRequest) -> O
     return _paid(paths, status, COMMIT, checked, steps=max(1, len(steps)))
 
 
-def _reset(paths: RunPaths, status: CommandStatus, request: ResetRequest) -> Outcome:
+def _reset(paths: RunPaths, status: CommandStatus, request: ResetRequest) -> ToolResult:
     return _paid(paths, status, RESET, request)
 
 
-def _status(paths: RunPaths, status: CommandStatus, request: StatusRequest) -> Outcome:
+def _status(paths: RunPaths, status: CommandStatus, request: StatusRequest) -> ToolResult:
     # The registry's budget on every status, `brief` under the smaller of it
     # and BRIEF_BUDGET (section 7.6), the whole record either way, as the
     # command line's document.
@@ -526,12 +526,12 @@ def _status(paths: RunPaths, status: CommandStatus, request: StatusRequest) -> O
     if request.brief:
         budget = BRIEF_BUDGET if budget is None else min(budget, BRIEF_BUDGET)
     text, dropped = status_within(record, budget)
-    return Outcome(
+    return ToolResult(
         record.to_json(), text, {"estimated_tokens": estimated_tokens(text), "truncated": list(dropped)}
     )
 
 
-def _view(paths: RunPaths, status: CommandStatus, request: ViewRequest) -> Outcome:
+def _view(paths: RunPaths, status: CommandStatus, request: ViewRequest) -> ToolResult:
     run = status.run
     flags = {"grid": request.grid, "frames": request.frames, "crop": request.crop}
     view = view_of(run, event_id=request.event, history=request.history, flags=flags)
@@ -541,15 +541,15 @@ def _view(paths: RunPaths, status: CommandStatus, request: ViewRequest) -> Outco
         events = run.events
         exported = require_kind(events[-1] if events else None, "export").export_history(run, destination)
         view = dataclasses.replace(view, exported=str(exported))
-    return Outcome(view.to_json(), view_lines_text(view))
+    return ToolResult(view.to_json(), view_lines_text(view))
 
 
-def _audit(paths: RunPaths, status: CommandStatus, request: AuditRequest) -> Outcome:
+def _audit(paths: RunPaths, status: CommandStatus, request: AuditRequest) -> ToolResult:
     report = audit(status.run)
-    return Outcome(report.to_json(), "\n".join(audit_lines(report)))
+    return ToolResult(report.to_json(), "\n".join(audit_lines(report)))
 
 
-def _python(paths: RunPaths, status: CommandStatus, request: PythonRequest) -> Outcome:
+def _python(paths: RunPaths, status: CommandStatus, request: PythonRequest) -> ToolResult:
     # The source runs in a child process per call, as `assay python` runs it
     # in a process of its own: whatever it does to its interpreter (a module
     # it rewrites, a SystemExit it raises, a loop that never ends) stays
@@ -649,25 +649,25 @@ def run_python_child(root: str) -> int:
     return 0
 
 
-def _state_declare(paths: RunPaths, status: CommandStatus, request: StateDeclareRequest) -> Outcome:
+def _state_declare(paths: RunPaths, status: CommandStatus, request: StateDeclareRequest) -> ToolResult:
     spec = declare_state(status.run, request.name, path=request.path, file=request.file)
     return _lines([state_declared_text(request.name, spec)])
 
 
-def _state_list(paths: RunPaths, status: CommandStatus, request: StateListRequest) -> Outcome:
+def _state_list(paths: RunPaths, status: CommandStatus, request: StateListRequest) -> ToolResult:
     listing = state_list_of(status.run, fresh=request.read)
-    return Outcome(listing.to_json(), "\n".join(state_list_text(listing)))
+    return ToolResult(listing.to_json(), "\n".join(state_list_text(listing)))
 
 
-def _model_init(paths: RunPaths, status: CommandStatus, request: ModelInitRequest) -> Outcome:
+def _model_init(paths: RunPaths, status: CommandStatus, request: ModelInitRequest) -> ToolResult:
     return _lines([model_created_text(init_model(paths))])
 
 
-def _model_replay(paths: RunPaths, status: CommandStatus, request: ModelReplayRequest) -> Outcome:
+def _model_replay(paths: RunPaths, status: CommandStatus, request: ModelReplayRequest) -> ToolResult:
     return _lines(fit_lines(replay_model(status.run)))
 
 
-def _model_solve(paths: RunPaths, status: CommandStatus, request: ModelSolveRequest) -> Outcome:
+def _model_solve(paths: RunPaths, status: CommandStatus, request: ModelSolveRequest) -> ToolResult:
     result = solve_model(
         status.run,
         request.to,
@@ -678,16 +678,16 @@ def _model_solve(paths: RunPaths, status: CommandStatus, request: ModelSolveRequ
     return _lines(solve_lines(result))
 
 
-def _module_list(paths: RunPaths, status: CommandStatus, request: ModuleListRequest) -> Outcome:
+def _module_list(paths: RunPaths, status: CommandStatus, request: ModuleListRequest) -> ToolResult:
     listing = module_list_of(status.run)
-    return Outcome(listing.to_json(), "\n".join(module_list_text(listing)))
+    return ToolResult(listing.to_json(), "\n".join(module_list_text(listing)))
 
 
-def _goal_propose(paths: RunPaths, status: CommandStatus, request: GoalProposeRequest) -> Outcome:
+def _goal_propose(paths: RunPaths, status: CommandStatus, request: GoalProposeRequest) -> ToolResult:
     return _lines([proposal_text(propose_goal(status.run, request.text, request.because))])
 
 
-def _goal_list(paths: RunPaths, status: CommandStatus, request: GoalListRequest) -> Outcome:
+def _goal_list(paths: RunPaths, status: CommandStatus, request: GoalListRequest) -> ToolResult:
     return _lines(proposals_text(list_proposals(status.run)))
 
 
@@ -711,20 +711,20 @@ TOOLS: tuple[Tool, ...] = (
         "act",
         "Take one registered action with a prediction; the result is graded against it and the "
         "receipt comes back as the text the command line prints (format json for the record). The "
-        "prediction is required unless the registry sets gate: optional. The claim grammar follows.",
+        "prediction is required unless the registry sets gate: optional. The prediction grammar follows.",
         ActRequest,
         _act,
         operation=ACT,
-        epilog=claims_help,
+        epilog=prediction_help,
     ),
     Tool(
         "commit",
         "Run a prediction-checked batch (steps, each with its own prediction) or a model plan "
-        "written by model_solve; halts on the first miss. The claim grammar follows.",
+        "written by model_solve; halts on the first miss. The prediction grammar follows.",
         CommitRequest,
         _commit,
         operation=COMMIT,
-        epilog=claims_help,
+        epilog=prediction_help,
     ),
     Tool(
         "reset",
@@ -745,7 +745,7 @@ TOOLS: tuple[Tool, ...] = (
     Tool(
         "state_declare",
         "Declare an addressable state, a named reading of the observation, by a dotted path "
-        "into it or by an extractor file; claims like `ch NAME = V` then parse and grade.",
+        "into it or by an extractor file; outcomes like `ch NAME = V` then parse and grade.",
         StateDeclareRequest,
         _state_declare,
     ),
@@ -860,11 +860,11 @@ class Answer:
     error: bool
 
 
-def _answered(outcome: Outcome, chosen: str) -> Answer:
+def _answered(result: ToolResult, chosen: str) -> Answer:
     if chosen == "json":
-        document = outcome.document()
+        document = result.document()
         return Answer(_document(document), document, False)
-    return Answer(outcome.text, None, False)
+    return Answer(result.text, None, False)
 
 
 def _refused(error: AssayError, chosen: str) -> Answer:
@@ -889,8 +889,8 @@ def call_tool(paths: RunPaths, name: str, arguments: Mapping[str, Any] | None) -
         with run_lock(paths):
             run = Run.load(paths, strict=False)
             with command_status(run, tool.name, surface=TOOL_SURFACE) as status:
-                outcome = tool.run(paths, status, request)
-        return _answered(outcome, chosen)
+                result = tool.run(paths, status, request)
+        return _answered(result, chosen)
     except AssayError as error:
         return _refused(error, chosen)
     except BaseException as error:  # noqa: BLE001 - one error voice, never a traceback to the agent

@@ -3,8 +3,9 @@ kernel raises, with its kind and a one-line meaning.
 
 A refusal is an `AssayError` (`core.py`) carrying a code from this table. The
 code is UPPER_SNAKE, unique and stable from the 1.2.0 tag on, like the receipt
-outcome tokens. The kind decides the exit code of the command line and rides
-on the socket and in `--json`: `usage` (the request is wrong; exit 2),
+result tokens. 1.3.0 renamed one code, the code of a prediction that does not
+parse. The changelog names both spellings. The kind decides the exit code of
+the command line and rides on the socket and in `--json`: `usage` (the request is wrong; exit 2),
 `refused` (a well-formed request the kernel refuses by rule, or the harness's
 own state refuses; exit 2), `world` (the adapter or the world failed or
 refused at the kernel boundary; exit 3), `internal` (a bug or a corrupt file;
@@ -53,7 +54,7 @@ REGISTRY_INVALID = "REGISTRY_INVALID"
 REGISTRY_MISSING = "REGISTRY_MISSING"
 ACTION_UNKNOWN = "ACTION_UNKNOWN"
 ACTION_PARAMS = "ACTION_PARAMS"
-CLAIM_SYNTAX = "CLAIM_SYNTAX"
+PREDICTION_SYNTAX = "PREDICTION_SYNTAX"
 STATE_UNKNOWN = "STATE_UNKNOWN"
 STATE_DECLARE = "STATE_DECLARE"
 FILE_NOT_FOUND = "FILE_NOT_FOUND"
@@ -143,8 +144,8 @@ CATALOGUE: tuple[ErrorCode, ...] = (
     ErrorCode(REGISTRY_MISSING, "usage", "the run has no pinned registry (it started before 1.2.0): it can be inspected, not resumed, and nothing acts on it."),
     ErrorCode(ACTION_UNKNOWN, "usage", "the action is not registered."),
     ErrorCode(ACTION_PARAMS, "usage", "the parameters do not fit the registered schema: one missing, unknown or repeated, a wrong type, bound, enum, length or item count, nested values included, an object or an array as a token, or a broken `pname=value`."),
-    ErrorCode(CLAIM_SYNTAX, "usage", "a prediction does not parse: a malformed claim, a form of another observation kind, a bad window or aggregate bound."),
-    ErrorCode(STATE_UNKNOWN, "usage", "a claim or a model names an addressable state that is not registered."),
+    ErrorCode(PREDICTION_SYNTAX, "usage", "a prediction does not parse: a malformed outcome, a form of another observation kind, a bad window or aggregate bound."),
+    ErrorCode(STATE_UNKNOWN, "usage", "an outcome or a model names an addressable state that is not registered."),
     ErrorCode(STATE_DECLARE, "usage", "a state declaration is malformed: the name, a host state, neither or both of --path and --file, an empty path."),
     ErrorCode(FILE_NOT_FOUND, "usage", "a file the command names does not exist: a verifier, an extractor, a module."),
     ErrorCode(PATH_INVALID, "usage", "a path lies outside the run directory, inside `.assay`, or is absolute where a relative one is required."),
@@ -236,7 +237,7 @@ def render() -> str:
         "harness prints or sends carries one of these codes: on the command line",
         "as `ERROR | CODE | message` on stderr, with a second line `NEXT | hint`",
         "when the error names a next step, then any detail the error carries (the",
-        "claims table), and the exit status of the kind; over the socket and under",
+        "grammar table), and the exit status of the kind; over the socket and under",
         "`--json` as the object `{\"code\", \"kind\", \"message\", \"hint\",",
         "\"detail\"}` (docs/ARCHITECTURE.md section 7.1).",
         "",
@@ -255,7 +256,8 @@ def render() -> str:
         "raises `AssayError` without a code raises `UNSPECIFIED`, outside the",
         "table, with the kind the raise asks for (`refused` by default); an error",
         "the daemon meets inside the adapter's factory, observation or step becomes",
-        "`WORLD_ERROR`. The codes freeze at the 1.2.0 tag.",
+        "`WORLD_ERROR`. The codes froze at the 1.2.0 tag. 1.3.0 renamed one code, the",
+        "code of a prediction that does not parse. The changelog names both spellings.",
         "",
         "## The codes",
         "",

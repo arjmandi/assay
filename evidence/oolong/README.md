@@ -27,7 +27,7 @@ submitted through the gate. It is a completion state, not a score.
 Correctness is computed only at finalize, sealed, by the benchmark's own
 scorer (vendored byte-identical, sha256 `247583a3…`), and the resulting
 scores are reported in the paper. This pack makes the process record
-checkable: predictions before actions, span-gated claims, an intact chain,
+checkable: predictions before actions, span-gated predictions, an intact chain,
 zero ungated events.
 
 ## Verify a journal

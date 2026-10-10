@@ -105,7 +105,7 @@ written: it says 1.1.0 because that is what the build was then called.
 
 | Decision | On the branch | Blocks |
 |---|---|---|
-| O1 grid claim forms on frame registry runs | refused, as before | nothing (behavior preserved) |
+| O1 grid outcome forms on frame registry runs | refused, as before | nothing (behavior preserved) |
 | O2 the legacy numbered-action path | decided: deleted with the rules tier that only ran on it, a registry is required | nothing |
 | O3 the OOLONG corpora | decided: the smoke packs ship, the others fetch on first use, the tree is clean | the history rewrite (section 1), before the flip |
 | O4 the experiment tooling and the E1 files | left on `exp/2026-10`, tagged `exp-2026-10` and the tag pushed | nothing on the branch (the paper cites the archive) |

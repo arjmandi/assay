@@ -1,10 +1,10 @@
-"""Statistical (aggregate) claims: the minimal deployment-hardening form.
+"""Statistical (aggregate) outcomes: the minimal deployment-hardening form.
 
-Three rules govern aggregate claims and this module implements exactly them:
+Three rules govern aggregate outcomes and this module implements exactly them:
 
 1. ADDITIVE, never substitutive: the parser refuses an action whose only
-   gradable claims are aggregates (every action still carries a mechanical
-   claim of its own).
+   gradable outcomes are aggregates (every action still carries a mechanical
+   outcome of its own).
 2. DECLARED CONSEQUENCE, executed by the kernel: `on-fail advise` surfaces an
    advisory; `on-fail revoke_batching` revokes batching rights for the rest of
    the run (hand batches drop to single steps; model plans refuse until a
@@ -28,7 +28,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .core import RunPaths, append_jsonl, atomic_json, read_json
-from .records import Claim, Event
+from .records import Event, Outcome
 
 if TYPE_CHECKING:
     from .run import Run
@@ -58,22 +58,22 @@ def _paid_ids(events: Sequence[Event]) -> list[int]:
     return [event.id for event in events if event.counts_action]
 
 
-def open_aggregates(run: Run, claims: Sequence[Claim]) -> list[str]:
-    """Register this action's aggregate claims as open; supersede duplicates.
+def open_aggregates(run: Run, outcomes: Sequence[Outcome]) -> list[str]:
+    """Register this action's aggregate outcomes as open; supersede duplicates.
 
     Returns display lines. live.py calls it after the graded event is recorded
-    (the action's mechanical claims validated before the spend), so an
+    (the action's mechanical outcomes validated before the spend), so an
     aggregate opens at the paid event that carried it."""
-    aggregate_claims = [claim for claim in claims if claim.kind == "aggregate"]
-    if not aggregate_claims:
+    aggregate_outcomes = [outcome for outcome in outcomes if outcome.kind == "aggregate"]
+    if not aggregate_outcomes:
         return []
     paths = run.paths
     state = load_state(paths)
     lines: list[str] = []
     paid = _paid_ids(run.events)
     opened_at = paid[-1] if paid else 0
-    for claim in aggregate_claims:
-        key = (claim.channel, claim.stat)
+    for outcome in aggregate_outcomes:
+        key = (outcome.channel, outcome.stat)
         survivors = []
         for entry in state["open"]:
             if (entry["channel"], entry["stat"]) == key:
@@ -96,13 +96,13 @@ def open_aggregates(run: Run, claims: Sequence[Claim]) -> list[str]:
             )
             continue
         entry = {
-            "channel": claim.channel,
-            "stat": claim.stat,
-            "op": claim.op,
-            "value": claim.value,
-            "over": int(claim.over or 0),
-            "horizon": int(claim.horizon or 0),
-            "on_fail": claim.on_fail,
+            "channel": outcome.channel,
+            "stat": outcome.stat,
+            "op": outcome.op,
+            "value": outcome.value,
+            "over": int(outcome.over or 0),
+            "horizon": int(outcome.horizon or 0),
+            "on_fail": outcome.on_fail,
             "opened_at_event": opened_at,
             "opened_ts": time.time(),
             "status": "open",
@@ -112,8 +112,8 @@ def open_aggregates(run: Run, claims: Sequence[Claim]) -> list[str]:
             k: entry[k] for k in ("channel", "stat", "op", "value", "over", "horizon", "on_fail")
         }})
         lines.append(
-            f"AGGREGATE | open: {claim.stat}(ch {claim.channel}) {claim.op} "
-            f"{claim.value} over {claim.over}a, resolves at horizon {claim.horizon}a"
+            f"AGGREGATE | open: {outcome.stat}(ch {outcome.channel}) {outcome.op} "
+            f"{outcome.value} over {outcome.over}a, resolves at horizon {outcome.horizon}a"
         )
     atomic_json(_path(paths), state)
     return lines

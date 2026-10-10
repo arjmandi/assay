@@ -34,7 +34,7 @@ Trust is exactly replay-fit; no other trust states exist:
   aggregate consequence revoked them.
 - `assay model solve --to "ch NAME = V"` searches the model (sandboxed BFS) for
   a plan; every plan step carries machine-generated state predictions,
-  marked `machine`; they never enter the agent's claim meters. Plans carry
+  marked `machine`; they never enter the agent's prediction meters. Plans carry
   provenance hashes and refuse to run against a changed world or model.
 - Imported models NEVER carry rights: the fit record is never exported and
   must be re-earned on the current run's journal.
@@ -272,18 +272,18 @@ def _state_specs_for_sandbox(run: Run, declared: list[str]) -> dict[str, Any]:
     return specs
 
 
-def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
+def _invalid_reason(completed: Mapping[str, Any], timeout: float) -> str:
     """The words for a run the sandbox refused, as they have always read."""
-    kind = outcome.get("kind")
+    kind = completed.get("kind")
     if kind == "timeout":
         return f"model run timed out after {timeout:g}s"
     if kind == "crash":
-        return f"model crashed in the sandbox: {str(outcome['tail'])[:300]}"
+        return f"model crashed in the sandbox: {str(completed['tail'])[:300]}"
     if kind == "no_output":
         return "model produced no output"
     if kind == "malformed":
-        return f"malformed model output: {str(outcome['output'])[:160]!r}"
-    return f"model {outcome['reason']}"
+        return f"malformed model output: {str(completed['output'])[:160]!r}"
+    return f"model {completed['reason']}"
 
 
 def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> dict[str, Any]:
@@ -297,16 +297,16 @@ def _run_sandbox(paths: RunPaths, payload: dict[str, Any], timeout: float) -> di
     ]
     # The budgets as they have always been: CPU at the search budget (two
     # seconds at least), the wall clock five seconds past it.
-    outcome = run_program(
+    completed = run_program(
         _RUNNER,
         payload,
         timeout=timeout + 5.0,
         companions=companions,
         cpu_seconds=max(2, int(timeout)),
     )
-    if outcome["status"] != "ok":
-        raise AssayError(_invalid_reason(outcome, timeout), code="MODEL_FAILED")
-    result = outcome["result"]
+    if completed["status"] != "ok":
+        raise AssayError(_invalid_reason(completed, timeout), code="MODEL_FAILED")
+    result = completed["result"]
     if not isinstance(result, dict):
         raise AssayError(f"malformed model output: {json.dumps(result)[:160]!r}", code="MODEL_FAILED")
     if result.get("error"):
@@ -400,16 +400,16 @@ def replay_model(run: Run) -> dict[str, Any]:
     graded_indices: list[int] = []
     unknown = errors = 0
     first_mismatch: dict[str, Any] | None = None
-    for index, outcome in zip(indices, result["results"]):
-        if outcome.get("error"):
+    for index, item in zip(indices, result["results"]):
+        if item.get("error"):
             errors += 1
             continue
-        if outcome.get("unknown"):
+        if item.get("unknown"):
             unknown += 1
             for name in declared:
                 per_state[name]["unknown"] += 1
             continue
-        predicted = outcome.get("predicted") or {}
+        predicted = item.get("predicted") or {}
         graded_this = False
         for name in declared:
             ok, actual = state_value(run, name, events[index])

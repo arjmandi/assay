@@ -5,7 +5,7 @@ Rendered from `src/assay/errors.py` by `python -m assay.errors --render`;
 harness prints or sends carries one of these codes: on the command line
 as `ERROR | CODE | message` on stderr, with a second line `NEXT | hint`
 when the error names a next step, then any detail the error carries (the
-claims table), and the exit status of the kind; over the socket and under
+grammar table), and the exit status of the kind; over the socket and under
 `--json` as the object `{"code", "kind", "message", "hint",
 "detail"}` (docs/ARCHITECTURE.md section 7.1).
 
@@ -24,7 +24,8 @@ raise applies to any code outside the table. An adapter or a module that
 raises `AssayError` without a code raises `UNSPECIFIED`, outside the
 table, with the kind the raise asks for (`refused` by default); an error
 the daemon meets inside the adapter's factory, observation or step becomes
-`WORLD_ERROR`. The codes freeze at the 1.2.0 tag.
+`WORLD_ERROR`. The codes froze at the 1.2.0 tag. 1.3.0 renamed one code, the
+code of a prediction that does not parse. The changelog names both spellings.
 
 ## The codes
 
@@ -39,8 +40,8 @@ the daemon meets inside the adapter's factory, observation or step becomes
 | `REGISTRY_MISSING` | usage | the run has no pinned registry (it started before 1.2.0): it can be inspected, not resumed, and nothing acts on it. |
 | `ACTION_UNKNOWN` | usage | the action is not registered. |
 | `ACTION_PARAMS` | usage | the parameters do not fit the registered schema: one missing, unknown or repeated, a wrong type, bound, enum, length or item count, nested values included, an object or an array as a token, or a broken `pname=value`. |
-| `CLAIM_SYNTAX` | usage | a prediction does not parse: a malformed claim, a form of another observation kind, a bad window or aggregate bound. |
-| `STATE_UNKNOWN` | usage | a claim or a model names an addressable state that is not registered. |
+| `PREDICTION_SYNTAX` | usage | a prediction does not parse: a malformed outcome, a form of another observation kind, a bad window or aggregate bound. |
+| `STATE_UNKNOWN` | usage | an outcome or a model names an addressable state that is not registered. |
 | `STATE_DECLARE` | usage | a state declaration is malformed: the name, a host state, neither or both of --path and --file, an empty path. |
 | `FILE_NOT_FOUND` | usage | a file the command names does not exist: a verifier, an extractor, a module. |
 | `PATH_INVALID` | usage | a path lies outside the run directory, inside `.assay`, or is absolute where a relative one is required. |

@@ -1,7 +1,9 @@
 """The kernel's prose says world and progress unit, never game, board or level,
 except for the identifiers the public contract freezes and the one module that
-owns the display words. An AST walk over every string literal in src/assay
-enforces it, so the vocabulary cannot regress by accident."""
+owns the display words. It says prediction and outcome, never claim, except
+for the spellings frozen on disk. An AST walk over every string literal in
+src/assay (and, for the claim rule, src/assay_grid) enforces both, so the
+vocabulary cannot regress by accident."""
 
 from __future__ import annotations
 
@@ -10,6 +12,7 @@ import re
 from pathlib import Path
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "assay"
+GRID = SRC.parent / "assay_grid"
 
 # Whole words that must not appear in kernel prose.
 FORBIDDEN = re.compile(r"\b(game|games|board|boards|level|levels)\b", re.IGNORECASE)
@@ -34,6 +37,19 @@ ALLOWED_LINES = (
     "rewinding the world",
 )
 
+# The word the harness stopped using in 1.3.0: a prediction is what the agent
+# writes before an action, an outcome is one checkable part of it, and the
+# code labels each outcome held or missed. Nothing a person reads says claim.
+CLAIM = re.compile(r"\b(claim|claims|claimed|claiming)\b", re.IGNORECASE)
+# The spellings frozen on disk and on the wire that still carry the word:
+# the receipt result token (also the grade `actual` prefix of a verifier
+# that did not grade), and the `claims` key of the mutation record, named in
+# prose where the record is described.
+CLAIM_ALLOWED_TOKENS = ("INVALID_CLAIM", "`claims`")
+# The on-disk keys written as bare literals: the mutation record's `claims`
+# and the `claim` field of the mis_reference activity record.
+CLAIM_IDENTIFIER_LITERALS = {"claims", "claim"}
+
 
 def _literals(path: Path):
     tree = ast.parse(path.read_text())
@@ -55,6 +71,17 @@ def _offending(text: str) -> list[str]:
     return hits
 
 
+def _claim_offending(text: str) -> list[str]:
+    hits = []
+    for line in text.splitlines():
+        scrubbed = line
+        for token in CLAIM_ALLOWED_TOKENS:
+            scrubbed = scrubbed.replace(token, "")
+        if CLAIM.search(scrubbed):
+            hits.append(line.strip())
+    return hits
+
+
 def test_kernel_prose_uses_world_and_progress_unit():
     offenders: list[str] = []
     for path in sorted(SRC.glob("*.py")):
@@ -68,6 +95,17 @@ def test_kernel_prose_uses_world_and_progress_unit():
                 continue
             for hit in _offending(text):
                 offenders.append(f"{path.name}:{lineno}: {hit}")
+    assert not offenders, "\n".join(offenders)
+
+
+def test_kernel_prose_says_prediction_and_outcome_never_claim():
+    offenders: list[str] = []
+    for path in sorted([*SRC.glob("*.py"), *GRID.glob("*.py")]):
+        for lineno, text in _literals(path):
+            if text in CLAIM_IDENTIFIER_LITERALS:
+                continue
+            for hit in _claim_offending(text):
+                offenders.append(f"{path.parent.name}/{path.name}:{lineno}: {hit}")
     assert not offenders, "\n".join(offenders)
 
 

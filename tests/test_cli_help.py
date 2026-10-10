@@ -37,7 +37,7 @@ def _rendered_help() -> dict[str, str]:
 
 
 def test_every_command_renders_the_pinned_help(monkeypatch):
-    # The claims table under `act` and `commit` lists the frame forms when
+    # The grammar table under `act` and `commit` lists the frame forms when
     # the extra imports; the fixture was rendered with it installed.
     pytest.importorskip("PIL")
     monkeypatch.setenv("COLUMNS", "80")

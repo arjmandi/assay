@@ -1,11 +1,11 @@
-"""Executable verifier claims: agent-authored, content-hashed, sandboxed.
+"""Executable verifier outcomes: agent-authored, content-hashed, sandboxed.
 
-A claim `verify:<relative/path.py>` names a file that defines
+An outcome `verify:<relative/path.py>` names a file that defines
 
     def verify(before, after) -> tuple[bool, str]
 
 where `before`/`after` are the observation JSON objects and the returned str
-is the mandatory counter-fact ("actual"). At claim time the file is read,
+is the mandatory counter-fact ("actual"). At prediction time the file is read,
 sha256-hashed, and copied to `.assay/verifiers/<hash>.py`; the hash is journaled
 on the prediction. At grading time the stored copy runs in the sandbox
 (`sandbox.run_program`: a scratch copy, `python -I`, an empty environment, the
@@ -41,7 +41,7 @@ from typing import Any, Literal
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
 from .sandbox import run_program
-from .records import Claim, Event, Grade
+from .records import Event, Grade, Outcome
 
 VERIFY_TIMEOUT_SECONDS = 5.0
 VACUOUS_MIN_GRADED = 5
@@ -60,10 +60,10 @@ sys.stdout.write("\\n" + json.dumps({"ok": bool(ok), "actual": str(actual)}) + "
 """
 
 
-def admit_verifier(paths: RunPaths, claim: Claim) -> Claim:
-    """Claim-time admission: read, hash, store, journal. Runs before any spend;
-    returns the claim carrying its verifier hash."""
-    reference = str(claim.path or "")
+def admit_verifier(paths: RunPaths, outcome: Outcome) -> Outcome:
+    """Admission at prediction time: read, hash, store, journal. Runs before any spend;
+    returns the outcome carrying its verifier hash."""
+    reference = str(outcome.path or "")
     candidate = Path(reference)
     if candidate.is_absolute():
         raise AssayError(
@@ -91,22 +91,22 @@ def admit_verifier(paths: RunPaths, claim: Claim) -> Claim:
         paths.activity,
         {"kind": "verifier_admitted", "hash": digest, "source": reference},
     )
-    return claim.updated(verifier_hash=digest)
+    return outcome.updated(verifier_hash=digest)
 
 
-def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
+def _invalid_reason(completed: Mapping[str, Any], timeout: float) -> str:
     """The journaled words for a run the sandbox refused, as they have always
     read: the kind of failure in the verifier's own terms."""
-    kind = outcome.get("kind")
+    kind = completed.get("kind")
     if kind == "timeout":
         return f"verifier timed out after {timeout:g}s"
     if kind == "crash":
-        return f"verifier crashed (exit {outcome['exit']}): {str(outcome['tail'])[:200]}"
+        return f"verifier crashed (exit {completed['exit']}): {str(completed['tail'])[:200]}"
     if kind == "no_output":
         return "verifier produced no output"
     if kind == "malformed":
-        return f"malformed verifier output: {str(outcome['output'])[:120]!r}"
-    return f"verifier {outcome['reason']}"
+        return f"malformed verifier output: {str(completed['output'])[:120]!r}"
+    return f"verifier {completed['reason']}"
 
 
 def run_verifier(
@@ -121,10 +121,10 @@ def run_verifier(
     if not stored.exists():
         return {"status": "invalid", "reason": f"stored verifier {digest[:12]} missing"}
     payload = {"before": before, "after": after, "verifier_path": str(stored.resolve())}
-    outcome = run_program(_RUNNER, payload, timeout=timeout, companions=(stored,))
-    if outcome["status"] != "ok":
-        return {"status": "invalid", "reason": _invalid_reason(outcome, timeout)}
-    result = outcome["result"]
+    completed = run_program(_RUNNER, payload, timeout=timeout, companions=(stored,))
+    if completed["status"] != "ok":
+        return {"status": "invalid", "reason": _invalid_reason(completed, timeout)}
+    result = completed["result"]
     if (
         not isinstance(result, dict)
         or not isinstance(result.get("ok"), bool)
@@ -213,16 +213,16 @@ def observation_view(event: Event) -> dict[str, Any]:
     return view
 
 
-def grade_verifier_claim(
+def grade_verifier_outcome(
     paths: RunPaths,
-    claim: Claim,
+    outcome: Outcome,
     before: Mapping[str, Any],
     after: Mapping[str, Any],
     timeout: float = VERIFY_TIMEOUT_SECONDS,
 ) -> Grade:
-    """Grade one verify claim, run the identity probe, update the counters.
+    """Grade one verify outcome, run the identity probe, update the counters.
     The vacuity flag follows the rule the run's stats file is under."""
-    digest = str(claim.verifier_hash or "")
+    digest = str(outcome.verifier_hash or "")
     stats = load_stats(paths)
     rule = stats_rule(stats)
     if rule == RULE_IDENTITY:
@@ -238,7 +238,7 @@ def grade_verifier_claim(
         entry["invalid"] += 1
         atomic_json(paths.verifier_stats, stats)
         return Grade.of(
-            claim,
+            outcome,
             ok=False,
             actual=f"INVALID_CLAIM: {result['reason']}",
             invalid=True,
@@ -255,7 +255,7 @@ def grade_verifier_claim(
     vacuous = is_vacuous(entry, rule)
     atomic_json(paths.verifier_stats, stats)
     return Grade.of(
-        claim,
+        outcome,
         ok=bool(result["ok"]),
         actual=str(result["actual"]),
         verifier=True,

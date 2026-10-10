@@ -103,7 +103,7 @@ def test_an_approval_is_granted_in_the_daemon_used_once_and_gone_with_a_stop(tmp
         # One use: the paid path consumes the held grant; the next act is refused again.
         acted = run_cli(run, "act", "NOOP", "--predict", "noop")
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         assert [record["action"] for record in _activity(run, "approval_used")] == ["NOOP"]
         again = run_cli(run, "act", "NOOP", "--predict", "noop")
         assert again.returncode == 2 and "has no fresh approval" in again.stderr
@@ -268,7 +268,7 @@ def test_a_waiver_is_the_activity_record_and_survives_a_stop_and_a_start(tmp_pat
         assert _start(run).returncode == 0
         acted = run_cli(run, "act", "INC", "amount=1", "--predict", "change")
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         from assay.core import RunPaths
         from assay.run import Run
 

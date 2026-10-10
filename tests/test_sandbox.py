@@ -25,7 +25,7 @@ import pytest
 from conftest import ASSAY_CLI, FAKE_ADAPTER, event_of, run_cli, run_of, stop_run
 from assay import sandbox
 from assay.states import state_value, declare_state
-from assay.records import Claim, Grade
+from assay.records import Grade, Outcome
 from assay.sandbox import (
     BWRAP,
     FORCE_VARIABLE,
@@ -35,7 +35,7 @@ from assay.sandbox import (
     sandbox_mode,
     sandbox_text,
 )
-from assay.verifiers import VERIFY_TIMEOUT_SECONDS, admit_verifier, grade_verifier_claim
+from assay.verifiers import VERIFY_TIMEOUT_SECONDS, admit_verifier, grade_verifier_outcome
 
 BEFORE = {
     "state": "NOT_FINISHED",
@@ -152,8 +152,8 @@ JOURNAL_LINE = '{"id": 0, "action": "START"}'
 def _graded(paths, body: str) -> Grade:
     source = paths.root / "check.py"
     source.write_text(body)
-    claim = admit_verifier(paths, Claim(kind="verify", text="verify:check.py", path="check.py"))
-    return grade_verifier_claim(paths, claim, BEFORE, AFTER)
+    outcome = admit_verifier(paths, Outcome(kind="verify", text="verify:check.py", path="check.py"))
+    return grade_verifier_outcome(paths, outcome, BEFORE, AFTER)
 
 
 def _refused(graded: Grade) -> str:
@@ -296,9 +296,9 @@ def test_run_program_copies_companions_and_rewrites_their_paths(tmp_path):
         " 'beside': sorted(os.listdir('.')), 'obs': payload['obs']}))\n"
     )
     payload = {"file": str(source), "obs": {"note": str(source)}}
-    outcome = run_program(program, payload, timeout=10.0, companions=(source,))
-    assert outcome["status"] == "ok", outcome
-    result = outcome["result"]
+    completed = run_program(program, payload, timeout=10.0, companions=(source,))
+    assert completed["status"] == "ok", completed
+    result = completed["result"]
     assert result["text"] == "VALUE = 7\n"
     assert result["path"] != str(source) and result["path"].startswith(result["cwd"])
     assert result["beside"] == ["companion.py", "program.py"]
@@ -347,9 +347,9 @@ def test_limits_and_environment_inside():
         "print(json.dumps({'limits': limits, 'isolated': sys.flags.isolated, 'cwd': os.getcwd(),"
         " 'env': {key: value for key, value in os.environ.items() if not key.startswith('__')}}))\n"
     )
-    outcome = run_program(program, {}, timeout=7.5)
-    assert outcome["status"] == "ok", outcome
-    result = outcome["result"]
+    completed = run_program(program, {}, timeout=7.5)
+    assert completed["status"] == "ok", completed
+    result = completed["result"]
     assert result["limits"]["RLIMIT_CPU"] == [8, 9]
     assert result["limits"]["RLIMIT_FSIZE"] == [1 << 20, 1 << 20]
     assert result["limits"]["RLIMIT_NPROC"] == [1, 1]

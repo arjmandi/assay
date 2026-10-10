@@ -17,7 +17,7 @@ from assay.integrity import (
     ungated_events,
 )
 from assay.run import Run
-from assay.predictions import claim_bucket, parse_claims
+from assay.predictions import outcome_bucket, parse_prediction
 from assay.registry import (
     hand_cap,
     notes_cap,
@@ -98,46 +98,46 @@ def test_spend_reports_idempotent_by_id():
 # ------------------------------------------------------------------- grammar
 
 
-def test_state_claims_parse():
-    claims = parse_claims(
+def test_state_outcomes_parse():
+    outcomes = parse_prediction(
         "ch counter = 3; ch counter delta >= 1; ch temp crosses 5 from below; "
         "ch level delta sign +",
     )
-    kinds = [claim.kind for claim in claims]
+    kinds = [outcome.kind for outcome in outcomes]
     assert kinds == ["channel_eq", "channel_delta", "channel_cross", "channel_delta"]
-    assert claims[0].value == 3
-    assert claims[1].op == ">=" and claims[1].value == 1
-    assert claims[2].direction == "below"
-    assert claims[3].op == "sign" and claims[3].sign == "+"
+    assert outcomes[0].value == 3
+    assert outcomes[1].op == ">=" and outcomes[1].value == 1
+    assert outcomes[2].direction == "below"
+    assert outcomes[3].op == "sign" and outcomes[3].sign == "+"
 
 
-def test_state_claim_tolerance_and_window():
-    claims = parse_claims("ch price = 4.5 +- 0.2 @within 1.5s")
-    assert claims[0].tol == 0.2 and claims[0].window_s == 1.5
+def test_state_outcome_tolerance_and_window():
+    outcomes = parse_prediction("ch price = 4.5 +- 0.2 @within 1.5s")
+    assert outcomes[0].tol == 0.2 and outcomes[0].window_s == 1.5
     with pytest.raises(AssayError):
-        parse_claims("ch price = up down")  # malformed, not a note
+        parse_prediction("ch price = up down")  # malformed, not a note
 
 
 def test_state_bucket_split():
-    assert claim_bucket("channel_eq", "goal") == "gamble"
-    assert claim_bucket("channel_delta", "level") == "gamble"
-    assert claim_bucket("channel_eq", "counter") == "world_model"
-    assert claim_bucket("aggregate", "counter") == "aggregate"
+    assert outcome_bucket("channel_eq", "goal") == "gamble"
+    assert outcome_bucket("channel_delta", "level") == "gamble"
+    assert outcome_bucket("channel_eq", "counter") == "world_model"
+    assert outcome_bucket("aggregate", "counter") == "aggregate"
 
 
 def test_aggregate_additive_rule():
     with pytest.raises(AssayError, match="additive"):
-        parse_claims(
+        parse_prediction(
             "agg ch counter mean >= 1 over 3a horizon 5a on-fail advise",
             )
-    claims = parse_claims(
+    outcomes = parse_prediction(
         "noop; agg ch counter mean >= 1 over 3a horizon 5a on-fail revoke_batching",
     )
-    aggregate = next(claim for claim in claims if claim.kind == "aggregate")
+    aggregate = next(outcome for outcome in outcomes if outcome.kind == "aggregate")
     assert aggregate.over == 3 and aggregate.horizon == 5
     assert aggregate.on_fail == "revoke_batching"
     with pytest.raises(AssayError):
-        parse_claims("noop; agg ch c mean >= 1 over 3a horizon 500a on-fail advise")
+        parse_prediction("noop; agg ch c mean >= 1 over 3a horizon 500a on-fail advise")
 
 
 # ------------------------------------------------------------------ redaction
@@ -253,12 +253,12 @@ def test_hazard_tags_and_demands(tmp_path):
     tags = json.loads((paths.state / "hazards.json").read_text())
     assert tags[0]["action_class"] == "BOMB"
     assert tags[0]["signature"] == "entered_loss_state"
-    pending = {"kind": "act", "name": "BOMB", "params": None, "claims": [], "declares": {}}
+    pending = {"kind": "act", "name": "BOMB", "params": None, "outcomes": [], "declares": {}}
     demands = hazard.demand(view, pending)
     assert set(demands) == {"worst_case", "recovery"}
     pending["declares"] = {"worst_case": "lose level", "recovery": "reset"}
     assert hazard.demand(view, pending) is None
-    safe = {"kind": "act", "name": "GO", "params": None, "claims": [], "declares": {}}
+    safe = {"kind": "act", "name": "GO", "params": None, "outcomes": [], "declares": {}}
     assert hazard.demand(view, safe) is None
 
 

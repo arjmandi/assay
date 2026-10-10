@@ -12,7 +12,7 @@ ARC-AGI-3 games (ft09 at cap 200, tr87 and cn04 at cap 1500) were each played
 twice per arm by claude-opus-5 under the ASSAY harness (branch `exp/2026-10`):
 a gated arm with the registry key `gate: required` and the standard
 constitution, and a control arm with `gate: optional` and a constitution
-stripped of the claim grammar, the verifier contract and the prediction
+stripped of the prediction grammar, the verifier contract and the prediction
 guidance. Everything else was held fixed: adapter, action descriptions, caps,
 prompt template, model, tool permissions.
 

@@ -93,7 +93,7 @@ def test_full_general_run(tmp_path):
         assert '"counter": 0' in started.stdout
         assert "IMAGE |" not in started.stdout  # no PNG path for dict runs
 
-        # -- act with a verifier claim ----------------------------------------
+        # -- act with a verifier outcome ----------------------------------------
         acted = run_cli(
             run,
             "act",
@@ -105,7 +105,7 @@ def test_full_general_run(tmp_path):
             "probe INC",
         )
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         assert "✓ verify:checks/inc_by_one.py" in acted.stdout
         assert "KEY DELTA" in acted.stdout
         assert "~ counter: 0 -> 1" in acted.stdout
@@ -146,7 +146,7 @@ def test_full_general_run(tmp_path):
             "NOOP :: noop",  # must be discarded
         )
         assert committed.returncode == 0, committed.stderr
-        assert "OUTCOME | SURPRISE" in committed.stdout
+        assert "RESULT | SURPRISE" in committed.stdout
         assert "step 2 missed" in committed.stdout
         assert "1 remaining steps were discarded" in committed.stdout
         events = _events(run)
@@ -158,7 +158,7 @@ def test_full_general_run(tmp_path):
             run, "act", "NOOP", "--predict", "verify:checks/crash.py"
         )
         assert invalid.returncode == 0, invalid.stderr
-        assert "OUTCOME | INVALID_CLAIM" in invalid.stdout
+        assert "RESULT | INVALID_CLAIM" in invalid.stdout
         event = _events(run)[-1]
         assert event["predict_ok"] is None
         assert event["grade"][0]["invalid"] is True
@@ -166,7 +166,7 @@ def test_full_general_run(tmp_path):
         # -- status renders and carries the meters ------------------------------
         status = run_cli(run, "status")
         assert status.returncode == 0, status.stderr
-        assert "CLAIMS | world-model misses 1/4 (25.0%)" in status.stdout
+        assert "PREDICTIONS | world-model misses 1/4 (25.0%)" in status.stdout
         assert "invalid 1" in status.stdout
         assert "BUDGET | paid actions 4/10 | remaining 6" in status.stdout
         assert "OBSERVATION |" in status.stdout
@@ -219,7 +219,7 @@ def test_vacuous_resume_and_win(tmp_path):
                 "verify:checks/always.py; verify:checks/lamp_flip.py",
             )
             assert acted.returncode == 0, acted.stderr
-            assert "OUTCOME | PREDICTED" in acted.stdout
+            assert "RESULT | PREDICTED" in acted.stdout
         constant = hashlib.sha256(ALWAYS_TRUE.encode()).hexdigest()
         flip = hashlib.sha256(LAMP_FLIP.encode()).hexdigest()
         status = run_cli(run, "status")
@@ -263,10 +263,10 @@ def test_vacuous_resume_and_win(tmp_path):
 
         # -- win ------------------------------------------------------------------
         acted = run_cli(run, "act", "INC", "amount=2", "--predict", "change")
-        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout
+        assert acted.returncode == 0 and "RESULT | PREDICTED" in acted.stdout
         won = run_cli(run, "act", "INC", "amount=1", "--predict", "win")
         assert won.returncode == 0, won.stderr
-        assert "OUTCOME | GAME_COMPLETE" in won.stdout
+        assert "RESULT | GAME_COMPLETE" in won.stdout
         assert "WIN" in won.stdout
 
         # -- status still renders after the win, broker gone ----------------------

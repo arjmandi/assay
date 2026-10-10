@@ -1,6 +1,8 @@
 """Declarations reach the journal on every step of a batch and are accepted on
 a reset, so a module demand can key on a reset (a conclusion expressed as
-giving up on the current state) and an analytics pass can count them."""
+giving up on the current state) and an analytics pass can count them. A
+module's demand also sees the parsed outcomes of the action about to be
+taken, on the live path."""
 
 from __future__ import annotations
 
@@ -36,6 +38,31 @@ class _ParkDemand:
 
 
 MODULE = _ParkDemand()
+'''
+
+OUTCOME_KINDS = '''
+class _OutcomeKinds:
+    NAME = "outcome_kinds"
+    CONSTITUTION = "a module that reads the outcomes of the action about to be taken"
+    MODE = "advise"
+
+    def trigger(self, view, pending):
+        return None
+
+    def demand(self, view, pending):
+        if pending is not None:
+            view.record(
+                "outcome_kinds_seen",
+                name=pending["name"],
+                kinds=[outcome.kind for outcome in pending["outcomes"]],
+            )
+        return None
+
+    def telemetry(self, view):
+        return {}
+
+
+MODULE = _OutcomeKinds()
 '''
 
 
@@ -102,10 +129,40 @@ def test_reset_accepts_a_declaration_and_a_module_can_demand_it(tmp_path):
             "--declare", "parked=reopen if INC ever moves the lamp",
         )
         assert accepted.returncode == 0, accepted.stderr
-        assert "OUTCOME | RESET" in accepted.stdout
+        assert "RESULT | RESET" in accepted.stdout
         event = _events(run)[-1]
         assert event["action"] == "RESET"
         assert event["declares"] == {"parked": "reopen if INC ever moves the lamp"}
         assert "AUDIT | CLEAN" in run_cli(run, "audit").stdout
+    finally:
+        stop_run(run)
+
+
+def test_a_module_reads_the_pending_outcomes_on_the_live_path(tmp_path):
+    """`pending["outcomes"]` holds the parsed outcomes of the action about to
+    be taken, as `records.Outcome` records (the key was `claims` before
+    1.3.0): on a real act, a module's demand reads their kinds and records
+    them, and the activity log carries what it saw."""
+    module = tmp_path / "outcome_kinds.py"
+    module.write_text(OUTCOME_KINDS)
+    run = tmp_path / "pending"
+    try:
+        started = _start(run, {"actions": ACTIONS, "budget": {"actions": 20},
+                               "modules": [str(module)]})
+        assert started.returncode == 0, started.stderr
+        assert run_cli(run, "state", "declare", "counter", "--path", "counter").returncode == 0
+        acted = run_cli(
+            run, "act", "INC", "amount=1",
+            "--predict", "change; ch counter delta = 1; the lamp stays",
+        )
+        assert acted.returncode == 0, acted.stderr
+        assert "RESULT | PREDICTED | result matched the prediction" in acted.stdout
+        seen = [
+            json.loads(line)
+            for line in (run / ".assay" / "activity.jsonl").read_text().splitlines()
+            if json.loads(line).get("kind") == "outcome_kinds_seen"
+        ]
+        assert len(seen) == 1 and seen[0]["name"] == "INC"
+        assert seen[0]["kinds"] == ["change", "channel_delta", "note"]
     finally:
         stop_run(run)

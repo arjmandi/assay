@@ -66,7 +66,7 @@ python3 ../../verify/assay_verify.py s5i5-resume/journal.jsonl \
   --expect-head 3f7b3d133a6b502d0df72b41ecbe14bfc82a91163628674274bb550c15786f7b
 ```
 
-To confirm the prefix claim for a state, decompress the archived journal
+To confirm the shared prefix for a state, decompress the archived journal
 from `evidence/arcagi/` and compare its first 274 lines (s5i5, cut e273)
 with the first 274 lines of either arm. The other heads are in `heads.json`.
 

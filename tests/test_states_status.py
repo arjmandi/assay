@@ -40,11 +40,11 @@ def test_budget_remaining_grades(tmp_path):
     try:
         assert _start(run).returncode == 0
         held = run_cli(run, "act", "NOOP", "--predict", "ch budget_remaining = 9")
-        assert held.returncode == 0 and "OUTCOME | PREDICTED" in held.stdout, held.stdout
+        assert held.returncode == 0 and "RESULT | PREDICTED" in held.stdout, held.stdout
         moved = run_cli(run, "act", "NOOP", "--predict", "ch budget_remaining delta = -1")
-        assert moved.returncode == 0 and "OUTCOME | PREDICTED" in moved.stdout, moved.stdout
+        assert moved.returncode == 0 and "RESULT | PREDICTED" in moved.stdout, moved.stdout
         missed = run_cli(run, "act", "NOOP", "--predict", "ch budget_remaining = 99")
-        assert missed.returncode == 0 and "OUTCOME | SURPRISE" in missed.stdout
+        assert missed.returncode == 0 and "RESULT | SURPRISE" in missed.stdout
         assert "ch budget_remaining = 7" in missed.stdout
         grade = _events(run)[-1]["grade"][0]
         assert grade["bucket"] == "world_model" and grade["ok"] is False
@@ -55,7 +55,7 @@ def test_budget_remaining_grades(tmp_path):
     try:
         assert _start(run2).returncode == 0
         ungradable = run_cli(run2, "act", "NOOP", "--predict", "ch budget_remaining = 1")
-        assert ungradable.returncode == 0 and "OUTCOME | INVALID_CLAIM" in ungradable.stdout
+        assert ungradable.returncode == 0 and "RESULT | INVALID_CLAIM" in ungradable.stdout
         assert "needs a registered action cap" in ungradable.stdout
     finally:
         stop_run(run2)
@@ -98,14 +98,14 @@ def test_status_shows_readings_without_spawning_extractors(tmp_path):
         assert "counter=0 (path)" in status.stdout
         assert "tens=not yet graded (extractor)" in status.stdout
         assert graded_readings() == {}  # no extractor has run
-        # A graded claim runs the extractor in the daemon and caches the reading.
+        # A graded outcome runs the extractor in the daemon and caches the reading.
         acted = run_cli(run, "act", "INC", "amount=2", "--predict", "ch tens = 20")
-        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout, acted.stdout
+        assert acted.returncode == 0 and "RESULT | PREDICTED" in acted.stdout, acted.stdout
         assert graded_readings() == {"tens": {"event": 1, "value": 20}}
-        # Change the world without a tens claim: a fresh run would now read
+        # Change the world without a tens outcome: a fresh run would now read
         # 21 while the cache still says 20 at e1, so the two are told apart.
         moved = run_cli(run, "act", "SET_LAMP", "state=on", "--predict", "change")
-        assert moved.returncode == 0 and "OUTCOME | PREDICTED" in moved.stdout, moved.stdout
+        assert moved.returncode == 0 and "RESULT | PREDICTED" in moved.stdout, moved.stdout
         assert graded_readings() == {"tens": {"event": 1, "value": 20}}  # no extractor ran
         status = run_cli(run, "status")
         assert "counter=2 (path)" in status.stdout
@@ -170,7 +170,7 @@ def test_the_retired_command_word_answers_and_is_absent_from_the_help(tmp_path):
         assert _start(run).returncode == 0
         old = run_cli(run, "channel", "declare", "counter", "--path", "counter")
         assert old.returncode == 0, old.stderr
-        assert old.stdout.rstrip("\n") == "STATE | declared counter (path); claims like `ch counter = V` now parse and grade"
+        assert old.stdout.rstrip("\n") == "STATE | declared counter (path); outcomes like `ch counter = V` now parse and grade"
         new = run_cli(run, "state", "declare", "lamp", "--path", "lamp")
         assert new.returncode == 0 and new.stdout.startswith("STATE | declared lamp (path)")
         listed_old = run_cli(run, "channel", "list")
@@ -256,7 +256,7 @@ def test_a_readings_cache_from_before_the_rename_is_read_after_a_resume(tmp_path
         assert _start(run).returncode == 0
         assert run_cli(run, "state", "declare", "tens", "--file", "tens.py").returncode == 0
         acted = run_cli(run, "act", "INC", "amount=2", "--predict", "ch tens = 20")
-        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout, acted.stdout
+        assert acted.returncode == 0 and "RESULT | PREDICTED" in acted.stdout, acted.stdout
         assert json.loads(cache.read_text()) == {"tens": {"event": 1, "value": 20}}
         assert run_cli(run, "stop").returncode == 0
         # The directory as an earlier kernel left it: the cache under its

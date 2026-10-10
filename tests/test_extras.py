@@ -56,7 +56,7 @@ def test_dict_run_never_loads_the_extra(tmp_path):
         # Frame-only flags and commands answer honestly on a dict run.
         viewed = run_cli(run, "view", "--frames")
         assert viewed.returncode == 0 and "--frames/--crop do not apply" in viewed.stdout
-        # A grid claim form is named as such, and refused before any spend.
+        # A grid outcome form is named as such, and refused before any spend.
         before = len((run / ".assay" / "events.jsonl").read_text().splitlines())
         refused = run_cli(run, "act", "NOOP", "--predict", "cell 1,1=5")
         assert refused.returncode == 2
@@ -102,7 +102,7 @@ def test_frame_run_loads_the_extra_and_the_perception_forwarders(tmp_path):
 
 
 _REFUSAL = (
-    "claim 'cell 1,1=5' is a frames-world form and this run does not admit it "
+    "outcome 'cell 1,1=5' is a frames-world form and this run does not admit it "
     "(frame-world forms are not admitted in 1.2.0)"
 )
 # A finder that refuses the extra and pillow, for the probe that must refuse
@@ -119,9 +119,9 @@ _BLOCKER = (
 _PROBE = (
     "import sys\n"
     "from assay.core import AssayError\n"
-    "from assay.predictions import parse_claims\n"
+    "from assay.predictions import parse_prediction\n"
     "try:\n"
-    "    parse_claims('cell 1,1=5')\n"
+    "    parse_prediction('cell 1,1=5')\n"
     "except AssayError as error:\n"
     "    print(str(error).splitlines()[0])\n"
     "print(sorted(name for name in sys.modules if name.startswith(('PIL', 'assay_grid'))))\n"
@@ -130,7 +130,7 @@ _PROBE = (
 
 @pytest.mark.parametrize("installed", [True, False])
 def test_a_frame_form_is_refused_by_name_without_importing_the_extra(installed):
-    """The runtime form of the pin: `parse_claims` refuses a grid claim on a
+    """The runtime form of the pin: `parse_prediction` refuses a grid outcome on a
     dict run from the kernel's own table, so the refusal is the same with
     the extra installed and with the extra and pillow unimportable, and the
     extra is never loaded."""

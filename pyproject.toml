@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "assay-harness"
-description = "ASSAY, a referee harness between an agent and a world: enforced predict-before-act, code-graded claims, hash-chained journals."
+description = "ASSAY, a referee harness between an agent and a world: enforced predict-before-act, code-graded predictions, hash-chained journals."
 readme = "README.md"
 requires-python = ">=3.12"
 license = {file = "LICENSE"}

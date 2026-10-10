@@ -118,7 +118,7 @@ from .ops import (
     WaiveRequest,
     decode_json,
 )
-from .predictions import claims_help
+from .predictions import prediction_help
 from .registry import (
     gate_mode,
     load_registry_file,
@@ -149,7 +149,7 @@ USAGE_HINT = "`assay --help` lists the commands and `assay COMMAND --help` a com
 
 class Parser(argparse.ArgumentParser):
     """argparse with the kernel's error voice (`CLI_USAGE`), and an epilog
-    that is built only when help is rendered, so listing the claim forms of an
+    that is built only when help is rendered, so listing the outcome forms of an
     installed observation kind never imports that kind on an ordinary
     command."""
 
@@ -231,7 +231,7 @@ class Command:
     line (`state declare`), its help, what it runs (the client of a daemon
     operation, or the function of an offline command), the daemon operation
     it is the client of, if any, its arguments, and the lazy epilog (the
-    claims table, rendered only when help is)."""
+    grammar table, rendered only when help is)."""
 
     name: str
     path: str
@@ -858,7 +858,7 @@ def _use_line(registry_spec: dict[str, Any]) -> str:
             "learn them by acting"
         )
     return (
-        'USE | every `assay act` needs --predict "<claims>"; parameters go as '
+        'USE | every `assay act` needs --predict "<outcomes>"; parameters go as '
         "`assay act NAME pname=value ...` (an object or an array as `--params '{...}'`); "
         "schemas are in REGISTRY above, semantics are never given: learn them by acting"
     )
@@ -1247,8 +1247,8 @@ PARAMS_HINT = (
     "or as `--params @FILE` holding one"
 )
 STEP_FORM_HINT = (
-    'a step is `--step "NAME pname=value :: claims"`, or `--step \'{"action": "NAME", '
-    "\"params\": {...}, \"predict\": \"claims\"}'`, or `--step @FILE` holding a list of such objects"
+    'a step is `--step "NAME pname=value :: outcomes"`, or `--step \'{"action": "NAME", '
+    "\"params\": {...}, \"predict\": \"outcomes\"}'`, or `--step @FILE` holding a list of such objects"
 )
 
 
@@ -1335,7 +1335,7 @@ def _step_object(obj: Any, registry: Mapping[str, Any]) -> Step:
 
 def _steps_of(raw_steps: list[str], registry: Mapping[str, Any]) -> list[Step]:
     """The `--step` values in order: a string step `NAME pname=value ::
-    claims` parsed against the registry, a JSON step (the text starts with
+    outcomes` parsed against the registry, a JSON step (the text starts with
     `{`) read as the step object, a JSON list of them (the text starts with
     `[`) or an `@FILE` holding a list of step objects (or one)."""
     steps: list[Step] = []
@@ -1385,7 +1385,7 @@ def commit_command(paths: RunPaths, run: Run, status: CommandStatus, args: argpa
     if bool(args.plan) == bool(args.step):
         raise AssayError(
             "commit takes either @plan.json (from `assay model solve`) "
-            'or one or more --step "NAME pname=value :: claims"',
+            'or one or more --step "NAME pname=value :: outcomes"',
             code="COMMAND_ARGS",
         )
     steps = _steps_of(args.step, require_registry(run)) if args.step else []
@@ -1594,7 +1594,7 @@ def _run(paths: RunPaths, args: argparse.Namespace) -> int:
 def _report_error(error: AssayError, *, machine: bool) -> int:
     """The error voice (docs/ARCHITECTURE.md section 7.1): `ERROR | CODE |
     message` on stderr, `NEXT | hint` when the error names a next step, then
-    the error's detail (the claims table); under `--json` the error object
+    the error's detail (the grammar table); under `--json` the error object
     alone, on stdout. The exit status follows the kind."""
     if machine:
         print(_document(error.to_json()))
@@ -1846,7 +1846,7 @@ COMMANDS: tuple[Command, ...] = (
                 '(e.g. --declare "worst_case=..." --declare "recovery=...")',
             ),
         ),
-        epilog=claims_help,
+        epilog=prediction_help,
     ),
     Command(
         "commit",
@@ -1864,8 +1864,8 @@ COMMANDS: tuple[Command, ...] = (
                 "--step",
                 action="append",
                 default=[],
-                metavar='"ACTION :: CLAIMS"',
-                help="one action with its own prediction, as \"NAME pname=value :: claims\" or as "
+                metavar='"ACTION :: OUTCOMES"',
+                help="one action with its own prediction, as \"NAME pname=value :: outcomes\" or as "
                 'the JSON object {"action", "params", "predict"} (a JSON list or @FILE holds '
                 "several); repeat in execution order",
             ),
@@ -1878,7 +1878,7 @@ COMMANDS: tuple[Command, ...] = (
                 help="structural declaration a module demanded for a step in this batch",
             ),
         ),
-        epilog=claims_help,
+        epilog=prediction_help,
     ),
     Command(
         "reset",

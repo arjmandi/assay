@@ -30,11 +30,11 @@ archived with the paper materials.
 Imported knowledge enters a run FOREIGN, by the kernel's carryover rule:
 every Verified line of the imported notes is marked Assumed in the
 `PRIOR-NOTES.md` the agent reads, imported verifiers are candidates that earn
-standing only by being claimed and graded again in the current journal, an
+standing only by being named in a prediction and graded again in the current journal, an
 imported model carries no batching rights until it passes replay-fit on the
 current journal, and the status block states all of this to the agent at
-every status call. In both E3 runs no imported verifier file was claimed. The
-journals record the fresh claims the agent made instead.
+every status call. In both E3 runs no imported verifier file was named in a prediction. The
+journals record the fresh predictions the agent made instead.
 
 One reading note: event e0 (START) was written by the import step about forty
 minutes before the player's first action. It is not a paid action and the

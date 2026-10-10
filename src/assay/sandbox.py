@@ -456,12 +456,12 @@ def check_imports(modules: Sequence[str]) -> tuple[bool, str | None]:
     """Whether the modules import inside the sandbox as it runs here (for
     `assay doctor`: numpy and json, what a verifier needs). (True, None) or
     (False, the reason)."""
-    outcome = run_program(
+    completed = run_program(
         "import " + ", ".join(modules) + "\nprint('{}')\n", {}, timeout=PROBE_TIMEOUT_SECONDS
     )
-    if outcome["status"] == "ok":
+    if completed["status"] == "ok":
         return True, None
-    return False, str(outcome["reason"])
+    return False, str(completed["reason"])
 
 
 def _copy_companions(scratch: Path, companions: Sequence[str | Path]) -> dict[str, str]:

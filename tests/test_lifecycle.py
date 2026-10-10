@@ -171,7 +171,7 @@ def test_sigterm_during_a_step_finishes_the_step_first(tmp_path):
         assert _alive(pid)  # still inside the step
         out, err = acting.communicate(timeout=60)
         assert acting.returncode == 0, err
-        assert "OUTCOME | PREDICTED" in out
+        assert "RESULT | PREDICTED" in out
         assert _wait_gone(pid)
         assert _broker(run)["status"] == "STOPPED"
         events = _events(run)

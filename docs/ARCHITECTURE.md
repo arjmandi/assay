@@ -102,8 +102,8 @@ observation.
 
 The public contract the kernel must keep honoring is in `verify/`:
 `JOURNAL_SPEC.md` (`assay-journal-v1`, the event schema, the chain
-rule, the ungated rule, the verdict) and `CLAIM_GRAMMAR.md` (the claim forms and
-what a graded claim asserts). Section 5 lists the identifiers that are frozen by
+rule, the ungated rule, the verdict) and `PREDICTION_GRAMMAR.md` (the outcome forms and
+what a graded outcome asserts). Section 5 lists the identifiers that are frozen by
 that contract.
 
 ## 2. The components
@@ -325,7 +325,7 @@ sealed instance are the worked example: they live entirely in the adapter).
 
 **Never here.** Nothing crosses from an adapter into the kernel: the kernel
 imports nothing from `bench/` and names no world (section 4 and the conformance
-tests enforce this). An adapter never reads the journal to decide an outcome,
+tests enforce this). An adapter never reads the journal to decide a result,
 never writes under `.assay/` except its own files (OOLONG writes
 `.assay/corpus.txt` and `.assay/oolong_score.json`), and never sees the owner
 token. This is true of every adapter in the table since #21: the ARC adapter's
@@ -337,7 +337,7 @@ watch and event 0 journals it.
 
 **Extension points.** `public_info`, `finalize`, `session`, `replay`, world
 policy inside `step`, and the observation `data` itself, which is where a world
-exposes everything the agent may read and claim against.
+exposes everything the agent may read and predict against.
 
 ### 2.3 Runtime configuration
 
@@ -415,7 +415,7 @@ knowledge file format (`carryover.KNOWLEDGE_FORMAT`), the anchor directory.
 ### 2.4 Constitution
 
 **Role.** The agent-facing manual: how to operate any registry-mode world
-through `assay`. The loop (look, predict, act, compare, note), the claim
+through `assay`. The loop (look, predict, act, compare, note), the prediction
 grammar, the verifier contract, batching and the batching law, the gates, the
 standing goal and proposals, imported knowledge, reset, offline analysis, the
 meters.
@@ -463,7 +463,7 @@ ships at advise until an A/B shows blocking pays.
     MODE: "advise" | "block"                      the default, registry module_modes overrides
     trigger(view, pending) -> str | None          advisory message when it fires
     demand(view, pending) -> dict[str, str] | None {field: why}, structural
-    observe(view, event) -> None                  optional, learn from outcomes
+    observe(view, event) -> None                  optional, learn from results
     telemetry(view) -> dict                       free counters
 
 The contract is the `modules.Module` protocol, and `view` is
@@ -474,12 +474,12 @@ own files), and the two kernel methods a module persists through,
 `hazard_tagged` the tag goes into `hazards.json` as well, exactly what the
 hazard module wrote by path before) and `view.hazards()`. A module never
 writes a kernel file by path. `pending` is the action about to be taken:
-`{"kind": act|commit|reset, "name", "params", "claims", "declares"}` with the
-claims as `records.Claim` records, or `None` at status time. Modules are
+`{"kind": act|commit|reset, "name", "params", "outcomes", "declares"}` with the
+outcomes as `records.Outcome` records, or `None` at status time. Modules are
 consulted before every paid action on a registry run
 (`modules.consult_modules` from `live._enforce_registry_gates` and
-`live.reset_level`), told the outcome after every recorded event
-(`modules.observe_outcome`), and asked for status-time advisories
+`live.reset_level`), told the result after every recorded event
+(`modules.observe_result`), and asked for status-time advisories
 (`modules.advisory_lines`). In block mode an unmet demand refuses with
 `MODULE name | declaration demanded before this action: --declare f=...` and
 the declaration always unlocks the action. Declarations are journaled on the
@@ -528,9 +528,9 @@ for learning modules, `telemetry` for the analytics pack.
 ### 2.6 Addressable states
 
 **Role.** Named, code-extracted readings of the observation. An addressable
-state is how an agent names a referent once and then claims against it
+state is how an agent names a referent once and then predicts against it
 exactly, instead of through the blunt `change` and `noop` pair. The states are
-the internalization mechanism and the grounding meter: a claim naming an
+the internalization mechanism and the grounding meter: an outcome naming an
 unregistered state is refused free and counted (`states.check_state_references`,
 the `mis_reference` activity record). The code calls them states for short.
 
@@ -561,17 +561,17 @@ cannot be redeclared with a different extractor (declare a new name instead of
 silently redefining a referent), every declaration is journaled as
 `channel_declared`.
 
-Claim forms graded by `states.grade_state_claim`: `ch NAME = V [± TOL]`,
+Outcome forms graded by `states.grade_state_outcome`: `ch NAME = V [± TOL]`,
 `ch NAME delta = | >= | <= V`, `ch NAME delta sign + | -`,
 `ch NAME crosses V [from below | from above]`. Delta and crossing forms need
-numeric readings before and after. Claims on `goal` and `level` sit in the
-`gamble` bucket, all other state claims in `world_model`
-(`records.claim_bucket`). Statistical claims
+numeric readings before and after. Outcomes on `goal` and `level` sit in the
+`gamble` bucket, all other state outcomes in `world_model`
+(`records.outcome_bucket`). Statistical outcomes
 (`agg ch NAME mean|min|max OP V over Na horizon Ma on-fail advise|revoke_batching`)
 are additive, open at the gate and resolve at their horizon (`aggregates.py`).
 
 The journal and the files beside it keep the spelling of the earlier
-releases, which called a state a channel: the claim kinds `channel_eq`,
+releases, which called a state a channel: the outcome kinds `channel_eq`,
 `channel_delta` and `channel_cross`, the keyword `ch`, the `channel` field of
 a grade, the activity kind `channel_declared` with its `channel` field, the
 store `.assay/channels.json`, the extractor directory `.assay/channels/` and
@@ -586,7 +586,7 @@ list` answer as `assay state declare` and `assay state list` for one release
 for one release (section 2.7).
 
 **The worked example** (the Factorio M2 runs, `evidence/factorio`).
-The pattern is declare early, name referents, claim every action with a state
+The pattern is declare early, name referents, predict every action with a state
 form. The irongear run declared seven path states at its first event, as the
 run issued them, under the command's earlier name:
 
@@ -598,7 +598,7 @@ run issued them, under the command's earlier name:
     assay channel declare gears    --path target_produced_total
     assay channel declare auto     --path target_automated_total
 
-and then claimed, verbatim from the journal:
+and then predicted on them, verbatim from the journal:
 
     e1 RUN  --predict "change; ch tick = 0; ch ents = 0; ch refusals = 0"
     e2 RUN  --predict "change; ch tick = 180; ch ents delta sign +; ch refusals = 0; ch prod = False"
@@ -609,13 +609,13 @@ and then claimed, verbatim from the journal:
 
 The ironplate run used the crossing form on the automated-production state
 (`ch automated crosses 16 from below`) and the circuit run used a tolerance
-(`ch lastrate = 20 ± 5`). The equality claims pin the tick clock, the delta and
-crossing claims pin the mechanics, and every miss carries the machine's
+(`ch lastrate = 20 ± 5`). The equality outcomes pin the tick clock, the delta and
+crossing outcomes pin the mechanics, and every miss carries the machine's
 counter-fact.
 
 **Required.** Nothing. Host states exist without declaration.
 
-**Optional.** Declared states, aggregate claims.
+**Optional.** Declared states, aggregate outcomes.
 
 **Never here.** A state is graded against the extractor's value over the
 world's own response, never against the agent's account of it. The kernel never
@@ -628,17 +628,17 @@ later stage (no second pack exists).
 
 **Role.** Agent-written code, admitted under a hash, run in the sandbox,
 identity-probed, and promoted only by replay fit. Verifiers are the most
-specific claim available. The world model is the general form of the
+specific outcome available. The world model is the general form of the
 executable-rules tier: trust is exactly replay fit and nothing else.
 
 **Owner.** The agent writes them. The kernel admits, stores, runs, probes and
 meters them. Available in every world.
 
-**Contract, verifiers** (`verifiers.py`). A claim `verify:PATH.py` names a file
+**Contract, verifiers** (`verifiers.py`). An outcome `verify:PATH.py` names a file
 relative to the run directory defining `def verify(before, after) ->
-(ok, actual)`. At claim time, before any spend, the file is read, sha256-hashed
+(ok, actual)`. At prediction time, before any spend, the file is read, sha256-hashed
 and copied to `.assay/verifiers/<hash>.py` (`verifiers.admit_verifier`, the hash
-is journaled on the claim as `verifier_hash`). At grading time the stored copy
+is journaled on the outcome as `verifier_hash`). At grading time the stored copy
 runs in the sandbox (section 8.5: a scratch copy under `sandbox-exec` on macOS
 or `bwrap` on Linux, no path into the run directory, no network, no fork, the
 memory limit Linux-only) with both observation views on stdin and must emit one
@@ -651,7 +651,7 @@ and journals `identity_verdict`. Per-hash counters live in
 equalled its real verdict on every one of five or more gradings, which means
 it does not use the transition: status says so, its passes are excluded from
 the capability meter, and a verifier that never failed is an advisory line,
-not a flag (`verifiers.vacuous_hashes`, `inspect._claim_meter_lines`). The
+not a flag (`verifiers.vacuous_hashes`, `inspect._prediction_meter_lines`). The
 stats file is versioned: a run recorded from 1.2.0 on carries
 `"rule": "identity"` with its counters under `"verifiers"`, a run recorded
 before it keeps the flat file of the never-failed rule (five or more gradings,
@@ -659,13 +659,13 @@ zero failures) and is read under that rule, so the published runs render
 unchanged (`verifiers.stats_rule`).
 
 **Contract, specificity** (`meters.specificity`). Specificity is the share of
-graded claims that are not coerced free text; a claim graded as `change`
+graded outcomes that are not coerced free text; an outcome graded as `change`
 because the prediction was prose counts against it. Every grade but a note
-counts, an invalid one included, as the CLAIMS line has always counted them.
-The CLAIMS line prints it over every grade of the run (`specificity N/M (P%)`;
-the `claims` block of the `Status` record carries `specific` and `graded`),
+counts, an invalid one included, as the PREDICTIONS line has always counted them.
+The PREDICTIONS line prints it over every grade of the run (`specificity N/M (P%)`;
+the `predictions` block of the `Status` record carries `specific` and `graded`),
 and the `specificity` built-in reads the same count over the same grades, so
-its advisory's N/M is the CLAIMS line's at that moment; it advises once twenty
+its advisory's N/M is the PREDICTIONS line's at that moment; it advises once twenty
 or more are graded and coerced text is the majority. The meter was named
 sharpness before 1.2.0 (#25). The word changed because sharpness means
 something else in forecasting, the concentration of a predictive
@@ -696,7 +696,7 @@ never enter the agent's meters. Imported models never carry rights.
 
 **Required.** Nothing.
 
-**Optional.** Verifier claims, a world model, model plans.
+**Optional.** Verifier outcomes, a world model, model plans.
 
 **Never here.** In-process execution of agent code on the grading path. Trust
 states other than replay fit. Promotion on thin evidence.
@@ -726,7 +726,7 @@ audit that recomputes integrity from the artifacts alone.
   `available_actions`, `frames` and `n_frames` or `observation`, `note`,
   `predict`, `predict_ok`, `grade` (a tuple of `records.Grade`), `mutation_id`,
   plus `declares`, `gate_optional` and `gate_off` when present. The grades,
-  the claims (`records.Claim`), the receipts (`records.Receipt`) and the
+  the outcomes (`records.Outcome`), the receipts (`records.Receipt`) and the
   mutation records (`records.Mutation`) are typed the same way, and every
   published journal under `evidence/` reads and re-serializes to the same
   bytes (`tests/test_records.py`).
@@ -734,17 +734,18 @@ audit that recomputes integrity from the artifacts alone.
   daemon before the event line (`broker._Daemon.spend`, through
   `run.record_mutation`): a `records.Mutation` with the action, its data, the
   reasoning (`predict`, `because`, `declares`), the world's response and, from
-  1.2.0 on, for an act and for each commit step, the parsed claims with their
-  admitted verifier hashes (`claims`); a model-plan step's record carries its
-  plan reasoning and no claims, a reset's none. A crash between spend and
+  1.2.0 on, for an act and for each commit step, the parsed outcomes with their
+  admitted verifier hashes (the record's key is `claims`, the spelling of 1.2.0,
+  which the field `Mutation.outcomes` reads and writes); a model-plan step's record carries its
+  plan reasoning and no outcomes, a reset's none. A crash between spend and
   record is recovered by `broker.reconcile_mutations` at the next `assay
   start` with the daemon dead, the one append outside a daemon: a record with
-  claims is regraded against its stored response through the live path's
+  outcomes is regraded against its stored response through the live path's
   grader (`live.recovered_pending`, `predictions.grade_pending` with
-  `elapsed_s=None`, under which a claim with an `@within` window is UNGRADABLE
+  `elapsed_s=None`, under which an outcome with an `@within` window is UNGRADABLE
   with the actual `UNGRADABLE: recovered, step duration unknown`) and
   journaled with `predict`, `predict_ok`, `grade` and `declares`, gated by its
-  fields; a record without claims is journaled UNGATED, as before 1.2.0. Both
+  fields; a record without outcomes is journaled UNGATED, as before 1.2.0. Both
   carry the note `recovered from broker mutation journal`. The audit lists
   recovered orphans and says which were recovered without their prediction
   (section 6.5).
@@ -801,7 +802,7 @@ aliases `progress`, `progress_total`, `status`.
 ## 3. The frame-world extra
 
 Frame worlds (observation is a grid) have a tier the dict worlds do not need:
-image rendering, a scene dossier, perception helpers and the grid claim
+image rendering, a scene dossier, perception helpers and the grid outcome
 forms. In 1.2.0 these live outside the kernel in the extra package `assay_grid` (`src/assay_grid/`,
 same repository, same distribution), selected automatically by observation
 shape (`"frames" in event`, the test `core.general_event` makes), never by
@@ -811,7 +812,7 @@ auditing them.
 
 What lives in the extra, by module: `perception.py` (connected components,
 repeated shapes, lattice inference, line graph, frame delta, motion trace,
-transition story, the scene dossier), `claims.py` (the claim kinds `cell`,
+transition story, the scene dossier), `outcomes.py` (the outcome kinds `cell`,
 `move`, `vanish`, `region` and the frame grader, which also grades the general
 forms on frames by cell comparison), `render.py` (the palette, one PNG per
 event, the frame history line, the one pillow import), `views.py` (the frame
@@ -830,26 +831,26 @@ The parser declares the frame-only `view` flags (`--grid`, `--frames`,
 is kernel-owned while the behavior is the extra's.
 
 The hook is one kernel module, `extras.py`: the `ObservationKind` protocol
-(`applies`, `claim_patterns`, `claim_fields`, `claims_help`, `grade_claims`,
+(`applies`, `outcome_patterns`, `outcome_fields`, `prediction_help`, `grade_outcomes`,
 `after_record`, `status_head_lines`, `status_lines`, `result_lines`,
 `view_text`, `history_change`, `canonical_action`, `advertised_names`,
 `python_namespace`, `export_history`, and `changed`, the coverage audit's
 change signal for the kind's shape) and the functions
 `kind_for(event)` (imports `assay_grid` lazily and only when an event has
 frames), `all_kinds()` (every importable kind, used when help is rendered) and
-`require_kind`, plus the table `FRAME_FORMS`: the frame claim forms by name
+`require_kind`, plus the table `FRAME_FORMS`: the frame outcome forms by name
 and shape, the one home of their patterns, which the kernel refuses by name
-on a dict run without importing the extra and which `assay_grid.claims` reads
+on a dict run without importing the extra and which `assay_grid.outcomes` reads
 back (#24). `assay_grid.KIND` is the one implementation. A dict run never
 imports `assay_grid` or pillow, and `import assay.live, assay.inspect,
 assay.cli` imports neither (the conformance tests pin both, and a probe
-through `parse_claims` pins the refusal with the extra blocked).
+through `parse_prediction` pins the refusal with the extra blocked).
 
 Behavior preserved, proven by the replay diff over the 25 published run
 directories (zero differences in `status`, `audit`, `view` and `channel list`
 against the main kernel): no journal field changes, no change to grade
-records, the grid claim forms stay refused exactly as before
-(`predictions.parse_claims` with `kind=None`, the refusal now names the form),
+records, the grid outcome forms stay refused exactly as before
+(`predictions.parse_prediction` with `kind=None`, the refusal now names the form),
 which is why no published journal contains one. Whether frame worlds should
 gain those forms is owner decision O1. The legacy numbered-action path (runs
 without a registry, `ACTION1..7` and `ACTION6:x,y` with the 0 to 63 bound,
@@ -896,10 +897,10 @@ say **present**, **optional, unused**, or **world-specific** with the file.
 | Modules: built-ins | six, advise | six, advise | six, advise | six, advise | seven, advise |
 | Modules: hazard tags observed | bp35 (3 classes), tu93, wa30 | none | none | `BOMB` after `GAME_OVER` | `ALARM` after `GAME_OVER` |
 | Modules: external | none in the 25 | none | none | none | none |
-| States: host | present, unclaimed (progress claimed as `level+1` and `win`) | present, unclaimed (same) | present, unclaimed (same) | present, `ch goal` claimed in the e2e tests | present, `level+1` and `win` claimed |
+| States: host | present, not predicted on (progress predicted as `level+1` and `win`) | present, not predicted on (same) | present, not predicted on (same) | present, `ch goal` predicted in the e2e tests | present, `level+1` and `win` predicted |
 | States: declared, form | extractor files, 6 to 16 per run in 22 of 25 (one path state in r11l, ungradable on frames) | path states, 7 to 14 per run, one extractor (circuit `lastrate`) | path states `banked` and `submitted` in synth1m, none in 128k and 4m | one path state (`counter`) | path states `dial`, `door`, `refusals` |
-| States: claim kinds used | eq, delta (meter, cursor rows and columns, bars) | eq, delta, sign, crosses, tolerance | delta | eq, delta | eq, delta |
-| Verifiers | all 25 runs, 20 to 794 graded verify claims per run | 3 to 5 per run | optional, unused in the three published runs | tests only | optional, unused |
+| States: outcome kinds used | eq, delta (meter, cursor rows and columns, bars) | eq, delta, sign, crosses, tolerance | delta | eq, delta | eq, delta |
+| Verifiers | all 25 runs, 20 to 794 graded verify outcomes per run | 3 to 5 per run | optional, unused in the three published runs | tests only | optional, unused |
 | World model (`model.py`) | written in cn04, s5i5, sc25, su15, tu93, replayed in cn04, no plan ever executed | optional, unused | optional, unused | tests only | optional, unused |
 | Journal | frames, `n_frames`, 83 to 1172 events | dict observation, 6 to 10 events | dict observation, 41 to 51 events | dict observation | dict observation, two progress units |
 | Audit verdict | CLEAN on 25 of 25 | CLEAN on 3 of 3 | CLEAN on 3 of 3 | CLEAN in the tests | CLEAN in the test |
@@ -922,7 +923,7 @@ their heads:
   `win_levels`, `level_before`, `state`, `frames`, `n_frames`, `observation`,
 - the state values the grammar reads: `NOT_FINISHED`, `WIN`, and `GAME_OVER`
   as a world-reported terminal,
-- the claim syntax: `noop`, `change`, `level+1`, `win`, `verify:PATH`, the
+- the outcome syntax: `noop`, `change`, `level+1`, `win`, `verify:PATH`, the
   `ch` forms, the `agg` form, `@within Ns`, and the frame forms `cell`, `move`,
   `vanish`, `region` on frame worlds,
 - the grade `actual` texts ("level advanced", "level did not advance",
@@ -932,14 +933,15 @@ their heads:
   `RESET` exemption,
 - the config key `game_id`, the knowledge-file key `game_id`, the import
   summary key `source_game`, and every activity record kind,
-- the receipt outcome tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
+- the receipt result tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
   `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`,
 - the state-directory layout, including `.assay/levels/level-N.md`, and the
   `L<n>` prefix of the RECENT history lines.
 
 Display strings are not frozen. The vocabulary pass of 1.2.0 changed prose
 (game to world, board to state, level to progress unit where the world is
-not a game) and nothing above. `src/assay/words.py` carries the same list as
+not a game) and nothing above. The vocabulary pass of 1.3.0 changed prose
+again and nothing above. The changelog names the words. `src/assay/words.py` carries the same list as
 its docstring, and `tests/test_vocabulary.py` enforces it.
 
 ## 6. The run model (1.2.0, design note 1)
@@ -961,7 +963,7 @@ strict at `serve`, and every request handler receives it; it calls `verify_disk`
 every paid action and refuses on a difference with `TAMPER_DETECTED`, holding a flag that
 refuses every later paid action until it is stopped (the sealing record in the anchor
 file and audit's reading of it are #10's); the modules load once at `serve`;
-`install_module` is the daemon operation of 6.4. What #16 landed: the claims on the
+`install_module` is the daemon operation of 6.4. What #16 landed: the outcomes on the
 mutation record at spend time and the regrade at recovery of 6.5, with
 `predictions.grade_pending` the one grader of the live path and of recovery. What #24
 landed: the operation table and the dispatcher of 7.2, and the request handlers as one
@@ -984,7 +986,7 @@ line a crash leaves.
 
 ### 6.1 Why
 
-The kernel passes events, claims, grades, receipts and mutation records as untyped
+The kernel passes events, outcomes, grades, receipts and mutation records as untyped
 dictionaries and never validates a journal on read. Every function takes `paths` and
 reloads the journal: one `assay act` loads it six times, re-imports every external module,
 and nothing the daemon believes can be checked against the disk. One run model, loaded
@@ -1010,26 +1012,28 @@ or string, `predict_ok` None or bool, `level_before` None or int, `note` string,
   `gate_off`, and `extra`: every key the decoder does not know, carried through unchanged,
   so that every published journal loads and re-serializes to the same line. Validation
   refuses a wrong type on a known key and never refuses an unknown key.
-- `Claim`: `kind`, `text`, `window_s`, `channel`, `op`, `value`, `sign`, `direction`,
+- `Outcome`: `kind`, `text`, `window_s`, `channel`, `op`, `value`, `sign`, `direction`,
   `tol`, `path`, `verifier_hash`, `stat`, `over`, `horizon`, `on_fail`, `coerced`,
-  `extra`. One class for every claim form; a field that does not apply is None.
-- `Grade`: the fields of `Claim` plus `ok` (bool), `actual` (str), `bucket` (str),
+  `extra`. One class for every outcome form; a field that does not apply is None.
+- `Grade`: the fields of `Outcome` plus `ok` (bool), `actual` (str), `bucket` (str),
   `invalid` (bool), `ungradable` (bool), `verifier` (bool), `identity_verdict` (bool, the
   string `invalid`, or None: a crashed identity probe is journaled as the string today),
-  `excluded_from_meter` (bool), `machine` (bool). On the journal a coerced claim's kind is
+  `excluded_from_meter` (bool), `machine` (bool). On the journal a coerced outcome's kind is
   the string `coerced`, as today.
 - `Receipt`: `kind`, `outcome`, `detail`, `start_event`, `end_event`, `level`, `action`,
   `predict`, `grade` (the rendered lines), `because`, `modules`, `aggregates`, `states`,
   `steps` (a tuple of `ReceiptStep`: `event`, `action`, `ok`, `failed`, `invalid`,
-  `ungated`, `machine`, `kind`, `problem`), `plan`, `timestamp`. Written to
+  `ungated`, `machine`, `kind`, `problem`), `plan`, `timestamp`. The key `outcome` carries
+  the action's result token and keeps its spelling on disk and on the wire. The prose says
+  result and the receipt line says `RESULT |`. Written to
   `.assay/receipts/` and to the activity log as today. The `--json` document of a paid
   command is these fields plus the command line's `estimated_tokens` (section 7.6), which
   a consumer strips before treating the document as the record (a record carries unknown
   keys through `extra`, so a round trip is harmless). The draft listed `estimated_tokens`
   among the fields; the review of #23 removed it, since nothing on disk carries it.
-- `Mutation`: `mutation_id`, `action`, `data`, `reasoning`, `observation`, `claims` (a tuple
-  of `Claim`, written by the daemon at spend time from #16 on, absent on older records),
-  `timestamp`.
+- `Mutation`: `mutation_id`, `action`, `data`, `reasoning`, `observation`, `outcomes` (a tuple
+  of `Outcome`), `timestamp`. The daemon writes `outcomes` at spend time from #16 on. The
+  record's key for it is `claims`, the spelling of 1.2.0. Older records lack it.
 - `Status`: section 7.4.
 - The registry stays the canonical dictionary `validate_registry` produces, read through
   the accessors in `registry.py`; it changes shape in #14 and is not a record in 1.2.0.
@@ -1164,28 +1168,28 @@ the daemon alive.
 
 ### 6.5 Recovery under the run model (#16)
 
-- The daemon writes `Mutation.claims` at spend time for `act` and `commit` steps: the
-  parsed claims, verifier hashes included; the record keeps `reasoning` (`predict`,
+- The daemon writes `Mutation.outcomes` at spend time for `act` and `commit` steps: the
+  parsed outcomes, verifier hashes included; the record keeps `reasoning` (`predict`,
   `because`, `declares`). A model-plan step's record carries its plan reasoning and no
-  claims.
-- `reconcile`, at start with the daemon dead, grades the stored claims against the stored
-  response through the live path's grader, `grade_pending(run, claims, prior, pending,
-  elapsed_s=None)`; `elapsed_s=None` makes every windowed claim UNGRADABLE with the actual
+  outcomes.
+- `reconcile`, at start with the daemon dead, grades the stored outcomes against the stored
+  response through the live path's grader, `grade_pending(run, outcomes, prior, pending,
+  elapsed_s=None)`; `elapsed_s=None` makes every windowed outcome UNGRADABLE with the actual
   "UNGRADABLE: recovered, step duration unknown"; the event is journaled with `predict`,
   `predict_ok`, `grade`, `declares` from the reasoning, and the note "recovered from broker
-  mutation journal", and it is gated. A mutation record without `claims` (written before
+  mutation journal", and it is gated. A mutation record without its outcomes (written before
   #16, or a model-plan step) is recovered as today, UNGATED, and the audit says why.
 
 Landed by #16. Two details the bullets leave open: a bare act or step of a control arm
-(`gate: optional`, `gate: off`) spends with an empty claim list, so its record carries
-`claims: []` and recovery journals it as the live path does, UNGATED with the mode's
+(`gate: optional`, `gate: off`) spends with an empty outcome list, so its record carries
+`claims: []` (the key keeps the spelling of 1.2.0) and recovery journals it as the live path does, UNGATED with the mode's
 marker, counted among the permitted; and recovery is the grade and the journal line only:
-the modules do not observe a recovered outcome, an aggregate claim on a recovered record
+the modules do not observe a recovered result, an aggregate outcome on a recovered record
 is not opened, and no receipt is written, since no command is waiting for one. The audit
 names a recovered event without its prediction (`recovered_without_prediction` in
 `audit.json`, the line `n of them recovered without its prediction: the record predates
 1.2.0 or was a model-plan step; counted UNGATED above`); the independent checker needs
-no change, since the ungated rule reads the fields. `grade_pending(run, claims, prior,
+no change, since the ungated rule reads the fields. `grade_pending(run, outcomes, prior,
 pending, *, elapsed_s)` takes the duration as a required keyword, so every live caller
 passes the measured one and only recovery passes None.
 
@@ -1240,7 +1244,7 @@ adapter boundary wrapping whatever the factory, the observation or a step raises
 `WORLD_ERROR`, anything else that is not an `AssayError` becoming `INTERNAL` with the
 traceback saved, the argparse path raising `CLI_USAGE`, the AST test over every raise,
 `docs/ERRORS.md` rendered by `python -m assay.errors --render` with a test that asserts
-it is current, and the two unguarded `int` conversions of `parse_claims` refusing an
+it is current, and the two unguarded `int` conversions of `parse_prediction` refusing an
 aggregate count past nine digits); the protocol of 7.2 (`v` on every request and
 reply, 2 for this package, refused with `PROTOCOL_VERSION` by the daemon before the
 token and by the client on every reply, the request's fields under `args` and the
@@ -1305,7 +1309,7 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   error path (`Parser.error`) raises with `CLI_USAGE`. The catalogue renders into
   `docs/ERRORS.md` by `python -m assay.errors --render`; a test asserts the file is
   current. `detail` is the further lines the command line prints after the first two
-  (the claims table); `message` is one line.
+  (the grammar table); `message` is one line.
 - The adapter boundary is the daemon's calls into the session: `factory`, the `session`
   declaration, `observation`, `step`, `replay` and `finalize`. Anything raised there, `AssayError` or not, becomes
   `WORLD_ERROR` (kind world) carrying the text; a `finalize` failure stays the warning on
@@ -1320,10 +1324,11 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   the `step` operation (section 7.2) and an unknown operation is refused with
   `OPERATION_UNKNOWN` (kind usage); the module demand is
   `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` became
-  `REMOTE_SESSION_UNAVAILABLE` (#21), the last rename: the codes freeze at the 1.2.0
-  tag, like the outcome tokens.
+  `REMOTE_SESSION_UNAVAILABLE` (#21), the last rename before the codes froze at the
+  1.2.0 tag, like the result tokens. 1.3.0 renamed one code, the code of a prediction
+  that does not parse. The changelog names both spellings.
 - The CLI prints to stderr one line `ERROR | CODE | message` and, when a hint exists, a
-  second line `NEXT | hint`; the error's detail (the claims table) follows as today. The
+  second line `NEXT | hint`; the error's detail (the grammar table) follows as today. The
   exit code follows the kind. The `ERROR | ` prefix and exit 2 for usage and refused
   errors are unchanged.
 - Over the socket the error is `{"v": 2, "ok": false, "error": {"code", "kind",
@@ -1473,7 +1478,7 @@ values, declared readings with their event), `model` (fit, graded, rights, reaso
 `hazards` (every active tag; the renderer shows four), `spend`, `aggregates`,
 `mis_references`, `integrity` (the unpermitted ungated events), `anchors` (file, count,
 last event, last failure, writable), `emergence`, `unit` (paid actions this unit, recent
-hits and total), `claims` (the meters), `vacuous` (digest, graded, failed per verifier),
+hits and total), `predictions` (the meters), `vacuous` (digest, graded, failed per verifier),
 `advisories` (module lines), `recent` (history lines as records: event, paid, unit, action,
 mark, change, state), `notes` (path, text, size, cap state, the demotion banner's facts:
 the archive's unit and whether the notes changed since), `estimated_tokens`.
@@ -1884,7 +1889,7 @@ directory, or when it is the token file, the policy file or a protected path; th
 own `.assay/NOTES.md` is the exception, its directory compared lowered and its name
 exactly, so that on a case-sensitive filesystem a literal `notes.md` is not taken for
 it; a call without a path is refused. A Bash command is read with its quoted strings blanked for the operators and the
-shell-state rules, so a prediction with two claims (`--predict "change; ch counter delta =
+shell-state rules, so a prediction with two outcomes (`--predict "change; ch counter delta =
 1"`) is not compound, and with its words seen both raw and through shlex for the paths, so
 a path inside a quoted string is still seen; a word names `.assay`, `.claude` or
 `.claude.json` when the component is there once the `@` of `@FILE` and the `KEY=` of a
@@ -2089,7 +2094,7 @@ separate user for the daemon is the recommended setup where the stakes warrant i
 Nothing the agent asserts is load-bearing. Every grade is computed by the kernel from the
 world's own response, and the published journals replay through the engine."
 
-### 8.9 What is not claimed
+### 8.9 What is not promised
 
 Tamper-proofness; a trusted store of any kind under the shared uid: the activity log is
 agent-writable, so a `liveness_waived` record or a `module_installed` record written

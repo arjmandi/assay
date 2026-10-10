@@ -62,7 +62,7 @@ def test_oolong_spam4k_to_win_and_sealed_score(tmp_path):
             run, "act", "BANK_FACT", "--params", _params(text="x", span="not in the corpus"),
             "--predict", "ch banked delta = 0",
         )
-        assert refused.returncode == 0 and "OUTCOME | PREDICTED" in refused.stdout
+        assert refused.returncode == 0 and "RESULT | PREDICTED" in refused.stdout
         assert _events(run)[-1]["observation"]["last_result"]["status"] == "refused"
         assert _events(run)[-1]["data"] == {"span": "not in the corpus", "text": "x"}
         # The census: a SUBMIT without a banked fact for this question is
@@ -72,11 +72,11 @@ def test_oolong_spam4k_to_win_and_sealed_score(tmp_path):
                 run, "act", "BANK_FACT", "--params", _params(text="an orange message", span=SPAN),
                 "--predict", "ch banked delta = 1",
             )
-            assert banked.returncode == 0 and "OUTCOME | PREDICTED" in banked.stdout, banked.stdout
-            claim = "win; level+1" if number == 5 else "level+1"
+            assert banked.returncode == 0 and "RESULT | PREDICTED" in banked.stdout, banked.stdout
+            prediction = "win; level+1" if number == 5 else "level+1"
             submitted = run_cli(
                 run, "act", "SUBMIT", "--params", _params(answer="Answer: 1", spans=[SPAN]),
-                "--predict", claim, "--json",
+                "--predict", prediction, "--json",
             )
             assert submitted.returncode == 0, submitted.stderr
             receipt = json.loads(submitted.stdout)
@@ -126,7 +126,7 @@ def test_oolong_spam4k_batch_mode_to_win(tmp_path):
             run, "act", "BANK_FACT", "--params", _params(spans=[SPAN, "not in the corpus"]),
             "--predict", "ch banked delta = 0",
         )
-        assert refused.returncode == 0 and "OUTCOME | PREDICTED" in refused.stdout, refused.stdout
+        assert refused.returncode == 0 and "RESULT | PREDICTED" in refused.stdout, refused.stdout
         result = _events(run)[-1]["observation"]["last_result"]
         assert result["status"] == "refused" and "none of the 2 banked" in result["detail"]
         # An empty array never reaches the world: the schema refuses it free.
@@ -137,22 +137,22 @@ def test_oolong_spam4k_batch_mode_to_win(tmp_path):
         )
         # A SUBMIT before any bank is refused by the census, in plain text.
         early = run_cli(run, "act", "SUBMIT", "answer=1", "--predict", "level+1")
-        assert early.returncode == 0 and "OUTCOME | SURPRISE" in early.stdout
+        assert early.returncode == 0 and "RESULT | SURPRISE" in early.stdout
         assert _events(run)[-1]["observation"]["last_result"]["reason"] == "census"
         for number in range(1, 6):
             banked = run_cli(
                 run, "act", "BANK_FACT", "--params", _params(spans=[SPAN, second]),
                 "--predict", "ch banked delta = 2",
             )
-            assert banked.returncode == 0 and "OUTCOME | PREDICTED" in banked.stdout, banked.stdout
-            claim = "win; level+1" if number == 5 else "level+1"
+            assert banked.returncode == 0 and "RESULT | PREDICTED" in banked.stdout, banked.stdout
+            prediction = "win; level+1" if number == 5 else "level+1"
             if number == 3:
                 submitted = run_cli(
-                    run, "act", "SUBMIT", "--params", _params(answer="February 2022"), "--predict", claim
+                    run, "act", "SUBMIT", "--params", _params(answer="February 2022"), "--predict", prediction
                 )
             else:
-                submitted = run_cli(run, "act", "SUBMIT", "answer=1", "--predict", claim)
-            assert submitted.returncode == 0 and "OUTCOME | " in submitted.stdout, submitted.stdout
+                submitted = run_cli(run, "act", "SUBMIT", "answer=1", "--predict", prediction)
+            assert submitted.returncode == 0 and "RESULT | " in submitted.stdout, submitted.stdout
             assert _events(run)[-1]["levels_completed"] == number
         final = _events(run)[-1]
         assert final["state"] == "WIN" and final["observation"]["banked_count"] == 10

@@ -27,7 +27,7 @@ outside the run directory, and the agent's session begins at `assay status`
   world-specific terminal such as `GAME_OVER`), `levels_completed` and
   `win_levels` (the host progress pair, here rooms done out of two),
   `available_actions` (what can be used right now), and `data`, any JSON
-  object. Everything the agent may read and claim against goes in `data`.
+  object. Everything the agent may read and predict against goes in `data`.
 - `step(action, data, reasoning)` applies one action the registry already
   validated (`data` holds the typed parameters) and returns the observation.
   A refusal goes **through the observation** (`data.last_result.status` is

@@ -69,7 +69,7 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         # Bare acts and bare steps run and are journaled UNGATED with the marker.
         bare = run_cli(run, "act", "INC", "amount=1")
         assert bare.returncode == 0, bare.stderr
-        assert "OUTCOME | UNGATED | no prediction (gate: off)" in bare.stdout
+        assert "RESULT | UNGATED | no prediction (gate: off)" in bare.stdout
         batch = run_cli(run, "commit", "--step", "NOOP", "--step", "INC amount=1")
         assert batch.returncode == 0, batch.stderr
         assert "e0002 NOOP ·" in batch.stdout and "e0003 INC amount=1 ·" in batch.stdout
@@ -83,7 +83,7 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         assert status.returncode == 0, status.stderr
         # The status line is neutral: the mode and a count. The verdict is the audit's.
         assert "GATE | off | 3 action(s)" in status.stdout
-        assert "CLAIMS |" not in status.stdout  # nothing was ever graded
+        assert "PREDICTIONS |" not in status.stdout  # nothing was ever graded
         assert "INTEGRITY" not in status.stdout
         audited = run_cli(run, "audit")
         assert "INVALID FOR SCORING" in audited.stdout

@@ -196,7 +196,7 @@ PARAMS_FIELD = (
     "null for an action without any"
 )
 PREDICT_FIELD = (
-    "the claims this action is graded against, as `claim; claim; ...` (noop, change, level+1, "
+    "the outcomes this action is graded against, as `outcome; outcome; ...` (noop, change, level+1, "
     "win, verify:PATH.py, ch NAME = V, ch NAME delta ...); required unless the registry sets "
     "gate: optional, and refused with PREDICTION_REQUIRED without it"
 )
@@ -208,7 +208,7 @@ DECLARES_FIELD = (
 
 # The error object of section 7.1, as every refused reply carries it: the
 # code, its kind, the one-line message, the next step and the further lines
-# the command line prints after them (the claims table), the last two null
+# the command line prints after them (the grammar table), the last two null
 # when the error has none.
 ERROR_SCHEMA = _schema(
     {
@@ -348,7 +348,7 @@ class ActRequest:
     schema admits, or null for an action without any (the client parses
     `NAME pname=value ...` with the pinned registry or takes `--params` as
     given; the daemon validates the object against the schema before any
-    spend); `predict` the claims text, null for a bare act under a control
+    spend); `predict` the outcomes text, null for a bare act under a control
     arm; `because` the reason; `at_event` the event guard; `declares` the
     structural declarations a gate or a module demanded."""
 
@@ -404,7 +404,7 @@ _STEP_KEYS = frozenset({"action", "params", "predict"})
 class Step:
     """One step of a hand-written batch: the registered name, its parameters
     (a JSON object, or null) and its prediction, null for a bare step under
-    a control arm (the client splits `NAME pname=value :: claims`, or takes
+    a control arm (the client splits `NAME pname=value :: outcomes`, or takes
     the step as this object)."""
 
     action: str

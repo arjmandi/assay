@@ -1,8 +1,8 @@
-"""Property tests with Hypothesis: the claim parser, the chain rule, the
+"""Property tests with Hypothesis: the prediction parser, the chain rule, the
 ungated rule and the registry parameters (#26, part one).
 
-Each property restates a public contract inside the test (the claim forms of
-verify/CLAIM_GRAMMAR.md, the two-line chain rule and the ungated rule of
+Each property restates a public contract inside the test (the outcome forms of
+verify/PREDICTION_GRAMMAR.md, the two-line chain rule and the ungated rule of
 verify/JOURNAL_SPEC.md sections 4 and 6, the parameter schema documented in
 src/assay/registry.py) and holds the kernel to it over generated inputs; where
 the standalone checker has its own implementation, the kernel is held to the
@@ -27,7 +27,7 @@ from conftest import event_of
 
 from assay.core import AssayError, RunPaths
 from assay.integrity import CHAIN_SEED, chain_over, chain_over_bytes, ungated_events
-from assay.predictions import parse_claims
+from assay.predictions import parse_prediction
 from assay.registry import parse_registry_action, validate_registry
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "verify"))
@@ -39,9 +39,9 @@ settings.register_profile(
 settings.load_profile("assay")
 
 
-# ------------------------------------------------------------ the claim parser
+# ------------------------------------------------------------ the prediction parser
 
-CLAIM_KINDS = {
+OUTCOME_KINDS = {
     "noop",
     "change",
     "win",
@@ -58,7 +58,7 @@ NOT_MECHANICAL = {"note", "aggregate"}
 
 @dataclasses.dataclass(frozen=True)
 class Part:
-    """One generated claim: the text as written (with its window suffix, if
+    """One generated outcome: the text as written (with its window suffix, if
     any), the text the parser must echo, the kind it must report, the fields
     it must carry, and the window it must attach."""
 
@@ -206,7 +206,7 @@ def _aggregate_part(draw) -> Part:
 
 @st.composite
 def _windowed(draw, inner: st.SearchStrategy[Part]) -> Part:
-    """Any claim may end with `@within Ns`."""
+    """Any outcome may end with `@within Ns`."""
     part = draw(inner)
     if not draw(st.booleans()):
         return part
@@ -227,14 +227,14 @@ mechanical_parts = _windowed(
     )
 )
 aggregate_parts = _windowed(_aggregate_part())
-claim_parts = mechanical_parts | aggregate_parts
+outcome_parts = mechanical_parts | aggregate_parts
 
 
 @st.composite
 def predictions(draw) -> tuple[str, list[Part]]:
-    """Several claims joined with `;`, with the spacing and the empty parts
+    """Several outcomes joined with `;`, with the spacing and the empty parts
     the splitter tolerates."""
-    parts = draw(st.lists(claim_parts, min_size=1, max_size=5))
+    parts = draw(st.lists(outcome_parts, min_size=1, max_size=5))
     text = draw(_gap0) + parts[0].text
     for part in parts[1:]:
         text += draw(st.sampled_from([";", " ; ", ";;", "; "])) + part.text
@@ -242,27 +242,27 @@ def predictions(draw) -> tuple[str, list[Part]]:
 
 
 @given(prediction=predictions())
-def test_grammar_text_parses_one_claim_per_part(prediction):
+def test_grammar_text_parses_one_outcome_per_part(prediction):
     text, parts = prediction
     if all(part.kind == "aggregate" for part in parts):
-        # Statistical claims are additive, never substitutive.
+        # Statistical outcomes are additive, never substitutive.
         with pytest.raises(AssayError, match="additive"):
-            parse_claims(text)
+            parse_prediction(text)
         return
-    claims = parse_claims(text)
-    assert [claim.kind for claim in claims] == [part.kind for part in parts]
-    for claim, part in zip(claims, parts, strict=True):
-        assert claim.text == part.core
+    outcomes = parse_prediction(text)
+    assert [outcome.kind for outcome in outcomes] == [part.kind for part in parts]
+    for outcome, part in zip(outcomes, parts, strict=True):
+        assert outcome.text == part.core
         for key, value in part.fields.items():
-            assert getattr(claim, key) == value, key
-        assert claim.window_s == part.window_s
-        assert not claim.coerced and "coerced" not in claim.to_json()
+            assert getattr(outcome, key) == value, key
+        assert outcome.window_s == part.window_s
+        assert not outcome.coerced and "coerced" not in outcome.to_json()
 
 
 @given(parts=st.lists(aggregate_parts, min_size=1, max_size=3))
-def test_aggregate_claims_alone_are_refused_as_additive(parts):
+def test_aggregate_outcomes_alone_are_refused_as_additive(parts):
     with pytest.raises(AssayError, match="additive"):
-        parse_claims("; ".join(part.text for part in parts))
+        parse_prediction("; ".join(part.text for part in parts))
 
 
 _grid_coordinate = st.integers(0, 63).map(str)
@@ -294,16 +294,16 @@ frame_forms = st.one_of(
 
 @given(
     frame=frame_forms,
-    before=st.lists(claim_parts, max_size=2),
-    after=st.lists(claim_parts, max_size=2),
+    before=st.lists(outcome_parts, max_size=2),
+    after=st.lists(outcome_parts, max_size=2),
 )
 def test_frame_world_forms_are_refused_by_name_on_every_run(frame, before, after):
     # The frame forms (cell, move, vanish, region) parse only under an
     # observation kind, which nothing passes: refused by name, before any
-    # spend, however they are mixed with admitted claims (owner decision O1).
+    # spend, however they are mixed with admitted outcomes (owner decision O1).
     text = ";".join([*(part.text for part in before), frame, *(part.text for part in after)])
     with pytest.raises(AssayError, match="does not admit it") as caught:
-        parse_claims(text)
+        parse_prediction(text)
     assert repr(frame) in str(caught.value)
 
 
@@ -315,7 +315,7 @@ _free_text_body = st.text().filter(
 @given(opener=st.sampled_from(["the", "probably", "it", "door", "nothing"]), body=_free_text_body)
 def test_free_text_is_a_note_plus_a_coerced_change(opener, body):
     text = f"{opener} {body}"
-    assert [claim.to_json() for claim in parse_claims(text)] == [
+    assert [outcome.to_json() for outcome in parse_prediction(text)] == [
         {"kind": "note", "text": text.strip()},
         {"kind": "change", "text": "change (implied by free text)", "coerced": True},
     ]
@@ -338,17 +338,17 @@ near_grammar_text = st.lists(_grammar_tokens | st.text(max_size=3), max_size=12)
 @given(text=st.text() | near_grammar_text)
 def test_any_text_parses_or_is_refused_with_a_reason(text):
     try:
-        claims = parse_claims(text)
+        outcomes = parse_prediction(text)
     except AssayError as error:
         assert str(error).strip()
         return
     assert text.strip()  # the empty prediction is always refused
-    assert isinstance(claims, list) and claims
-    for claim in claims:
-        assert claim.kind in CLAIM_KINDS
-        assert isinstance(claim.text, str) and claim.text
-    # Whatever was said, the action commits to a mechanical claim.
-    assert any(claim.kind not in NOT_MECHANICAL for claim in claims)
+    assert isinstance(outcomes, list) and outcomes
+    for outcome in outcomes:
+        assert outcome.kind in OUTCOME_KINDS
+        assert isinstance(outcome.text, str) and outcome.text
+    # Whatever was said, the action commits to a mechanical outcome.
+    assert any(outcome.kind not in NOT_MECHANICAL for outcome in outcomes)
 
 
 # --------------------------------------------------------------- the chain
@@ -501,8 +501,8 @@ def _kernel_events(events: list[dict[str, Any]]) -> list[Any]:
 def spec_ungated(events: list[dict[str, Any]]) -> list[int]:
     """JOURNAL_SPEC.md section 6: paid, not RESET, carrying none of predict,
     predict_ok, grade. Both implementations read "carries" as a non-null,
-    non-empty value: a null or empty predict or grade is no claim machinery,
-    and a predict_ok of false is (the claim was graded and missed)."""
+    non-empty value: a null or empty predict or grade is no prediction machinery,
+    and a predict_ok of false is (the prediction was graded and missed)."""
     flagged: list[int] = []
     for event in events:
         paid = bool(event.get("counts_action"))
@@ -526,7 +526,7 @@ def test_kernel_and_checker_agree_on_ungated_events(events):
 
 @given(events=journals, data=st.data())
 def test_an_injected_bare_paid_event_is_always_flagged(events, data):
-    # Injecting a paid, claim-free action anywhere adds exactly its id, even
+    # Injecting a paid, prediction-free action anywhere adds exactly its id, even
     # when the chain is recomputed around it (test_verify_checker's attack).
     position = data.draw(st.integers(0, len(events)), label="position")
     before = ungated_events(_kernel_events(events))

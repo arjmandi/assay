@@ -121,14 +121,14 @@ def test_reissue_loop_and_conclusion_triggers_and_demands():
               _event(1, "INC", data={"amount": 1}, ok=False, observation={"counter": 0},
                      grade=[{"kind": "change", "ok": False}])]
     view = _view(events)
-    pending = {"kind": "act", "name": "INC", "params": {"amount": "1"}, "claims": [], "declares": {}}
+    pending = {"kind": "act", "name": "INC", "params": {"amount": "1"}, "outcomes": [], "declares": {}}
     line = module.trigger(view, pending)
     assert line and line.startswith("re-issuing INC(amount=1) unmodified, it just graded FALSE")
     assert "untried actions [BOMB, NOOP, SET_LAMP]" in line
     assert set(module.demand(view, pending)) == {"revised"}
     pending["declares"] = {"revised": "amount matters, trying 2 next after this"}
     assert module.demand(view, pending) is None
-    other = {"kind": "act", "name": "NOOP", "params": None, "claims": [], "declares": {}}
+    other = {"kind": "act", "name": "NOOP", "params": None, "outcomes": [], "declares": {}}
     assert module.trigger(view, other) is None and module.demand(view, other) is None
     # Three identical failing moves: the loop halt.
     for index in (2, 3):
@@ -138,7 +138,7 @@ def test_reissue_loop_and_conclusion_triggers_and_demands():
     line = module.trigger(_view(events), pending)
     assert line and "has missed 3 times in a row, you are looping" in line
     # A conclusion by declaration demands the audit and names the gaps.
-    conclusion = {"kind": "act", "name": "NOOP", "params": None, "claims": [],
+    conclusion = {"kind": "act", "name": "NOOP", "params": None, "outcomes": [],
                   "declares": {"impossible": "the counter cannot reach 3"}}
     line = module.trigger(_view(events), conclusion)
     assert line and line.startswith("impossibility or absence conclusion detected")
@@ -147,9 +147,9 @@ def test_reissue_loop_and_conclusion_triggers_and_demands():
     conclusion["declares"]["coverage_audit"] = "rules: INC adds; exercised e1-e3; gaps: SET_LAMP, BOMB"
     assert module.demand(_view(events), conclusion) is None
     # The conclusion= value scan, and keys that are not sentinels.
-    assert module.demand(_view(events), {"kind": "act", "name": "NOOP", "params": None, "claims": [],
+    assert module.demand(_view(events), {"kind": "act", "name": "NOOP", "params": None, "outcomes": [],
                                          "declares": {"conclusion": "this unit is unwinnable"}})
-    assert module.demand(_view(events), {"kind": "act", "name": "NOOP", "params": None, "claims": [],
+    assert module.demand(_view(events), {"kind": "act", "name": "NOOP", "params": None, "outcomes": [],
                                          "declares": {"note": "complete and stuck are not sentinels"}}) is None
 
 
@@ -166,7 +166,7 @@ def test_status_meter_and_stall_phrase():
     line = module.trigger(_view(events), None)
     assert "no-op-only [NOOP]" in line and "STALL: the last 8 actions changed nothing" in line
     assert "never-productive actions [NOOP]" in line
-    reset = {"kind": "reset", "name": "RESET", "params": None, "claims": [], "declares": {}}
+    reset = {"kind": "reset", "name": "RESET", "params": None, "outcomes": [], "declares": {}}
     assert module.trigger(_view(events), reset).startswith("resetting under a stall")
     telemetry = module.telemetry(_view(events))
     assert telemetry == {"unit": 0, "paid_on_unit": 8, "untried": 3, "dead": 1, "stalled": True}
@@ -184,7 +184,7 @@ def test_frame_world_adds_the_region_gap_only_in_gap_phrases():
         events.append(event)
     status = module.trigger(_view(events), None)
     assert "regions" not in status  # never in the every-status line
-    pending = {"kind": "act", "name": "ACTION6", "params": {"x": "1", "y": "1"}, "claims": [], "declares": {}}
+    pending = {"kind": "act", "name": "ACTION6", "params": {"x": "1", "y": "1"}, "outcomes": [], "declares": {}}
     halt = module.trigger(_view(events), pending)
     assert "3/4 grid regions unprobed (e.g. x8-15,y0-7; x0-7,y8-15; x8-15,y8-15)" in halt
     assert "untried actions [ACTION1]" in halt
@@ -211,7 +211,7 @@ def test_block_mode_end_to_end(tmp_path):
         status = run_cli(run, "status")
         assert "MODULE coverage_audit | coverage unit 1: untried [BOMB, INC, SET_LAMP]" in status.stdout
         missed = run_cli(run, "act", "NOOP", "--predict", "change")
-        assert "OUTCOME | SURPRISE" in missed.stdout
+        assert "RESULT | SURPRISE" in missed.stdout
         before = len((run / ".assay" / "events.jsonl").read_text().splitlines())
         refused = run_cli(run, "act", "NOOP", "--predict", "change")
         assert refused.returncode == 2
@@ -221,7 +221,7 @@ def test_block_mode_end_to_end(tmp_path):
         unlocked = run_cli(run, "act", "NOOP", "--predict", "change",
                            "--declare", "revised=testing whether NOOP ever changes anything")
         assert unlocked.returncode == 0, unlocked.stderr
-        assert "OUTCOME | SURPRISE" in unlocked.stdout
+        assert "RESULT | SURPRISE" in unlocked.stdout
         conclusion = run_cli(run, "act", "NOOP", "--predict", "noop",
                              "--declare", "impossible=the counter never moves")
         assert conclusion.returncode == 2 and '--declare "coverage_audit=<text>"' in conclusion.stderr
@@ -242,7 +242,7 @@ def test_reissue_halts_on_the_lf52_prefix():
     prefix = events[:82]
     pending = {"kind": "act", "name": events[82]["action"],
                "params": {k: str(v) for k, v in (events[82]["data"] or {}).items()},
-               "claims": [], "declares": {}}
+               "outcomes": [], "declares": {}}
     line = module.trigger(_view(prefix), pending)
     assert line and line.startswith("re-issuing ACTION"), line
     assert "it just graded FALSE" in line

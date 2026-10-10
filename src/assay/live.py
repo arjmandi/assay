@@ -1,6 +1,6 @@
 """Paid-action execution: act with a graded prediction, batch with per-step
-claims, and reset with a reason. Every paid action is journaled by the broker
-before the response is recorded, with its parsed claims, so a crash between
+outcomes, and reset with a reason. Every paid action is journaled by the broker
+before the response is recorded, with its parsed outcomes, so a crash between
 spend and record is recovered on the next start with its prediction and
 grade (`recovered_pending`, docs/ARCHITECTURE.md section 6.5).
 
@@ -34,10 +34,10 @@ from .core import (
 )
 from .extras import kind_for
 from .integrity import redact, redact_mapping
-from .modules import consult_modules, observe_outcome
+from .modules import consult_modules, observe_result
 from .ops import Step
-from .predictions import grade_lines, grade_pending, parse_claims
-from .records import Claim, Event, Grade, Mutation, Receipt, ReceiptStep
+from .predictions import grade_lines, grade_pending, parse_prediction
+from .records import Event, Grade, Mutation, Outcome, Receipt, ReceiptStep
 from .registry import (
     action_spec,
     check_budget,
@@ -57,11 +57,12 @@ if TYPE_CHECKING:
 
 class Stepper(Protocol):
     """The daemon-side spend: the disk verified, the world stepped, and the
-    mutation recorded with the parsed claims of an act or a commit step, their
+    mutation recorded with the parsed outcomes of an act or a commit step, their
     admitted verifier hashes included, so a crash between spend and record
-    keeps the prediction (docs/ARCHITECTURE.md section 6.5). `claims` is None
-    for a step that carries no claims of its own (a model-plan step, a reset),
-    and the record then carries no `claims` key. Returns the observation, the
+    keeps the prediction (docs/ARCHITECTURE.md section 6.5). `outcomes` is None
+    for a step that carries no outcomes of its own (a model-plan step, a reset),
+    and the record then carries no key for them (the key is `claims` on disk,
+    the spelling of 1.2.0). Returns the observation, the
     mutation id and the finalization warning. The daemon's `spend` is the
     one implementation: paid actions execute in the daemon (`broker`), and
     every function here takes the stepper it spends through."""
@@ -73,7 +74,7 @@ class Stepper(Protocol):
         data: dict[str, Any] | None,
         reasoning: Mapping[str, Any] | None,
         *,
-        claims: Sequence[Claim] | None = None,
+        outcomes: Sequence[Outcome] | None = None,
     ) -> tuple[dict[str, Any], int, str | None]: ...
 
 
@@ -128,7 +129,7 @@ def paid_step(
     note: str = "",
     *,
     stepper: Stepper,
-    claims: Sequence[Claim] | None = None,
+    outcomes: Sequence[Outcome] | None = None,
 ) -> tuple[Event, Event, str | None, float]:
     """One validated action (`registry.validate_action` ran before) through
     the stepper: the affordance check, the redaction, the spend, the pending
@@ -145,7 +146,7 @@ def paid_step(
     secrets = tuple(registry.get("secrets") or ())
     reasoning = redact_mapping(reasoning, secrets)
     started = time.monotonic()
-    response, mutation_id, warning = stepper(run, name, data, reasoning, claims=claims)
+    response, mutation_id, warning = stepper(run, name, data, reasoning, outcomes=outcomes)
     elapsed = time.monotonic() - started
     pending = make_event(response, name, data, prior, note=redact(note, secrets) or "")
     pending = pending.updated(mutation_id=mutation_id)
@@ -191,11 +192,11 @@ def _enforce_registry_gates(
     *,
     kind: str,
     actions: Sequence[tuple[str, dict[str, Any] | None]],
-    claims_per_action: Sequence[Sequence[Claim]],
+    outcomes_per_action: Sequence[Sequence[Outcome]],
     declares: Mapping[str, str] | None,
     in_batch: bool,
 ) -> list[str]:
-    """All pre-spend teeth beyond schema/claims/affordance/budget, over the
+    """All pre-spend teeth beyond schema/outcomes/affordance/budget, over the
     validated (name, params) of every action. Returns module advisory
     lines."""
     registry = require_registry(run)
@@ -203,7 +204,7 @@ def _enforce_registry_gates(
     _notes_hard_stop(run)
     advisories: list[str] = []
     declares = dict(declares or {})
-    for (name, params), claims in zip(actions, claims_per_action):
+    for (name, params), outcomes in zip(actions, outcomes_per_action):
         spec = action_spec(registry, name) or {}
         if spec.get("destructive"):
             if in_batch:
@@ -220,7 +221,7 @@ def _enforce_registry_gates(
                     "declared worst case and recovery plan",
                     code="DESTRUCTIVE_UNDECLARED",
                     hint=(
-                        'add --declare "worst_case=<what the worst outcome is>" --declare '
+                        'add --declare "worst_case=<what the worst result is>" --declare '
                         '"recovery=<how the run recovers>"; the demand is structural (named, '
                         "non-empty), never a demand for optimism; declaring always unlocks the action"
                     ),
@@ -240,7 +241,7 @@ def _enforce_registry_gates(
             "kind": kind,
             "name": name,
             "params": params,
-            "claims": list(claims),
+            "outcomes": list(outcomes),
             "declares": declares,
         }
         advisories.extend(consult_modules(run, pending))
@@ -254,12 +255,12 @@ def _enforce_registry_gates(
     return unique
 
 
-def _admit_claims(run: Run, claims: Sequence[Claim]) -> list[Claim]:
-    """Admit verifier claims (read, hash, store, journal) before any spend;
-    the admitted claims carry their verifier hashes."""
+def _admit_outcomes(run: Run, outcomes: Sequence[Outcome]) -> list[Outcome]:
+    """Admit verifier outcomes (read, hash, store, journal) before any spend;
+    the admitted outcomes carry their verifier hashes."""
     return [
-        admit_verifier(run.paths, claim) if claim.kind == "verify" else claim
-        for claim in claims
+        admit_verifier(run.paths, outcome) if outcome.kind == "verify" else outcome
+        for outcome in outcomes
     ]
 
 
@@ -331,22 +332,22 @@ def _graded_pending(
 
 def recovered_pending(run: Run, mutation: Mutation, prior: Event, pending: Event) -> Event:
     """The pending event of a recovered spend with its prediction on the line
-    (docs/ARCHITECTURE.md section 6.5): the record's claims, their admitted
+    (docs/ARCHITECTURE.md section 6.5): the record's outcomes, their admitted
     verifier hashes included, graded against the stored response through the
     live path's grader with the step duration unknown, and `predict`,
     `predict_ok`, `grade` and `declares` from the record's reasoning, so the
     event is gated by its fields like the one the daemon would have written.
-    A record whose claims are empty was a bare act of a control arm, and it
+    A record whose outcomes are empty was a bare act of a control arm, and it
     is journaled as the live path journals one: UNGATED, with the mode's
-    marker. The caller passes only a record that carries `claims`."""
+    marker. The caller passes only a record that carries its outcomes."""
     registry = run.registry
     secrets = tuple((registry or {}).get("secrets") or ())
     reasoning = mutation.reasoning or {}
     predict = str(reasoning.get("predict") or "")
     declares = reasoning.get("declares")
-    claims = list(mutation.claims or ())
-    ungated = not claims
-    graded = [] if ungated else grade_pending(run, claims, prior, pending, elapsed_s=None)
+    outcomes = list(mutation.outcomes or ())
+    ungated = not outcomes
+    graded = [] if ungated else grade_pending(run, outcomes, prior, pending, elapsed_s=None)
     _, _, predict_ok = _grade_summary(graded)
     return _graded_pending(
         pending,
@@ -381,17 +382,17 @@ def execute_action(
     # bare acts (the instrument is removed). Either way the act is journaled
     # UNGATED and the audit keeps the run invalid for scoring.
     ungated = _ungated_act(registry, predict)
-    # No observation kind's own claim forms are admitted: parse_claims runs
+    # No observation kind's own outcome forms are admitted: parse_prediction runs
     # without a kind, so a frame form is refused by name before any spend, the
     # rule every published journal was recorded under.
-    claims = [] if ungated else parse_claims(predict)
-    check_state_references(run, claims)
-    claims = _admit_claims(run, claims)
+    outcomes = [] if ungated else parse_prediction(predict)
+    check_state_references(run, outcomes)
+    outcomes = _admit_outcomes(run, outcomes)
     advisories = _enforce_registry_gates(
         run,
         kind="act",
         actions=[(name, data)],
-        claims_per_action=[claims],
+        outcomes_per_action=[outcomes],
         declares=declares,
         in_batch=False,
     )
@@ -406,11 +407,11 @@ def execute_action(
     if declares:
         reasoning["declares"] = dict(declares)
     pending, prior, warning, elapsed = paid_step(
-        run, name, data, reasoning, note=because or "", stepper=stepper, claims=claims
+        run, name, data, reasoning, note=because or "", stepper=stepper, outcomes=outcomes
     )
     graded = (
         [] if ungated
-        else grade_pending(run, claims, prior, pending, elapsed_s=elapsed)
+        else grade_pending(run, outcomes, prior, pending, elapsed_s=elapsed)
     )
     missed, invalid_any, predict_ok = _grade_summary(graded)
     if ungated:
@@ -427,15 +428,15 @@ def execute_action(
         secrets=secrets,
     )
     event = record_event(run, pending)
-    observe_outcome(run, event)
+    observe_result(run, event)
     aggregate_lines: list[str] = []
-    aggregate_lines.extend(open_aggregates(run, claims))
+    aggregate_lines.extend(open_aggregates(run, outcomes))
     aggregate_lines.extend(resolve_due(run))
     lines = grade_lines(graded)
     if event.state == "WIN":
-        outcome, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
+        result, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
     elif event.level_advanced:
-        outcome = "LEVEL_COMPLETE"
+        result = "LEVEL_COMPLETE"
         detail = (
             f"{unit_noun(event.win_levels)} {int(event.level_before or 0) + 1} complete; "
             f"notes archived; re-verify carried assumptions in the new {unit_noun(event.win_levels)}"
@@ -443,33 +444,33 @@ def execute_action(
         if not ok:
             detail += "; prediction also missed: treat the mechanics as unproven"
     elif event.state == "GAME_OVER":
-        outcome = "GAME_OVER"
+        result = "GAME_OVER"
         detail = (
             "environment reported GAME_OVER; `assay reset` restarts the current "
             f"{unit_noun(event.win_levels)}"
         )
     elif ungated:
-        outcome = "UNGATED"
+        result = "UNGATED"
         detail = (
             f"no prediction (gate: {gate_mode(registry)}); nothing graded; the audit "
             "counts this event as UNGATED"
         )
     elif missed:
-        outcome = "SURPRISE"
+        result = "SURPRISE"
         first_failed = next(line for line in lines if line.startswith("✗"))
         detail = f"prediction missed: {first_failed[2:]}"
     elif invalid_any:
-        outcome = "INVALID_CLAIM"
+        result = "INVALID_CLAIM"
         first_invalid = next(line for line in lines if line.startswith("!"))
         detail = f"verifier did not grade: {first_invalid[2:]}"
     else:
-        outcome, detail = "PREDICTED", "result matched the prediction"
+        result, detail = "PREDICTED", "result matched the prediction"
     if warning:
         detail += f"; finalization warning from the world: {warning}"
     changed = state_change_lines(run, prior, event)
     receipt = Receipt(
         kind="act",
-        outcome=outcome,
+        outcome=result,
         detail=detail,
         start_event=start_event,
         end_event=event.id,
@@ -486,15 +487,15 @@ def execute_action(
 
 
 STEP_SYNTAX = (
-    'each step needs its own prediction: --step "NAME pname=value :: <claims>" '
+    'each step needs its own prediction: --step "NAME pname=value :: <outcomes>" '
     'or "predict" in the step object'
 )
-STEP_HINT = "`assay act --help` lists the claim forms"
+STEP_HINT = "`assay act --help` lists the outcome forms"
 
 
 def split_step(raw: str) -> tuple[str, str | None]:
-    """The client's half of a step: `NAME pname=value :: claims` into the
-    action token and the claims text, None when the step carries none (no
+    """The client's half of a step: `NAME pname=value :: outcomes` into the
+    action token and the outcomes text, None when the step carries none (no
     `::`, or nothing after it); whether a bare step is admitted is the
     daemon's rule (`execute_steps`), by the registry's gate. The token keeps
     the case the agent typed; `parse_registry_action` folds the name."""
@@ -565,7 +566,7 @@ def execute_steps(
         raise AssayError(
             "no steps supplied",
             code="COMMAND_ARGS",
-            hint='pass --step "NAME pname=value :: claims", repeated in execution order',
+            hint='pass --step "NAME pname=value :: outcomes", repeated in execution order',
         )
     registry = require_registry(run)
     cap = hand_cap(registry)
@@ -584,7 +585,7 @@ def execute_steps(
     mode = gate_mode(registry)
     bare_ok = mode in _UNGATED_MARKER
     events = head_events(run, at_event)
-    parsed: list[tuple[str, dict[str, Any] | None, str, list[Claim]]] = []
+    parsed: list[tuple[str, dict[str, Any] | None, str, list[Outcome]]] = []
     for step in steps:
         name, data = validate_action(registry, step.action, step.params)
         _refuse_reset_in_batch(name)
@@ -598,18 +599,18 @@ def execute_steps(
                 code="GATE_OFF",
                 hint='steps are bare on this run: --step "ACTION"',
             )
-        claims = [] if bare_ok and not predict else parse_claims(predict)
-        parsed.append((name, data, predict, claims))
-    admitted: list[tuple[str, dict[str, Any] | None, str, list[Claim]]] = []
-    for name, data, predict, claims in parsed:
-        check_state_references(run, claims)
-        admitted.append((name, data, predict, _admit_claims(run, claims)))
+        outcomes = [] if bare_ok and not predict else parse_prediction(predict)
+        parsed.append((name, data, predict, outcomes))
+    admitted: list[tuple[str, dict[str, Any] | None, str, list[Outcome]]] = []
+    for name, data, predict, outcomes in parsed:
+        check_state_references(run, outcomes)
+        admitted.append((name, data, predict, _admit_outcomes(run, outcomes)))
     parsed = admitted
     advisories = _enforce_registry_gates(
         run,
         kind="commit",
         actions=[(name, data) for name, data, _, _ in parsed],
-        claims_per_action=[claims for _, _, _, claims in parsed],
+        outcomes_per_action=[outcomes for _, _, _, outcomes in parsed],
         declares=declares,
         in_batch=True,
     )
@@ -618,25 +619,25 @@ def execute_steps(
     before = events[-1]
     secrets = tuple(registry.get("secrets") or ())
     records: list[ReceiptStep] = []
-    outcome = "PREDICTED"
+    result = "PREDICTED"
     detail = f"all {len(parsed)} steps landed as predicted"
     last_warning: str | None = None
-    all_claims: list[Claim] = []
-    for index, (name, data, predict, claims) in enumerate(parsed):
+    all_outcomes: list[Outcome] = []
+    for index, (name, data, predict, outcomes) in enumerate(parsed):
         pending, prior, warning, elapsed = paid_step(
-            run, name, data, {"predict": predict}, stepper=stepper, claims=claims
+            run, name, data, {"predict": predict}, stepper=stepper, outcomes=outcomes
         )
         last_warning = warning or last_warning
         ungated = bare_ok and not predict
         graded = (
             [] if ungated
-            else grade_pending(run, claims, prior, pending, elapsed_s=elapsed)
+            else grade_pending(run, outcomes, prior, pending, elapsed_s=elapsed)
         )
         missed, invalid_any, predict_ok = _grade_summary(graded)
         if ungated:
             predict_ok = None
         ok = not missed and not invalid_any
-        all_claims.extend(claims)
+        all_outcomes.extend(outcomes)
         # The same record a single act carries: a declaration made for a
         # batch is evidence on every step it covered.
         pending = _graded_pending(
@@ -650,7 +651,7 @@ def execute_steps(
             secrets=secrets,
         )
         event = record_event(run, pending)
-        observe_outcome(run, event)
+        observe_result(run, event)
         failed = [line for line in grade_lines(graded) if line.startswith("✗")]
         invalid_lines = [line for line in grade_lines(graded) if line.startswith("!")]
         records.append(
@@ -666,10 +667,10 @@ def execute_steps(
         remaining = len(parsed) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
         if event.state == "WIN":
-            outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
+            result, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
         if event.level_advanced:
-            outcome = "LEVEL_COMPLETE"
+            result = "LEVEL_COMPLETE"
             detail = (
                 f"{unit_noun(event.win_levels)} advanced after "
                 f"{canonical_action(event)}{discarded}"
@@ -678,20 +679,20 @@ def execute_steps(
                 detail += "; prediction also missed: treat the mechanics as unproven"
             break
         if event.state == "GAME_OVER":
-            outcome = "GAME_OVER"
+            result = "GAME_OVER"
             detail = (
                 f"environment reported GAME_OVER after {canonical_action(event)}"
                 f"{discarded}"
             )
             break
         if missed:
-            outcome = "SURPRISE"
+            result = "SURPRISE"
             detail = f"step {index + 1} missed: {failed[0][2:]}{discarded}"
             break
         if invalid_any:
-            outcome = "INVALID_CLAIM"
+            result = "INVALID_CLAIM"
             detail = (
-                f"step {index + 1} raised an invalid claim: "
+                f"step {index + 1} raised an invalid outcome: "
                 f"{invalid_lines[0][2:]}{discarded}"
             )
             break
@@ -699,12 +700,12 @@ def execute_steps(
         detail += f"; finalization warning from the world: {last_warning}"
     final_events = run.events
     aggregate_lines: list[str] = []
-    aggregate_lines.extend(open_aggregates(run, all_claims))
+    aggregate_lines.extend(open_aggregates(run, all_outcomes))
     aggregate_lines.extend(resolve_due(run))
     changed = state_change_lines(run, before, final_events[-1])
     receipt = Receipt(
         kind="commit",
-        outcome=outcome,
+        outcome=result,
         detail=detail,
         start_event=start_event,
         end_event=final_events[-1].id,
@@ -747,7 +748,7 @@ def execute_model_plan(
         raise AssayError(
             "commit on a registry run accepts only a model plan written by `assay model solve`",
             code="PLAN_INVALID",
-            hint='pass @.assay/model_plan.json, or --step "NAME pname=value :: claims" batches under the hand cap',
+            hint='pass @.assay/model_plan.json, or --step "NAME pname=value :: outcomes" batches under the hand cap',
         )
     if str(path.resolve()) != str(plan_path(paths).resolve()):
         raise AssayError(
@@ -778,14 +779,14 @@ def execute_model_plan(
         run,
         kind="commit",
         actions=parsed,
-        claims_per_action=[[] for _ in parsed],
+        outcomes_per_action=[[] for _ in parsed],
         declares=None,
         in_batch=True,
     )
     check_budget(events, registry, planned=len(actions))
     start_event = events[-1].id
     records: list[ReceiptStep] = []
-    outcome = "PREDICTED"
+    result = "PREDICTED"
     detail = f"all {len(actions)} model-plan steps landed as predicted"
     last_warning: str | None = None
     for index, ((name, data), expected) in enumerate(zip(parsed, predictions)):
@@ -819,7 +820,7 @@ def execute_model_plan(
                 problem = f"ch {name}: predicted {predicted!r}, actual {actual!r}"
         pending = pending.updated(predict_ok=ok, grade=tuple(graded))
         event = record_event(run, pending)
-        observe_outcome(run, event)
+        observe_result(run, event)
         records.append(
             ReceiptStep(
                 event=event.id,
@@ -833,21 +834,21 @@ def execute_model_plan(
         remaining = len(actions) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
         if event.state == "WIN":
-            outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
+            result, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
         if event.level_advanced:
-            outcome = "LEVEL_COMPLETE"
+            result = "LEVEL_COMPLETE"
             detail = (
                 f"{unit_noun(event.win_levels)} advanced after "
                 f"{canonical_action(event)}{discarded}"
             )
             break
         if event.state == "GAME_OVER":
-            outcome = "GAME_OVER"
+            result = "GAME_OVER"
             detail = f"environment reported GAME_OVER{discarded}"
             break
         if not ok:
-            outcome = "SURPRISE"
+            result = "SURPRISE"
             detail = (
                 f"model-plan step {index + 1} diverged: {problem}; the model is "
                 f"contradicted; rerun `assay model replay`{discarded}"
@@ -859,7 +860,7 @@ def execute_model_plan(
         run,
         Receipt(
             kind="commit",
-            outcome=outcome,
+            outcome=result,
             detail=detail,
             start_event=start_event,
             end_event=run.events[-1].id,
@@ -885,7 +886,7 @@ def reset_level(
         run,
         kind="reset",
         actions=[],
-        claims_per_action=[],
+        outcomes_per_action=[],
         declares=declared,
         in_batch=False,
     )
@@ -899,7 +900,7 @@ def reset_level(
                 "kind": "reset",
                 "name": "RESET",
                 "params": None,
-                "claims": [],
+                "outcomes": [],
                 "declares": declared,
             },
         )
@@ -926,7 +927,7 @@ def reset_level(
             declares={key: redact(str(value), secrets) or "" for key, value in declared.items()}
         )
     event = record_event(run, pending)
-    observe_outcome(run, event)
+    observe_result(run, event)
     detail = (
         f"current {unit_noun(prior.win_levels)} rewound; completed "
         f"{unit_noun(prior.win_levels)}s and action history preserved"

@@ -3,6 +3,56 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## 1.3.0 (unreleased)
+
+### Changed
+
+- The words for a prediction. A prediction is what the agent writes before
+  an action. An outcome is one checkable part of it, and a prediction
+  carries several outcomes separated by `;`. Held and missed are the labels
+  the code gives each outcome after the action. A held outcome in the record
+  is a fact. Fact-checking is the name of the mechanism and grounding is the
+  property it gives the world model. The word claim appears nowhere a person
+  reads, except the three frozen spellings named below.
+  `tests/test_vocabulary.py` enforces the rule over the kernel and the frame
+  extra. The action's result is called a result, so that outcome keeps one
+  meaning. The receipt line label `OUTCOME |` is `RESULT |`, the prose says
+  the action's result and receipt result tokens, `modules.observe_outcome` is
+  `observe_result`, and `server.Outcome` is `ToolResult`. What a reader sees
+  change: the status line
+  `CLAIMS | world-model misses ...` is `PREDICTIONS | world-model misses ...`
+  with the same content. The MIS-REFERENCE line counts `prediction(s) named
+  unregistered states`. The `claims` block of `assay status --json` is
+  `predictions`. The error code `CLAIM_SYNTAX` is `PREDICTION_SYNTAX`, with
+  the same kind and meaning. The grammar document `verify/CLAIM_GRAMMAR.md`
+  is `verify/PREDICTION_GRAMMAR.md`. The grammar table in the help opens with
+  `PREDICTION | one or more outcomes, separated by ";"` and the `--predict`
+  placeholder reads `<outcomes>`. What changes for code: `records.Claim` is
+  `records.Outcome`, `claim_bucket` is `outcome_bucket`,
+  `predictions.parse_claims` is `parse_prediction`, `grade_general_claims` is
+  `grade_general_outcomes`, `claims_help` is `prediction_help`, the
+  observation-kind hook's `claim_patterns`, `claim_fields`, `claims_help` and
+  `grade_claims` are `outcome_patterns`, `outcome_fields`, `prediction_help`
+  and `grade_outcomes`, `status.ClaimsBlock` is `PredictionsBlock`, the
+  module file `src/assay_grid/claims.py` is `src/assay_grid/outcomes.py`,
+  and the `claims` key of the `pending` mapping a module receives is
+  `outcomes`. What stays spelled as before, on disk and on the wire: the
+  journal fields `predict`, `predict_ok` and `grade`, the keys of the grade
+  objects, the `bucket` values `world_model` and `gamble`, the grade `kind`
+  values (`noop`, `change`, `win`, `level_up`, `verify`, `channel_eq`,
+  `channel_delta`, `channel_cross`, `aggregate`, `coerced` and the frame
+  kinds), the keyword `ch`, every activity record kind, the receipts' keys
+  (the key `outcome` among them) and result tokens, the `.assay/` file names
+  and the journal spec version.
+  Three frozen spellings still carry the old word and are allowed by name in
+  the vocabulary test. The receipt result token `INVALID_CLAIM` is frozen,
+  and it is also the `actual` prefix of a verifier grade that did not grade.
+  The mutation record in `.assay/mutations.jsonl` keeps its key `claims`,
+  which recovery reads back. The `mis_reference` activity record keeps its
+  field `claim`. No journal byte changes. The replay diff over the 25
+  published run directories passes with two entries added to its vocabulary
+  map, one for each renamed status line.
+
 ## 1.2.0 (2026-10-09)
 
 The first open-source release, under the Apache License 2.0 (`LICENSE`,

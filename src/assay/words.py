@@ -13,14 +13,16 @@ verify/JOURNAL_SPEC.md) and the 66 published journals under evidence/
 - the journal fields `levels_completed`, `win_levels`, `level_before`,
   `state`, `frames`, `n_frames`, `observation`,
 - the state values `NOT_FINISHED`, `WIN`, `GAME_OVER`,
-- the claim syntax `level+1` and `win`, and the grade `actual` texts
+- the outcome syntax `level+1` and `win`, and the grade `actual` texts
   ("level advanced", "level did not advance", "state WIN"), which are graded
   facts inside journals,
 - the host state names `goal` and `level`,
 - the config key `game_id`, the knowledge-file key `game_id` and the summary
   key `source_game`, and every activity record kind,
-- the receipt outcome tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
-  `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`,
+- the receipt result tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
+  `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`, and the
+  receipt's key `outcome` that carries them (the prose says result, and the
+  receipt line says `RESULT |`),
 - the state-directory layout, including `.assay/levels/level-N.md`,
 - the compact history prefix `L<n>` in RECENT lines.
 

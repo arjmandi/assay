@@ -436,7 +436,7 @@ def test_end_to_end_with_the_fake_player_through_the_real_cli_and_daemon(tmp_pat
             transcript = report["transcript"]
             assert transcript[0]["command"] == ["assay", "status"]
             assert "STATUS | counterdemo | event 1 | progress 1/1 | paid actions 1 | NOT_FINISHED" in transcript[0]["stdout"]
-            assert "OUTCOME | GAME_COMPLETE" in transcript[1]["stdout"]
+            assert "RESULT | GAME_COMPLETE" in transcript[1]["stdout"]
             events = [json.loads(line) for line in (run / ".assay" / "events.jsonl").read_text().splitlines()]
             assert [event["id"] for event in events] == [0, 1, 2] and events[-1]["state"] == "WIN"
             assert json.loads((run / ".assay" / "broker.json").read_text())["status"] == "FINISHED"

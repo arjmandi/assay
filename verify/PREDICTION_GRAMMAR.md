@@ -1,19 +1,20 @@
-# The prediction-claim grammar
+# The prediction grammar
 
 **Companion to `JOURNAL_SPEC.md` (`assay-journal-v1`).** This document
-specifies the claim language that appears in every event's `predict` field
-and what each grade in the `grade` list asserts. It defines *meanings at the
-journal level*, what a third party reading a graded claim may conclude,
+specifies the language that appears in every event's `predict` field and
+what each grade in the `grade` list asserts. It defines *meanings at the
+journal level*, what a third party reading a graded outcome may conclude,
 not the grading engine's implementation.
 
-A `predict` string is one or more claims separated by `;`. Free text that
-parses as no claim is kept as commentary and graded as the weakest claim,
-`change`. Any claim may end with `@within Ns`: it grades only if the world's
-result settles within `N` seconds.
+A prediction is one or more outcomes separated by `;`. Each outcome is
+checked in code against the world's response and labeled held or missed.
+Free text that parses as no outcome form is kept as commentary and graded as
+the weakest outcome, `change`. Any outcome may end with `@within Ns`: it
+grades only if the world's result settles within `N` seconds.
 
-## Core claim forms (any world)
+## Core outcome forms (any world)
 
-| Claim | Graded meaning |
+| Outcome | Graded meaning |
 |---|---|
 | `noop` | the observation after the action is identical to before |
 | `change` | something in the observation differs |
@@ -29,11 +30,11 @@ result settles within `N` seconds.
 extractor over the raw observation. `goal` and `level` are built in (the
 host lifecycle and progress of `JOURNAL_SPEC.md` §7). The agent declares its
 own, a dotted path into the observation or an extractor, and every
-declaration is journaled. A state claim is graded against the extractor's
+declaration is journaled. A state outcome is graded against the extractor's
 value over the world's own response, never against the agent's account of
-it. The claim kinds keep the spelling `channel_eq`, `channel_delta` and
-`channel_cross`, the implementation's earlier word for a state, because this
-format is frozen.
+it. The record kinds keep the spelling `channel_eq`, `channel_delta` and
+`channel_cross`, the implementation's earlier words for a state outcome,
+because the journal format is frozen.
 
 **Executable verifiers** are the grammar's escape hatch to arbitrary checks:
 the agent writes the program, the referee runs it sandboxed and
@@ -45,12 +46,12 @@ an advisory, not the flag. Runs recorded before 1.2.0 carry the earlier
 never-failed rule (five or more gradings, zero failures) in their stats file
 and are read under it.
 
-## Frame-world claim forms (grid worlds only)
+## Frame-world outcome forms (grid worlds only)
 
 Worlds whose observation is a grid (`frames` present) admit four additional
 coordinate forms, with `x` = column and `y` = row:
 
-| Claim | Graded meaning |
+| Outcome | Graded meaning |
 |---|---|
 | `cell X,Y=V` | the cell at (X,Y) becomes value V |
 | `move X,Y DX,DY` | the object covering (X,Y) shifts by (DX,DY) and vacates its old cells |
@@ -61,35 +62,35 @@ These are meaningless off-grid and absent from non-frame worlds' journals.
 
 ## Grades, buckets, and what they assert
 
-Each event's `grade` is a list with one entry per claim:
+Each event's `grade` is a list with one entry per outcome:
 
 ```json
 {"text": "ch temp delta sign +", "kind": "channel_delta", "ok": true,
  "actual": "ch temp 21.0 -> 21.4", "bucket": "world_model"}
 ```
 
-- `ok`: whether the claim held against the world's response;
+- `ok`: whether the outcome held against the world's response;
 - `actual`: the machine's statement of what actually happened (the
   counter-fact when `ok` is false);
-- `bucket`: `gamble` for milestone claims (`win`, `level+1`, and state
-  claims on the built-in `goal`/`level` states) versus `world_model` for
+- `bucket`: `gamble` for milestone outcomes (`win`, `level+1`, and state
+  outcomes on the built-in `goal`/`level` states) versus `world_model` for
   everything else. The distinction lets a reader separate *predictions about
   progress* from *predictions about mechanics* when computing miss rates.
 
-`predict_ok` on the event is the conjunction of the claim `ok`s.
+`predict_ok` on the event is the conjunction of the outcome `ok`s.
 
-## What a graded claim licenses
+## What a graded outcome licenses
 
 Reading a journal, a third party may conclude: for every paid non-`RESET`
-event, a claim in this grammar was registered before the action executed
-(else the event would be UNGATED and the run invalid), and each claim's `ok`
+event, a prediction in this grammar was registered before the action executed
+(else the event would be UNGATED and the run invalid), and each outcome's `ok`
 was computed by the referee from the world's own response. The grammar is
 therefore the unit of *earned belief* in the record: a rule of the agent's
-world model is only as supported as the graded claims that exercised it, a
+world model is only as supported as the graded outcomes that exercised it, a
 reading this record's operators use themselves (the "coverage audit"
 protocol: before accepting an agent-side impossibility conclusion, enumerate
 the rules it load-bears on, audit the journal for which were ever exercised
-by a graded claim in the relevant regime, and buy graded probes for the
+by a graded outcome in the relevant regime, and buy graded probes for the
 gaps).
 
 Out of scope for v1: re-executing grades. The spec makes every

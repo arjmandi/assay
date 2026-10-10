@@ -1,6 +1,6 @@
-"""The frame-world claim forms and their grader.
+"""The frame-world outcome forms and their grader.
 
-`cell`, `move`, `vanish` and `region` are coordinate claims over a grid, with
+`cell`, `move`, `vanish` and `region` are coordinate outcomes over a grid, with
 x = column and y = row. Their patterns live in the kernel's table of the forms
 (`assay.extras.FRAME_FORMS`), which recognizes them and refuses them by name
 before any spend without importing this package, the rule every published
@@ -8,7 +8,7 @@ journal was recorded under; this module reads the table back for the fields
 and the grader. Whether frame worlds should admit them is a decision the
 owner has not made; until then no caller passes a kind to the parser.
 
-`grade_claims` grades every plain claim of a frame event, the general forms
+`grade_outcomes` grades every plain outcome of a frame event, the general forms
 included, by cell comparison of the settled frames, exactly as the kernel did
 before the extra existed. The grade records it returns are unchanged.
 """
@@ -23,7 +23,7 @@ import numpy as np
 
 from assay.core import frame_at
 from assay.extras import FRAME_FORMS
-from assay.records import Claim, Event, Grade
+from assay.records import Event, Grade, Outcome
 
 GRID_KINDS = tuple(form.name for form in FRAME_FORMS)
 
@@ -42,7 +42,7 @@ Example:
 """
 
 
-def claim_fields(kind: str, found: re.Match[str]) -> dict[str, Any]:
+def outcome_fields(kind: str, found: re.Match[str]) -> dict[str, Any]:
     if kind == "cell":
         return {"x": int(found.group(1)), "y": int(found.group(2)), "value": int(found.group(3), 16)}
     if kind == "move":
@@ -83,21 +83,21 @@ def _flood(grid: np.ndarray[Any, Any], x: int, y: int) -> tuple[int, set[tuple[i
     return color, cells
 
 
-def grade_claims(
-    claims: Sequence[Claim],
+def grade_outcomes(
+    outcomes: Sequence[Outcome],
     before: np.ndarray[Any, Any],
     event: Event,
 ) -> list[Grade]:
-    """Grade each claim against the settled result; ok plus a short actual.
-    The frame forms read their coordinates from the claim's `extra`."""
+    """Grade each outcome against the settled result; ok plus a short actual.
+    The frame forms read their coordinates from the outcome's `extra`."""
     after = frame_at(event)
     same_shape = before.shape == after.shape
     changed = int(np.count_nonzero(before != after)) if same_shape else None
     level_advanced = event.level_advanced
     graded: list[Grade] = []
-    for claim in claims:
-        kind = claim.kind
-        fields = claim.extra
+    for outcome in outcomes:
+        kind = outcome.kind
+        fields = outcome.extra
         if kind == "note":
             continue
         ok = False
@@ -196,5 +196,5 @@ def grade_claims(
                     if ok
                     else f"{len(outside)} changes outside, e.g. (x,y) {outside[0]}"
                 )
-        graded.append(Grade.of(claim, ok=bool(ok), actual=actual))
+        graded.append(Grade.of(outcome, ok=bool(ok), actual=actual))
     return graded

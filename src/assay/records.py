@@ -1,4 +1,4 @@
-"""The typed records of a run: events, claims, grades, receipts and the
+"""The typed records of a run: events, outcomes, grades, receipts and the
 mutation log (docs/ARCHITECTURE.md section 6.2).
 
 Each record is a frozen dataclass with slots. `from_json(obj)` validates the
@@ -34,14 +34,14 @@ from collections.abc import Mapping, Sequence
 from typing import Any, Literal, cast
 
 GAMBLE_KINDS = frozenset({"win", "level_up"})
-# The state claims keep the kinds' frozen spelling on the journal. So does the
-# `channel` field that names the state a claim is on.
+# The state outcomes keep the kinds' frozen spelling on the journal. So does the
+# `channel` field that names the state an outcome is on.
 STATE_KINDS = frozenset({"channel_eq", "channel_delta", "channel_cross"})
-_MILESTONE = frozenset({"goal", "level"})  # state claims on these gamble, the rest are world-model
+_MILESTONE = frozenset({"goal", "level"})  # state outcomes on these gamble, the rest are world-model
 
 
-def claim_bucket(kind: str, state: str | None = None) -> str:
-    """Claim taxonomy: goal/milestone claims gamble, the rest world-model."""
+def outcome_bucket(kind: str, state: str | None = None) -> str:
+    """Outcome taxonomy: goal/milestone outcomes gamble, the rest world-model."""
     if kind in STATE_KINDS:
         return "gamble" if state in _MILESTONE else "world_model"
     if kind == "aggregate":
@@ -226,17 +226,17 @@ def plain_fields(record: Any) -> dict[str, Any]:
     return {field.name: plain(getattr(record, field.name)) for field in dataclasses.fields(record)}
 
 
-# --- claims and grades --------------------------------------------------------
+# --- outcomes and grades --------------------------------------------------------
 
-_CLAIM_OPTIONAL = (
+_OUTCOME_OPTIONAL = (
     "window_s", "channel", "op", "value", "sign", "direction", "tol", "path",
     "verifier_hash", "stat", "over", "horizon", "on_fail",
 )
-_CLAIM_KEYS = frozenset({"kind", "text", "coerced", *_CLAIM_OPTIONAL})
+_OUTCOME_KEYS = frozenset({"kind", "text", "coerced", *_OUTCOME_OPTIONAL})
 
 
-def _claim_fields(obj: Mapping[str, Any], record: str) -> dict[str, Any]:
-    """The fields a claim and a grade share, validated."""
+def _outcome_fields(obj: Mapping[str, Any], record: str) -> dict[str, Any]:
+    """The fields an outcome and a grade share, validated."""
     value = _read(obj, record, "value", "a number, a string or true/false", _is_scalar,
                   required=False, nullable=False)
     return {
@@ -259,9 +259,9 @@ def _claim_fields(obj: Mapping[str, Any], record: str) -> dict[str, Any]:
     }
 
 
-def _claim_json(record: Claim | Grade) -> dict[str, Any]:
+def _outcome_json(record: Outcome | Grade) -> dict[str, Any]:
     output: dict[str, Any] = {"kind": record.kind, "text": record.text}
-    for key in _CLAIM_OPTIONAL:
+    for key in _OUTCOME_OPTIONAL:
         value = getattr(record, key)
         if value is not None:
             output[key] = value
@@ -271,8 +271,8 @@ def _claim_json(record: Claim | Grade) -> dict[str, Any]:
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
-class Claim:
-    """One parsed claim of a prediction, whatever its form; a field that does
+class Outcome:
+    """One parsed outcome of a prediction, whatever its form; a field that does
     not apply to the form is None. The frame-world forms keep their coordinate
     fields in `extra`."""
 
@@ -295,28 +295,28 @@ class Claim:
     extra: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     @classmethod
-    def from_json(cls, obj: Mapping[str, Any]) -> Claim:
+    def from_json(cls, obj: Mapping[str, Any]) -> Outcome:
         if not isinstance(obj, Mapping):
-            raise TypeError(f"claim must be a JSON object, got {_type_name(obj)}")
-        return cls(**_claim_fields(obj, "claim"), extra=extras_of(obj, _CLAIM_KEYS))
+            raise TypeError(f"outcome must be a JSON object, got {_type_name(obj)}")
+        return cls(**_outcome_fields(obj, "outcome"), extra=extras_of(obj, _OUTCOME_KEYS))
 
     def to_json(self) -> dict[str, Any]:
-        output = _claim_json(self)
+        output = _outcome_json(self)
         output.update(self.extra)
         return output
 
-    def updated(self, **fields: Any) -> Claim:
+    def updated(self, **fields: Any) -> Outcome:
         return dataclasses.replace(self, **fields)
 
 
 _GRADE_FLAGS = ("invalid", "ungradable", "verifier", "excluded_from_meter", "machine")
-_GRADE_KEYS = _CLAIM_KEYS | frozenset({"ok", "actual", "bucket", "identity_verdict", *_GRADE_FLAGS})
+_GRADE_KEYS = _OUTCOME_KEYS | frozenset({"ok", "actual", "bucket", "identity_verdict", *_GRADE_FLAGS})
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
 class Grade:
-    """One graded claim as the journal carries it: the claim's fields plus the
-    verdict. On the journal a coerced claim's kind is the string `coerced`;
+    """One graded outcome as the journal carries it: the outcome's fields plus the
+    verdict. On the journal a coerced outcome's kind is the string `coerced`;
     `identity_verdict` is a bool, or the string `invalid` when the identity
     probe crashed, as the journals carry it."""
 
@@ -352,7 +352,7 @@ class Grade:
         if not isinstance(obj, Mapping):
             raise TypeError(f"grade must be a JSON object, got {_type_name(obj)}")
         record = "grade"
-        fields = _claim_fields(obj, record)
+        fields = _outcome_fields(obj, record)
         fields["ok"] = read_bool(obj, record, "ok")
         fields["actual"] = read_str(obj, record, "actual")
         fields["bucket"] = read_str(obj, record, "bucket")
@@ -366,7 +366,7 @@ class Grade:
     @classmethod
     def of(
         cls,
-        claim: Claim,
+        outcome: Outcome,
         *,
         ok: bool,
         actual: str,
@@ -376,27 +376,27 @@ class Grade:
         identity_verdict: bool | Literal["invalid"] | None = None,
         excluded_from_meter: bool = False,
     ) -> Grade:
-        """The grade of one claim: the claim's fields, the verdict, the meter
-        bucket of the claim's kind, and the journal's `coerced` kind."""
-        fields = {key: getattr(claim, key) for key in _CLAIM_OPTIONAL}
+        """The grade of one outcome: the outcome's fields, the verdict, the meter
+        bucket of the outcome's kind, and the journal's `coerced` kind."""
+        fields = {key: getattr(outcome, key) for key in _OUTCOME_OPTIONAL}
         return cls(
-            kind="coerced" if claim.coerced else claim.kind,
-            text=claim.text,
+            kind="coerced" if outcome.coerced else outcome.kind,
+            text=outcome.text,
             ok=bool(ok),
             actual=actual,
-            bucket=claim_bucket(claim.kind, claim.channel),
-            coerced=claim.coerced,
+            bucket=outcome_bucket(outcome.kind, outcome.channel),
+            coerced=outcome.coerced,
             invalid=invalid,
             ungradable=ungradable,
             verifier=verifier,
             identity_verdict=identity_verdict,
             excluded_from_meter=excluded_from_meter,
-            extra=dict(claim.extra),
+            extra=dict(outcome.extra),
             **fields,
         )
 
     def to_json(self) -> dict[str, Any]:
-        output = _claim_json(self)
+        output = _outcome_json(self)
         output["ok"] = self.ok
         output["actual"] = self.actual
         output["bucket"] = self.bucket
@@ -681,7 +681,8 @@ _RECEIPT_KEYS = frozenset(
 @dataclasses.dataclass(frozen=True, slots=True)
 class Receipt:
     """What a paid command returns and what `.assay/receipts/` and the activity
-    log keep: the outcome, the rendered grade lines, the module, aggregate
+    log keep: the result (under the key `outcome`, which keeps its spelling),
+    the rendered grade lines, the module, aggregate
     and state lines, and the steps of a batch. An `act` receipt always
     carries `predict` and `because`, null when there is none, as it always
     has; every other optional key is written when it is set."""
@@ -768,7 +769,9 @@ _MUTATION_KEYS = frozenset({"mutation_id", "action", "data", "reasoning", "obser
 class Mutation:
     """One write-ahead spend record of `.assay/mutations.jsonl`: written by the
     daemon before the event line, read back by the replay and by recovery.
-    `claims` is written from #16 on and absent on older records."""
+    `outcomes` is written from #16 on and absent on older records. On disk the
+    key is `claims`, the spelling of 1.2.0, which recovery reads back. The
+    name changed in the code and nowhere on disk."""
 
     mutation_id: int
     action: str
@@ -776,7 +779,7 @@ class Mutation:
     reasoning: dict[str, Any] | None
     observation: dict[str, Any]
     timestamp: str
-    claims: tuple[Claim, ...] | None = None
+    outcomes: tuple[Outcome, ...] | None = None
     extra: dict[str, Any] = dataclasses.field(default_factory=dict)
 
     @classmethod
@@ -792,7 +795,7 @@ class Mutation:
             reasoning=read_opt_object(obj, record, "reasoning", required=True, nullable=True),
             observation=read_object(obj, record, "observation"),
             timestamp=read_str(obj, record, "timestamp"),
-            claims=None if claims_raw is None else tuple(Claim.from_json(item) for item in claims_raw),
+            outcomes=None if claims_raw is None else tuple(Outcome.from_json(item) for item in claims_raw),
             extra=extras_of(obj, _MUTATION_KEYS),
         )
 
@@ -805,7 +808,7 @@ class Mutation:
             "observation": self.observation,
             "timestamp": self.timestamp,
         }
-        if self.claims is not None:
-            output["claims"] = [claim.to_json() for claim in self.claims]
+        if self.outcomes is not None:
+            output["claims"] = [outcome.to_json() for outcome in self.outcomes]
         output.update(self.extra)
         return output

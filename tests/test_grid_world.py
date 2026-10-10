@@ -63,14 +63,14 @@ def test_frame_world_end_to_end(tmp_path):
         assert (run / ".assay" / "dossier.json").exists()
         # The frame grader: noop holds on ACTION2, change holds on ACTION1.
         held = run_cli(run, "act", "ACTION2", "--predict", "noop")
-        assert held.returncode == 0 and "OUTCOME | PREDICTED" in held.stdout
+        assert held.returncode == 0 and "RESULT | PREDICTED" in held.stdout
         assert "TRANSITION |" in held.stdout
         moved = run_cli(run, "act", "ACTION1", "--predict", "change")
-        assert moved.returncode == 0 and "OUTCOME | PREDICTED" in moved.stdout
+        assert moved.returncode == 0 and "RESULT | PREDICTED" in moved.stdout
         assert "cells changed" in moved.stdout
         missed = run_cli(run, "act", "ACTION2", "--predict", "change")
-        assert missed.returncode == 0 and "OUTCOME | SURPRISE" in missed.stdout
-        # Grid claim forms are recognized and refused (owner decision O1);
+        assert missed.returncode == 0 and "RESULT | SURPRISE" in missed.stdout
+        # Grid outcome forms are recognized and refused (owner decision O1);
         # nothing is spent.
         before = len(_events(run))
         refused = run_cli(run, "act", "ACTION6", "x=1", "y=1", "--predict", "cell 1,1=5")
@@ -78,7 +78,7 @@ def test_frame_world_end_to_end(tmp_path):
         assert len(_events(run)) == before
         # A point action with typed parameters grades like any other.
         painted = run_cli(run, "act", "ACTION6", "x=1", "y=1", "--predict", "change")
-        assert painted.returncode == 0 and "OUTCOME | PREDICTED" in painted.stdout
+        assert painted.returncode == 0 and "RESULT | PREDICTED" in painted.stdout
         assert _events(run)[-1]["data"] == {"x": 1, "y": 1}
         # view and the offline namespace see grids.
         viewed = run_cli(run, "view", "--grid")

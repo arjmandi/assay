@@ -70,7 +70,7 @@ def parse_events(lines: list[str]) -> tuple[list[dict], list[str]]:
 
 
 def ungated_events(events: list[dict]) -> list[int]:
-    """JOURNAL_SPEC.md section 6: paid, non-RESET, carrying no claim machinery."""
+    """JOURNAL_SPEC.md section 6: paid, non-RESET, carrying no prediction machinery."""
     flagged = []
     for event in events:
         if not event.get("counts_action") or event.get("action") == "RESET":

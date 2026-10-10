@@ -95,11 +95,11 @@ def test_optional_gate_accepts_journals_and_audits_as_ungated(tmp_path):
         # e1: bare act, accepted and executed.
         bare = run_cli(run, "act", "INC", "amount=1")
         assert bare.returncode == 0, bare.stderr
-        assert "OUTCOME | UNGATED" in bare.stdout
+        assert "RESULT | UNGATED" in bare.stdout
         # e2: a predicted act still grades as before.
         predicted = run_cli(run, "act", "NOOP", "--predict", "noop")
         assert predicted.returncode == 0, predicted.stderr
-        assert "OUTCOME | PREDICTED" in predicted.stdout
+        assert "RESULT | PREDICTED" in predicted.stdout
         # e3 bare step + e4 predicted step inside one batch.
         batch = run_cli(run, "commit", "--step", "NOOP", "--step", "NOOP :: noop")
         assert batch.returncode == 0, batch.stderr

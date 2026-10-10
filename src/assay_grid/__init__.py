@@ -1,7 +1,7 @@
 """assay_grid, the frame-world extra.
 
 Everything a world whose observation is a grid needs beyond the kernel's frame
-encoding: rendering, a scene dossier, perception helpers and the grid claim
+encoding: rendering, a scene dossier, perception helpers and the grid outcome
 forms. The kernel selects this package by observation shape (`event.frames`
 is set, see `assay.extras`), never by configuration, so the published run
 directories keep rendering, inspecting and auditing with no registry change.
@@ -20,9 +20,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from assay.core import frame_at
-from assay.records import Claim, Event, Grade, Receipt
+from assay.records import Event, Grade, Outcome, Receipt
 
-from . import analysis, claims, coverage, render, views
+from . import analysis, coverage, outcomes, render, views
 from .perception import build_scene_dossier
 
 if TYPE_CHECKING:
@@ -37,21 +37,21 @@ class FrameKind:
     def applies(self, event: Event) -> bool:
         return event.frames is not None
 
-    # -- claims --------------------------------------------------------------
+    # -- outcomes --------------------------------------------------------------
 
-    def claim_patterns(self) -> Sequence[tuple[str, re.Pattern[str]]]:
-        return claims.PATTERNS
+    def outcome_patterns(self) -> Sequence[tuple[str, re.Pattern[str]]]:
+        return outcomes.PATTERNS
 
-    def claim_fields(self, kind: str, match: re.Match[str]) -> dict[str, Any]:
-        return claims.claim_fields(kind, match)
+    def outcome_fields(self, kind: str, match: re.Match[str]) -> dict[str, Any]:
+        return outcomes.outcome_fields(kind, match)
 
-    def claims_help(self) -> str:
-        return claims.HELP
+    def prediction_help(self) -> str:
+        return outcomes.HELP
 
-    def grade_claims(
-        self, plain: Sequence[Claim], prior_event: Event, event: Event
+    def grade_outcomes(
+        self, plain: Sequence[Outcome], prior_event: Event, event: Event
     ) -> list[Grade]:
-        return claims.grade_claims(plain, frame_at(prior_event), event)
+        return outcomes.grade_outcomes(plain, frame_at(prior_event), event)
 
     # -- after every recorded event -------------------------------------------
 
