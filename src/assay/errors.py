@@ -3,9 +3,9 @@ kernel raises, with its kind and a one-line meaning.
 
 A refusal is an `AssayError` (`core.py`) carrying a code from this table. The
 code is UPPER_SNAKE, unique and stable from the 1.2.0 tag on, like the receipt
-outcome tokens, with one rename in 1.3.0, the code of a prediction that does not
-parse (the changelog names both spellings). The kind decides the exit code of the command line and rides
-on the socket and in `--json`: `usage` (the request is wrong; exit 2),
+result tokens. 1.3.0 renamed one code, the code of a prediction that does not
+parse. The changelog names both spellings. The kind decides the exit code of
+the command line and rides on the socket and in `--json`: `usage` (the request is wrong; exit 2),
 `refused` (a well-formed request the kernel refuses by rule, or the harness's
 own state refuses; exit 2), `world` (the adapter or the world failed or
 refused at the kernel boundary; exit 3), `internal` (a bug or a corrupt file;

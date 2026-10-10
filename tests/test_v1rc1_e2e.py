@@ -93,7 +93,7 @@ def test_daemon_gate_refuses_bare_step(tmp_path):
         # A gated act works through the daemon and journals normally.
         acted = run_cli(run, "act", "INC", "amount=1", "--predict", "change")
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         # The bypass channel: speaking the socket protocol directly with the
         # bare step op, retired with the operation table (docs/ARCHITECTURE.md
         # section 7.2): the daemon knows no such operation and refuses it by
@@ -132,11 +132,11 @@ def test_states_grade_and_misreference(tmp_path):
             run, "act", "INC", "amount=1", "--predict", "ch counter delta = 1"
         )
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         # A wrong state outcome is a graded miss with the counter-fact.
         missed = run_cli(run, "act", "INC", "amount=1", "--predict", "ch counter = 99")
         assert missed.returncode == 0, missed.stderr
-        assert "OUTCOME | SURPRISE" in missed.stdout
+        assert "RESULT | SURPRISE" in missed.stdout
         assert "ch counter = 2" in missed.stdout
         # An unregistered state is refused FREE and counted (mis-reference).
         before = len(_events(run))
@@ -263,7 +263,7 @@ def test_model_tier_promotion_and_plan(tmp_path):
         plan_file.write_text(written)
         committed = run_cli(run, "commit", "@.assay/model_plan.json")
         assert committed.returncode == 0, committed.stderr
-        assert "OUTCOME | GAME_COMPLETE" in committed.stdout
+        assert "RESULT | GAME_COMPLETE" in committed.stdout
         # The modules' advisories ride on a model-plan receipt like on every
         # other paid receipt (#24; before, the plan consulted them and
         # discarded what they said): forty paid actions on this unit is
@@ -359,7 +359,7 @@ def test_destructive_gate_and_hazard_carryover(tmp_path):
             "recovery=assay reset restarts the level",
         )
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | GAME_OVER" in acted.stdout
+        assert "RESULT | GAME_OVER" in acted.stdout
         event = _events(run)[-1]
         assert event["declares"]["worst_case"].startswith("game over")
         # The hazard module tagged the class from the outcome signature.
@@ -431,7 +431,7 @@ def test_notes_cap_spend_feed_and_aggregates(tmp_path):
         # Validity window: a microsecond window is always stale -> UNGRADABLE.
         stale = run_cli(run, "act", "NOOP", "--predict", "noop @within 0.000001s")
         assert stale.returncode == 0, stale.stderr
-        assert "OUTCOME | INVALID_CLAIM" in stale.stdout
+        assert "RESULT | INVALID_CLAIM" in stale.stdout
         event = _events(run)[-1]
         assert event["predict_ok"] is None
         assert event["grade"][0]["ungradable"] is True
@@ -542,7 +542,7 @@ def test_liveness_rehearsal_waiver_and_goal_gamble(tmp_path):
         assert goal_outcome["bucket"] == "gamble" and goal_outcome["ok"]
         won = run_cli(run, "act", "INC", "amount=1", "--predict", "ch goal = true")
         assert won.returncode == 0, won.stderr
-        assert "OUTCOME | GAME_COMPLETE" in won.stdout
+        assert "RESULT | GAME_COMPLETE" in won.stdout
     finally:
         stop_run(run)
 

@@ -263,7 +263,7 @@ def test_a_world_that_declares_nothing_gets_local_semantics(tmp_path):
         assert config["mode"] == "local"
         assert config["session"] == {"idle_lease_seconds": None, "reset_on_fresh_unit": "world", "replayable": True}
         rewound = run_cli(run, "reset", "--because", "an opening reset")
-        assert rewound.returncode == 0 and "OUTCOME | RESET" in rewound.stdout, rewound.stderr
+        assert rewound.returncode == 0 and "RESULT | RESET" in rewound.stdout, rewound.stderr
         assert _last_data(run) == {"counter": 0, "resets": 1}
         assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
         _kill_daemon(run)
@@ -305,7 +305,7 @@ def test_a_declared_fresh_unit_reset_noop_never_reaches_the_world(tmp_path):
         assert config["session"]["reset_on_fresh_unit"] == "noop"
         # The opening reset: journaled and paid, answered by the kernel.
         rewound = run_cli(run, "reset", "--because", "an opening reset")
-        assert rewound.returncode == 0 and "OUTCOME | RESET" in rewound.stdout, rewound.stderr
+        assert rewound.returncode == 0 and "RESULT | RESET" in rewound.stdout, rewound.stderr
         assert _last_data(run) == {"counter": 0, "resets": 0}
         assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
         # Not fresh any more: the world sees it.
@@ -502,13 +502,13 @@ def test_counter_quickstart_verbatim_from_the_readme(tmp_path):
         assert started.returncode == 0, started.stderr
         assert "STARTED | counterdemo" in started.stdout
         acted = run_cli(run, *argv(commands[1]))
-        assert acted.returncode == 0 and "OUTCOME | PREDICTED" in acted.stdout
+        assert acted.returncode == 0 and "RESULT | PREDICTED" in acted.stdout
         missed = run_cli(run, *argv(commands[2]))
-        assert missed.returncode == 0 and "OUTCOME | SURPRISE" in missed.stdout
+        assert missed.returncode == 0 and "RESULT | SURPRISE" in missed.stdout
         declared = run_cli(run, *argv(commands[3]))
         assert declared.returncode == 0 and "STATE | declared counter" in declared.stdout
         won = run_cli(run, *argv(commands[4]))
-        assert won.returncode == 0 and "OUTCOME | GAME_COMPLETE" in won.stdout
+        assert won.returncode == 0 and "RESULT | GAME_COMPLETE" in won.stdout
         audited = run_cli(run, *argv(commands[5]))
         assert audited.returncode == 0 and "AUDIT | CLEAN" in audited.stdout
     finally:
@@ -542,10 +542,10 @@ def test_new_world_template_end_to_end(tmp_path):
         assert run_cli(run, "state", "declare", "door", "--path", "door").returncode == 0
         assert run_cli(run, "state", "declare", "refusals", "--path", "refusals").returncode == 0
         turned = run_cli(run, "act", "TURN", "delta=1", "--predict", "ch dial delta = 1")
-        assert turned.returncode == 0 and "OUTCOME | PREDICTED" in turned.stdout
+        assert turned.returncode == 0 and "RESULT | PREDICTED" in turned.stdout
         assert "STATES | dial: 0 -> 1" in turned.stdout
         refused = run_cli(run, "act", "OPEN", "--predict", "ch refusals delta = 1; ch door = locked")
-        assert refused.returncode == 0 and "OUTCOME | PREDICTED" in refused.stdout, refused.stdout
+        assert refused.returncode == 0 and "RESULT | PREDICTED" in refused.stdout, refused.stdout
         # Dial to the code with a batch (under the hand cap), open, enter: room 1.
         delta = (code1 - 1) % 10
         steps = []
@@ -557,16 +557,16 @@ def test_new_world_template_end_to_end(tmp_path):
             batched = run_cli(run, "commit", *sum((["--step", s] for s in chunk), []))
             assert batched.returncode == 0, batched.stderr
         opened = run_cli(run, "act", "OPEN", "--predict", "ch door = open")
-        assert opened.returncode == 0 and "OUTCOME | PREDICTED" in opened.stdout, opened.stdout
+        assert opened.returncode == 0 and "RESULT | PREDICTED" in opened.stdout, opened.stdout
         entered = run_cli(run, "act", "ENTER", "--predict", "level+1")
-        assert entered.returncode == 0 and "OUTCOME | LEVEL_COMPLETE" in entered.stdout
+        assert entered.returncode == 0 and "RESULT | LEVEL_COMPLETE" in entered.stdout
         assert "unit 1 complete" not in entered.stdout and "level 1 complete" in entered.stdout
         # Owner operations: approval for DRILL, waiver for SIREN, the destructive gate.
         denied = run_cli(run, "act", "DRILL", "--predict", "ch door = open")
         assert denied.returncode == 2 and "approval-gated" in denied.stderr
         assert run_cli(run, "approve", "DRILL", "--token", token).returncode == 0
         drilled = run_cli(run, "act", "DRILL", "--predict", "ch door = open")
-        assert drilled.returncode == 0 and "OUTCOME | PREDICTED" in drilled.stdout
+        assert drilled.returncode == 0 and "RESULT | PREDICTED" in drilled.stdout
         quota = run_cli(run, "act", "SIREN", "volume=0.5", "--predict", "noop")
         assert quota.returncode == 2 and "rehearsal quota" in quota.stderr
         assert run_cli(run, "waive", "SIREN", "--token", token, "--because", "template demo").returncode == 0
@@ -575,9 +575,9 @@ def test_new_world_template_end_to_end(tmp_path):
         assert armed.returncode == 2 and "worst case and recovery" in armed.stderr
         alarmed = run_cli(run, "act", "ALARM", "--predict", "change",
                           "--declare", "worst_case=this room ends", "--declare", "recovery=reset")
-        assert alarmed.returncode == 0 and "OUTCOME | GAME_OVER" in alarmed.stdout
+        assert alarmed.returncode == 0 and "RESULT | GAME_OVER" in alarmed.stdout
         rewound = run_cli(run, "reset")
-        assert rewound.returncode == 0 and "OUTCOME | RESET" in rewound.stdout
+        assert rewound.returncode == 0 and "RESULT | RESET" in rewound.stdout
         # Room 2 to the WIN with the structured action (the array through
         # `--params @FILE`, one paid action), then finalize's file and a
         # clean audit.
@@ -595,7 +595,7 @@ def test_new_world_template_end_to_end(tmp_path):
             assert receipt["action"] == "DIAL turns=" + json.dumps(turns, separators=(",", ":"))
         assert run_cli(run, "act", "OPEN", "--predict", "ch door = open").returncode == 0
         won = run_cli(run, "act", "ENTER", "--predict", "win; level+1")
-        assert won.returncode == 0 and "OUTCOME | GAME_COMPLETE" in won.stdout
+        assert won.returncode == 0 and "RESULT | GAME_COMPLETE" in won.stdout
         summary = json.loads((run / ".assay" / "new_world_summary.json").read_text())
         assert summary["rooms"] == 2 and summary["refusals"] == 1
         status = run_cli(run, "status")

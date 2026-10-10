@@ -42,7 +42,7 @@ ALLOWED_LINES = (
 # code labels each outcome held or missed. Nothing a person reads says claim.
 CLAIM = re.compile(r"\b(claim|claims|claimed|claiming)\b", re.IGNORECASE)
 # The spellings frozen on disk and on the wire that still carry the word:
-# the receipt outcome token (also the grade `actual` prefix of a verifier
+# the receipt result token (also the grade `actual` prefix of a verifier
 # that did not grade), and the `claims` key of the mutation record, named in
 # prose where the record is described.
 CLAIM_ALLOWED_TOKENS = ("INVALID_CLAIM", "`claims`")

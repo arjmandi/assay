@@ -108,13 +108,13 @@ Line by line:
   validates the name, the typed parameter, the budget and the prediction before
   spending, applies the action, and grades the prediction against what actually
   happened. The counter moved, so the receipt starts with
-  `OUTCOME | PREDICTED | result matched the prediction`, followed by a
+  `RESULT | PREDICTED | result matched the prediction`, followed by a
   `KEY DELTA` of the changed keys and the new observation.
 - `act NOOP --predict "change"` makes the same prediction, but NOOP changes
   nothing. The receipt begins
 
   ```
-  OUTCOME | SURPRISE | prediction missed: change | no observed change (0 keys)
+  RESULT | SURPRISE | prediction missed: change | no observed change (0 keys)
   ```
 
   The counter-fact is the machine's statement of what happened. A miss is
@@ -130,7 +130,7 @@ Line by line:
 - `act INC amount=2 --predict "ch counter = 3; win"` makes two outcomes on one
   action: the state reads exactly 3 afterwards, and this action reaches the
   goal state. Both grade, the world reports `WIN`, the receipt says
-  `OUTCOME | GAME_COMPLETE | the goal is reached; this run is complete`, the
+  `RESULT | GAME_COMPLETE | the goal is reached; this run is complete`, the
   daemon calls the adapter's `finalize` if it has one, anchors the chain
   head, and exits.
 - `audit` recomputes integrity from the artifacts: contiguity, the chain, the
@@ -739,7 +739,7 @@ describes, in the runner's own process (the operator's `start` with the
 owner token file outside the run directory, then the player's session in
 the run directory, with the daemon already up), at most `concurrency`
 players at a time. It writes one JSONL row per run (paid actions, the win,
-the receipts by outcome, tokens and dollars per action, the chain head) and
+the receipts by result, tokens and dollars per action, the chain head) and
 a summary with bootstrap intervals over the seeds of each arm, resumes an
 interrupted job through the kernel's own `start`, never reruns a finished
 one, and prints every command it would run under `--dry-run` without
@@ -758,7 +758,7 @@ registry sets `off`, `advise` or `block` per name:
 - `park_with_test`: a reset should leave a re-entry test in the notes.
 - `specificity`: a majority of coerced free-text outcomes earns nothing (named
   `sharpness` before 1.2.0; `module_modes` still accepts that name).
-- `hazard`: an action class whose outcome entered a loss state or dropped
+- `hazard`: an action class whose result entered a loss state or dropped
   progress demands `worst_case=` and `recovery=` on its next use.
 - `coverage_audit`: the untried and never-productive actions on this unit, a
   stall, a halt on re-issuing the move that just graded FALSE (demand
@@ -782,11 +782,11 @@ CONSTITUTION: str                             one paragraph of way-of-thinking t
 MODE: "advise" | "block"                      the default, registry module_modes overrides
 trigger(view, pending) -> str | None          advisory message when it fires
 demand(view, pending) -> dict[str, str] | None {field: why}, structural
-observe(view, event) -> None                  optional, learn from outcomes
+observe(view, event) -> None                  optional, learn from results
 telemetry(view) -> dict                       free counters
 ```
 
-`view` is `modules.ModuleView(run)`: `view.events` (the journal as `Event` records, read-only), `view.registry` (read-only), `view.paths`, and `view.record(kind, **fields)` and `view.hazards()` for what a module persists. The events and the outcomes are records, read by attribute: `event.predict_ok`, `outcome.kind`; `pending["outcomes"]` holds `records.Outcome` records (the key was `claims` before 1.3.0, and a module written against 1.1 that indexes a record as a dict gets a `TypeError` and reads the attribute instead). `pending` is the
+`view` is `modules.ModuleView(run)`: `view.events` (the journal as `Event` records, read-only), `view.registry` (read-only), `view.paths`, and `view.record(kind, **fields)` and `view.hazards()` for what a module persists. The events and the outcomes are records, read by attribute: `event.predict_ok`, `outcome.kind`; `pending["outcomes"]` holds `records.Outcome` records. The key was `claims` before 1.3.0. A module written against 1.1 that indexes a record as a dict gets a `TypeError` and reads the attribute instead. `pending` is the
 action about to be taken, `{"kind": act|commit|reset, "name", "params",
 "outcomes", "declares"}`, or `None` at status time. Ship at advise. Demands are
 for checkable structure (named, non-empty fields), never for confidence, and
@@ -835,7 +835,7 @@ the journal field names, including the historical `levels_completed`,
 `GAME_OVER`, the outcome syntax, the grade `actual` texts, the host state
 names `goal`, `level` and `budget_remaining`, the chain seed and rule, the
 ungated rule and the `RESET` exemption, the `game_id` and `source_game` keys,
-the activity kinds, the receipt outcome tokens and the state-directory layout.
+the activity kinds, the receipt result tokens and the state-directory layout.
 Display strings are not frozen, and `src/assay/words.py` is the law for them.
 
 ## 10. Troubleshooting

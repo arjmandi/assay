@@ -727,7 +727,7 @@ def _records(run: Path) -> list[dict]:
 
 
 PROSE_RECEIPT = (
-    "OUTCOME | PREDICTED | all 1 outcomes held\n"
+    "RESULT | PREDICTED | all 1 outcomes held\n"
     "  ✓ change\n"
     "EVENT | e3 | progress 1/1 | paid actions 3 | NOT_FINISHED\n"
     "KEY DELTA | last step (before -> after)\n"

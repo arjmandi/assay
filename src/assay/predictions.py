@@ -376,7 +376,7 @@ def grade_pending(
     settled inside it: `elapsed_s` is the daemon-measured step duration on the
     live path, and None on recovery, where the duration died with the process,
     so every windowed outcome is UNGRADABLE with `RECOVERED_WINDOW_ACTUAL`. A
-    late settle is UNGRADABLE too: its own outcome, never a silent pass or
+    late settle is UNGRADABLE too: its own verdict, never a silent pass or
     miss.
     """
     from .states import grade_state_outcome

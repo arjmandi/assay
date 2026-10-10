@@ -19,8 +19,10 @@ verify/JOURNAL_SPEC.md) and the 66 published journals under evidence/
 - the host state names `goal` and `level`,
 - the config key `game_id`, the knowledge-file key `game_id` and the summary
   key `source_game`, and every activity record kind,
-- the receipt outcome tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
-  `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`,
+- the receipt result tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
+  `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`, and the
+  receipt's key `outcome` that carries them (the prose says result, and the
+  receipt line says `RESULT |`),
 - the state-directory layout, including `.assay/levels/level-N.md`,
 - the compact history prefix `L<n>` in RECENT lines.
 

@@ -1323,7 +1323,7 @@ def _open(paths: RunPaths) -> _Daemon:
     every paid action (docs/ARCHITECTURE.md sections 6.3 and 8.3). Then the
     world session and its declaration, the replay when the world is
     replayable, event 0 on a fresh run, the modules from the manifest the
-    run holds (loaded once; the consults and the outcome observations use
+    run holds (loaded once; the consults and the result observations use
     the held objects), the socket and READY."""
     run = Run.load(paths, strict=True)
     # The anchor file the run records must be the one the environment names

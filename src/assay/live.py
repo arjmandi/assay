@@ -34,7 +34,7 @@ from .core import (
 )
 from .extras import kind_for
 from .integrity import redact, redact_mapping
-from .modules import consult_modules, observe_outcome
+from .modules import consult_modules, observe_result
 from .ops import Step
 from .predictions import grade_lines, grade_pending, parse_prediction
 from .records import Event, Grade, Mutation, Outcome, Receipt, ReceiptStep
@@ -221,7 +221,7 @@ def _enforce_registry_gates(
                     "declared worst case and recovery plan",
                     code="DESTRUCTIVE_UNDECLARED",
                     hint=(
-                        'add --declare "worst_case=<what the worst outcome is>" --declare '
+                        'add --declare "worst_case=<what the worst result is>" --declare '
                         '"recovery=<how the run recovers>"; the demand is structural (named, '
                         "non-empty), never a demand for optimism; declaring always unlocks the action"
                     ),
@@ -428,15 +428,15 @@ def execute_action(
         secrets=secrets,
     )
     event = record_event(run, pending)
-    observe_outcome(run, event)
+    observe_result(run, event)
     aggregate_lines: list[str] = []
     aggregate_lines.extend(open_aggregates(run, outcomes))
     aggregate_lines.extend(resolve_due(run))
     lines = grade_lines(graded)
     if event.state == "WIN":
-        outcome, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
+        result, detail = "GAME_COMPLETE", "the goal is reached; this run is complete"
     elif event.level_advanced:
-        outcome = "LEVEL_COMPLETE"
+        result = "LEVEL_COMPLETE"
         detail = (
             f"{unit_noun(event.win_levels)} {int(event.level_before or 0) + 1} complete; "
             f"notes archived; re-verify carried assumptions in the new {unit_noun(event.win_levels)}"
@@ -444,33 +444,33 @@ def execute_action(
         if not ok:
             detail += "; prediction also missed: treat the mechanics as unproven"
     elif event.state == "GAME_OVER":
-        outcome = "GAME_OVER"
+        result = "GAME_OVER"
         detail = (
             "environment reported GAME_OVER; `assay reset` restarts the current "
             f"{unit_noun(event.win_levels)}"
         )
     elif ungated:
-        outcome = "UNGATED"
+        result = "UNGATED"
         detail = (
             f"no prediction (gate: {gate_mode(registry)}); nothing graded; the audit "
             "counts this event as UNGATED"
         )
     elif missed:
-        outcome = "SURPRISE"
+        result = "SURPRISE"
         first_failed = next(line for line in lines if line.startswith("✗"))
         detail = f"prediction missed: {first_failed[2:]}"
     elif invalid_any:
-        outcome = "INVALID_CLAIM"
+        result = "INVALID_CLAIM"
         first_invalid = next(line for line in lines if line.startswith("!"))
         detail = f"verifier did not grade: {first_invalid[2:]}"
     else:
-        outcome, detail = "PREDICTED", "result matched the prediction"
+        result, detail = "PREDICTED", "result matched the prediction"
     if warning:
         detail += f"; finalization warning from the world: {warning}"
     changed = state_change_lines(run, prior, event)
     receipt = Receipt(
         kind="act",
-        outcome=outcome,
+        outcome=result,
         detail=detail,
         start_event=start_event,
         end_event=event.id,
@@ -619,7 +619,7 @@ def execute_steps(
     before = events[-1]
     secrets = tuple(registry.get("secrets") or ())
     records: list[ReceiptStep] = []
-    outcome = "PREDICTED"
+    result = "PREDICTED"
     detail = f"all {len(parsed)} steps landed as predicted"
     last_warning: str | None = None
     all_outcomes: list[Outcome] = []
@@ -651,7 +651,7 @@ def execute_steps(
             secrets=secrets,
         )
         event = record_event(run, pending)
-        observe_outcome(run, event)
+        observe_result(run, event)
         failed = [line for line in grade_lines(graded) if line.startswith("✗")]
         invalid_lines = [line for line in grade_lines(graded) if line.startswith("!")]
         records.append(
@@ -667,10 +667,10 @@ def execute_steps(
         remaining = len(parsed) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
         if event.state == "WIN":
-            outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
+            result, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
         if event.level_advanced:
-            outcome = "LEVEL_COMPLETE"
+            result = "LEVEL_COMPLETE"
             detail = (
                 f"{unit_noun(event.win_levels)} advanced after "
                 f"{canonical_action(event)}{discarded}"
@@ -679,18 +679,18 @@ def execute_steps(
                 detail += "; prediction also missed: treat the mechanics as unproven"
             break
         if event.state == "GAME_OVER":
-            outcome = "GAME_OVER"
+            result = "GAME_OVER"
             detail = (
                 f"environment reported GAME_OVER after {canonical_action(event)}"
                 f"{discarded}"
             )
             break
         if missed:
-            outcome = "SURPRISE"
+            result = "SURPRISE"
             detail = f"step {index + 1} missed: {failed[0][2:]}{discarded}"
             break
         if invalid_any:
-            outcome = "INVALID_CLAIM"
+            result = "INVALID_CLAIM"
             detail = (
                 f"step {index + 1} raised an invalid outcome: "
                 f"{invalid_lines[0][2:]}{discarded}"
@@ -705,7 +705,7 @@ def execute_steps(
     changed = state_change_lines(run, before, final_events[-1])
     receipt = Receipt(
         kind="commit",
-        outcome=outcome,
+        outcome=result,
         detail=detail,
         start_event=start_event,
         end_event=final_events[-1].id,
@@ -786,7 +786,7 @@ def execute_model_plan(
     check_budget(events, registry, planned=len(actions))
     start_event = events[-1].id
     records: list[ReceiptStep] = []
-    outcome = "PREDICTED"
+    result = "PREDICTED"
     detail = f"all {len(actions)} model-plan steps landed as predicted"
     last_warning: str | None = None
     for index, ((name, data), expected) in enumerate(zip(parsed, predictions)):
@@ -820,7 +820,7 @@ def execute_model_plan(
                 problem = f"ch {name}: predicted {predicted!r}, actual {actual!r}"
         pending = pending.updated(predict_ok=ok, grade=tuple(graded))
         event = record_event(run, pending)
-        observe_outcome(run, event)
+        observe_result(run, event)
         records.append(
             ReceiptStep(
                 event=event.id,
@@ -834,21 +834,21 @@ def execute_model_plan(
         remaining = len(actions) - index - 1
         discarded = f"; {remaining} remaining steps were discarded" if remaining else ""
         if event.state == "WIN":
-            outcome, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
+            result, detail = "GAME_COMPLETE", f"the goal is reached; this run is complete{discarded}"
             break
         if event.level_advanced:
-            outcome = "LEVEL_COMPLETE"
+            result = "LEVEL_COMPLETE"
             detail = (
                 f"{unit_noun(event.win_levels)} advanced after "
                 f"{canonical_action(event)}{discarded}"
             )
             break
         if event.state == "GAME_OVER":
-            outcome = "GAME_OVER"
+            result = "GAME_OVER"
             detail = f"environment reported GAME_OVER{discarded}"
             break
         if not ok:
-            outcome = "SURPRISE"
+            result = "SURPRISE"
             detail = (
                 f"model-plan step {index + 1} diverged: {problem}; the model is "
                 f"contradicted; rerun `assay model replay`{discarded}"
@@ -860,7 +860,7 @@ def execute_model_plan(
         run,
         Receipt(
             kind="commit",
-            outcome=outcome,
+            outcome=result,
             detail=detail,
             start_event=start_event,
             end_event=run.events[-1].id,
@@ -927,7 +927,7 @@ def reset_level(
             declares={key: redact(str(value), secrets) or "" for key, value in declared.items()}
         )
     event = record_event(run, pending)
-    observe_outcome(run, event)
+    observe_result(run, event)
     detail = (
         f"current {unit_noun(prior.win_levels)} rewound; completed "
         f"{unit_noun(prior.win_levels)}s and action history preserved"

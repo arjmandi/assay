@@ -17,7 +17,7 @@ and the import discipline demotes everything:
   declaration demand fires before the hazard does, which is the whole point;
   on a non-matching registration they import inactive and are listed foreign.
 
-The journal digest v1 is per-actuator outcome statistics replayed from the
+The journal digest v1 is per-actuator result statistics replayed from the
 journal: attempts, split miss rates, invalid counts, plus the journal's
 id-range and content hash so provenance is checkable.
 """

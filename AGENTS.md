@@ -56,7 +56,7 @@ independent checker. The kernel must keep honoring both.
 Everything in `docs/ARCHITECTURE.md` section 5 and in the docstring of
 `src/assay/words.py`: journal field names, state values, outcome syntax, grade
 `actual` texts, host state names, the `game_id` keys, activity kinds, receipt
-outcome tokens, the state-directory layout. `tests/test_conformance.py` and
+result tokens, the state-directory layout. `tests/test_conformance.py` and
 `tests/test_vocabulary.py` enforce it. The hash chain in `integrity.py` is the
 product's core trust guarantee: a change there needs the full suite, not a spot check.
 

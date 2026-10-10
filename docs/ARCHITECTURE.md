@@ -325,7 +325,7 @@ sealed instance are the worked example: they live entirely in the adapter).
 
 **Never here.** Nothing crosses from an adapter into the kernel: the kernel
 imports nothing from `bench/` and names no world (section 4 and the conformance
-tests enforce this). An adapter never reads the journal to decide an outcome,
+tests enforce this). An adapter never reads the journal to decide a result,
 never writes under `.assay/` except its own files (OOLONG writes
 `.assay/corpus.txt` and `.assay/oolong_score.json`), and never sees the owner
 token. This is true of every adapter in the table since #21: the ARC adapter's
@@ -463,7 +463,7 @@ ships at advise until an A/B shows blocking pays.
     MODE: "advise" | "block"                      the default, registry module_modes overrides
     trigger(view, pending) -> str | None          advisory message when it fires
     demand(view, pending) -> dict[str, str] | None {field: why}, structural
-    observe(view, event) -> None                  optional, learn from outcomes
+    observe(view, event) -> None                  optional, learn from results
     telemetry(view) -> dict                       free counters
 
 The contract is the `modules.Module` protocol, and `view` is
@@ -478,8 +478,8 @@ writes a kernel file by path. `pending` is the action about to be taken:
 outcomes as `records.Outcome` records, or `None` at status time. Modules are
 consulted before every paid action on a registry run
 (`modules.consult_modules` from `live._enforce_registry_gates` and
-`live.reset_level`), told the outcome after every recorded event
-(`modules.observe_outcome`), and asked for status-time advisories
+`live.reset_level`), told the result after every recorded event
+(`modules.observe_result`), and asked for status-time advisories
 (`modules.advisory_lines`). In block mode an unmet demand refuses with
 `MODULE name | declaration demanded before this action: --declare f=...` and
 the declaration always unlocks the action. Declarations are journaled on the
@@ -933,7 +933,7 @@ their heads:
   `RESET` exemption,
 - the config key `game_id`, the knowledge-file key `game_id`, the import
   summary key `source_game`, and every activity record kind,
-- the receipt outcome tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
+- the receipt result tokens `PREDICTED`, `SURPRISE`, `INVALID_CLAIM`,
   `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`, `GAME_OVER`, `RESET`,
 - the state-directory layout, including `.assay/levels/level-N.md`, and the
   `L<n>` prefix of the RECENT history lines.
@@ -1023,15 +1023,17 @@ or string, `predict_ok` None or bool, `level_before` None or int, `note` string,
 - `Receipt`: `kind`, `outcome`, `detail`, `start_event`, `end_event`, `level`, `action`,
   `predict`, `grade` (the rendered lines), `because`, `modules`, `aggregates`, `states`,
   `steps` (a tuple of `ReceiptStep`: `event`, `action`, `ok`, `failed`, `invalid`,
-  `ungated`, `machine`, `kind`, `problem`), `plan`, `timestamp`. Written to
+  `ungated`, `machine`, `kind`, `problem`), `plan`, `timestamp`. The key `outcome` carries
+  the action's result token and keeps its spelling on disk and on the wire. The prose says
+  result and the receipt line says `RESULT |`. Written to
   `.assay/receipts/` and to the activity log as today. The `--json` document of a paid
   command is these fields plus the command line's `estimated_tokens` (section 7.6), which
   a consumer strips before treating the document as the record (a record carries unknown
   keys through `extra`, so a round trip is harmless). The draft listed `estimated_tokens`
   among the fields; the review of #23 removed it, since nothing on disk carries it.
 - `Mutation`: `mutation_id`, `action`, `data`, `reasoning`, `observation`, `outcomes` (a tuple
-  of `Outcome`, written by the daemon at spend time from #16 on under the record's key
-  `claims`, the spelling of 1.2.0, absent on older records), `timestamp`.
+  of `Outcome`), `timestamp`. The daemon writes `outcomes` at spend time from #16 on. The
+  record's key for it is `claims`, the spelling of 1.2.0. Older records lack it.
 - `Status`: section 7.4.
 - The registry stays the canonical dictionary `validate_registry` produces, read through
   the accessors in `registry.py`; it changes shape in #14 and is not a record in 1.2.0.
@@ -1182,7 +1184,7 @@ Landed by #16. Two details the bullets leave open: a bare act or step of a contr
 (`gate: optional`, `gate: off`) spends with an empty outcome list, so its record carries
 `claims: []` (the key keeps the spelling of 1.2.0) and recovery journals it as the live path does, UNGATED with the mode's
 marker, counted among the permitted; and recovery is the grade and the journal line only:
-the modules do not observe a recovered outcome, an aggregate outcome on a recovered record
+the modules do not observe a recovered result, an aggregate outcome on a recovered record
 is not opened, and no receipt is written, since no command is waiting for one. The audit
 names a recovered event without its prediction (`recovered_without_prediction` in
 `audit.json`, the line `n of them recovered without its prediction: the record predates
@@ -1323,7 +1325,7 @@ JSON object under v1 already, and the spec said so), the chain, the checker.
   `OPERATION_UNKNOWN` (kind usage); the module demand is
   `MODULE_DEMAND`; `REMOTE_SESSION_EXPIRED_OR_UNAVAILABLE` became
   `REMOTE_SESSION_UNAVAILABLE` (#21), the last rename before the codes froze at the
-  1.2.0 tag, like the outcome tokens. 1.3.0 renamed one code, the code of a prediction
+  1.2.0 tag, like the result tokens. 1.3.0 renamed one code, the code of a prediction
   that does not parse. The changelog names both spellings.
 - The CLI prints to stderr one line `ERROR | CODE | message` and, when a hint exists, a
   second line `NEXT | hint`; the error's detail (the grammar table) follows as today. The

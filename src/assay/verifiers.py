@@ -94,19 +94,19 @@ def admit_verifier(paths: RunPaths, outcome: Outcome) -> Outcome:
     return outcome.updated(verifier_hash=digest)
 
 
-def _invalid_reason(outcome: Mapping[str, Any], timeout: float) -> str:
+def _invalid_reason(completed: Mapping[str, Any], timeout: float) -> str:
     """The journaled words for a run the sandbox refused, as they have always
     read: the kind of failure in the verifier's own terms."""
-    kind = outcome.get("kind")
+    kind = completed.get("kind")
     if kind == "timeout":
         return f"verifier timed out after {timeout:g}s"
     if kind == "crash":
-        return f"verifier crashed (exit {outcome['exit']}): {str(outcome['tail'])[:200]}"
+        return f"verifier crashed (exit {completed['exit']}): {str(completed['tail'])[:200]}"
     if kind == "no_output":
         return "verifier produced no output"
     if kind == "malformed":
-        return f"malformed verifier output: {str(outcome['output'])[:120]!r}"
-    return f"verifier {outcome['reason']}"
+        return f"malformed verifier output: {str(completed['output'])[:120]!r}"
+    return f"verifier {completed['reason']}"
 
 
 def run_verifier(
@@ -121,10 +121,10 @@ def run_verifier(
     if not stored.exists():
         return {"status": "invalid", "reason": f"stored verifier {digest[:12]} missing"}
     payload = {"before": before, "after": after, "verifier_path": str(stored.resolve())}
-    outcome = run_program(_RUNNER, payload, timeout=timeout, companions=(stored,))
-    if outcome["status"] != "ok":
-        return {"status": "invalid", "reason": _invalid_reason(outcome, timeout)}
-    result = outcome["result"]
+    completed = run_program(_RUNNER, payload, timeout=timeout, companions=(stored,))
+    if completed["status"] != "ok":
+        return {"status": "invalid", "reason": _invalid_reason(completed, timeout)}
+    result = completed["result"]
     if (
         not isinstance(result, dict)
         or not isinstance(result.get("ok"), bool)

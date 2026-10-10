@@ -296,9 +296,9 @@ def test_run_program_copies_companions_and_rewrites_their_paths(tmp_path):
         " 'beside': sorted(os.listdir('.')), 'obs': payload['obs']}))\n"
     )
     payload = {"file": str(source), "obs": {"note": str(source)}}
-    outcome = run_program(program, payload, timeout=10.0, companions=(source,))
-    assert outcome["status"] == "ok", outcome
-    result = outcome["result"]
+    completed = run_program(program, payload, timeout=10.0, companions=(source,))
+    assert completed["status"] == "ok", completed
+    result = completed["result"]
     assert result["text"] == "VALUE = 7\n"
     assert result["path"] != str(source) and result["path"].startswith(result["cwd"])
     assert result["beside"] == ["companion.py", "program.py"]
@@ -347,9 +347,9 @@ def test_limits_and_environment_inside():
         "print(json.dumps({'limits': limits, 'isolated': sys.flags.isolated, 'cwd': os.getcwd(),"
         " 'env': {key: value for key, value in os.environ.items() if not key.startswith('__')}}))\n"
     )
-    outcome = run_program(program, {}, timeout=7.5)
-    assert outcome["status"] == "ok", outcome
-    result = outcome["result"]
+    completed = run_program(program, {}, timeout=7.5)
+    assert completed["status"] == "ok", completed
+    result = completed["result"]
     assert result["limits"]["RLIMIT_CPU"] == [8, 9]
     assert result["limits"]["RLIMIT_FSIZE"] == [1 << 20, 1 << 20]
     assert result["limits"]["RLIMIT_NPROC"] == [1, 1]

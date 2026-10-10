@@ -67,10 +67,10 @@ def _prediction_meter_lines(run: Run) -> list[str]:
 
 
 def result_text(run: Run, receipt: Receipt) -> str:
-    """Self-sufficient printout after a paid command: outcome, grade, new state."""
+    """Self-sufficient printout after a paid command: result, grade, new state."""
     events = run.events
     event = events[-1]
-    lines = [f"OUTCOME | {receipt.outcome} | {receipt.detail}"]
+    lines = [f"RESULT | {receipt.outcome} | {receipt.detail}"]
     lines.extend(f"  {line}" for line in receipt.grade or ())
     lines.extend(str(line) for line in receipt.modules or ())
     lines.extend(str(line) for line in receipt.aggregates or ())

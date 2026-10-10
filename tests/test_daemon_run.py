@@ -155,7 +155,7 @@ def test_a_thousand_events_through_the_daemon_agree_with_a_fresh_load(tmp_path):
         for _ in range(10):
             committed = run_cli(run, "commit", *batch)
             assert committed.returncode == 0, committed.stderr
-            assert "OUTCOME | PREDICTED | all 100 steps landed as predicted" in committed.stdout
+            assert "RESULT | PREDICTED | all 100 steps landed as predicted" in committed.stdout
         elapsed = time.monotonic() - began
         held = _held(run)
         assert held.chain_event == 1000 and held.tampered is None
@@ -554,7 +554,7 @@ def test_the_seal_outlives_the_daemon_and_the_operator_lifts_it(tmp_path):
         assert "INTEGRITY" not in resumed.stdout
         acted = run_cli(run, "act", "NOOP", "--predict", "noop")
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         audited = run_cli(run, "audit")
         assert (
             "AUDIT | CLEAN | events 3 (paid 2) | contiguous yes | chain intact | anchors none (0)"

@@ -681,7 +681,8 @@ _RECEIPT_KEYS = frozenset(
 @dataclasses.dataclass(frozen=True, slots=True)
 class Receipt:
     """What a paid command returns and what `.assay/receipts/` and the activity
-    log keep: the outcome, the rendered grade lines, the module, aggregate
+    log keep: the result (under the key `outcome`, which keeps its spelling),
+    the rendered grade lines, the module, aggregate
     and state lines, and the steps of a batch. An `act` receipt always
     carries `predict` and `because`, null when there is none, as it always
     has; every other optional key is written when it is set."""
@@ -769,7 +770,7 @@ class Mutation:
     """One write-ahead spend record of `.assay/mutations.jsonl`: written by the
     daemon before the event line, read back by the replay and by recovery.
     `outcomes` is written from #16 on and absent on older records. On disk the
-    key is `claims`, the spelling of 1.2.0, which recovery reads back; the
+    key is `claims`, the spelling of 1.2.0, which recovery reads back. The
     name changed in the code and nowhere on disk."""
 
     mutation_id: int

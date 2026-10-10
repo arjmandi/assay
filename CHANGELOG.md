@@ -13,10 +13,13 @@ Changelog. Dates are UTC.
   the code gives each outcome after the action. A held outcome in the record
   is a fact. Fact-checking is the name of the mechanism and grounding is the
   property it gives the world model. The word claim appears nowhere a person
-  reads now: not in the prose, the help text, the status lines, the
-  receipts, the error messages and hints, the docs, the docstrings, the
-  comments or the tests. `tests/test_vocabulary.py` enforces the rule over
-  the kernel and the frame extra. What a reader sees change: the status line
+  reads, except the three frozen spellings named below.
+  `tests/test_vocabulary.py` enforces the rule over the kernel and the frame
+  extra. The action's result is called a result, so that outcome keeps one
+  meaning. The receipt line label `OUTCOME |` is `RESULT |`, the prose says
+  the action's result and receipt result tokens, `modules.observe_outcome` is
+  `observe_result`, and `server.Outcome` is `ToolResult`. What a reader sees
+  change: the status line
   `CLAIMS | world-model misses ...` is `PREDICTIONS | world-model misses ...`
   with the same content. The MIS-REFERENCE line counts `prediction(s) named
   unregistered states`. The `claims` block of `assay status --json` is
@@ -39,9 +42,10 @@ Changelog. Dates are UTC.
   values (`noop`, `change`, `win`, `level_up`, `verify`, `channel_eq`,
   `channel_delta`, `channel_cross`, `aggregate`, `coerced` and the frame
   kinds), the keyword `ch`, every activity record kind, the receipts' keys
-  and outcome tokens, the `.assay/` file names and the journal spec version.
+  (the key `outcome` among them) and result tokens, the `.assay/` file names
+  and the journal spec version.
   Three frozen spellings still carry the old word and are allowed by name in
-  the vocabulary test. The receipt outcome token `INVALID_CLAIM` is frozen,
+  the vocabulary test. The receipt result token `INVALID_CLAIM` is frozen,
   and it is also the `actual` prefix of a verifier grade that did not grade.
   The mutation record in `.assay/mutations.jsonl` keeps its key `claims`,
   which recovery reads back. The `mis_reference` activity record keeps its

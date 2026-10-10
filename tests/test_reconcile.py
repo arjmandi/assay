@@ -228,7 +228,7 @@ def test_a_windowed_outcome_is_ungradable_on_recovery(tmp_path):
         assert event["note"] == RECOVERED_NOTE
         assert event["predict"] == predict
         # The step's duration died with the process: the windowed outcome is
-        # UNGRADABLE with the recovery actual, its own outcome, so predict_ok
+        # UNGRADABLE with the recovery actual, its own verdict, so predict_ok
         # is null; the verifier outcome carries no window and is graded.
         assert event["predict_ok"] is None
         grades = {grade["kind"]: grade for grade in event["grade"]}

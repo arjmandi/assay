@@ -278,7 +278,7 @@ def test_a_call_dispatches_like_the_command_line(tmp_path, monkeypatch):
         answer = call_tool(paths, "act", {"action": "inc", "params": {"amount": 1}, "predict": "change", "because": "probe"})
         assert not answer.error and answer.structured is None
         assert answer.text == result_text(Run.load(paths, strict=False), _receipt(run, 1))
-        assert answer.text.startswith("OUTCOME | PREDICTED | ") and "EVENT | e1 | " in answer.text
+        assert answer.text.startswith("RESULT | PREDICTED | ") and "EVENT | e1 | " in answer.text
         answer = call_tool(paths, "act", {"action": "INC", "params": {"amount": 9}, "predict": "change"})
         assert answer.error and answer.structured["code"] == "ACTION_PARAMS"
         assert answer.text.startswith("ERROR | ACTION_PARAMS | ")
@@ -287,19 +287,19 @@ def test_a_call_dispatches_like_the_command_line(tmp_path, monkeypatch):
         assert json.loads(answer.text) == answer.structured
         # The command line takes the same step through the same daemon.
         printed = run_cli(run, "act", "INC", "amount=1", "--predict", "change", "--because", "probe")
-        assert printed.returncode == 0 and printed.stdout.startswith("OUTCOME | PREDICTED | ")
+        assert printed.returncode == 0 and printed.stdout.startswith("RESULT | PREDICTED | ")
         # commit and reset, the other paid tools, rendered as the command line renders them.
         answer = call_tool(paths, "commit", {"steps": [
             {"action": "set_lamp", "params": {"state": "on"}, "predict": "change"},
             {"action": "NOOP", "predict": "noop"},
         ]})
         assert not answer.error and answer.text == result_text(Run.load(paths, strict=False), _receipt(run, 4))
-        assert answer.text.startswith("OUTCOME | ") and "EVENT | e4 | " in answer.text
+        assert answer.text.startswith("RESULT | ") and "EVENT | e4 | " in answer.text
         answer = call_tool(paths, "commit", {})
         assert answer.error and answer.structured["code"] == "COMMAND_ARGS"
         answer = call_tool(paths, "reset", {"because": "probe the rewind"})
         assert not answer.error and answer.text == result_text(Run.load(paths, strict=False), _receipt(run, 5))
-        assert answer.text.startswith("OUTCOME | RESET | ") and "EVENT | e5 | " in answer.text
+        assert answer.text.startswith("RESULT | RESET | ") and "EVENT | e5 | " in answer.text
         # The offline tools: the text of a command without a record and of one
         # with a record, as the command line prints them, and their documents.
         answer = call_tool(paths, "state_declare", {"name": "counter", "path": "counter"})
@@ -527,8 +527,8 @@ def test_a_run_driven_through_the_server_over_stdio(tmp_path):
         # view: the command line's text for the event as it stood.
         assert found["view"]["content"][0]["text"] == view_text(run_then)
         assert found["declare"]["content"][0]["text"] == DECLARED
-        assert found["typed"].returncode == 0 and found["typed"].stdout.startswith("OUTCOME | PREDICTED | ")
-        assert found["win"]["content"][0]["text"].startswith("OUTCOME | GAME_COMPLETE | ")
+        assert found["typed"].returncode == 0 and found["typed"].stdout.startswith("RESULT | PREDICTED | ")
+        assert found["win"]["content"][0]["text"].startswith("RESULT | GAME_COMPLETE | ")
         assert found["audit"]["structuredContent"]["invalid_for_scoring"] is False
         # The activity log: the server's calls on the mcp surface, the command
         # line's on its own, in order.

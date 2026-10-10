@@ -260,7 +260,7 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         assert _start(run).returncode == 0
         acted = run_cli(run, "act", "INC", "amount=1", "--predict", "change")
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         assert _events(run)[-1]["data"] == {"amount": 1}
         refused = run_cli(run, "act", "INC", "amount=9", "--predict", "change")
         assert refused.returncode == 2
@@ -273,7 +273,7 @@ def test_the_command_line_parses_the_token_and_the_step_syntax_for_the_wire(tmp_
         assert "NEXT | the REGISTRY block of `assay status` lists the actions and their schemas" in unknown.stderr
         committed = run_cli(run, "commit", "--step", "SET_LAMP state=on :: change", "--step", "NOOP :: noop")
         assert committed.returncode == 0, committed.stderr
-        assert "OUTCOME | PREDICTED | all 2 steps landed as predicted" in committed.stdout
+        assert "RESULT | PREDICTED | all 2 steps landed as predicted" in committed.stdout
         assert _events(run)[-2]["data"] == {"state": "on"}
         bare = run_cli(run, "commit", "--step", "NOOP")
         assert bare.returncode == 2
@@ -395,7 +395,7 @@ def test_params_json_carries_structured_values_through_the_cli_and_the_daemon(tm
         (run / "ops.json").write_text('{"ops": [{"kind": "inc", "amount": 1}]}\n')
         from_file = run_cli(run, "act", "APPLY", "--params", f"@{run / 'ops.json'}", "--predict", "win")
         assert from_file.returncode == 0, from_file.stderr
-        assert "OUTCOME | GAME_COMPLETE" in from_file.stdout
+        assert "RESULT | GAME_COMPLETE" in from_file.stdout
         assert _events(run)[-1]["data"] == {"ops": [{"amount": 1, "kind": "inc"}]}
         audited = run_cli(run, "audit")
         assert "AUDIT | CLEAN" in audited.stdout and "chain intact" in audited.stdout
@@ -416,7 +416,7 @@ def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
             "--step", "NOOP :: noop",
         )
         assert committed.returncode == 0, committed.stderr
-        assert "OUTCOME | PREDICTED | all 2 steps landed as predicted" in committed.stdout
+        assert "RESULT | PREDICTED | all 2 steps landed as predicted" in committed.stdout
         assert _events(run)[-2]["action"] == "SET_LAMP" and _events(run)[-2]["data"] == {"state": "on"}
         hint = (
             'a step is `--step "NAME pname=value :: outcomes"`, or `--step \'{"action": "NAME", '
@@ -443,7 +443,7 @@ def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
             '[{"action": "NOOP", "predict": "noop"}, {"action": "SET_LAMP", "params": {"state": "off"}, "predict": "change"}]',
         )
         assert listed.returncode == 0, listed.stderr
-        assert "OUTCOME | PREDICTED | all 2 steps landed as predicted" in listed.stdout
+        assert "RESULT | PREDICTED | all 2 steps landed as predicted" in listed.stdout
         assert "  e0003 NOOP ✓" in listed.stdout and "  e0004 SET_LAMP state=off ✓" in listed.stdout
         (run / "steps.json").write_text(json.dumps([
             {"action": "APPLY", "params": {"ops": [{"kind": "inc", "amount": 2}]}, "predict": "change"},
@@ -451,7 +451,7 @@ def test_step_json_form_and_a_step_file_beside_the_string_form(tmp_path):
         ]))
         from_file = run_cli(run, "commit", "--step", f"@{run / 'steps.json'}")
         assert from_file.returncode == 0, from_file.stderr
-        assert "OUTCOME | GAME_COMPLETE" in from_file.stdout
+        assert "RESULT | GAME_COMPLETE" in from_file.stdout
         assert '  e0005 APPLY ops=[{"amount":2,"kind":"inc"}] ✓' in from_file.stdout
         assert "  e0006 INC amount=1 ✓" in from_file.stdout
         assert _events(run)[-2]["data"] == {"ops": [{"amount": 2, "kind": "inc"}]}

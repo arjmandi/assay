@@ -8,7 +8,7 @@ the `Module` protocol below:
     MODE: "advise"|"block"   # default; registry module_modes overrides per run
     trigger(view, pending) -> str | None      # advisory message when it fires
     demand(view, pending) -> dict[str,str] | None   # {field: why}, structural
-    observe(view, event) -> None              # optional: learn from outcomes
+    observe(view, event) -> None              # optional: learn from results
     telemetry(view) -> dict                    # free counters
 
 `view` is a `ModuleView` over the run: the events (read-only, as `Event`
@@ -284,7 +284,7 @@ class _Hazard:
     NAME = "hazard"
     CONSTITUTION = (
         "Hazards are effect signatures, not action identities: an action class "
-        "whose graded outcome entered a loss state or dropped banked progress "
+        "whose graded result entered a loss state or dropped banked progress "
         "gets a worst-case + recovery declaration demand on its next use. The "
         "demand is cheap and structural; it never bans."
     )
@@ -984,8 +984,8 @@ def consult_modules(run: Run, pending: Mapping[str, Any] | None) -> list[str]:
     return lines
 
 
-def observe_outcome(run: Run, event: Event) -> None:
-    """Let modules learn from a graded outcome (hazard tagging etc.)."""
+def observe_result(run: Run, event: Event) -> None:
+    """Let modules learn from a graded result (hazard tagging etc.)."""
     view = ModuleView(run)
     for module, _ in active_modules(run):
         observe = getattr(module, "observe", None)

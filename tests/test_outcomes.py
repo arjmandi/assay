@@ -158,7 +158,7 @@ def test_graded_verify_record_flags(paths):
 def test_a_windowed_outcome_is_ungradable_without_a_measured_duration(paths):
     """On recovery the step's duration died with the process (`elapsed_s`
     None): every windowed outcome is UNGRADABLE with the recovery actual, its
-    own outcome, while the outcomes without a window grade as usual. A
+    own verdict, while the outcomes without a window grade as usual. A
     measured duration grades the outcome inside its window and marks it late
     outside."""
     after = _event({"counter": 1, "lamp": "off"})

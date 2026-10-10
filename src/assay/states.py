@@ -214,18 +214,18 @@ def _walk(observation: Any, dotted: str) -> tuple[bool, Any]:
     return True, node
 
 
-def _invalid_reason(outcome: Mapping[str, Any]) -> str:
+def _invalid_reason(completed: Mapping[str, Any]) -> str:
     """The words for a run the sandbox refused, as they have always read."""
-    kind = outcome.get("kind")
+    kind = completed.get("kind")
     if kind == "timeout":
         return f"extractor timed out after {EXTRACT_TIMEOUT_SECONDS:g}s"
     if kind == "crash":
-        return f"extractor crashed: {str(outcome['tail'])[:200]}"
+        return f"extractor crashed: {str(completed['tail'])[:200]}"
     if kind == "no_output":
         return "extractor produced no output"
     if kind == "malformed":
-        return f"malformed extractor output: {str(outcome['output'])[:120]!r}"
-    return f"extractor {outcome['reason']}"
+        return f"malformed extractor output: {str(completed['output'])[:120]!r}"
+    return f"extractor {completed['reason']}"
 
 
 def _run_extractor(
@@ -235,12 +235,12 @@ def _run_extractor(
     if not stored.exists():
         return False, f"stored extractor {digest[:12]} missing"
     payload = {"obs": obs, "extractor_path": str(stored.resolve())}
-    outcome = run_program(
+    completed = run_program(
         _RUNNER, payload, timeout=EXTRACT_TIMEOUT_SECONDS, companions=(stored,)
     )
-    if outcome["status"] != "ok":
-        return False, _invalid_reason(outcome)
-    result = outcome["result"]
+    if completed["status"] != "ok":
+        return False, _invalid_reason(completed)
+    result = completed["result"]
     if not isinstance(result, dict) or "value" not in result:
         return False, f"malformed extractor output: {json.dumps(result)[:120]!r}"
     return True, result["value"]

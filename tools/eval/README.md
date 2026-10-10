@@ -129,7 +129,7 @@ reported `SESSIONS_EXHAUSTED` as it stands. A usage-limit or 429 signal in
 the player's report pauses the whole queue for `--pause-minutes` (default
 30) and does not count as a session. A `STOP` file in the state directory,
 SIGINT or SIGTERM stop new launches and let the running sessions finish.
-Nothing is rerun because of its outcome; every launched run is reported.
+Nothing is rerun because of its result; every launched run is reported.
 
 On every start the runner reads every run directory first: a job whose
 journal already says WIN or cap is `SKIP`ped and never launched again; one
@@ -164,7 +164,7 @@ queue order. The fields: `job`, `world`, `arm`, `seed`, `model`, `outcome`
 (`WIN`, `CAP`, `SESSIONS_EXHAUSTED`, `STOPPED`, `START_FAILED`), `win`,
 `state`, `levels_completed`, `win_levels`, `paid_actions`, `budget`,
 `predicted_actions` (paid actions carrying a prediction), `receipts` (a
-tally by the frozen outcome tokens: `PREDICTED`, `SURPRISE`,
+tally by the frozen result tokens: `PREDICTED`, `SURPRISE`,
 `INVALID_CLAIM`, `UNGATED`, `LEVEL_COMPLETE`, `GAME_COMPLETE`,
 `GAME_OVER`, `RESET`), `refused_predictions` (a `--predict` refused under
 `gate: off`), `sessions`, `wall_seconds`, `tokens` (input, output,
@@ -173,7 +173,7 @@ cache_read, cache_creation, total), `dollars`, `tokens_per_action`,
 
 Where they come from today: the journal (`.assay/events.jsonl`, the public
 contract) for the paid actions, the state and the progress; the receipts
-(`.assay/receipts/*.json`) for the outcome tally; the activity log
+(`.assay/receipts/*.json`) for the result tally; the activity log
 (`.assay/activity.jsonl`) for the refused predictions; `.assay/chain.json`
 for the head; and the player's own report for tokens and dollars: when the
 player's stdout is one JSON object in the shape `claude -p --output-format

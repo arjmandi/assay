@@ -69,8 +69,8 @@ With a run directory and this checker, a third party can verify:
 Deliberate limits, stated plainly: the checker does not re-execute the
 grading (the grammar makes every predict and grade pair in a journal
 readable, re-grading is out of scope for v1). It cannot prove anything about
-live reasoning, no post-hoc tool can. Outcome truth for benchmark runs rests
-with the benchmark's own public scorecards, linked in the evidence packs.
+live reasoning, no post-hoc tool can. The truth of a benchmark run's result
+rests with the benchmark's own public scorecards, linked in the evidence packs.
 
 ## Versioning
 

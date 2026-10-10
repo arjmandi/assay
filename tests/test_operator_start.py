@@ -62,7 +62,7 @@ def test_operator_starts_the_run_and_the_agent_never_sees_the_token(tmp_path):
         acted = agent_command(run, "act", "INC", "amount=1", "--predict", "change")
         transcript.append(acted)
         assert acted.returncode == 0, acted.stderr
-        assert "OUTCOME | PREDICTED" in acted.stdout
+        assert "RESULT | PREDICTED" in acted.stdout
         proposed = agent_command(
             run, "goal", "propose", "reach 3 in two more actions",
             "--because", "INC moves the counter by its amount",
