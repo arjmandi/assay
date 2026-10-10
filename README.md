@@ -1,16 +1,76 @@
 # ASSAY
 
-ASSAY is a reasoning harness. It gives a language-model agent a world to think in
-that is not its context window. The agent names the parts of its environment it cares
-about as addressable states, reads them through the harness, and before it acts it
-says what the action will do to them in form of predictions. Code grades these predictions against the
-environment response. What held goes into the record, what missed is marked, and the
-agent learns the world one graded claim at a time. Over a run the record becomes a
-world model the agent consults by address instead of by memory: a state is looked up,
-not recalled, so a long run does not decay the way a long context does, with details
-lost in the middle and referents drifting, and the agent cannot fill its own model
-with things it merely said. The record lives on disk, hash-chained, replayable, and
-checkable by anyone without the harness.
+ASSAY is a reasoning harness. To start, it needs a world to interact with, tools it
+has access to, and the goal we want it to achieve. Then it starts to explore that world
+by building a small formal language that symbolically describes the world. It trusts
+its own world model only where that model predicted the world correctly: every
+prediction is labeled held or missed, and the agent reasons from what held. The formal
+language is the basis for addressing context rot and referent grounding issues in LLM
+(and LRM) agents, and it reduces the need for compaction or summarization of knowledge
+in long-running agents working toward a goal. Prediction is the agent's way of
+fact-checking its knowledge against the environment: a fact enters its world model
+only through a prediction that explained how the world behaved, so the agent can trust
+what it learned when it reasons toward the goal.
+
+## What you supply
+
+A world, through an **adapter**: one Python file that carries an action to the
+world and brings the observation back. The actions the agent may take, through
+a **registry**: a JSON contract with the action names, their typed parameters,
+the budgets, the flags and the goal. And a manual, `CONSTITUTION.md`, that
+tells the agent how to learn any world under the harness. The agent operates
+the harness from a shell through the `assay` command line, or through the tool
+server, which offers the same operations as tools. The kernel makes no model
+calls, so any model process that can drive a shell can play, and so can a
+person at a terminal.
+
+`GUIDE.md` is the user guide. `ONBOARDING.md` attaches a new world end to
+end. `docs/ARCHITECTURE.md` is the component model. `AGENTS.md` is for a
+coding agent working on the harness. `bench/` holds the benchmark worlds and
+their results.
+
+## The language
+
+The agent names the parts of the world it cares about as addressable states:
+a path into the observation, or a small program that extracts a value from
+it. The grammar then gives it a fixed set of forms to say what an action will
+do: a state equals a value, moves by an amount or crosses a threshold, the
+observation changes or stays the same, a level clears, the goal is reached,
+or a program the agent wrote decides. One prediction can carry several
+outcomes:
+
+```bash
+"$ASSAY" act INC amount=2 --predict "ch counter = 3; win"
+```
+
+Two outcomes: the state named `counter` reads 3 after the action, and the
+world reports its goal reached. What the forms cannot say, a verifier program
+can, and the agent writes those too.
+
+## Held or missed
+
+Before every paid action the agent writes its prediction, and the daemon
+refuses an action without one. After the action, code checks each outcome
+against what the world reported and labels it held or missed. The receipt
+shows the labels, and on a miss it shows the value the world reported:
+
+```
+  ✓ ch nkeys = 3
+  ✗ ch hl = 1 | ch hl = 0
+```
+
+What held is a fact in the record. What missed stays in the record as a
+miss. The agent reasons from the facts.
+
+## Fact-checking as grounding
+
+Nothing enters the agent's world model except through a prediction that was
+checked. The agent's own notes are not the record, and knowledge imported
+from an earlier run enters demoted and must be re-earned by predictions in
+the new run. The record lives on disk, and the agent looks a state up by its
+address instead of recalling it, which is what lets a long run keep its
+detail instead of summarizing it. The one page of notes the agent keeps is
+its own summary, and the manual says what belongs there.
 
 ## Reasoning layers
 
@@ -31,28 +91,14 @@ each layer tells the operator where to work when the agent fails.
    world and the observation back. Change this layer when the failures come
    from the interaction itself.
 4. **Addressable states.** The world model the agent builds: the states it
-   named, their readings, the claims it made over them and how each was
-   graded. Change this layer when reasoning breaks from forgetting or from
+   named, their readings, the predictions it made over them and how each was
+   labeled. Change this layer when reasoning breaks from forgetting or from
    referents that drift.
 5. **The model.** Everything behind the model's API. This layer is not
    ASSAY's.
 
 The more the model already knows the world, the less the layers above it
 need to say. The more the agent struggles on its own, the more they carry.
-
-## What you supply
-
-A world is attached with two files. The **registry** is a JSON contract of
-what the agent may do: the action names, their parameter schemas, the
-budgets, the flags and the goal. The **adapter** is one Python file that
-plugs ASSAY into your world. The kernel makes no model calls. Any model
-process that can drive a shell can operate it, and so can a person at a
-terminal.
-
-`GUIDE.md` is the user guide. `ONBOARDING.md` attaches a new world end to
-end. `docs/ARCHITECTURE.md` is the component model. `CONSTITUTION.md` is the
-manual the agent reads. `AGENTS.md` is for a coding agent working on the
-harness. `bench/` holds the benchmark worlds and their results.
 
 ## Platforms
 
@@ -106,7 +152,7 @@ mkdir demo && cd demo
 
 The third command declares an addressable state. `assay channel declare` is
 the same command under its earlier name and answers for one release. The
-claim keyword `ch` keeps its spelling in the journal.
+keyword `ch` keeps its spelling in the journal.
 
 Every command takes `--json` and prints one JSON document. A result record
 comes back for `status`, `view`, `audit`, `act`, `commit`, `reset`,
