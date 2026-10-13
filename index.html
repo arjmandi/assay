@@ -1,0 +1,1936 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>ASSAY</title>
+<meta name="description" content="ASSAY: an agent harness that grounds a test-time world model by checked prediction.">
+<meta property="og:type" content="website">
+<meta property="og:title" content="ASSAY">
+<meta property="og:description" content="ASSAY: an agent harness that grounds a test-time world model by checked prediction.">
+<meta property="og:url" content="https://arjmandi.github.io/assay/">
+<link rel="canonical" href="https://arjmandi.github.io/assay/">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' fill='%23E6E8EA' stroke='%2317191B' stroke-width='2'/%3E%3Ccircle cx='11' cy='11' r='3.5' fill='%231A56B3'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
+<style>
+/* Layout concept: a machined instrument datasheet. One 12-column rail, hairline rules,
+   registration marks at panel corners, one blue signal colour for the gate and the misses. */
+:root{
+  /* one look, by choice: industrial gray everywhere, graphite for the instruments, never black */
+  --bg:#E6E8EA;        /* cast aluminium ground, near white */
+  --bg-2:#EEF0F1;      /* raised panel */
+  --bg-3:#D7DADC;      /* recessed well */
+  --bg-4:#C6C9CC;      /* deeper well, chart tracks */
+  --ink:#17191B;
+  --ink-2:#4A4F52;
+  --ink-3:#6E7478;
+  --rule:#B8BCBF;
+  --rule-2:#D2D5D7;
+  --red:#1A56B3;       /* signal: marks, LEDs, the gate (token name kept; value is the accent) */
+  --red-text:#174A96;  /* signal on text */
+  --red-soft:rgba(26,86,179,.14);
+  --panel:#3A3E42;     /* graphite instrument (RAL 7024 family) */
+  --panel-raised:#484C51;
+  --panel-well:#2E3236;
+  --panel-ink:#E8E9EA;
+  --panel-ink-2:#B4B8BC;
+  --panel-rule:#565B60;
+  --panel-red:#7FB0F5;
+  --mark-1:#2E3134;    /* chart: primary gray mark */
+  --mark-2:#6E7378;    /* chart: secondary gray mark */
+  --mark-3:#969B9F;    /* chart: tertiary / reference */
+  --grid:#CDD0D3;
+  --focus:#1A56B3;
+  --noise-o:.07;
+  --display:"Libre Caslon Display", "Libre Caslon Text", Georgia, "Times New Roman", serif;
+  --sans:"IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
+  --mono:"IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+  --gutter:clamp(16px, 4vw, 56px);
+  --maxw:1280px;
+  --ease:cubic-bezier(.2,.7,.2,1);
+  color-scheme:light;
+}
+
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+@media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font-family:var(--sans); font-weight:300; font-size:17px; line-height:1.55;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden; position:relative;
+}
+body::before{ /* cast-metal grain */
+  content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:var(--noise-o);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size:220px 220px;
+}
+a{color:inherit; text-decoration:none}
+a:hover{color:var(--red-text)}
+:focus-visible{outline:2px solid var(--focus); outline-offset:3px}
+button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer}
+code,kbd,pre{font-family:var(--mono)}
+svg{display:block; max-width:100%}
+img{max-width:100%}
+::selection{background:var(--red); color:#fff}
+
+/* ---------- type ---------- */
+h1,h2,h3,h4{font-family:var(--display); font-weight:400; margin:0; text-wrap:balance; letter-spacing:-.005em}
+h1{font-size:clamp(28px, 4.34vw, 60px); line-height:1.06}
+h2{font-size:clamp(34px, 4.2vw, 56px); line-height:1.06}
+h3{font-size:clamp(24px, 2.4vw, 30px); line-height:1.18}
+h4{font-family:var(--sans); font-weight:500; font-size:15px; letter-spacing:.01em}
+p{margin:0}
+.lede{font-size:clamp(19px, 1.6vw, 22px); line-height:1.45; font-weight:300; color:var(--ink); max-width:62ch}
+.prose{max-width:66ch; display:flex; flex-direction:column; gap:1em}
+.prose p{color:var(--ink)}
+.prose strong{font-weight:500}
+em{font-style:italic}
+.mono{font-family:var(--mono)}
+.eyebrow{
+  font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2);
+  display:flex; align-items:center; gap:12px; font-weight:400;
+}
+.eyebrow .num{color:var(--red-text); white-space:nowrap}
+.eyebrow::after{content:""; flex:1; height:1px; background:var(--rule); max-width:120px}
+.small{font-size:14px; color:var(--ink-2); line-height:1.5}
+.tiny{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; color:var(--ink-2); line-height:1.5}
+.num-tab{font-variant-numeric:tabular-nums}
+.sym{font-family:var(--display); font-style:italic}
+sub,sup{font-size:.7em; line-height:0}
+
+/* ---------- frame ---------- */
+.wrap{position:relative; z-index:1; width:100%; max-width:var(--maxw); margin:0 auto; padding-inline:var(--gutter)}
+.section{padding-block:clamp(20px, 2.5vw, 36px) clamp(36px, 4vw, 56px); border-top:0; position:relative}
+.section:first-of-type{border-top:0}
+.section-head{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:28px 56px; align-items:start; margin-bottom:clamp(40px, 5vw, 72px)}
+.section-head .eyebrow{grid-column:1 / -1}
+@media (max-width: 860px){ .section-head{grid-template-columns:1fr} }
+.section-head.stacked{grid-template-columns:1fr; gap:18px; align-items:start}
+.section-head.stacked .lede{max-width:70ch}
+.grid{display:grid; gap:24px}
+.g2{grid-template-columns:repeat(2, minmax(0,1fr))}
+.g3{grid-template-columns:repeat(3, minmax(0,1fr))}
+.g4{grid-template-columns:repeat(4, minmax(0,1fr))}
+.g5-7{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
+.g7-5{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+.g4-8{grid-template-columns:minmax(0,4fr) minmax(0,8fr)}
+@media (max-width: 960px){ .g3{grid-template-columns:1fr} .g4{grid-template-columns:repeat(2, minmax(0,1fr))} .g5-7,.g7-5,.g4-8{grid-template-columns:1fr} }
+@media (max-width: 600px){ .g2,.g3,.g4{grid-template-columns:1fr} }
+.stack{display:flex; flex-direction:column; gap:16px}
+.row{display:flex; flex-wrap:wrap; gap:12px; align-items:center}
+.minw{min-width:0}
+.grid > *, .hero-grid > *, .stack > *, .layers > *, .grammar > *, .ev-grid > *, .homes > *, .stepper > *{min-width:0}
+
+/* panel: raised machined plate with registration marks */
+.panel{position:relative; background:var(--bg-2); border:1px solid var(--rule); padding:28px}
+.panel::before,.panel::after{
+  content:""; position:absolute; width:9px; height:9px; pointer-events:none;
+  background:
+    linear-gradient(var(--ink-3),var(--ink-3)) center/9px 1px no-repeat,
+    linear-gradient(var(--ink-3),var(--ink-3)) center/1px 9px no-repeat;
+  opacity:.75;
+}
+.panel::before{top:-5px; left:-5px}
+.panel::after{bottom:-5px; right:-5px}
+.panel.flush{padding:0}
+.panel.dark{background:var(--panel); color:var(--panel-ink); border-color:var(--panel-rule)}
+.panel.dark .eyebrow,.panel.dark .small,.panel.dark .tiny{color:var(--panel-ink-2)}
+.panel.dark .eyebrow::after{background:var(--panel-rule)}
+.panel.dark .eyebrow .num{color:var(--panel-red)}
+.panel.dark a:hover{color:var(--panel-red)}
+.panel.well{background:var(--bg-3)}
+.inset{border:1px solid var(--rule-2); background:var(--bg); padding:16px 18px}
+.panel.dark .inset{border-color:var(--panel-rule); background:var(--panel-well)}
+.led{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ink-3); box-shadow:inset 0 0 0 1px rgba(0,0,0,.25); vertical-align:middle}
+.led.on{background:var(--red); box-shadow:0 0 0 3px var(--red-soft), inset 0 0 0 1px rgba(0,0,0,.2)}
+.led.ok{background:var(--ink)}
+.panel.dark .led.ok{background:var(--panel-ink)}
+hr.rule{border:0; border-top:1px solid var(--rule); margin:0}
+.kv{display:grid; grid-template-columns:auto 1fr; gap:8px 20px; font-size:14px}
+.kv dt{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); padding-top:3px}
+.kv dd{margin:0}
+
+/* ---------- top bar ---------- */
+.topbar{
+  position:sticky; top:env(safe-area-inset-top, 0px); z-index:50;
+  background:color-mix(in srgb, var(--bg) 86%, transparent);
+  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+  border-bottom:1px solid var(--rule);
+}
+.topbar .wrap{display:flex; align-items:center; justify-content:space-between; gap:14px; height:56px}
+.brand{display:flex; align-items:center; gap:14px; font-family:var(--mono); font-size:12px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink)}
+.brand .mark{width:22px; height:22px; position:relative}
+.brand .mark::before{content:""; position:absolute; inset:0; border:1px solid var(--ink)}
+.brand .mark::after{content:""; position:absolute; width:6px; height:6px; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--red); border-radius:50%}
+.brand .ver{color:var(--ink-3); letter-spacing:.1em; text-transform:none; white-space:nowrap}
+nav.sections{display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; min-width:0}
+nav.sections::-webkit-scrollbar{display:none}
+nav.sections a{
+  font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2);
+  padding:8px 7px; white-space:nowrap; position:relative;
+}
+nav.sections a .n{color:var(--ink-3); margin-right:4px}
+nav.sections a.active{color:var(--ink)}
+nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px; bottom:2px; height:1px; background:var(--red)}
+.topbar .links{display:flex; gap:6px; flex-shrink:0}
+.topbar .links a{display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:7px 11px; border:1px solid var(--rule); color:var(--ink)}
+.topbar .links a:hover{border-color:var(--ink)}
+@media (max-width: 1180px){ .brand .ver{display:none} }
+@media (max-width: 1060px){ nav.sections{display:none} }
+@media (max-width: 520px){ .topbar .links a span{display:none} .brand .ver{display:none} }
+#progress{position:fixed; top:env(safe-area-inset-top, 0px); left:0; height:2px; width:0; background:var(--red); z-index:60; pointer-events:none}
+
+/* ---------- hero ---------- */
+.hero{padding-block:clamp(56px, 7vw, 104px) clamp(20px, 2.5vw, 36px)}
+.hero-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:48px 48px; align-items:start}
+@media (max-width: 960px){ .hero-grid{grid-template-columns:1fr} }
+.hero h1 .thin{color:var(--ink-2)}
+.hero .meta{display:flex; flex-wrap:wrap; gap:10px 28px; font-family:var(--mono); font-size:12px; letter-spacing:.08em; color:var(--ink-2); margin-top:28px}
+.hero .meta b{font-weight:500; color:var(--ink)}
+.hero .abstract{margin-top:34px}
+.hero .cta{display:flex; flex-wrap:wrap; gap:12px; margin-top:34px}
+.btn{
+  display:inline-flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+  padding:14px 20px; border:1px solid var(--ink); color:var(--ink); transition:background .25s var(--ease), color .25s var(--ease);
+  min-height:44px;
+}
+.btn:hover{background:var(--ink); color:var(--bg)}
+.btn.red{border-color:var(--red); color:var(--red-text)}
+.btn.red:hover{background:var(--red); color:#fff}
+.btn svg{width:14px; height:14px}
+.stat-strip{
+  display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border:1px solid var(--rule); background:var(--bg-2);
+  margin-top:14px;
+}
+.stat-title{margin-top:clamp(40px, 5vw, 64px)}
+.stat-strip .stat{padding:20px 22px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:6px; min-width:0}
+.stat-strip .stat:last-child{border-right:0}
+.stat .v{font-family:var(--sans); font-weight:300; font-size:clamp(26px, 2.6vw, 36px); line-height:1; letter-spacing:-.02em; white-space:nowrap}
+.stat .v small{font-size:.5em; color:var(--ink-2); letter-spacing:0; margin-left:4px}
+.stat .l{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+@media (max-width: 760px){ .stat-strip{grid-template-columns:repeat(2, minmax(0,1fr))} .stat-strip .stat:nth-child(2n){border-right:0} .stat-strip .stat:nth-child(n+3){border-top:1px solid var(--rule)} }
+
+/* the loop instrument */
+.loop-panel{padding:14px 14px 14px}
+.loop-panel .eyebrow{margin-bottom:12px}
+.loop-svg{width:100%; height:auto}
+.loop-svg .node rect{fill:#F2F3F4; stroke:var(--panel-rule); stroke-width:1}
+.loop-svg .node.harness rect{fill:var(--panel-raised)}
+.loop-svg text{font-family:var(--mono); font-size:10.5px; fill:var(--panel-ink); letter-spacing:.04em}
+.loop-svg .node.harness text{fill:var(--panel-ink)}
+.loop-svg .node:not(.harness) text{fill:#17191B}
+.loop-svg text.lab{fill:var(--panel-ink-2); font-size:9.5px}
+.loop-svg .wire{fill:none; stroke:var(--panel-ink-2); stroke-width:1; opacity:.6}
+.loop-svg .wire.hot{stroke:var(--panel-red); opacity:1; stroke-width:1.25}
+.loop-svg .token{fill:var(--panel-red)}
+.loop-svg .token.ok{fill:var(--panel-ink)}
+.loop-svg .frame{fill:none; stroke:var(--panel-rule); stroke-dasharray:3 3}
+.loop-svg .gate-bar{stroke:var(--panel-red); stroke-width:2}
+.loop-legend{display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:12px; font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--panel-ink-2)}
+.loop-legend span{display:inline-flex; align-items:center; gap:7px}
+.loop-caption{margin-top:14px; font-size:13.5px; color:var(--panel-ink-2); line-height:1.5}
+.loop-status{display:flex; gap:14px; align-items:center; margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--panel-ink-2); min-height:18px}
+.loop-status b{color:var(--panel-ink); font-weight:500}
+
+/* diagrams scroll sideways on narrow screens instead of shrinking their type */
+.dscroll{overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin}
+@media (max-width: 720px){ .dscroll > svg{min-width:560px} .dscroll > svg.loop-svg{min-width:500px} .dscroll::after{content:'scroll sideways →'; display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); padding-top:6px} .panel.dark .dscroll::after{color:var(--panel-ink-2)} .stepper .dscroll::after{color:var(--panel-ink-2)} }
+
+/* ---------- reveal (visible at rest; animates only when motion is allowed) ---------- */
+.rv{opacity:1}
+@media (prefers-reduced-motion: no-preference){
+  .rv.pre{opacity:0; transform:translateY(14px)}
+}
+
+/* ---------- problem: where knowledge lives ---------- */
+.homes{display:grid; grid-template-columns:minmax(0,4fr) minmax(0,8fr); border:1px solid var(--rule); background:var(--bg-2)}
+@media (max-width: 860px){ .homes{grid-template-columns:1fr} }
+.homes .tabs{display:flex; flex-direction:column; border-right:1px solid var(--rule); min-width:0}
+.homes .body{min-width:0}
+@media (max-width: 860px){ .homes .tabs{flex-direction:row; overflow-x:auto; border-right:0; border-bottom:1px solid var(--rule)} .homes .tabs button{flex:1 0 auto} }
+.homes .tabs button{
+  text-align:left; padding:18px 22px; border-bottom:1px solid var(--rule-2); display:flex; align-items:center; gap:14px;
+  font-family:var(--sans); font-weight:400; font-size:15px; min-height:56px; transition:background .2s;
+}
+.homes .tabs button:last-child{border-bottom:0}
+.homes .tabs button .led{flex-shrink:0}
+.homes .tabs button[aria-selected="true"]{background:var(--bg); color:var(--ink)}
+.homes .tabs button[aria-selected="true"] .led{background:var(--red); box-shadow:0 0 0 3px var(--red-soft)}
+.homes .body{padding:28px; display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:22px; align-content:start}
+@media (max-width: 600px){ .homes .body{grid-template-columns:1fr} }
+.homes .cell .k{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); margin-bottom:10px; padding-bottom:8px; border-bottom:1px solid var(--rule-2)}
+.homes .cell .k.hot{color:var(--red-text); border-color:var(--red)}
+.homes .cell p{font-size:15px; line-height:1.5}
+.homes .verdict{grid-column:1 / -1; padding-top:18px; border-top:1px solid var(--rule); font-size:15px; color:var(--ink-2); display:flex; gap:12px; align-items:flex-start}
+.homes .verdict .led{margin-top:7px; flex-shrink:0}
+
+.lineage{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0; border:1px solid var(--rule); margin-top:28px; background:var(--bg-2)}
+@media (max-width: 860px){ .lineage{grid-template-columns:repeat(2, minmax(0,1fr))} }
+@media (max-width: 480px){ .lineage{grid-template-columns:1fr} }
+.lineage .sys{padding:20px 22px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:10px; min-width:0}
+.lineage .sys:last-child{border-right:0; background:var(--bg)}
+@media (max-width: 860px){ .lineage .sys:nth-child(2){border-right:0} .lineage .sys:nth-child(n+3){border-top:1px solid var(--rule)} }
+@media (max-width: 480px){ .lineage .sys{border-right:0; border-top:1px solid var(--rule)} .lineage .sys:first-child{border-top:0} }
+.lineage .sys .n{font-family:var(--display); font-size:26px}
+.lineage .sys .when{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+.lineage .sys p{font-size:14px; color:var(--ink-2); line-height:1.5}
+.lineage .sys .fail{font-size:14px; display:flex; gap:9px; align-items:flex-start}
+.lineage .sys .fail .led{margin-top:6px; flex-shrink:0}
+
+/* ---------- the loop stepper ---------- */
+.stepper{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); border:1px solid var(--panel-rule); background:var(--panel); color:var(--panel-ink)}
+@media (max-width: 960px){ .stepper{grid-template-columns:1fr} }
+.stepper .steps{border-right:1px solid var(--panel-rule); display:flex; flex-direction:column}
+@media (max-width: 960px){ .stepper .steps{border-right:0; border-bottom:1px solid var(--panel-rule)} }
+.stepper .steps button{
+  text-align:left; padding:20px 24px; border-bottom:1px solid var(--panel-rule); display:grid; grid-template-columns:40px 1fr; gap:4px 14px; align-items:baseline;
+  color:var(--panel-ink-2); transition:background .2s, color .2s; min-height:64px;
+}
+.stepper .steps button:last-child{border-bottom:0}
+.stepper .steps button .i{font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--panel-ink-2)}
+.stepper .steps button .t{font-family:var(--display); font-size:22px; color:var(--panel-ink)}
+.stepper .steps button .d{grid-column:2; font-size:13.5px; line-height:1.45; color:var(--panel-ink-2)}
+.stepper .steps button[aria-selected="true"]{background:rgba(255,255,255,.06)}
+.stepper .steps button[aria-selected="true"] .i{color:var(--panel-red)}
+.stepper .steps button[aria-selected="true"] .t{color:#fff}
+.stepper .stage{padding:24px; display:flex; flex-direction:column; gap:16px; min-width:0}
+.stepper .ctl{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap}
+.stepper .ctl .btns{display:flex; gap:8px}
+.stepper .ctl button{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:9px 14px; border:1px solid var(--panel-rule); color:var(--panel-ink); min-height:36px}
+.stepper .ctl button:hover{border-color:var(--panel-ink)}
+.stepper .ctl button.autoplay.on{border-color:var(--panel-red); color:var(--panel-red)}
+@media (min-width: 961px){ .stepper .stage{position:sticky; top:72px; align-self:start} .forms{position:sticky; top:72px} }
+.stepper .ctl .where{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--panel-ink-2)}
+.term{
+  background:var(--panel-well); border:1px solid var(--panel-rule); padding:16px 18px; font-family:var(--mono); font-size:12.5px; line-height:1.6; color:#DDE0E2;
+  overflow-x:auto; white-space:pre-wrap; word-break:break-word; min-height:150px;
+}
+.term .p{color:#9EA3A7}
+.term .k{color:var(--panel-red)}
+.term .ok{color:var(--panel-ink)}
+.term .miss{color:var(--panel-red)}
+.term .dim{color:#A4A9AD}
+.term .cm{color:#949a9e; font-style:italic}
+.stage-svg{width:100%; height:auto}
+.stage-svg text{font-family:var(--mono); font-size:10.5px; fill:var(--panel-ink); letter-spacing:.04em}
+.stage-svg text.lab{fill:var(--panel-ink-2); font-size:9.5px}
+.stage-svg .box{fill:var(--panel-raised); stroke:var(--panel-rule)}
+.stage-svg .box.lit{stroke:var(--panel-red); stroke-width:1.5}
+.stage-svg .box.world{fill:#F2F3F4}
+.stage-svg .box.world + text, .stage-svg text.on-light{fill:#17191B}
+.stage-svg text.lab.on-light{fill:#4F5457}
+.stage-svg .wire{fill:none; stroke:var(--panel-ink-2); stroke-width:1; opacity:.55}
+.stage-svg .wire.lit{stroke:var(--panel-red); opacity:1; stroke-width:1.5}
+.stage-svg .tok{fill:var(--panel-red)}
+.explain{font-size:14.5px; line-height:1.55; color:var(--panel-ink-2)}
+.explain b{color:var(--panel-ink); font-weight:500}
+
+/* ---------- grammar ---------- */
+.grammar{display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:24px; align-items:start}
+@media (max-width: 960px){ .grammar{grid-template-columns:1fr} }
+.forms{border:1px solid var(--rule); background:var(--bg-2)}
+.forms .head,.forms .f{display:grid; grid-template-columns:minmax(0,1.5fr) minmax(0,.9fr) minmax(0,1.6fr); gap:14px; padding:14px 20px; align-items:center}
+.forms .head{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); border-bottom:1px solid var(--rule)}
+.forms .f{border-bottom:1px solid var(--rule-2); text-align:left; width:100%; transition:background .2s; min-height:52px}
+.forms .f:last-child{border-bottom:0}
+.forms .f:hover{background:var(--bg)}
+.forms .f[aria-expanded="true"]{background:var(--bg)}
+.forms .f code{font-size:13px; color:var(--ink)}
+.forms .f .b{font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; display:inline-flex; align-items:center; gap:7px; color:var(--ink-2)}
+.forms .f .b .led{width:7px; height:7px}
+.forms .f .h{font-size:13.5px; color:var(--ink-2); font-family:var(--mono)}
+.forms .f .h .sym{font-size:15px}
+.forms .det{grid-column:1 / -1; font-size:14px; color:var(--ink-2); line-height:1.55; padding-top:8px; border-top:1px dashed var(--rule-2); max-width:70ch}
+.forms .det[hidden]{display:none}
+@media (max-width: 600px){ .forms .head{display:none} .forms .f{grid-template-columns:1fr; gap:6px} }
+
+.play{border:1px solid var(--rule); background:var(--bg-2); display:flex; flex-direction:column}
+.play .ph{padding:16px 20px; border-bottom:1px solid var(--rule); display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap}
+.play .ph .eyebrow::after{display:none}
+.play .pb{padding:20px}
+.play label{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); display:block; margin-bottom:8px}
+.play textarea{
+  width:100%; min-height:84px; resize:vertical; background:var(--bg); color:var(--ink); border:1px solid var(--rule); padding:12px 14px;
+  font-family:var(--mono); font-size:13px; line-height:1.5;
+}
+.play textarea:focus{outline:2px solid var(--focus); outline-offset:0; border-color:transparent}
+.play .presets{display:flex; flex-wrap:wrap; gap:6px; margin-top:10px}
+.play .presets button{font-family:var(--mono); font-size:11px; letter-spacing:.06em; padding:7px 10px; border:1px solid var(--rule); color:var(--ink-2); min-height:32px}
+.play .presets button:hover{border-color:var(--ink); color:var(--ink)}
+.play .states{margin-top:14px; display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+.play .states code{font-size:11.5px; padding:4px 8px; border:1px solid var(--rule-2); background:var(--bg); color:var(--ink-2)}
+.parsed{display:flex; flex-direction:column; gap:8px; margin-top:16px; min-height:40px}
+.parsed .o{display:grid; grid-template-columns:auto 1fr auto; gap:12px; align-items:center; padding:9px 12px; border:1px solid var(--rule-2); background:var(--bg); font-size:13px}
+.parsed .o code{font-size:12.5px; word-break:break-all}
+.parsed .o .b{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); white-space:nowrap}
+.parsed .o .led{width:7px; height:7px}
+.parsed .o.refused{border-color:var(--red); background:var(--red-soft)}
+.parsed .o.coerced{border-style:dashed}
+.parsed .o .why{grid-column:1 / -1; font-size:12.5px; color:var(--ink-2)}
+.meters{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); margin-top:16px}
+.meters .m{background:var(--panel); color:var(--panel-ink); padding:14px 16px; display:flex; flex-direction:column; gap:8px; min-width:0}
+.meters .m .l{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2)}
+.meters .m .l i{font-style:normal; text-transform:none}
+.meters .m .v{font-size:26px; font-weight:300; line-height:1; letter-spacing:-.02em}
+.meters .m .v small{font-size:12px; color:var(--panel-ink-2); margin-left:4px; letter-spacing:0}
+.meters .m .bar{height:3px; background:var(--panel-rule); position:relative; overflow:hidden}
+.meters .m .bar i{position:absolute; left:0; top:0; bottom:0; width:0; background:var(--panel-red); transition:width .5s var(--ease)}
+.meters .m.ok .bar i{background:var(--panel-ink)}
+@media (max-width: 520px){ .meters{grid-template-columns:1fr} }
+
+/* ---------- fact flow ---------- */
+.flow-svg{width:100%; height:auto}
+.flow-svg text{font-family:var(--mono); font-size:10.5px; fill:var(--ink); letter-spacing:.04em}
+.flow-svg text.lab{fill:var(--ink-2); font-size:9.5px}
+.flow-svg .box{fill:var(--bg-2); stroke:var(--rule)}
+.flow-svg .box.agent{fill:var(--bg); stroke-dasharray:3 3}
+.flow-svg .box.bin{fill:var(--bg-3)}
+.flow-svg .wire{fill:none; stroke:var(--ink-3); stroke-width:1}
+.flow-svg .dot{fill:var(--ink)}
+.flow-svg .dot.miss{fill:var(--red)}
+.flow-svg .cnt{font-size:12px; fill:var(--ink)}
+.wm-tuple{display:flex; flex-wrap:wrap; gap:10px; margin-top:20px}
+.wm-tuple .t{border:1px solid var(--rule); background:var(--bg-2); padding:10px 14px; display:flex; flex-direction:column; gap:3px; min-width:120px; flex:1}
+.wm-tuple .t .s{font-family:var(--display); font-style:italic; font-size:20px}
+.wm-tuple .t .d{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+
+/* ---------- record / chain ---------- */
+.chain{border:1px solid var(--panel-rule); background:var(--panel); color:var(--panel-ink)}
+.chain .ch{padding:16px 20px; border-bottom:1px solid var(--panel-rule); display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap}
+.chain .ch .eyebrow::after{display:none}
+.chain .ch .ctl{display:flex; gap:8px; flex-wrap:wrap}
+.chain .ch .ctl button{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:9px 14px; border:1px solid var(--panel-rule); color:var(--panel-ink); min-height:36px}
+.chain .ch .ctl button:hover{border-color:var(--panel-ink)}
+.chain .lines{overflow-x:auto}
+.chain table{border-collapse:collapse; width:100%; min-width:880px; table-layout:fixed; font-family:var(--mono); font-size:12px}
+.chain .eyebrow{color:var(--panel-ink-2)} .chain .eyebrow .num{color:var(--panel-red)} .datum .eyebrow{color:var(--panel-ink-2)} .datum .eyebrow .num{color:var(--panel-red)} .datum .eyebrow::after{background:var(--panel-rule)}
+.chain th{font-weight:400; text-align:left; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2); padding:10px 14px; border-bottom:1px solid var(--panel-rule)}
+.chain td{padding:9px 14px; border-bottom:1px solid var(--panel-rule); vertical-align:top; white-space:nowrap}
+.chain tr:last-child td{border-bottom:0}
+.chain td.e{color:var(--panel-ink-2)}
+.chain td.l{white-space:normal; word-break:break-word; color:#DDE0E2}
+.chain td.l .k{color:var(--panel-red)}
+.chain td.l .ok{color:var(--panel-ink)}
+.chain td.h{color:var(--panel-ink-2)}
+.chain td.a{text-align:center}
+.chain tr.tampered td.l{background:rgba(127,176,245,.12)}
+.chain tr.broken td.h{color:var(--panel-red)}
+.chain tr.broken td.h::before{content:"≠ "; }
+.chain .edit{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; padding:5px 9px; border:1px solid var(--panel-rule); color:var(--panel-ink-2); min-height:28px; white-space:normal; text-align:left; line-height:1.3}
+.chain .edit:hover{border-color:var(--panel-ink); color:var(--panel-ink)}
+.chain tr.tampered .edit{border-color:var(--panel-red); color:var(--panel-red)}
+.chain .anchor{font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; padding:3px 7px; border:1px solid var(--panel-rule); color:var(--panel-ink-2); display:inline-block; white-space:normal; line-height:1.4}
+.chain .anchor.bad{border-color:var(--panel-red); color:var(--panel-red)}
+.chain .anchor.good{border-color:var(--panel-ink-2); color:var(--panel-ink)}
+.chain .verdict{padding:16px 20px; border-top:1px solid var(--panel-rule); display:flex; gap:14px; align-items:center; font-family:var(--mono); font-size:12px; letter-spacing:.06em; flex-wrap:wrap}
+.chain .verdict .led{flex-shrink:0}
+.chain .verdict b{font-weight:500}
+.chain .verdict .r{color:var(--panel-red)}
+
+.chain-notes{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-top:0}
+@media (max-width: 960px){ .chain-notes{grid-template-columns:repeat(2, minmax(0,1fr))} }
+@media (max-width: 520px){ .chain-notes{grid-template-columns:1fr} }
+.chain-notes .cn{background:var(--bg-2); padding:14px 18px; display:flex; flex-direction:column; gap:6px; min-width:0}
+.chain-notes .cn .k{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--red-text)}
+.chain-notes .cn p{font-size:13.5px; line-height:1.5; color:var(--ink-2)}
+.chain-notes .cn code{font-size:12px; color:var(--ink)}
+
+.trust{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+@media (max-width: 860px){ .trust{grid-template-columns:1fr} }
+.trust .c{background:var(--bg-2); padding:22px; display:flex; flex-direction:column; gap:10px}
+.trust .c .w{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2)}
+.trust .c .n{font-family:var(--display); font-size:24px}
+.trust .c p{font-size:14px; color:var(--ink-2); line-height:1.5}
+.trust .c code{font-size:12px; color:var(--ink)}
+
+/* ---------- batch ---------- */
+.batch{display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; align-items:stretch}
+.batch .st{border:1px solid var(--rule); background:var(--bg-2); padding:14px; display:flex; flex-direction:column; gap:8px; position:relative; min-height:112px}
+.batch .st .i{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+.batch .st code{font-size:12px}
+.batch .st .g{margin-top:auto; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; display:flex; align-items:center; gap:7px; color:var(--ink-2)}
+.batch .st.held .g{color:var(--ink)}
+.batch .st.missed{border-color:var(--red)}
+.batch .st.missed .g{color:var(--red-text)}
+.batch .st.unspent{border-style:dashed; color:var(--ink-3); background:transparent}
+.batch .st.unspent .g{color:var(--ink-3)}
+.batch .halt{position:absolute; right:-7px; top:-1px; bottom:-1px; width:2px; background:var(--red)}
+.batch .halt::after{content:"halt"; position:absolute; top:-18px; left:-8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--red-text)}
+@media (max-width: 700px){ .batch{grid-template-columns:repeat(2, minmax(0,1fr))} .batch .halt{display:none} }
+.rights{margin-top:24px; border:1px solid var(--rule); background:var(--bg-2); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,220px); gap:20px; align-items:center}
+@media (max-width: 700px){ .rights{grid-template-columns:1fr} }
+.rights .cond{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:13px}
+.rights .cond span{display:inline-flex; align-items:center; gap:8px}
+.rights .cond .led{width:7px; height:7px}
+.rights .out{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; padding:12px 14px; border:1px solid var(--rule); text-align:center; line-height:1.5}
+.rights .out.on{border-color:var(--ink); background:var(--ink); color:var(--bg)}
+.rights input[type=range]{width:100%; accent-color:var(--red)}
+.rights .sl{display:grid; grid-template-columns:1fr; gap:10px; margin-top:14px}
+.rights .sl label{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); display:flex; justify-content:space-between}
+
+/* ---------- layers ---------- */
+.layers{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:24px; align-items:start}
+@media (max-width: 960px){ .layers{grid-template-columns:1fr} }
+.layer-stack{display:flex; flex-direction:column; gap:0; border:1px solid var(--rule); background:var(--bg-2)}
+.layer-stack button{
+  text-align:left; display:grid; grid-template-columns:34px 1fr auto; gap:14px; align-items:center; padding:18px 20px; border-bottom:1px solid var(--rule-2); min-height:64px;
+  transition:background .2s, padding-left .25s var(--ease);
+}
+.layer-stack button:last-child{border-bottom:0}
+.layer-stack button .i{font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--ink-3)}
+.layer-stack button .n{font-family:var(--display); font-size:21px}
+.layer-stack button .by{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); text-align:right}
+.layer-stack button[aria-selected="true"]{background:var(--bg); padding-left:28px}
+.layer-stack button[aria-selected="true"] .i{color:var(--red-text)}
+.layer-stack .axis{display:flex; justify-content:space-between; padding:10px 20px; font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-3); border-bottom:1px solid var(--rule)}
+.layer-detail{border:1px solid var(--rule); background:var(--bg-2); padding:26px; display:flex; flex-direction:column; gap:18px; min-height:0}
+.layer-detail .n{font-family:var(--display); font-size:30px}
+.layer-detail .kv{grid-template-columns:140px 1fr}
+@media (max-width: 480px){ .layer-detail .kv{grid-template-columns:1fr} }
+.layer-detail .diag{font-family:var(--mono); font-size:12.5px; color:var(--ink); padding:12px 14px; border:1px solid var(--rule-2); background:var(--bg)}
+.layer-detail .diag b{color:var(--red-text); font-weight:500}
+.datum{margin-top:24px; border:1px solid var(--rule); background:var(--panel); color:var(--panel-ink); padding:24px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px 40px; align-items:center}
+@media (max-width: 700px){ .datum{grid-template-columns:1fr} }
+.datum .nums{display:flex; gap:28px; flex-wrap:wrap}
+.datum .nums .x{display:flex; flex-direction:column; gap:4px}
+.datum .nums .x .v{font-size:30px; font-weight:300; letter-spacing:-.02em; line-height:1}
+.datum .nums .x .l{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2)}
+.datum .nums .x .v.r{color:var(--panel-red)}
+.datum p{font-size:14.5px; color:var(--panel-ink-2); line-height:1.55; max-width:60ch}
+.datum p b{color:var(--panel-ink); font-weight:500}
+
+/* ---------- architecture ---------- */
+.arch-svg{width:100%; height:auto}
+.arch-svg{width:100%; margin:0 auto}
+.arch-svg text{font-family:var(--mono); font-size:11.5px; fill:var(--ink); letter-spacing:.03em}
+.arch-svg text.lab{fill:var(--ink-2); font-size:10.5px}
+.arch-svg text.t{font-size:13px; font-weight:500}
+.arch-svg .box{fill:var(--bg-2); stroke:var(--rule); transition:stroke .2s, fill .2s}
+.arch-svg .box.k{fill:var(--bg-3)}
+.arch-svg .box.out{stroke-dasharray:3 3; fill:var(--bg)}
+.arch-svg .wire{fill:none; stroke:var(--ink-3); stroke-width:1}
+.arch-svg .wire.dash{stroke-dasharray:3 3}
+.arch-svg .zone{fill:none; stroke:var(--rule); stroke-dasharray:4 4}
+.arch-svg g.hit{cursor:pointer}
+.arch-svg g.hit:hover .box, .arch-svg g.hit.on .box{stroke:var(--red); stroke-width:1.5}
+.arch-note{min-height:112px; border:1px solid var(--rule); background:var(--bg-2); padding:18px 20px; font-size:14.5px; line-height:1.55; color:var(--ink-2)}
+.arch-note b{color:var(--ink); font-weight:500}
+
+/* ---------- evidence ---------- */
+.ev-tabs{display:flex; gap:0; border:1px solid var(--rule); background:var(--bg-2); overflow-x:auto; scrollbar-width:none}
+.ev-tabs::-webkit-scrollbar{display:none}
+.ev-tabs button{flex:1 0 auto; padding:14px 18px; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); border-right:1px solid var(--rule); min-height:48px; white-space:nowrap}
+.ev-tabs button:last-child{border-right:0}
+.ev-tabs button[aria-selected="true"]{background:var(--panel); color:var(--panel-ink)}
+.ev-pane{border:1px solid var(--rule); border-top:0; background:var(--bg-2); padding:28px}
+.ev-pane[hidden]{display:none}
+.ev-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:28px 40px; align-items:start}
+@media (max-width: 960px){ .ev-grid{grid-template-columns:1fr} }
+.ev-grid .read{display:flex; flex-direction:column; gap:14px}
+.ev-grid .read h3{font-size:26px}
+.ev-grid .read p{font-size:15px; line-height:1.55; color:var(--ink-2)}
+.ev-grid .read p b{color:var(--ink); font-weight:500}
+.ev-grid .read .kv{margin-top:6px}
+.chart{min-width:0}
+.chart .ct{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px}
+.chart .ct .t{font-size:14px; font-weight:400}
+.chart .ct .u{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+.chart svg{width:100%; height:auto; overflow:visible}
+.chart text{font-family:var(--mono); font-size:10.5px; fill:var(--ink-2); letter-spacing:.03em}
+.chart text.v{fill:var(--ink); font-size:10.5px}
+.chart text.cat{fill:var(--ink); font-size:11px}
+.chart .grid line{stroke:var(--grid); stroke-width:1}
+.chart .axis{stroke:var(--rule); stroke-width:1}
+.chart .bar{transition:opacity .2s}
+.chart .bar.m1{fill:var(--mark-1)} .chart .bar.m2{fill:var(--mark-2)} .chart .bar.m3{fill:var(--mark-3)} .chart .bar.red{fill:var(--red)}
+.chart .bar.tex{fill:url(#hatch)}
+.chart .ln{fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
+.chart .ln.red{stroke:var(--red)} .chart .ln.m1{stroke:var(--mark-1)} .chart .ln.m2{stroke:var(--mark-2)} .chart .ln.m3{stroke:var(--mark-3)}
+.chart .pt{stroke:var(--bg-2); stroke-width:2}
+.chart .pt.red{fill:var(--red)} .chart .pt.m1{fill:var(--mark-1)} .chart .pt.m2{fill:var(--mark-2)} .chart .pt.m3{fill:var(--mark-3)}
+.chart .band{fill:var(--red-soft)}
+.legend{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--ink-2); margin-top:10px}
+.legend span{display:inline-flex; align-items:center; gap:7px}
+.legend i{display:inline-block; width:12px; height:8px}
+.legend i.m1{background:var(--mark-1)} .legend i.m2{background:var(--mark-2)} .legend i.m3{background:var(--mark-3)} .legend i.red{background:var(--red)}
+.legend i.tex{background:repeating-linear-gradient(45deg, var(--mark-3) 0 1.5px, transparent 1.5px 4px); border:1px solid var(--mark-3)}
+.legend i.ln{height:2px; width:14px}
+.tt{position:fixed; z-index:70; pointer-events:none; background:var(--panel); color:var(--panel-ink); font-family:var(--mono); font-size:11.5px; padding:8px 10px; border:1px solid var(--panel-rule); opacity:0; transform:translate(-50%, calc(-100% - 10px)); transition:opacity .12s; white-space:nowrap; letter-spacing:.03em}
+.tt.show{opacity:1}
+.tt b{color:var(--panel-red); font-weight:500}
+details.tbl{margin-top:12px}
+details.tbl summary{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); cursor:pointer; padding:6px 0}
+details.tbl .sc{overflow-x:auto}
+table.data{border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums}
+table.data th{font-weight:400; text-align:right; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); padding:8px 10px; border-bottom:1px solid var(--rule)}
+table.data td{padding:7px 10px; border-bottom:1px solid var(--rule-2); text-align:right; white-space:nowrap}
+table.data th:first-child, table.data td:first-child{text-align:left}
+table.data tr.hi td{color:var(--red-text)}
+.ranklist{display:flex; flex-direction:column; gap:10px}
+.ranklist .r{display:grid; grid-template-columns:190px 1fr 56px; gap:12px; align-items:center; font-size:13px}
+@media (max-width: 480px){ .ranklist .r{grid-template-columns:120px 1fr 50px} }
+.ranklist .r .n{font-family:var(--mono); font-size:12px; letter-spacing:.02em; min-width:0}
+.ranklist .r .n small{color:var(--ink-3); display:block; font-size:10px; letter-spacing:.06em; white-space:normal}
+.ranklist .r .tr{height:14px; background:var(--bg-4); position:relative; overflow:hidden}
+.ranklist .r .tr i{position:absolute; left:0; top:0; bottom:0; width:0; background:var(--mark-2); transform-origin:left}
+.ranklist .r.hi .tr i{background:var(--red)}
+.ranklist .r .v{font-family:var(--mono); font-size:12.5px; text-align:right; font-variant-numeric:tabular-nums}
+.ranklist .r.hi .v{color:var(--red-text)}
+.ranklist .r.hi .n{color:var(--ink); font-weight:500}
+
+/* E2 timeline */
+.timeline{position:relative; margin-top:8px}
+.timeline .track{display:grid; grid-template-columns:repeat(9, minmax(0,1fr)); gap:4px; align-items:end; position:relative}
+.timeline .track::before{content:""; position:absolute; left:0; right:0; bottom:22px; height:1px; background:var(--rule)}
+.timeline .ev{display:flex; flex-direction:column; align-items:center; gap:8px; padding-bottom:0; position:relative; min-height:60px; justify-content:flex-end}
+.timeline .ev .d{width:12px; height:12px; border-radius:50%; background:var(--mark-1); border:2px solid var(--bg-2); box-shadow:0 0 0 1px var(--rule); transition:transform .2s}
+.timeline .ev.miss .d{background:var(--red)}
+.timeline .ev.reset .d{border-radius:0; transform:rotate(45deg); width:10px; height:10px}
+.timeline .ev.win .d{background:var(--ink); width:14px; height:14px}
+.timeline .ev .e{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--ink-2); height:22px; display:flex; align-items:flex-end}
+.timeline .ev[aria-selected="true"] .d{transform:scale(1.35)}
+.timeline .ev.reset[aria-selected="true"] .d{transform:rotate(45deg) scale(1.35)}
+.timeline .ev[aria-selected="true"] .e{color:var(--ink); font-weight:500}
+.timeline .cut{position:absolute; top:-6px; bottom:16px; width:1px; border-left:1px dashed var(--red); left:calc(2 / 9 * 100% + 2px)}
+.timeline .cut::after{content:"cut · fresh session"; position:absolute; top:-16px; left:6px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--red-text); white-space:nowrap}
+.tl-note{margin-top:18px; border:1px solid var(--rule); background:var(--bg); padding:18px 20px; min-height:150px; display:flex; flex-direction:column; gap:8px}
+.tl-note .h{display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+.tl-note .h b{color:var(--ink); font-weight:500}
+.tl-note .h .miss{color:var(--red-text)}
+.tl-note .pred{font-family:var(--mono); font-size:12.5px; color:var(--ink)}
+.tl-note .pred .k{color:var(--red-text)}
+.tl-note p{font-size:14px; color:var(--ink-2); line-height:1.5}
+.tl-note p q{font-style:italic; color:var(--ink)}
+@media (max-width: 600px){ .timeline .ev .e{font-size:9px} .timeline .cut::after{display:none} }
+
+.proofs{border:1px solid var(--rule); background:var(--bg-2)}
+.proofs .pr{display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px 18px; padding:14px 18px; border-bottom:1px solid var(--rule-2); font-size:14px}
+.proofs .pr:last-child{border-bottom:0}
+.proofs .pr .g{font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-2); padding-top:3px}
+.proofs .pr .c{color:var(--ink)}
+.proofs .pr .u{grid-column:2; font-size:13px; color:var(--ink-2); display:flex; gap:9px}
+.proofs .pr .u .led{margin-top:6px; flex-shrink:0; width:6px; height:6px}
+
+/* cost */
+.cost{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+@media (max-width: 860px){ .cost{grid-template-columns:repeat(2, minmax(0,1fr))} }
+.cost .c{background:var(--bg-2); padding:18px 20px; display:flex; flex-direction:column; gap:6px; min-width:0}
+.cost .c .v{font-size:26px; font-weight:300; letter-spacing:-.02em; line-height:1.1}
+.cost .c .l{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2)}
+.cost .c .s{font-size:13px; color:var(--ink-2); line-height:1.45}
+
+/* limits */
+.limits{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+@media (max-width: 760px){ .limits{grid-template-columns:1fr} }
+.limits .l{background:var(--bg-2); padding:24px; display:flex; flex-direction:column; gap:8px}
+.limits .l .n{font-family:var(--display); font-size:22px}
+.limits .l p{font-size:14.5px; color:var(--ink-2); line-height:1.55}
+
+
+/* ---------- 04 play: the cabinet ---------- */
+.game{display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:24px; align-items:start}
+@media (max-width: 960px){ .game{grid-template-columns:minmax(0,1fr)} }
+.game-left{display:flex; flex-direction:column; gap:26px; padding:26px}
+.game-obs{display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:22px; align-items:start}
+@media (max-width: 1100px){ .game-obs{grid-template-columns:minmax(0,1fr)} .cabinet{max-width:360px} }
+.game-left > *, .game-right > *, .game-obs > *{min-width:0}
+.receipt .rc, .game-kd .kd{overflow-wrap:anywhere}
+.obs-json{margin:12px 0 0; padding:14px 16px; border:1px solid var(--rule); background:var(--bg); font-family:var(--mono); font-size:13px; line-height:1.6; white-space:pre-wrap; word-break:break-word; min-height:74px}
+.obs-json .k{color:var(--ink-2)} .obs-json .chg{color:var(--red-text); font-weight:500}
+.game-kd{display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:16px; margin-top:14px}
+@media (max-width: 520px){ .game-kd{grid-template-columns:1fr} }
+.game-kd .kd{font-family:var(--mono); font-size:12.5px; margin-top:6px; min-height:20px}
+.game-kd .kd b{color:var(--red-text); font-weight:500}
+.budget{display:flex; align-items:center; gap:12px; margin-top:8px}
+.budget .bar{flex:1; height:4px; background:var(--bg-4); position:relative}
+.budget .bar i{position:absolute; left:0; top:0; bottom:0; width:0; background:var(--ink); transition:width .4s var(--ease)}
+.budget .bar i.hot{background:var(--red)}
+.budget span{font-family:var(--mono); font-size:12px}
+.cabinet{border:1px solid var(--rule); background:var(--bg-3); padding:10px}
+.cab-svg{width:100%; height:auto}
+.cab-body{fill:var(--bg-2); stroke:var(--rule)}
+.cab-dial{fill:var(--bg); stroke:var(--ink-3)}
+.cab-ticks line{stroke:var(--ink-3); stroke-width:1.5}
+.cab-num{font-family:var(--mono); font-size:9px; fill:var(--ink-2)}
+.cab-needle{stroke:var(--ink); stroke-width:2.5; stroke-linecap:round; transform-origin:0 0}
+.cab-hub{fill:var(--ink)}
+.cab-lab{font-family:var(--mono); font-size:9.5px; letter-spacing:.1em; fill:var(--ink-2); text-transform:uppercase}
+.cab-lamp{fill:var(--bg-4); stroke:var(--ink-3); transition:fill .3s}
+.cab-lamp.on{fill:var(--red); stroke:var(--red)}
+.cab-lamp-ring{fill:none; stroke:var(--rule); stroke-dasharray:2 3}
+.cab-slot{fill:var(--bg-4); stroke:var(--ink-3)}
+.cab-drawer{fill:var(--bg); stroke:var(--ink-2)}
+.cab-handle{fill:var(--ink-2)}
+.game-block .eyebrow{margin-bottom:12px}
+.game-block .eyebrow code{text-transform:none; letter-spacing:0; font-size:11.5px}
+.chips{display:flex; flex-wrap:wrap; gap:8px}
+.chips button{font-family:var(--mono); font-size:12px; letter-spacing:.06em; padding:10px 14px; border:1px solid var(--rule); color:var(--ink); background:var(--bg); min-height:40px; transition:background .2s, color .2s, border-color .2s}
+.chips button:hover{border-color:var(--ink)}
+.chips button[aria-checked="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink)}
+.chips.mono-chips button[aria-checked="true"]{background:var(--red); border-color:var(--red); color:#fff}
+.chips button:disabled{opacity:.45; cursor:not-allowed}
+.game-actions{display:flex; flex-direction:column; gap:12px}
+.btn.fill{background:var(--red); border-color:var(--red); color:#fff; text-transform:none; letter-spacing:.02em; font-size:13px; padding:14px 18px; justify-content:flex-start; width:100%; min-width:0; white-space:normal; text-align:left; overflow-wrap:anywhere}
+.btn.fill:hover{background:var(--red-text); border-color:var(--red-text)}
+.btn.fill:disabled{opacity:.5; cursor:not-allowed}
+.btn.ghost{border-color:var(--rule); color:var(--ink-2)}
+.btn.ghost:hover{background:transparent; border-color:var(--ink); color:var(--ink)}
+.receipt{border:1px solid var(--rule); background:var(--bg); padding:14px 16px; min-height:84px}
+.receipt .rc{font-family:var(--mono); font-size:12.5px; line-height:1.6; margin-top:6px; color:var(--ink)}
+.receipt .rc .held{color:var(--ink); font-weight:500} .receipt .rc .miss{color:var(--red-text); font-weight:500} .receipt .rc .dim{color:var(--ink-2)} .receipt .rc .ref{color:var(--red-text)}
+.receipt.flash{animation:rcflash .6s var(--ease)}
+@keyframes rcflash{from{background:var(--red-soft)} to{background:var(--bg)}}
+.game-right{display:flex; flex-direction:column; gap:22px; padding:22px}
+.game-journal .jh{display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px}
+.game-journal .jh .eyebrow::after{display:none}
+.game-journal .head{font-size:11.5px; letter-spacing:.06em; color:var(--panel-ink-2)}
+.game-journal .head b{color:var(--panel-red); font-weight:500}
+.jscroll{overflow-x:auto; border:1px solid var(--panel-rule); background:var(--panel-well); min-height:200px; max-height:320px; overflow-y:auto}
+table.journal{border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12px}
+table.journal th{text-align:left; font-weight:400; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2); padding:10px 12px; border-bottom:1px solid var(--panel-rule); position:sticky; top:0; background:var(--panel-well)}
+table.journal td{padding:8px 12px; border-bottom:1px solid var(--panel-rule); white-space:nowrap; vertical-align:top}
+table.journal tr:last-child td{border-bottom:0}
+table.journal td.id{color:var(--panel-ink-2)}
+table.journal td.pg .held{color:var(--panel-ink)} table.journal td.pg .miss{color:var(--panel-red)} table.journal td.pg .ug{color:var(--panel-red); font-style:italic}
+table.journal td.h{color:var(--panel-ink-2)}
+table.journal tr.empty td{color:var(--panel-ink-2); font-style:italic; white-space:normal; padding:28px 14px; text-align:center}
+table.journal tr.new td{animation:rowin .5s var(--ease)}
+@keyframes rowin{from{background:rgba(127,176,245,.2)} to{background:transparent}}
+.game-meters .eyebrow{margin-bottom:12px}
+.gm{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:1px; background:var(--panel-rule); border:1px solid var(--panel-rule)}
+.gm .m{background:var(--panel); padding:16px 18px; display:flex; flex-direction:column; gap:6px; min-width:0}
+.gm .m .v{font-size:30px; font-weight:300; line-height:1; letter-spacing:-.02em}
+.gm .m .v b{font-weight:300}
+.gm .m .v small{font-size:13px; color:var(--panel-ink-2); margin-left:5px; letter-spacing:0}
+.gm .m .l{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2)}
+.gm .m .l i{font-style:normal; text-transform:none}
+.audit{margin-top:12px; border:1px solid var(--panel-rule); background:var(--panel-well); padding:12px 14px; font-family:var(--mono); font-size:12px; line-height:1.6; color:var(--panel-ink)}
+.audit b{font-weight:500} .audit .r{color:var(--panel-red)}
+.game-note{font-size:14px; line-height:1.55; color:var(--panel-ink-2)}
+.game-note code{color:var(--panel-ink); font-size:12.5px}
+
+/* footer */
+footer{border-top:0; padding-block:24px 64px; position:relative; z-index:1}
+footer .fgrid{display:grid; grid-template-columns:minmax(0,6fr) minmax(0,6fr); gap:40px}
+footer .fgrid > *{min-width:0}
+@media (max-width: 860px){ footer .fgrid{grid-template-columns:1fr} }
+.cite{border:1px solid var(--rule); background:var(--bg-2); padding:18px 20px; font-family:var(--mono); font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; position:relative}
+.cite button{display:block; margin-top:12px; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; padding:7px 12px; border:1px solid var(--rule); color:var(--ink-2); background:var(--bg-2); min-height:32px}
+.cite button:hover{border-color:var(--ink); color:var(--ink)}
+footer .links2{display:flex; flex-direction:column; gap:10px; font-size:14px}
+footer .links2 a{display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--rule-2); font-family:var(--mono); font-size:12px; letter-spacing:.04em; min-width:0}
+footer .links2 a span:last-child{color:var(--ink-3); text-align:right; flex-shrink:1}
+footer .links2 a span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink-3); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px}
+.toast{position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom, 0px)); transform:translate(-50%, 20px); background:var(--panel); color:var(--panel-ink); font-family:var(--mono); font-size:12px; letter-spacing:.08em; padding:10px 16px; border:1px solid var(--panel-rule); opacity:0; transition:opacity .25s, transform .25s; z-index:80; pointer-events:none}
+.toast.show{opacity:1; transform:translate(-50%, 0)}
+.sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
+@media (max-width: 960px){ .stepper .steps{flex-direction:row; overflow-x:auto; scrollbar-width:thin; min-width:0} .stepper .steps button{flex:0 0 auto; width:168px; grid-template-columns:28px 1fr; border-bottom:0; border-right:1px solid var(--panel-rule); padding:14px 16px; min-height:0} .stepper .steps button .d{display:none} .stepper .steps button .t{font-size:18px} }
+</style>
+</head>
+<body>
+
+<div id="progress" aria-hidden="true"></div>
+<header class="topbar">
+  <div class="wrap">
+    <a class="brand" href="#top" aria-label="ASSAY, top of page"><span class="mark" aria-hidden="true"></span><span>Assay</span></a>
+    <nav class="sections" aria-label="Sections">
+      <a href="#problem"><span class="n">01</span>Problem</a>
+      <a href="#play"><span class="n">02</span>Play</a>
+      <a href="#record"><span class="n">03</span>Record</a>
+      <a href="#layers"><span class="n">04</span>Layers</a>
+      <a href="#harness"><span class="n">05</span>Harness</a>
+      <a href="#evidence"><span class="n">06</span>Evidence</a>
+    </nav>
+    <div class="links">
+      <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4" cy="3" r="1.6"/><circle cx="4" cy="13" r="1.6"/><circle cx="12" cy="5" r="1.6"/><path d="M4 4.6v6.8M12 6.6c0 2.6-2.2 3.2-4.6 3.6C5.9 10.5 4.6 11 4 11.4"/></svg><span>Code</span></a>
+    </div>
+  </div>
+</header>
+
+<main id="top">
+<section class="hero">
+  <div class="wrap">
+    <div class="hero-grid">
+      <div class="minw">
+        <h1 class="rv"><span class="sym">Assay</span>: a reasoning harness that grounds a test‑time world model <span class="thin">by prediction</span></h1>
+        <p class="lede abstract rv">An agent that works for hours in a world it does not know has to keep what it learns somewhere. <span class="sym">Assay</span> keeps it outside the model and outside the harness: the agent names the parts of the world it cares about, writes a prediction over them before every action, and the harness grades every outcome against the real behavior inside the world. A fact enters the world model only through a prediction that held.</p>
+        <div class="cta rv">
+          <a class="btn red" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 13 13 3M6 3h7v7"/></svg></a>
+          <a class="btn" href="#evidence">Evidence</a>
+        </div>
+      </div>
+      <aside class="panel dark loop-panel rv" aria-label="The gated loop, animated">
+        <div class="dscroll"><svg class="loop-svg" viewBox="0 0 560 380" role="img" aria-label="Diagram of the loop: the agent writes a prediction and an action, the gate admits the action only with a prediction, the world steps, the grader checks every outcome against the world's response, and every event enters the record, which the agent reads by address.">
+          <defs>
+            <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L8,4 L0,7.5 z" fill="#A3A8AC"/></marker>
+            <marker id="ahr" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L8,4 L0,7.5 z" fill="#7FB0F5"/></marker>
+          </defs>
+          <rect class="frame" x="176" y="42" width="252" height="226"/>
+          <text class="lab" x="186" y="36">HARNESS · NO MODEL CALLS</text>
+
+          <!-- wires -->
+          <path id="w-ag" class="wire" d="M150 85 H194" marker-end="url(#ah)"/>
+          <path id="w-gw" class="wire" d="M286 85 H314" marker-end="url(#ah)"/>
+          <path id="w-ww" class="wire" d="M410 85 H449" marker-end="url(#ah)"/>
+          <path id="w-wo" class="wire" d="M449 103 H411" marker-end="url(#ah)"/>
+          <path id="w-wg" class="wire" d="M362 114 V169" marker-end="url(#ah)"/>
+          <path id="w-gr" class="wire" d="M362 214 V309" marker-end="url(#ah)"/>
+          <path id="w-rc" class="wire" d="M314 192 H151" marker-end="url(#ah)"/>
+          <path id="w-ra" class="wire" d="M176 335 H85 V211" marker-end="url(#ah)"/>
+
+          <!-- nodes -->
+          <g class="node"><rect x="20" y="60" width="130" height="150"/>
+            <text x="34" y="88" style="font-size:12px;font-weight:500">AGENT</text>
+            <text x="34" y="108">language model</text>
+            <text x="34" y="124">one page of notes</text>
+            <text x="34" y="156" class="lab" style="fill:#4F5457">declares states</text>
+            <text x="34" y="170" class="lab" style="fill:#4F5457">writes verifiers</text>
+            <text x="34" y="184" class="lab" style="fill:#4F5457">reads the record</text>
+          </g>
+          <g class="node harness" id="n-gate"><rect x="194" y="64" width="92" height="42"/>
+            <text x="208" y="90">gate</text>
+            <line class="gate-bar" id="gate-bar" x1="262" y1="70" x2="262" y2="100"/>
+          </g>
+          <g class="node harness" id="n-step"><rect x="314" y="64" width="96" height="50"/>
+            <text x="326" y="86">world step</text>
+            <text x="326" y="102" class="lab">exactly once</text>
+          </g>
+          <g class="node harness" id="n-grader"><rect x="314" y="170" width="96" height="44"/>
+            <text x="326" y="196">grader</text>
+          </g>
+          <g class="node"><rect x="449" y="60" width="96" height="60"/>
+            <text x="461" y="82" style="font-weight:500">WORLD</text>
+            <text x="461" y="98" class="lab" style="fill:#4F5457">adapter</text>
+            <text x="461" y="111" class="lab" style="fill:#4F5457">registry</text>
+          </g>
+          <g class="node harness" id="n-record"><rect x="176" y="310" width="369" height="52"/>
+            <text x="190" y="332" style="font-weight:500">JOURNAL: WORLD MODEL</text>
+            <text x="190" y="349" class="lab">states · graded predictions · verifiers · chained journal</text>
+          </g>
+
+          <!-- wire labels -->
+          <text class="lab" x="152" y="76">P<tspan baseline-shift="sub" font-size="7">t</tspan>, a<tspan baseline-shift="sub" font-size="7">t</tspan></text>
+          <text class="lab" x="420" y="78">a<tspan baseline-shift="sub" font-size="7">t</tspan></text>
+          <text class="lab" x="418" y="118">o<tspan baseline-shift="sub" font-size="7">t+1</tspan></text>
+          <text class="lab" x="368" y="146">o<tspan baseline-shift="sub" font-size="7">t+1</tspan></text>
+          <text class="lab" x="368" y="262">every event,</text>
+          <text class="lab" x="368" y="274">each outcome graded</text>
+          <text class="lab" x="160" y="210">receipt: held / missed,</text>
+          <text class="lab" x="160" y="222">actual value on a miss</text>
+          <text class="lab" x="92" y="262">reads by address:</text>
+          <text class="lab" x="92" y="274">status, states, facts, meters</text>
+
+          <!-- tokens -->
+          <circle id="tok-main" class="token" r="4.5" cx="150" cy="85" opacity="0"/>
+          <circle id="tok-obs" class="token ok" r="3.5" cx="449" cy="103" opacity="0"/>
+          <circle id="tok-rcpt" class="token" r="3.5" cx="314" cy="192" opacity="0"/>
+          <circle id="tok-read" class="token ok" r="3.5" cx="176" cy="335" opacity="0"/>
+          <path id="tok-path" d="M150 85 H260 H362 H497 V103 H362 V192 V335" fill="none" stroke="none"/>
+        </svg></div>
+        <div class="loop-status" aria-live="polite"><span class="led on" id="loop-led"></span><span id="loop-status"><b>e279</b> · predict verify:checks/s2_p3_8left.py</span></div>
+      </aside>
+    </div>
+
+    <p class="eyebrow rv stat-title"><span class="num">Performance</span><span>ARC-AGI-3 · Public set · Backbone Opus 5</span></p>
+    <div class="stat-strip rv" role="list" aria-label="Performance on ARC-AGI-3, public set, backend model Opus 5">
+      <div class="stat" role="listitem"><span class="v" data-count="96.54" data-dec="2">96.54</span><span class="l">RHAE</span></div>
+      <div class="stat" role="listitem"><span class="v"><span data-count="24">24</span><small>/ 25</small></span><span class="l">games won · 177 of 183 levels</span></div>
+      <div class="stat" role="listitem"><span class="v" data-count="8157" data-sep="1">8,157</span><span class="l">Total number of actions</span></div>
+      <div class="stat" role="listitem"><span class="v" data-count="0">0</span><span class="l">ungated events · 25 of 25 journals CLEAN</span></div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 01 PROBLEM ============ -->
+<section class="section" id="problem">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow rv"><span class="num">§ 01</span><span>The problem</span></p>
+      <h2 class="rv">LLMs consume context, but context rots.</h2>
+      <p class="lede rv">The agent runs for hours, across sessions, with a budget of actions and a context window as its only working memory. What it learns has to be written somewhere, and the choice of where decides three things: what happens when the context fills, when the session ends, and when the agent is wrong. <span class="sym">Assay</span> is the fourth system in one research line. The first three documented their own failures, and the paper states them in the formal terms it later uses. <strong>Referent grounding</strong>: a rule written in prose names something the model cannot reliably locate in the observation again, so the rule can never be checked and silently degrades to a belief. <strong>Belief accounting</strong>: a theory that fits every observation made so far is treated as supported in regions no observation visited. Forgetting across a long context makes both chronic. The prose that stood in for the referent and the evidence that stood in for the support are the first things a long context loses.</p>
+    </div>
+
+    <div class="stack" style="gap:32px">
+      <div class="lineage rv" style="margin-top:0" role="list" aria-label="The research line">
+        <div class="sys" role="listitem"><span class="when">March 2026</span><span class="n">Sensi</span><p>Perception separated from action, a hand-written curriculum, a language-model judge deciding what was learned.</p><p class="fail"><span class="led on"></span><span>A wrong frame diff became a wrong fact; the judge scored it consistent. Ground truth never entered the pipeline.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">August 2026</span><span class="n">ARG</span><p>A deterministic executive owned all belief. A rule was admitted only when a prediction registered before acting matched the observation by code.</p><p class="fail"><span class="led on"></span><span>Zero level completions in 52 gated runs. Consistent-but-wrong theories pass when probes lack discriminating power; the closed vocabulary was a binding constraint.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">August 2026 · unpublished</span><span class="n">arg-v2</span><p>Open vocabulary, Python in a sandbox, a registry and adapter seam, verifier code hash-committed before action.</p><p class="fail"><span class="led on"></span><span>Over-generation: one run proposed 111 rules and left 105 untested. Forgetting between sessions. The referent problem, now instrumented and still unsolved.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">This paper</span><span class="n">Assay</span><p>An outcome must name a registered state or a program, so every rule has a computed referent. The gate makes a graded outcome the only way a belief enters the record.</p><p class="fail"><span class="led ok"></span><span>The support of a rule becomes a query over the record rather than a recollection.</span></p></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 PLAY ============ -->
+<section class="section" id="play">
+  <div class="wrap">
+    <div class="section-head stacked">
+      <p class="eyebrow rv"><span class="num">§ 02</span><span>Play</span></p>
+      <h2 class="rv">A toy world: Unknown Cabinet</h2>
+      <p class="lede rv">Learn the mechanics one prediction at a time, win, and review your moves. Read the observation, check your registry and see what tools you have. Then choose a prediction and run <span class="sym">Assay</span> with that prediction. See what happens to your world, what is written to your world model, what happens to your status. This is how <span class="sym">Assay</span> helps agents internalize knowledge.</p>
+    </div>
+
+    <div class="game rv" id="game">
+      <!-- left: the world and the controls -->
+      <div class="panel game-left">
+        <div class="game-obs">
+          <div class="minw">
+            <p class="eyebrow"><span class="num">Observation</span></p>
+            <pre class="obs-json" id="g-obs" aria-live="polite"></pre>
+            <div class="game-kd">
+              <div><span class="tiny">Key delta</span><div class="kd" id="g-delta">— (no paid action yet)</div></div>
+              <div><span class="tiny">Actions</span><div class="budget"><div class="bar"><i id="g-budget-bar"></i></div><span class="num-tab" id="g-budget">0 / 12</span></div></div>
+            </div>
+          </div>
+          <div class="cabinet" aria-hidden="true">
+            <svg viewBox="0 0 300 150" class="cab-svg">
+              <rect class="cab-body" x="10" y="8" width="280" height="134"/>
+              <!-- dial -->
+              <g transform="translate(62,60)">
+                <circle class="cab-dial" r="30"/>
+                <g class="cab-ticks"><line x1="0" y1="-30" x2="0" y2="-24"/><line x1="30" y1="0" x2="24" y2="0"/><line x1="0" y1="30" x2="0" y2="24"/><line x1="-30" y1="0" x2="-24" y2="0"/></g>
+                <text class="cab-num" x="0" y="-36" text-anchor="middle">0</text><text class="cab-num" x="38" y="4">1</text><text class="cab-num" x="0" y="46" text-anchor="middle">2</text><text class="cab-num" x="-38" y="4" text-anchor="end">3</text>
+                <line class="cab-needle" id="g-needle" x1="0" y1="0" x2="0" y2="-22"/>
+                <circle class="cab-hub" r="3"/>
+              </g>
+              <text class="cab-lab" x="62" y="128" text-anchor="middle">dial</text>
+              <!-- lamp -->
+              <circle class="cab-lamp" id="g-lamp" cx="150" cy="60" r="14"/>
+              <circle class="cab-lamp-ring" cx="150" cy="60" r="20"/>
+              <text class="cab-lab" x="150" y="128" text-anchor="middle">lamp</text>
+              <!-- drawer -->
+              <rect class="cab-slot" x="200" y="40" width="78" height="40"/>
+              <g id="g-drawer"><rect class="cab-drawer" x="204" y="44" width="70" height="32"/><rect class="cab-handle" x="229" y="57" width="20" height="4"/></g>
+              <text class="cab-lab" x="239" y="128" text-anchor="middle">drawer</text>
+            </svg>
+          </div>
+        </div>
+
+        <div class="game-block">
+          <p class="eyebrow"><span class="num">Registry</span><span>what we tell the agent about the tools</span></p>
+          <div class="chips" id="g-actions" role="radiogroup" aria-label="Action">
+            <button type="button" role="radio" aria-checked="true" data-action="TURN">TURN</button>
+            <button type="button" role="radio" aria-checked="false" data-action="PRESS">PRESS</button>
+            <button type="button" role="radio" aria-checked="false" data-action="PULL">PULL</button>
+          </div>
+        </div>
+
+        <div class="game-block">
+          <p class="eyebrow"><span class="num">Prediction</span><span>the gate that internalizes concepts</span></p>
+          <div class="chips mono-chips" id="g-preds" role="radiogroup" aria-label="Prediction">
+            <button type="button" role="radio" aria-checked="false" data-pred="noop">noop</button>
+            <button type="button" role="radio" aria-checked="true" data-pred="change">change</button>
+            <button type="button" role="radio" aria-checked="false" data-pred="ch dial delta +1">ch dial delta +1</button>
+            <button type="button" role="radio" aria-checked="false" data-pred="ch lamp = on">ch lamp = on</button>
+            <button type="button" role="radio" aria-checked="false" data-pred="ch lamp = off">ch lamp = off</button>
+            <button type="button" role="radio" aria-checked="false" data-pred="ch drawer = open">ch drawer = open</button>
+            <button type="button" role="radio" aria-checked="false" data-pred="win">win</button>
+          </div>
+        </div>
+
+        <div class="game-actions">
+          <button type="button" class="btn fill" id="g-act"><span class="mono">assay act TURN --predict "change"</span></button>
+          <div class="row">
+            <button type="button" class="btn" id="g-ungated">Act without a prediction</button>
+            <button type="button" class="btn" id="g-audit">assay audit</button>
+            <button type="button" class="btn ghost" id="g-reset">Reset run</button>
+          </div>
+        </div>
+        <div class="receipt" id="g-receipt" aria-live="polite"><span class="tiny">Receipt</span><div class="rc" id="g-receipt-body">Pick an action, pick a prediction, act. The first miss is the most valuable thing that can happen.</div></div>
+      </div>
+
+      <!-- right: the record and the meters -->
+      <div class="panel dark game-right">
+        <div class="game-journal">
+          <div class="jh"><p class="eyebrow"><span class="num">Assay</span><span>Journal (World Model)</span></p><span class="head mono" hidden>head <b id="g-head">…</b></span></div>
+          <div class="jscroll">
+            <table class="journal" id="g-journal">
+              <thead><tr><th>id</th><th>action</th><th>predict → grade</th><th>head</th></tr></thead>
+              <tbody id="g-journal-body"><tr class="empty"><td colspan="4">No events yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="game-meters">
+          <p class="eyebrow"><span class="num">assay status</span><span>meters read about yourself</span></p>
+          <div class="gm">
+            <div class="m"><span class="v"><b id="g-m-wm">0</b><small id="g-m-wm-t">/ 0</small></span><span class="l">world-model held</span></div>
+            <div class="m"><span class="v"><b id="g-m-gb">0</b><small id="g-m-gb-t">/ 0</small></span><span class="l">gambles held</span></div>
+            <div class="m"><span class="v"><b id="g-m-sp">—</b></span><span class="l">specificity <i>σ</i></span></div>
+            <div class="m"><span class="v"><b id="g-m-ug">0</b></span><span class="l">ungated events</span></div>
+          </div>
+          <div class="audit" id="g-audit-out" hidden></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 04 RECORD ============ -->
+<section class="section" id="record">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow rv"><span class="num">§ 03</span><span>The record</span></p>
+      <h2 class="rv">A record that writes itself, and that a third party recomputes.</h2>
+      <p class="lede rv">One directory is one run. The journal is <code>.assay/events.jsonl</code>, one JSON object per line, append-only. Every line carries the action, the observation verbatim, the prediction, its grades and the agent's note. A hash chain runs over the raw lines, the head is anchored outside the run directory every 25 events and on WIN, and a standard-library checker that shares no code with the harness verifies the whole thing.</p>
+    </div>
+
+    <div class="chain rv" id="chain">
+      <div class="ch">
+        <p class="eyebrow"><span class="num">Try it</span><span>Tamper with the journal of s5i5</span></p>
+        <div class="ctl">
+          <button type="button" id="chain-reset">Restore all lines</button>
+        </div>
+      </div>
+      <div class="lines">
+        <table>
+          <colgroup><col style="width:64px"><col><col style="width:168px"><col style="width:130px"><col style="width:150px"></colgroup>
+          <thead><tr><th>event</th><th>journal line ℓ<sub>t</sub> (abridged)</th><th>h<sub>t</sub> = SHA-256(hex(h<sub>t−1</sub>) ‖ ℓ<sub>t</sub>)</th><th>anchor</th><th></th></tr></thead>
+          <tbody id="chain-body"></tbody>
+        </table>
+      </div>
+      <div class="verdict" id="chain-verdict"><span class="led ok"></span><span>computing heads…</span></div>
+    </div>
+
+    <div class="grid g5-7" style="margin-top:clamp(48px,6vw,80px); align-items:start">
+      <div class="prose rv">
+        <h3>Batches, and the only route past the hand cap.</h3>
+        <p>A batch is a sequence of steps, each with its own prediction. Every step is validated before the first one spends. Steps then execute in order, each graded against its own prior event, so a batch is a chain of single-step predictions and not one prediction about the end state. Execution halts at the first step whose prediction missed or was invalid, and also on a win, a unit advance and a loss state. The remaining steps are never journaled.</p>
+        <p>The model tier is the only route past the hand cap. The agent writes a transition function <span class="sym">T</span> over declared states; replay runs it over every recorded paid transition. A model earns by predicting what it had not seen. Three replays were computed in the campaign; none was promoted, and no plan executed.</p>
+      </div>
+      <div class="rv">
+        <div class="batch" id="batch" aria-label="A batch halting at the first miss">
+          <div class="st held"><span class="i">step 1</span><code>a<sub>1</sub>, P<sub>1</sub></code><span class="g"><i class="led ok"></i>held</span></div>
+          <div class="st held"><span class="i">step 2</span><code>a<sub>2</sub>, P<sub>2</sub></code><span class="g"><i class="led ok"></i>held</span></div>
+          <div class="st missed"><span class="i">step 3</span><code>a<sub>3</sub>, P<sub>3</sub></code><span class="g"><i class="led on"></i>missed</span><span class="halt" aria-hidden="true"></span></div>
+          <div class="st unspent"><span class="i">step 4</span><code>a<sub>4</sub>, P<sub>4</sub></code><span class="g">unspent</span></div>
+          <div class="st unspent"><span class="i">step 5</span><code>a<sub>5</sub>, P<sub>5</sub></code><span class="g">unspent</span></div>
+        </div>
+        <p class="tiny" style="margin-top:10px">Journaled whole: three events with their grades and actual values. Reported: each step by its grade, and two steps discarded. Default hand cap three steps; the three benchmark registries set it to unlimited.</p>
+        <div class="rights" id="rights">
+          <div>
+            <p class="eyebrow" style="margin-bottom:12px"><span class="num">Batching rights</span><span>replay fit, over counted transitions</span></p>
+            <div class="cond">
+              <span><i class="led" id="r-l0"></i><span>missed = <b id="r-v0">0</b></span></span>
+              <span><i class="led" id="r-l1"></i><span>counted ≥ 20 · <b id="r-v1">20</b></span></span>
+              <span><i class="led" id="r-l2"></i><span>recent ≥ 5 · <b id="r-v2">5</b></span></span>
+            </div>
+            <div class="sl">
+              <label for="r-s0"><span>misses on replay</span><span id="r-s0v">0</span></label><input type="range" id="r-s0" min="0" max="4" value="0">
+              <label for="r-s1"><span>transitions recorded after admission</span><span id="r-s1v">20</span></label><input type="range" id="r-s1" min="0" max="40" value="20">
+              <label for="r-s2"><span>of them in the most recent quarter</span><span id="r-s2v">5</span></label><input type="range" id="r-s2" min="0" max="10" value="5">
+            </div>
+          </div>
+          <div class="out" id="r-out">rights held</div>
+        </div>
+        <p class="tiny" style="margin-top:10px">Any new paid event voids the rights until a fresh replay. A plan searched from a promoted model runs past the cap with one machine-generated prediction per step, marked machine, so it never enters the agent's meters. An imported model carries no rights.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 LAYERS ============ -->
+<section class="section" id="layers">
+  <div class="wrap">
+    <div class="section-head stacked">
+      <p class="eyebrow rv"><span class="num">§ 04</span><span>Layers</span></p>
+      <h2 class="rv">Reasoning is too vast to be modeled as a whole, but we can model it at each granularity.</h2>
+      <p class="lede rv">When reasoning fails, where should we look to improve? Select a layer.</p>
+    </div>
+    <div class="layers">
+      <div class="rv">
+        <div class="layer-stack" role="tablist" aria-label="Layers" id="layer-stack">
+          <div class="axis"><span>general</span><span>↓</span></div>
+          <button role="tab" aria-selected="true" data-layer="0"><span class="i">1</span><span class="n">Constitution</span><span class="by">the operator, once per domain</span></button>
+          <button role="tab" aria-selected="false" data-layer="1"><span class="i">2</span><span class="n">Modules</span><span class="by">operator, or an authenticated install</span></button>
+          <button role="tab" aria-selected="false" data-layer="2"><span class="i">3</span><span class="n">Registry and adapter</span><span class="by">the world's operator</span></button>
+          <button role="tab" aria-selected="false" data-layer="3"><span class="i">4</span><span class="n">Addressable states</span><span class="by">the agent, by checked prediction</span></button>
+          <button role="tab" aria-selected="false" data-layer="4"><span class="i">5</span><span class="n">The model</span><span class="by">not the harness</span></button>
+          <div class="axis" style="border-bottom:0;border-top:1px solid var(--rule)"><span>specific</span><span></span></div>
+        </div>
+      </div>
+      <div class="layer-detail rv" role="tabpanel" id="layer-detail">
+        <p class="eyebrow"><span class="num" id="ld-i">Layer 1</span><span id="ld-kind">how to learn any world</span></p>
+        <p class="n" id="ld-n">Constitution</p>
+        <p class="small" style="font-size:15px;color:var(--ink);line-height:1.55" id="ld-p"></p>
+        <dl class="kv">
+          <dt>Written by</dt><dd id="ld-by"></dd>
+          <dt>Change it when</dt><dd id="ld-when"></dd>
+          <dt>Lifetime</dt><dd id="ld-life"></dd>
+        </dl>
+        <div class="diag"><span class="tiny" style="display:block;margin-bottom:6px">THE DIAGNOSTIC THAT POINTS HERE</span><span id="ld-diag"></span></div>
+      </div>
+    </div>
+    <div class="datum rv">
+      <div>
+        <p class="eyebrow" style="margin-bottom:10px"><span class="num">§ 6.11</span><span>One sentence, moved between layers</span></p>
+        <p>The OOLONG registry's goal text carried one strategy sentence: the corpus is a file in the run directory and should be read with the agent's own offline tools. Removing that sentence, and nothing else, produced the de-hinted arm. <b>At the 1M-token rung the two arms scored within one question of each other and their cost moved by close to an order of magnitude.</b> At 128K the sentence was worth 0.870 against 0.764, and without it the counting group of questions collapsed. A sentence at the registry layer changed cost and changed capability on one question class, with the kernel and the constitution untouched.</p>
+      </div>
+      <div class="nums">
+        <div class="x"><span class="v">$5.16</span><span class="l">1M · hinted · 0.701</span></div>
+        <div class="x"><span class="v r">$48.76</span><span class="l">1M · de-hinted · 0.740</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 06 HARNESS ============ -->
+<section class="section" id="harness">
+  <div class="wrap">
+    <div class="section-head stacked">
+      <p class="eyebrow rv"><span class="num">§ 05</span><span>The harness</span></p>
+      <h2 class="rv">Runtime design.</h2>
+    </div>
+    <div class="stack" style="gap:24px">
+      <div class="panel rv" style="padding:22px 28px 28px">
+        <p class="eyebrow"><span class="num">Fig. 1</span></p>
+        <div class="dscroll"><svg class="arch-svg" id="arch" viewBox="0 0 910 520" style="margin-top:14px" role="img" aria-label="Architecture: the operator starts the run and holds the owner token; the agent drives the daemon; the daemon holds the run, gate and grader and writes the run directory; agent code runs in a sandbox; the adapter reaches the world; the independent checker and the anchor file sit outside the run.">
+          <rect class="zone" x="12" y="112" width="668" height="236"/>
+          <text class="lab" x="22" y="128">one user id for everything inside this line</text>
+          <g class="hit" data-arch="operator" tabindex="0" role="button" aria-label="Operator"><rect class="box out" x="24" y="16" width="330" height="64"/><text class="t" x="36" y="38">Operator</text><text class="lab" x="36" y="54">owner token, registry, adapter, modules</text><text class="lab" x="36" y="67">starts the run</text></g>
+          <path class="wire" d="M354 40 H510 V140"/><text class="lab" x="364" y="34">start · approve · waive · ratify · install</text>
+          <g class="hit" data-arch="agent" tabindex="0" role="button" aria-label="Agent"><rect class="box" x="24" y="160" width="212" height="72"/><text class="t" x="36" y="182">Agent</text><text class="lab" x="36" y="198">a shell, or the tool server</text><text class="lab" x="36" y="211">writes notes, verifiers,</text><text class="lab" x="36" y="223">a model file</text></g>
+          <path class="wire" d="M236 190 H360"/><text class="lab" x="242" y="182">act · commit</text><text class="lab" x="242" y="204">declare · status</text>
+          <g class="hit" data-arch="daemon" tabindex="0" role="button" aria-label="Daemon"><rect class="box k" x="360" y="140" width="300" height="100"/><text class="t" x="372" y="162">Daemon</text><text class="lab" x="372" y="178">holds the run · the gate · the grader</text><text class="lab" x="372" y="191">verifies the disk before every spend</text><text class="lab" x="372" y="204">owner operations against</text><text class="lab" x="372" y="217">the token hash</text></g>
+          <path class="wire" d="M660 170 H710"/><path class="wire" d="M710 198 H660"/><text class="lab" x="676" y="164">a<tspan baseline-shift="sub" font-size="7">t</tspan></text><text class="lab" x="672" y="214">o<tspan baseline-shift="sub" font-size="7">t+1</tspan></text>
+          <g class="hit" data-arch="world" tabindex="0" role="button" aria-label="World"><rect class="box" x="710" y="148" width="180" height="66"/><text class="t" x="722" y="170">World</text><text class="lab" x="722" y="186">through the adapter</text><text class="lab" x="722" y="199">inside the daemon</text></g>
+          <path class="wire" d="M510 240 V272"/><text class="lab" x="518" y="260">run a verifier, an extractor, a model</text>
+          <g class="hit" data-arch="sandbox" tabindex="0" role="button" aria-label="Sandbox"><rect class="box" x="360" y="272" width="300" height="54"/><text class="t" x="372" y="294">Sandbox</text><text class="lab" x="372" y="310">agent code · python3 -I · 5 s limit</text></g>
+          <path class="wire" d="M360 226 H300 V410 H360"/><text class="lab" x="176" y="404">append, chain, receipts</text>
+          <path class="wire dash" d="M60 232 V426 H360"/><text class="lab" x="70" y="258">reads everything,</text><text class="lab" x="70" y="270">writes only the notes</text>
+          <g class="hit" data-arch="rundir" tabindex="0" role="button" aria-label="Run directory"><rect class="box k" x="360" y="384" width="420" height="54"/><text class="t" x="372" y="406">Run directory  .assay/</text><text class="lab" x="372" y="422">journal · chain · receipts · states · verifiers · notes</text></g>
+          <path class="wire" d="M780 411 H800 V462"/><text class="lab" x="786" y="404">h<tspan baseline-shift="sub" font-size="7">t</tspan></text>
+          <path class="wire" d="M530 438 V462"/><text class="lab" x="540" y="456">reads the files alone</text>
+          <g class="hit" data-arch="checker" tabindex="0" role="button" aria-label="Independent checker"><rect class="box out" x="360" y="462" width="330" height="48"/><text class="t" x="372" y="483">Independent checker</text><text class="lab" x="372" y="499">stdlib only · no harness import</text></g>
+          <g class="hit" data-arch="anchor" tabindex="0" role="button" aria-label="Anchor file"><rect class="box out" x="710" y="462" width="180" height="48"/><text class="t" x="722" y="483">Anchor file</text><text class="lab" x="722" y="499">outside the run dir</text></g>
+        </svg></div>
+      </div>
+      <div class="rv">
+        <div class="arch-note" id="arch-note"><b>Daemon.</b> Loads the run once, holds it in memory as typed records, executes every paid action behind the gate of Algorithm 1, and appends every event to the journal before the reply leaves the socket. It is the only process that spends and the only writer of the journal, the chain file, the spend log and the anchor file.</div>
+        
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 07 EVIDENCE ============ -->
+<section class="section" id="evidence">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow rv"><span class="num">§ 06</span><span>Evidence</span></p>
+      <h2 class="rv">One kernel, benchmarked in three worlds.</h2>
+    </div>
+
+    <div class="ev-tabs rv" role="tablist" aria-label="Evidence">
+      <button role="tab" aria-selected="true" data-ev="campaign">Campaign · ARC-AGI-3</button>
+      <button role="tab" aria-selected="false" data-ev="e1">E1 · the gate</button>
+      <button role="tab" aria-selected="false" data-ev="e2">E2 · five proofs</button>
+      <button role="tab" aria-selected="false" data-ev="e3">E3 · carryover</button>
+      <button role="tab" aria-selected="false" data-ev="worlds">Factorio · OOLONG</button>
+      <button role="tab" aria-selected="false" data-ev="cost">Cost · regression</button>
+    </div>
+
+    <!-- campaign -->
+    <div class="ev-pane rv" id="ev-campaign" role="tabpanel">
+      <div class="ev-grid">
+        <div class="read">
+          <h3>The campaign: 25 games, once each, under hard caps.</h3>
+          <p>Inputs were fixed at tier-2 information: the constitution, a registry with one-word action hints, a sentence that the observation is a 64×64 grid, the number of levels and the action cap of 200, 500 or 1,500. No game-specific strategy, no curriculum, no network.</p>
+          <p>The set is server-scored: a consolidated replay of the 25 recorded action sequences produced public scorecard <code>702ccd4f</code>, on which the benchmark's own scoring returns <b>96.54</b> with 177 of 183 levels, 24 of 25 games and 8,157 actions.</p>
+          <p>Four published systems sit at or within a fraction of 100. <b>The paper does not argue rank.</b> What distinguishes the <span class="sym">Assay</span> row is the record under it: every one of the 8,157 paid actions carried a graded prediction, every journal is clean under the public checker, and every win is triple-verified.</p>
+          <dl class="kv">
+            <dt>Probes</dt><dd>656 single discovery actions · 8.0%</dd>
+            <dt>Batch steps</dt><dd>7,501, inside verified predictions</dd>
+            <dt>Per level</dt><dd>46.1 actions</dd>
+            <dt>Open failure</dt><dd><code>lf52</code>, 4 of 10 levels in three runs</dd>
+          </dl>
+        </div>
+        <div class="chart" id="ch-rank">
+          <div class="ct"><span class="t">Published results on the ARC-AGI-3 public set, by RHAE</span><span class="u">Table 4 · 25 game instances</span></div>
+          <div class="ranklist" id="ranklist"></div>
+          <p class="tiny" style="margin-top:12px">RHAE saturates near 100 at this level: 23 of 25 games score 100.00 for the campaign; bp35 scores 95.27 for running over baseline on three late levels; lf52 scores 18.18 for ending at 4 of 10. Comparators ran uncapped and with different starting information. Directional context only.</p>
+          <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-rank"></table></div></details>
+        </div>
+      </div>
+    </div>
+
+    <!-- E1 -->
+    <div class="ev-pane rv" id="ev-e1" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>E1: the gate enforced, lifted, and the instrument removed.</h3>
+          <p>Three games, two seeds, three arms: <b>gated</b> (<code>gate: required</code>, the constitution), <b>ungated</b> (<code>gate: optional</code>, the instrument available and the manual silent on it), and <b>removed</b> (<code>gate: off</code>, the instrument refused, a manual with the discipline cut out). Eighteen runs, eighteen wins.</p>
+          <p>On every game the two seeds of one arm differ by more than the means of two arms differ. The pre-registered reading is the first one: wins equal, actions in band, so at this sample size the enforcement is not what carries the behavior.</p>
+          <p>One thing did move. <b>Agents whose manual never taught the discipline still attached a prediction to every paid action</b> once the instrument was there. What they predicted differed: 836 of the ungated arm's 1,405 graded outcomes were the explicit <code>change</code>, against 28 of 1,491 in the gated arm, where 1,054 were verifier outcomes. The manual decided how specific the prediction was.</p>
+          <dl class="kv">
+            <dt>Removed arm</dt><dd>six wins of six, zero predictions attempted</dd>
+            <dt>Cost</dt><dd>$73.85 list for the six removed runs against $118.41 for the six gated</dd>
+            <dt>Probe share</dt><dd>5.4% ungated · 8.4% gated</dd>
+          </dl>
+        </div>
+        <div class="stack">
+          <div class="chart" id="ch-e1">
+            <div class="ct"><span class="t">Paid actions to the win, by game, arm and seed</span><span class="u">Table 5 · caps in parentheses</span></div>
+            <div id="e1-svg"></div>
+            <div class="legend"><span><i class="red"></i>gated</span><span><i class="m1"></i>ungated</span><span><i class="tex"></i>instrument removed (E1b)</span><span><i class="ln" style="border-top:1px dashed var(--ink-3)"></i>prior gated runs</span></div>
+            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-e1"></table></div></details>
+          </div>
+          <div class="chart" id="ch-e1b">
+            <div class="ct"><span class="t">What the two arms predicted · graded outcomes by kind</span><span class="u">six runs per arm</span></div>
+            <div id="e1b-svg"></div>
+            <div class="legend"><span><i class="red"></i>explicit <code>change</code></span><span><i class="m1"></i>verifier</span><span><i class="m2"></i>state outcome</span><span><i class="m3"></i>other</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- E2 -->
+    <div class="ev-pane rv" id="ev-e2" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>E2: the five proofs, resumed without an operator.</h3>
+          <p>On six occasions across five games the campaign agent concluded, with an argument and in one case an exhaustive search over 8.2 million states, that a level was impossible. <b>Every proof was consistent with every recorded transition, and every proof was wrong in the same way</b>: a load-bearing rule had never been exercised in the regime where the proof needed it.</p>
+          <p>Each archived proof state was rebuilt from the read-only journal, cut at the proving session's last paid action, and resumed twice by fresh sessions under one neutral prompt: once with the coverage-audit module, once without. The prompt said nothing about coverage, impossibility, the proof or any module.</p>
+          <p><b>Ten runs, ten wins. All five proofs fell in both arms.</b> The module fired 26 times, every time as a loop breaker, and never named a rule a proof rested on. The correction was carried by the record: the inherited notes named the untested rule, the journal held the event ids that showed where it had and had not been exercised, and a fresh reader found it. This is the paper's central result.</p>
+        </div>
+        <div class="stack">
+          <div class="chart" id="ch-e2">
+            <div class="ct"><span class="t">Paid actions after the cut, per state</span><span class="u">Table 8 · one run per cell</span></div>
+            <div id="e2-svg"></div>
+            <div class="legend"><span><i class="m1"></i>control · no module</span><span><i class="red"></i>module arm</span><span><i class="m3"></i>historical session under an operator's hints</span></div>
+            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-e2"></table></div></details>
+          </div>
+        </div>
+      </div>
+      <hr class="rule" style="margin-block:32px">
+      <div class="ev-grid">
+        <div class="read">
+          <h3>s5i5, level 7, end to end.</h3>
+          <p>The proof came in session 2. At <code>e272</code> the agent clicked an arm under a verifier outcome that held, and at <code>e273</code> it reset with the proof as its note. Session 3 resumed the same directory, read the same notes, and its first paid action was a probe of a region the proof had never visited. Select an event.</p>
+          <p>The agent's own notes for level 6, written before the proof, already carried the seed of its refutation in the Assumed section: whether an impossible counter-clockwise target is skipped, or refuses the whole click, was marked untested.</p>
+        </div>
+        <div>
+          <div class="timeline" id="s5i5">
+            <div class="track" role="tablist" aria-label="Events of s5i5 around the proof">
+              <button class="ev" role="tab" aria-selected="false" data-ev-i="0"><span class="d"></span><span class="e">e272</span></button>
+              <button class="ev reset" role="tab" aria-selected="false" data-ev-i="1"><span class="d"></span><span class="e">e273</span></button>
+              <button class="ev miss" role="tab" aria-selected="false" data-ev-i="2"><span class="d"></span><span class="e">e274</span></button>
+              <button class="ev miss" role="tab" aria-selected="false" data-ev-i="3"><span class="d"></span><span class="e">e275</span></button>
+              <button class="ev miss" role="tab" aria-selected="true" data-ev-i="4"><span class="d"></span><span class="e">e279</span></button>
+              <button class="ev" role="tab" aria-selected="false" data-ev-i="5"><span class="d"></span><span class="e">e280–319</span></button>
+              <button class="ev" role="tab" aria-selected="false" data-ev-i="6"><span class="d"></span><span class="e">e320</span></button>
+              <button class="ev" role="tab" aria-selected="false" data-ev-i="7"><span class="d"></span><span class="e">e363</span></button>
+              <button class="ev win" role="tab" aria-selected="false" data-ev-i="8"><span class="d"></span><span class="e">e367</span></button>
+              <span class="cut" aria-hidden="true"></span>
+            </div>
+            <div class="tl-note" id="tl-note" role="tabpanel"></div>
+          </div>
+          <div class="legend" style="margin-top:12px"><span><i class="m1" style="border-radius:50%;width:9px;height:9px"></i>held</span><span><i class="red" style="border-radius:50%;width:9px;height:9px"></i>missed</span><span><i class="m1" style="width:8px;height:8px;transform:rotate(45deg)"></i>reset</span></div>
+        </div>
+      </div>
+      <hr class="rule" style="margin-block:32px">
+      <div class="proofs" aria-label="The six impossibility proofs">
+        <div class="pr" style="font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)"><span>Game</span><span>The proof, and the rule that was never exercised · Table 7</span></div>
+        <div class="pr"><span class="g">dc22</span><span class="c">Level-6 switch unreachable, remaining blocks isolated.</span><span class="u"><i class="led on"></i><span>All 74 prior inert probes had been taken in one world state. One coordinate had been inert and then live earlier, which made “refuses to act” conditional. The gate was geometric arming and the blocks were connected.</span></span></div>
+        <div class="pr"><span class="g">s5i5</span><span class="c">Level 7 provably unwinnable.</span><span class="u"><i class="led on"></i><span>The rotation rule had been exercised only in the occupied failure mode. The off-board case clips instead of refusing, which frees the arm and also breaks level 8's length cap.</span></span></div>
+        <div class="pr"><span class="g">sk48</span><span class="c">Level 3 unsolvable by an 8.2M-state search.</span><span class="u"><i class="led on"></i><span>The search assumed one ungraded companion rule, re-hooking bottom-only, that fit all 103 recorded transitions. Re-hooking is positional, and an action written off as a no-op was SELECT.</span></span></div>
+        <div class="pr"><span class="g">wa30</span><span class="c">Throughput ceiling, hostiles effectively unkillable.</span><span class="u"><i class="led on"></i><span>All three hostile rules were false. Movement is one orthogonal cell per action, an 812-observation displacement histogram shows zero diagonal moves, and the ceiling was a treadmill that vanished with the hostiles.</span></span></div>
+        <div class="pr"><span class="g">bp35 · L8</span><span class="c">Switch unreachable.</span><span class="u"><i class="led on"></i><span>The switch sat above the drifted map.</span></span></div>
+        <div class="pr"><span class="g">bp35 · L9</span><span class="c">No switches remain, map certified pixel-complete.</span><span class="u"><i class="led on"></i><span>The frame itself. “Rendered” had stood in for “exists”. Nine switches sat above the map, visible only from inside the dead-end shaft. The deepest of the six: the unexercised premise was the observation frame.</span></span></div>
+      </div>
+    </div>
+
+    <!-- E3 -->
+    <div class="ev-pane rv" id="ev-e3" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>E3: carryover of the agent's own record, under forced demotion.</h3>
+          <p>A run exports its notes with the lines marked verified, a digest of its graded outcomes, its hazard tags, up to twenty verifier programs with their statistics, and its formal model. A later run imports that artifact as foreign: every verified line lands as assumed, every verifier as a candidate that earns standing only by being named in a prediction and graded again, the model with no rights.</p>
+          <p>Two games, one import run each, from the game's own gated seed-1 run. <b>ft09 is a null cell</b>: the import run read the prior notes, named none of the twenty imported verifiers, admitted 74 of its own and finished in exactly the source run's count. <b>tr87 is one large effect</b>: 119 actions against 324 and 216 cold, with 129 fresh verifiers and none of the imported ones used.</p>
+          <p>In both runs the FOREIGN discipline held as designed. What transferred on tr87 was the prose understanding in the notes, re-earned through fresh predictions and fresh code. Two cells, direction only.</p>
+        </div>
+        <div class="chart" id="ch-e3">
+          <div class="ct"><span class="t">Paid actions: import run against the two cold gated runs</span><span class="u">Table 6</span></div>
+          <div id="e3-svg"></div>
+          <div class="legend"><span><i class="red"></i>import run</span><span><i class="m1"></i>cold gated · seed 1 (source of the import)</span><span><i class="m2"></i>cold gated · seed 2</span></div>
+          <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-e3"></table></div></details>
+        </div>
+      </div>
+    </div>
+
+    <!-- worlds -->
+    <div class="ev-pane rv" id="ev-worlds" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>Factorio: a world with no grid at all.</h3>
+          <p>The Factorio Learning Environment is a build-and-optimize world. The adapter registers two actions, <code>RUN</code>, a Python program against the environment's API, and <code>WAIT</code>, which advances the world an exact number of ticks. Here the agent's code is the action, and the adapter screens every program with an AST allowlist before it runs; a refused program still spends and is journaled as a policy refusal.</p>
+          <p>Three lab-play throughput tasks under a cap of 64 paid actions: <b>iron plate, iron gear wheel and electronic circuit, won in 5, 9 and 9 paid actions at $1.99, $4.87 and $4.44</b>, every journal clean under both checkers, zero programs refused. The three agents declared 7, 7 and 15 states, all but one a dotted path into the observation, and every paid action carried state outcomes beside its verifiers.</p>
+          <dl class="kv">
+            <dt>October replay</dt><dd>iron plate in 5 ($2.64), circuit in 15 ($6.69), both inside their August bands</dd>
+            <dt>Fail-closed claim</dt><dd>by construction, untested by incident</dd>
+          </dl>
+        </div>
+        <div class="chart" id="ch-fac">
+          <div class="ct"><span class="t">Paid actions to the win, cap 64</span><span class="u">three tasks · August run</span></div>
+          <div id="fac-svg"></div>
+        </div>
+      </div>
+      <hr class="rule" style="margin-block:32px">
+      <div class="ev-grid">
+        <div class="read">
+          <h3>OOLONG: when the gradable thing is not the thing that matters.</h3>
+          <p>OOLONG asks questions whose answers require aggregating an entire corpus. The adapter keeps the corpus out of the observation, so the model's context never holds it. <code>BANK_FACT</code> commits a fact with a span the adapter checks verbatim against the corpus; <code>SUBMIT</code> answers the current question and is coverage-gated by a census of banked facts. Correctness is sealed and scored only at the end.</p>
+          <p>Three things are robust in one corpus per rung: <b>the raw model walls past 128K</b>, the three harnesses land in one band well above it, and <b>the gated path is the most expensive at 1M</b>. The 1M rung does not discriminate: the per-question score vectors of the three harness arms are identical there, so the tie says nothing about the harnesses.</p>
+          <p>E5 changed only the actuator shape and cut the 1M cost to $43.39 from $48.76. The per-action discipline is bounded by a seven-minute paid phase; what remains is the offline strategy the <span class="sym">Assay</span> framing led the agent to choose, hand-classifying all 20,321 reviews through the model.</p>
+        </div>
+        <div class="stack">
+          <div class="chart" id="ch-oo">
+            <div class="ct"><span class="t">Accuracy over the length ladder</span><span class="u">Table 9 · one corpus per rung</span></div>
+            <div id="oo-svg"></div>
+            <div class="legend"><span><i class="ln red"></i><span class="sym">Assay</span>&nbsp;de-hinted (fair arm)</span><span><i class="ln m1"></i>Claude Code, no hint</span><span><i class="ln m2"></i>Prime Agent</span><span><i class="m3" style="border-radius:50%;width:9px;height:9px"></i>raw Opus 5, corpus in context</span></div>
+          </div>
+          <div class="chart" id="ch-oo-cost">
+            <div class="ct"><span class="t">Cost of the completing run, USD</span><span class="u">per rung</span></div>
+            <div id="oo-cost-svg"></div>
+            <div class="legend"><span><i class="red"></i><span class="sym">Assay</span>&nbsp;de-hinted</span><span><i class="tex"></i><span class="sym">Assay</span>&nbsp;batched actuator (E5, 1M only)</span><span><i class="m1"></i>Claude Code</span><span><i class="m3"></i>raw Opus 5</span></div>
+            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-oo"></table></div></details>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- cost -->
+    <div class="ev-pane rv" id="ev-cost" role="tabpanel" hidden>
+      <div class="cost" aria-label="Cost of the runs">
+        <div class="c"><span class="v">$283.68</span><span class="l">eleven metered campaign runs</span><span class="s">$11.61 to $53.89 per run, median near $22. The other fourteen ran on a subscription without a per-run meter; the full-set figure is an extrapolation of roughly $550 to $650.</span></div>
+        <div class="c"><span class="v">≈ 37 h</span><span class="l">agent wall-clock, 20 of 25 games</span><span class="s">32 to 330 minutes per game where measured.</span></div>
+        <div class="c"><span class="v">$537.06</span><span class="l">E1, E2 and E3 at list price</span><span class="s">1,466 minutes of agent time across the 24 runs, billed to a subscription until its weekly limit and as paid usage after it.</span></div>
+        <div class="c"><span class="v">$2.40</span><span class="l">OOLONG at 4M, de-hinted</span><span class="s">Against $48.76 at 1M. Each rung uses a different source corpus, so the table reads across a rung and not down a column.</span></div>
+      </div>
+      <div class="ev-grid" style="margin-top:32px">
+        <div class="read">
+          <h3>ft09, fifteen wins at a cap of 200.</h3>
+          <p>The campaign ran each game once; the experiments gave the first repeated cells on this kernel line. ft09 has been won fifteen times: nine under the gated protocol, twice with the instrument removed, once on the October regression run and three times on release 1.2.0, under three successive versions of the manual, with the first level cleared at the fourth action in every E1, E1b and E3 run.</p>
+          <p>The spread on a single game under one protocol is wide enough that every single-run comparison in the paper, including every comparison against another system, is direction only.</p>
+          <dl class="kv">
+            <dt>Coerced outcomes</dt><dd>1 of 29,138 graded, across 49 runs</dd>
+            <dt>Mis-reference refusals</dt><dd>4, in four runs</dd>
+            <dt>Vacuous verifier hashes</dt><dd>153, in 28 of 49 runs</dd>
+            <dt>Ungated events</dt><dd>0 in all 49 runs</dd>
+            <dt>Model replays</dt><dd>3, all in cn04; none promoted, no plan executed</dd>
+          </dl>
+        </div>
+        <div class="chart" id="ch-ft09">
+          <div class="ct"><span class="t">ft09 · paid actions to the win, in the order played</span><span class="u">Figure 8 · dashed line at 80</span></div>
+          <div id="ft09-svg"></div>
+          <div class="legend"><span><i class="red" style="border-radius:50%;width:9px;height:9px"></i>with the prediction (gated)</span><span><i class="m1" style="width:9px;height:9px"></i>the gate lifted (ungated)</span><span><i class="m3" style="border-radius:50%;width:9px;height:9px;background:transparent;border:2px solid var(--mark-1)"></i>the instrument removed (E1b)</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="fgrid">
+      <div class="stack">
+        <p class="eyebrow"><span class="num">Cite</span><span>Preprint</span></p>
+        <div class="cite" id="cite">Arjmandi, M. (2026). <span class="sym">Assay</span>: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint.<button type="button" id="copy-cite" aria-label="Copy citation">Copy</button></div>
+        <p class="small" style="max-width:60ch">Release 1.2.0 is open source under Apache 2.0 and takes issues only, not pull requests. The journal specification, the checker and the evidence packs ship inside it under MIT, so a journal can be verified without a license to the harness.</p>
+      </div>
+      <div class="stack">
+        <p class="eyebrow"><span class="num">Artifacts</span><span>The record itself</span></p>
+        <div class="links2">
+          <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><span>github.com/arjmandi/assay</span><span>code · spec · checker · 66 journals</span></a>
+          <a href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32" target="_blank" rel="noopener"><span>arcprize.org · scorecard 702ccd4f</span><span>server-scored set</span></a>
+          <a href="https://arxiv.org/abs/2608.04066" target="_blank" rel="noopener"><span>arXiv:2608.04066 · ARG</span><span>the previous system</span></a>
+          <a href="https://arxiv.org/abs/2603.17683" target="_blank" rel="noopener"><span>arXiv:2603.17683 · Sensi</span><span>the first</span></a>
+        </div>
+      </div>
+    </div>
+    <div class="colophon"><span>ASSAY · a reasoning harness</span></div>
+  </div>
+</footer>
+<div class="tt" id="tt" role="tooltip"></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
+<script>
+(function(){
+'use strict';
+const $ = (s, r=document) => r.querySelector(s);
+const $$ = (s, r=document) => Array.from(r.querySelectorAll(s));
+const motionOK = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const A = window.anime || null;
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+const fmt = (n, dec=0) => n.toLocaleString('en-US', {minimumFractionDigits:dec, maximumFractionDigits:dec});
+
+/* ---------- global hatch pattern for charts ---------- */
+(function(){
+  const d = document.createElement('div');
+  d.innerHTML = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><pattern id="hatch" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--bg-2)"/><line x1="0" y1="0" x2="0" y2="5" stroke="var(--mark-2)" stroke-width="1.6"/></pattern></defs></svg>';
+  document.body.insertBefore(d.firstChild, document.body.firstChild);
+})();
+
+/* ---------- progress + active nav ---------- */
+const prog = $('#progress');
+function onScroll(){
+  const h = document.documentElement;
+  const max = h.scrollHeight - h.clientHeight;
+  prog.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
+}
+addEventListener('scroll', onScroll, {passive:true}); onScroll();
+const navLinks = $$('nav.sections a');
+const secObs = new IntersectionObserver(es => {
+  es.forEach(e => { if (e.isIntersecting){ navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id)); } });
+}, {rootMargin:'-40% 0px -55% 0px'});
+$$('main section[id]').forEach(s => secObs.observe(s));
+
+/* ---------- reveal: only elements below the fold are hidden, and only when motion is allowed ---------- */
+if (motionOK && 'IntersectionObserver' in window){
+  const vh = innerHeight;
+  const els = $$('.rv').filter(el => el.getBoundingClientRect().top > vh * 0.9);
+  els.forEach(el => el.classList.add('pre'));
+  const ro = new IntersectionObserver(es => {
+    es.forEach(e => {
+      if (!e.isIntersecting) return;
+      const el = e.target; ro.unobserve(el);
+      if (e.boundingClientRect.top < 0){ el.classList.remove('pre'); return; }
+      if (A){ A({targets: el, opacity:[0,1], translateY:[14,0], duration:700, easing:'cubicBezier(.2,.7,.2,1)', complete(){ el.classList.remove('pre'); el.style.transform=''; el.style.opacity=''; }}); }
+      else el.classList.remove('pre');
+    });
+  }, {rootMargin:'0px 0px 120px 0px', threshold:0.02});
+  els.forEach(el => ro.observe(el));
+}
+
+/* ---------- hero counters ---------- */
+(function(){
+  const els = $$('[data-count]');
+  if (!motionOK || !A){ return; }
+  els.forEach(el => {
+    const target = parseFloat(el.dataset.count), dec = parseInt(el.dataset.dec||'0',10);
+    const o = {v: 0};
+    A({targets:o, v:target, duration:1400, delay:200, easing:'easeOutExpo', round: dec ? Math.pow(10,dec) : 1,
+      update(){ el.textContent = el.dataset.sep ? fmt(Math.round(o.v)) : (dec ? o.v.toFixed(dec) : Math.round(o.v)); },
+      complete(){ el.textContent = el.dataset.sep ? fmt(target) : (dec ? target.toFixed(dec) : String(target)); }});
+  });
+})();
+
+/* ---------- hero loop animation ---------- */
+(function(){
+  const svg = $('.loop-svg'); if (!svg) return;
+  const st = $('#loop-status'), led = $('#loop-led');
+  const wires = id => $('#'+id, svg);
+  const mk = d => { const p = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d', d); p.setAttribute('fill','none'); p.setAttribute('stroke','none'); svg.appendChild(p); return p; };
+  const pA = mk('M150 85 H260 H497'), pB = mk('M497 103 H362 V192 V335'), pC = mk('M314 192 H151'), pD = mk('M176 335 H85 V211');
+  const tM = $('#tok-main'), tO = $('#tok-obs'), tR = $('#tok-rcpt'), tD = $('#tok-read'), gate = $('#gate-bar');
+  [tM,tO,tR,tD].forEach(t => { t.setAttribute('cx',0); t.setAttribute('cy',0); });
+  const hot = (ids, on) => ids.forEach(id => wires(id).classList.toggle('hot', on));
+  const setStatus = (html, isMiss) => { st.innerHTML = html; led.classList.toggle('on', !!isMiss); led.classList.toggle('ok', !isMiss); };
+  const steps = [
+    {status:'<b>e279</b> · predict <span class="mono">verify:checks/s2_p3_8left.py</span> · act ACTION6 x=60 y=58', miss:true},
+    {status:'<b>gate</b> · parsed · referents in N<sub>t</sub> · verifier hashed 2027…8e69 · budget ok', miss:true},
+    {status:'<b>world step</b> · exactly once · Δ measured', miss:false},
+    {status:'<b>o<sub>t+1</sub></b> returned · extractors read s<sub>t+1</sub> · grader runs the stored verifier', miss:false},
+    {status:'<b>grade</b> · verify ok=false · actual: want 555 got 888', miss:true},
+    {status:'<b>receipt</b> · MISSED, actual value first · e279 appended, chain extended', miss:true},
+    {status:'<b>agent</b> reads by address · fixes the notes before the next action', miss:false},
+  ];
+  if (!motionOK || !A){ setStatus(steps[4].status, true); tM.setAttribute('opacity',0); return; }
+  function run(){
+    const tl = A.timeline({easing:'linear', complete(){ setTimeout(run, 900); }});
+    const pathA = A.path(pA), pathB = A.path(pB), pathC = A.path(pC), pathD = A.path(pD);
+    tl.add({targets:tM, opacity:1, duration:150, begin(){ setStatus(steps[0].status, steps[0].miss); hot(['w-ag'], true); }});
+    tl.add({targets:tM, translateX:pathA('x'), translateY:pathA('y'), duration:2000, easing:'easeInOutSine',
+      update(a){ const p = a.progress; if (p > 30 && p < 34){ } },
+      begin(){ setTimeout(()=>{ setStatus(steps[1].status, steps[1].miss); hot(['w-ag'],false); hot(['w-gw'],true); A({targets:gate, scaleY:[1,0], duration:350, easing:'easeOutQuad', transformOrigin:'262px 85px'}); }, 560);
+               setTimeout(()=>{ setStatus(steps[2].status, false); hot(['w-gw'],false); hot(['w-ww'],true); }, 1200); }
+    }, '-=0');
+    tl.add({targets:tM, opacity:0, duration:200, complete(){ hot(['w-ww'],false); A({targets:gate, scaleY:1, duration:300, transformOrigin:'262px 85px'}); }});
+    tl.add({targets:tO, opacity:1, duration:150, begin(){ setStatus(steps[3].status, false); hot(['w-wo','w-wg'], true); }});
+    tl.add({targets:tO, translateX:pathB('x'), translateY:pathB('y'), duration:2200, easing:'easeInOutSine',
+      begin(){ setTimeout(()=>{ setStatus(steps[4].status, true); hot(['w-wo','w-wg'],false); $('#n-grader', svg).querySelector('rect').style.stroke = 'var(--panel-red)'; tO.classList.remove('ok'); }, 1250);
+               setTimeout(()=>{ setStatus(steps[5].status, true); hot(['w-gr','w-rc'], true); tR.setAttribute('opacity',1); A({targets:tR, translateX:pathC('x'), translateY:pathC('y'), duration:900, easing:'easeInOutSine', complete(){ tR.setAttribute('opacity',0); A.set(tR,{translateX:0,translateY:0}); }}); }, 1450); }
+    });
+    tl.add({targets:tO, opacity:0, duration:200, complete(){ hot(['w-gr','w-rc'],false); $('#n-grader', svg).querySelector('rect').style.stroke=''; tO.classList.add('ok'); A.set(tO,{translateX:0,translateY:0}); A.set(tM,{translateX:0,translateY:0}); }});
+    tl.add({targets:tD, opacity:1, duration:150, begin(){ setStatus(steps[6].status, false); hot(['w-ra'], true); }});
+    tl.add({targets:tD, translateX:pathD('x'), translateY:pathD('y'), duration:1300, easing:'easeInOutSine'});
+    tl.add({targets:tD, opacity:0, duration:200, complete(){ hot(['w-ra'],false); A.set(tD,{translateX:0,translateY:0}); }});
+  }
+  // start when visible
+  const io = new IntersectionObserver(es => { if (es.some(e=>e.isIntersecting)){ io.disconnect(); run(); } }, {threshold:.2});
+  io.observe(svg);
+})();
+
+window.__assay = {$, $$, motionOK, A, esc, fmt};
+})();
+</script>
+
+<script>
+(function(){
+'use strict';
+const {$, $$, motionOK, A, esc, fmt} = window.__assay;
+
+/* ---------- tooltip ---------- */
+const tt = $('#tt');
+function bindTips(root){
+  $$('[data-tip]', root).forEach(el => {
+    const show = (e) => { tt.innerHTML = el.dataset.tip; tt.classList.add('show'); move(e); };
+    const move = (e) => { const x = e.clientX ?? (el.getBoundingClientRect().left + el.getBoundingClientRect().width/2), y = e.clientY ?? el.getBoundingClientRect().top; tt.style.left = Math.max(90, Math.min(innerWidth-90, x)) + 'px'; tt.style.top = y + 'px'; };
+    el.addEventListener('mouseenter', show); el.addEventListener('mousemove', move); el.addEventListener('mouseleave', ()=>tt.classList.remove('show'));
+    el.addEventListener('click', (e)=>{ show(e); setTimeout(()=>tt.classList.remove('show'), 1800); });
+  });
+}
+
+/* ---------- 04 · hash chain ---------- */
+(function(){
+  const body = $('#chain-body'), verdict = $('#chain-verdict');
+  const lines = [
+    {e:272, l:'{"event":272,"ts":"2026-08-23T12:03:43Z","action":"ACTION6","data":{"x":32,"y":58},"levels":"6/8","predict":"verify:checks/l7p40.py","predict_ok":true,"actual":"play area rows 0-44 exactly as predicted"}', t:'{"event":272,"ts":"2026-08-23T12:03:43Z","action":"ACTION6","data":{"x":32,"y":58},"levels":"6/8","predict":"verify:checks/l7p40.py","predict_ok":true,"actual":"play area rows 0-44 exactly as predicted","note":"edited"}', tl:'add a note'},
+    {e:273, l:'{"event":273,"ts":"2026-08-23T12:06:18Z","action":"RESET","data":null,"levels":"6/8","predict":null,"predict_ok":null}', t:'{"event":273,"ts":"2026-08-23T12:06:18Z","action":"ACTION6","data":null,"levels":"6/8","predict":null,"predict_ok":null}', tl:'RESET → ACTION6', ungatedIfTampered:true},
+    {e:274, l:'{"event":274,"ts":"2026-08-23T12:26:34Z","action":"ACTION6","data":{"x":59,"y":58},"predict":"verify:checks/s2_p1_arm8_left.py","predict_ok":false,"actual":"15 rows differ, first row 6 cols [0..7]: want 88888888 got 55555555"}', t:'{"event":274,"ts":"2026-08-23T12:26:34Z","action":"ACTION6","data":{"x":59,"y":58},"predict":"verify:checks/s2_p1_arm8_left.py","predict_ok":true,"actual":"exactly as predicted"}', tl:'flip the grade'},
+    {e:275, l:'{"event":275,"ts":"2026-08-23T12:27:47Z","action":"ACTION6","data":{"x":39,"y":58},"predict":"verify:checks/s2_p2_c_rot.py","predict_ok":false,"actual":"3 rows differ, first row 15 cols [54, 55]: want 33 got cc"}', t:'{"event":275,"ts":"2026-08-23T12:27:47Z","action":"ACTION6","data":{"x":39,"y":58},"predict":"verify:checks/s2_p2_c_rot.py","predict_ok":true,"actual":"exactly as predicted"}', tl:'flip the grade', anchor:'every 25'},
+    {e:279, l:'{"event":279,"ts":"2026-08-23T12:29:31Z","action":"ACTION6","data":{"x":60,"y":58},"predict":"verify:checks/s2_p3_8left.py","predict_ok":false,"actual":"9 rows differ, first row 0 cols [12, 13, 14]: want 555 got 888"}', t:'{"event":279,"ts":"2026-08-23T12:29:31Z","action":"ACTION6","data":{"x":60,"y":58},"predict":"verify:checks/s2_p3_8left.py","predict_ok":false,"actual":"9 rows differ, first row 0 cols [12, 13, 14]: want 555 got 555"}', tl:'change a digit'},
+    {e:320, l:'{"event":320,"ts":"2026-08-23T12:37:57Z","action":"ACTION6","data":{"x":60,"y":51},"levels":"7/8","predict":"level+1","predict_ok":true,"actual":"level advanced to 7 completed"}', t:'{"event":320,"ts":"2026-08-23T12:37:57Z","action":"ACTION6","data":{"x":60,"y":51},"levels":"7/8","predict":"level+1; win","predict_ok":true,"actual":"level advanced to 7 completed"}', tl:'add an outcome'},
+    {e:363, l:'{"event":363,"ts":"2026-08-23T13:09:31Z","action":"ACTION6","data":{"x":59,"y":11},"predict":"verify:checks/s8_desync10.py","predict_ok":true,"actual":"play area rows 0-52 (panel boxes masked) exactly as predicted"}', t:'{"event":363,"ts":"2026-08-23T13:09:31Z","action":"ACTION6","data":{"x":59,"y":12},"predict":"verify:checks/s8_desync10.py","predict_ok":true,"actual":"play area rows 0-52 (panel boxes masked) exactly as predicted"}', tl:'move the click'},
+    {e:367, l:'{"event":367,"ts":"2026-08-23T13:11:02Z","action":"ACTION6","data":{"x":59,"y":11},"state":"WIN","levels":"8/8","predict":"win","predict_ok":true,"actual":"state WIN"}', t:'{"event":367,"ts":"2026-08-23T13:10:02Z","action":"ACTION6","data":{"x":59,"y":11},"state":"WIN","levels":"8/8","predict":"win","predict_ok":true,"actual":"state WIN"}', tl:'shift the clock', anchor:'WIN'},
+  ];
+  const tampered = new Array(lines.length).fill(false);
+  let published = null;
+  async function sha(s){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+  async function heads(useTamper){
+    let h = await sha('assay-chain-v1'); const out = [];
+    for (let i=0;i<lines.length;i++){ const l = useTamper && tampered[i] ? lines[i].t : lines[i].l; h = await sha(h + l); out.push(h); }
+    return out;
+  }
+  function hl(l){ return esc(l).replace(/"predict_ok":(true|false|null)/, (m,v)=>'"predict_ok":'+(v==='false'?'<span class="k">false</span>':v==='true'?'<span class="ok">true</span>':v)).replace(/"actual":"([^"]*)"/, (m,v)=>'"actual":"<span class="'+(/want/.test(v)?'k':'ok')+'">'+v+'</span>"').replace(/"action":"(RESET|ACTION6)"/, (m,v)=>'"action":"'+(v==='RESET'?'<span class="k">RESET</span>':v)+'"'); }
+  async function render(){
+    if (!window.crypto || !crypto.subtle){ verdict.innerHTML = '<span class="led on"></span><span>This browser context does not expose SHA-256 (crypto.subtle), so the heads cannot be recomputed here.</span>'; return; }
+    if (!published) published = await heads(false);
+    const now = await heads(true);
+    let firstBreak = -1, ungated = -1;
+    body.innerHTML = '';
+    lines.forEach((ln, i) => {
+      const broken = now[i] !== published[i]; if (broken && firstBreak < 0) firstBreak = i;
+      if (tampered[i] && ln.ungatedIfTampered) ungated = i;
+      const tr = document.createElement('tr'); tr.className = (tampered[i]?'tampered ':'') + (broken?'broken':'');
+      const anchorHtml = ln.anchor ? '<span class="anchor '+(broken?'bad':'good')+'">'+ln.anchor+(broken?' ✗':' ✓')+'</span>' : '';
+      tr.innerHTML = '<td class="e">e'+ln.e+'</td><td class="l">'+hl(tampered[i]?ln.t:ln.l)+'</td><td class="h" title="'+now[i]+'">'+now[i].slice(0,12)+'…'+now[i].slice(-6)+'</td><td class="a">'+anchorHtml+'</td><td><button type="button" class="edit" data-i="'+i+'">'+(tampered[i]?'restore':ln.tl)+'</button></td>';
+      body.appendChild(tr);
+    });
+    $$('button.edit', body).forEach(b => b.addEventListener('click', ()=>{ const i = parseInt(b.dataset.i,10); tampered[i] = !tampered[i]; render(); }));
+    if (firstBreak < 0 && ungated < 0){ verdict.innerHTML = '<span class="led ok"></span><span><b>CLEAN</b> · 8 lines · event ids as published · stored chain matches the recomputed head · published anchors match · no ungated event</span>'; }
+    else {
+      const parts = [];
+      if (firstBreak >= 0){ parts.push('<b class="r">TAMPER_DETECTED</b> · chain diverges at e'+lines[firstBreak].e+' and every head after it'); const badA = lines.filter((l,i)=>l.anchor && now[i]!==published[i]).map(l=>'e'+l.e); if (badA.length) parts.push('published anchor'+(badA.length>1?'s':'')+' at '+badA.join(', ')+' do'+(badA.length>1?'':'es')+' not match'); }
+      if (ungated >= 0) parts.push('<b class="r">UNGATED</b> event at e'+lines[ungated].e+': a paid non-reset event with no prediction · run <b class="r">INVALID FOR SCORING</b>');
+      verdict.innerHTML = '<span class="led on"></span><span>'+parts.join(' · ')+'</span>';
+    }
+  }
+  $('#chain-reset').addEventListener('click', ()=>{ tampered.fill(false); render(); });
+  render();
+})();
+
+/* ---------- 04 · batching rights ---------- */
+(function(){
+  const s = [$('#r-s0'),$('#r-s1'),$('#r-s2')], v = [$('#r-s0v'),$('#r-s1v'),$('#r-s2v')], rv = [$('#r-v0'),$('#r-v1'),$('#r-v2')], l = [$('#r-l0'),$('#r-l1'),$('#r-l2')], out = $('#r-out');
+  function up(){
+    const m = +s[0].value, c = +s[1].value, r = Math.min(+s[2].value, c);
+    v[0].textContent = m; v[1].textContent = c; v[2].textContent = r; rv[0].textContent = m; rv[1].textContent = c; rv[2].textContent = r;
+    const ok = [m===0, c>=20, r>=5];
+    ok.forEach((o,i)=>{ l[i].className = 'led ' + (o ? 'ok' : 'on'); });
+    const all = ok.every(Boolean);
+    out.textContent = all ? 'batching rights · plans may run past the cap' : 'no rights · hand cap applies';
+    out.classList.toggle('on', all);
+  }
+  s.forEach(x => x.addEventListener('input', up)); up();
+})();
+
+/* ---------- 05 · layers ---------- */
+(function(){
+  const L = [
+    {i:'Layer 1', kind:'how to learn any world', n:'Constitution', by:'The operator, once per domain. Written by the harness\'s authors before a run; it carries the experience that pretraining does not contain.', when:'The agent lacks a way of working that no training data contains.', life:'One file, the same for every world, reproduced in full in the paper. Names no world. No code injects it or reads it; the operator\'s prompt tells the agent to read it before starting.', diag:'<b>Coerced outcomes</b>, <b>low specificity</b>, <b>vacuous verifiers</b>, an impossibility concluded without an audit.',
+     p:'The agent-facing manual: the loop, the prediction grammar and verifier contract, the notes contract, the batching law, and the rule that thinking is free and probing is paid. What the code enforces (gate, grammar, caps, demotion of imports) is kept apart from what the text only teaches (the loop itself, fixing the story after a miss).'},
+    {i:'Layer 2', kind:'reasoning in code', n:'Modules', by:'The operator, at start through the registry\'s module list, or during a run through a daemon operation that checks the owner token, pins the file by hash and journals the installation.', when:'A pattern repeats across a long trace and the agent does not see it, since code sees once what a context forgets.', life:'Pinned by hash in a manifest; loaded from the next action. The agent cannot install a module, and the harness never extends itself from inside a run.', diag:'A <b>failing move re-issued unmodified</b>, a <b>miss streak</b>, a <b>wall of spend</b> on one unit.',
+     p:'Reasoning in code that runs over the record: each module names itself, declares a mode, and can advise, demand a declaration before the next action, or observe each graded event. Release 1.2.0 ships seven built-ins, from a wall-spend advisory to the coverage audit, all in advise mode.'},
+    {i:'Layer 3', kind:'one world, the only way to touch it', n:'Registry and adapter', by:'The world\'s operator.', when:'The failures come from the interaction with the world itself: an action the agent misreads, a reading it cannot take, a parameter it cannot express.', life:'The registry is pinned into the run directory at start and its hash recorded; a later start with a different registry is refused. A run cannot change its own contract.', diag:'A reading that <b>cannot be taken</b> (UNGRADABLE), a parameter the agent <b>cannot express</b>, a <b>refusal from the world</b>.',
+     p:'The registry is the world\'s contract and holds no code: typed actions, budget, goal text, caps, module list and gate mode, pinned by hash at start. The adapter is the one piece of code that touches a world; nothing world-specific crosses from it into the kernel.'},
+    {i:'Layer 4', kind:'the world model the agent builds', n:'Addressable states', by:'The agent, through checked prediction, during the run. Every declaration is journaled.', when:'Reasoning breaks from forgetting or from referents that drift: the failure recorded in Sensi and arg-v2.', life:'The run. At most sixteen declared states per run, each a dotted path into the observation or an extractor program. A name once bound to an extractor cannot be bound to a different one. Exports travel as foreign and re-earn standing in the next run.', diag:'A <b>rising world-model miss rate</b>, <b>mis-references</b>, facts that <b>never reach the regime</b> a conclusion needs.',
+     p:'The world model the agent builds during the run: the states it names, the predictions it makes over them and how each was graded, the verifiers it writes, and its notes. Declaring is free; a prediction naming an undeclared state is refused and counted as a mis-reference.'},
+    {i:'Layer 5', kind:'everything behind the API', n:'The model', by:'Not the harness.', when:'Not the harness.', life:'Chosen by the operator before the run, with the player command. The record holds nothing about the model beyond the player\'s own session report in the runner\'s ledger.', diag:'A <b>gamble miss rate that stays high</b> while the world model holds.',
+     p:'Everything behind the API. The harness never sees a prompt, a temperature or a token, only a stream of commands; the more the model already knows a world, the less the layers above it need to say. Every run in the paper used one model, Claude Opus 5.'},
+  ];
+  const tabs = $$('#layer-stack [role=tab]');
+  function show(i){
+    tabs.forEach((t,j)=>t.setAttribute('aria-selected', String(i===j)));
+    const d = L[i];
+    $('#ld-i').textContent = d.i; $('#ld-kind').textContent = d.kind; $('#ld-n').textContent = d.n; $('#ld-p').textContent = d.p; $('#ld-by').textContent = d.by; $('#ld-when').textContent = d.when; $('#ld-life').textContent = d.life; $('#ld-diag').innerHTML = d.diag;
+    if (A && motionOK) A({targets:'#layer-detail > *', opacity:[0,1], translateY:[6,0], delay:A.stagger(40), duration:360, easing:'easeOutQuad'});
+  }
+  tabs.forEach(t => t.addEventListener('click', ()=>show(parseInt(t.dataset.layer,10))));
+  show(0);
+})();
+
+/* ---------- 06 · architecture ---------- */
+(function(){
+  const N = {
+    operator:'<b>Operator.</b> Starts the run and holds the owner token, minted at start with only its hash stored. Approving a flagged action, waiving a liveness rehearsal, ratifying a proposed goal and installing a module run inside the daemon against that hash, so an approval exists in the daemon\'s memory and never in a file the agent could write. Release 1.2.0 moves the start to the operator; in the campaign and in E1 to E3 the agent ran <code>assay start</code> itself and therefore held the token, and nothing turned on that because no run used the proposal lane or a flagged action.',
+    agent:'<b>Agent.</b> Whatever drives the client or the tool server: in this paper, Claude Opus 5 through Claude Code, with tool permissions limited to shell, read, glob and grep anywhere and write and edit only inside the run directory. It reads everything and writes only the notes. In a Claude Code session the shipped hooks refuse a write under <code>.assay/</code>, a direct call to the world that bypasses the harness, and a change to the launcher or the path, each with one line naming the rule and the allowed form.',
+    daemon:'<b>Daemon.</b> Loads the run once, holds it in memory as typed records, executes every paid action behind the gate of Algorithm 1, and appends every event to the journal before the reply leaves the socket. It is the only process that spends and the only writer of the journal, the chain file, the spend log and the anchor file. Every grade, refusal, meter and verdict is deterministic code over the record, which is also what makes replay possible.',
+    world:'<b>World.</b> Reached only through the adapter, inside the daemon. The three worlds in the paper: ARC-AGI-3 (frames, 64×64, actions ACTION1..7), the Factorio Learning Environment (RUN a program, WAIT ticks) and OOLONG (BANK_FACT, SUBMIT). The whole observation is written to the record verbatim.',
+    sandbox:'<b>Sandbox.</b> Agent-authored code, verifiers, state extractors and formal models, is untrusted and runs only here: <code>python3 -I</code>, an empty environment, a scratch working directory, a CPU limit and a wall-clock limit, under a deny-default profile where the platform provides one (<code>sandbox-exec</code> on macOS, <code>bwrap</code> with the network unshared on Linux) and under process isolation alone where it does not, with the mode recorded in the run\'s configuration.',
+    rundir:'<b>Run directory.</b> <code>.assay/</code> holds the journal, the chain file, the receipts, the state declarations, the verifier programs under their hashes, the activity log and the agent\'s one-page notes. One directory is one run. The notes are the only place in the record where the agent writes propositions in words, and the kernel reads them for their size and, at export, for the lines marked verified.',
+    checker:'<b>Independent checker.</b> A standard-library program reimplemented from the journal specification, sharing no code with the harness, run under an interpreter in which the harness cannot be imported. It verifies four things: contiguous event ids, no ungated paid event, the stored chain matches the recomputed head, and a published head matches when supplied. It does not re-execute grades.',
+    anchor:'<b>Anchor file.</b> Outside the run directory. The chain head is written here every 25 events and on WIN, and the sealing record is appended here when the daemon detects a difference between the disk and the copies it holds. A sealed anchor reads as "the journal ends exactly here" to the audit, and the detection survives the daemon\'s death.',
+  };
+  const note = $('#arch-note'), hits = $$('#arch g.hit');
+  function show(k){ hits.forEach(h => h.classList.toggle('on', h.dataset.arch === k)); note.innerHTML = N[k]; if (A && motionOK) A({targets:note, opacity:[0,1], duration:300, easing:'easeOutQuad'}); }
+  hits.forEach(h => { h.addEventListener('click', ()=>show(h.dataset.arch)); h.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); show(h.dataset.arch); } }); });
+  show('daemon');
+})();
+
+/* ---------- charts ---------- */
+const chartRegistry = [];
+function mountChart(id, fn){ const el = $(id); if (!el) return; const o = {el, fn}; chartRegistry.push(o); draw(o); }
+function draw(o){ const w = o.el.clientWidth; if (!w) return; o.el.innerHTML = o.fn(w); bindTips(o.el); if (A && motionOK && !o.animated){ o.animated = true; const bars = $$('.bar', o.el); if (bars.length){ A({targets:bars, scaleY:[0,1], duration:700, delay:A.stagger(30), easing:'easeOutCubic'}); } const lns = $$('.ln', o.el); lns.forEach(l => { const len = l.getTotalLength ? l.getTotalLength() : 0; if (len){ l.style.strokeDasharray = len; l.style.strokeDashoffset = len; A({targets:l, strokeDashoffset:[len,0], duration:1100, easing:'easeInOutSine'}); } }); } }
+let rt = null; addEventListener('resize', ()=>{ clearTimeout(rt); rt = setTimeout(()=>chartRegistry.forEach(draw), 120); });
+const roCharts = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting){ const o = chartRegistry.find(c => c.el === e.target); if (o && !o.el.innerHTML) draw(o); } }), {threshold:.1});
+
+function barPath(x, y, w, h, r){ r = Math.min(r, w/2, h); if (h <= 0) return ''; return 'M'+x+','+(y+r)+' a'+r+','+r+' 0 0 1 '+r+','+(-r)+' h'+(w-2*r)+' a'+r+','+r+' 0 0 1 '+r+','+r+' v'+(h-r)+' h'+(-w)+' z'; }
+
+function groupedBars(w, o){
+  const H = o.h || 260, mL = 44, mR = 8, mT = 18, mB = o.sub ? 44 : 32;
+  const pw = w - mL - mR, ph = H - mT - mB, G = o.groups.length, gw = pw / G;
+  const y = v => mT + ph - (v / o.yMax) * ph;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="'+esc(o.aria||'')+'">';
+  s += '<g class="grid">'; for (let t=0; t<=o.yMax+1e-9; t+=o.step){ s += '<line x1="'+mL+'" x2="'+(w-mR)+'" y1="'+y(t)+'" y2="'+y(t)+'"/><text x="'+(mL-8)+'" y="'+(y(t)+3.5)+'" text-anchor="end">'+(o.fmtY?o.fmtY(t):t)+'</text>'; } s += '</g>';
+  o.groups.forEach((g, gi) => {
+    const n = g.bars.length, gap = 2, bw = Math.min(24, Math.max(6, (gw - 20 - gap*(n-1)) / n)); const total = n*bw + gap*(n-1); const x0 = mL + gi*gw + (gw - total)/2;
+    if (g.band){ s += '<rect class="band" x="'+(mL+gi*gw+6)+'" y="'+y(g.band[1])+'" width="'+(gw-12)+'" height="'+(y(g.band[0])-y(g.band[1]))+'"/>'; }
+    if (g.ref != null){ s += '<line x1="'+(mL+gi*gw+6)+'" x2="'+(mL+(gi+1)*gw-6)+'" y1="'+y(g.ref)+'" y2="'+y(g.ref)+'" stroke="var(--ink-3)" stroke-dasharray="3 3"/>'; }
+    g.bars.forEach((b, bi) => {
+      if (b.v == null) return;
+      const x = x0 + bi*(bw+gap), top = y(b.v), h = mT + ph - top;
+      s += '<path class="bar '+b.cls+'" d="'+barPath(x, top, bw, h, 4)+'" style="transform-origin:'+(x+bw/2)+'px '+(mT+ph)+'px" data-tip="'+esc(b.tip || (g.label+' · '+(b.name||'')+' <b>'+fmt(b.v, b.dec||0)+'</b>'))+'"/>';
+      if (o.labelAll || b.lab != null){ s += '<text class="v" x="'+(x+bw/2)+'" y="'+(top-5)+'" text-anchor="middle">'+(b.lab!=null?b.lab:fmt(b.v,b.dec||0))+'</text>'; }
+    });
+    s += '<text class="cat" x="'+(mL+gi*gw+gw/2)+'" y="'+(H-mB+16)+'" text-anchor="middle">'+esc(g.label)+'</text>';
+    if (g.sub && gw > 88) s += '<text x="'+(mL+gi*gw+gw/2)+'" y="'+(H-mB+29)+'" text-anchor="middle">'+esc(g.sub)+'</text>';
+  });
+  s += '<line class="axis" x1="'+mL+'" x2="'+(w-mR)+'" y1="'+(mT+ph)+'" y2="'+(mT+ph)+'"/>';
+  return s + '</svg>';
+}
+
+function stackedH(w, rows, o){
+  const lab = Math.min(120, Math.max(80, w*0.2)), bh = 22, gapR = 18, H = rows.length*(bh+gapR)+10, pw = w - lab - 54;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="'+esc(o.aria||'')+'">';
+  rows.forEach((r, i) => {
+    const total = r.segs.reduce((a,b)=>a+b.v,0); let x = lab; const y = 6 + i*(bh+gapR);
+    s += '<text class="cat" x="'+(lab-10)+'" y="'+(y+bh/2+4)+'" text-anchor="end">'+esc(r.label)+'</text>';
+    r.segs.forEach((sg, j) => { const sw = Math.max(0, (sg.v/total)*pw - (j<r.segs.length-1?2:0)); s += '<rect class="bar '+sg.cls+'" x="'+x+'" y="'+y+'" width="'+sw+'" height="'+bh+'" style="transform-origin:'+x+'px '+(y+bh)+'px" data-tip="'+esc(r.label+' · '+sg.name+' <b>'+fmt(sg.v)+'</b> · '+(100*sg.v/total).toFixed(1)+'%')+'"/>'; if (sw > 34) s += '<text x="'+(x+sw/2)+'" y="'+(y+bh/2+3.5)+'" text-anchor="middle" style="fill:'+(sg.cls==='m3'?'var(--ink)':'var(--bg-2)')+'">'+(100*sg.v/total).toFixed(0)+'%</text>'; x += sw + 2; });
+    s += '<text class="v" x="'+(lab+pw+8)+'" y="'+(y+bh/2+4)+'">'+fmt(total)+'</text>';
+  });
+  return s + '</svg>';
+}
+
+function lineChart(w, o){
+  const H = o.h || 240, mL = 44, mR = 16, mT = 14, mB = 30, pw = w-mL-mR, ph = H-mT-mB, n = o.cats.length;
+  const x = i => mL + (n===1 ? pw/2 : i*(pw/(n-1))), y = v => mT + ph - ((v-o.yMin)/(o.yMax-o.yMin))*ph;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="'+esc(o.aria||'')+'">';
+  s += '<g class="grid">'; for (let t=o.yMin; t<=o.yMax+1e-9; t+=o.step){ s += '<line x1="'+mL+'" x2="'+(w-mR)+'" y1="'+y(t)+'" y2="'+y(t)+'"/><text x="'+(mL-8)+'" y="'+(y(t)+3.5)+'" text-anchor="end">'+t.toFixed(o.dec||1)+'</text>'; } s += '</g>';
+  o.cats.forEach((c,i)=>{ s += '<text class="cat" x="'+x(i)+'" y="'+(H-8)+'" text-anchor="middle">'+esc(c)+'</text>'; });
+  o.series.forEach(se => { const pts = se.vals.map((v,i)=> v==null?null:[x(i),y(v)]).filter(Boolean); s += '<path class="ln '+se.cls+'" d="M'+pts.map(p=>p.join(',')).join(' L')+'"/>'; });
+  o.series.forEach(se => { se.vals.forEach((v,i)=>{ if (v==null) return; s += '<circle class="pt '+se.cls+'" cx="'+x(i)+'" cy="'+y(v)+'" r="4.5" data-tip="'+esc(se.name+' · '+o.cats[i]+' <b>'+v.toFixed(3)+'</b>')+'"/>'; }); });
+  (o.points||[]).forEach(p => { s += '<circle class="pt '+p.cls+'" cx="'+x(p.i)+'" cy="'+y(p.v)+'" r="5" data-tip="'+esc(p.name+' · '+o.cats[p.i]+' <b>'+p.v.toFixed(3)+'</b>')+'"/>'; });
+  return s + '</svg>';
+}
+
+function dotStrip(w, o){
+  const H = 230, mL = 44, mR = 36, mT = 16, mB = 58, pw = w-mL-mR, ph = H-mT-mB, n = o.items.length;
+  const x = i => mL + (i+0.5)*(pw/n), y = v => mT + ph - ((v-o.yMin)/(o.yMax-o.yMin))*ph;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="'+esc(o.aria||'')+'">';
+  s += '<g class="grid">'; for (let t=o.yMin; t<=o.yMax+1e-9; t+=o.step){ s += '<line x1="'+mL+'" x2="'+(w-mR)+'" y1="'+y(t)+'" y2="'+y(t)+'"/><text x="'+(mL-8)+'" y="'+(y(t)+3.5)+'" text-anchor="end">'+t+'</text>'; } s += '</g>';
+  s += '<line x1="'+mL+'" x2="'+(w-mR)+'" y1="'+y(o.ref)+'" y2="'+y(o.ref)+'" stroke="var(--ink-2)" stroke-dasharray="4 3"/>';
+  o.items.forEach((it,i)=>{
+    const cx = x(i), cy = y(it.v), tip = esc(it.label+' <b>'+it.v+'</b> · '+it.kind);
+    if (it.t === 'u') s += '<rect class="pt m1" x="'+(cx-4.5)+'" y="'+(cy-4.5)+'" width="9" height="9" data-tip="'+tip+'"/>';
+    else if (it.t === 'b') s += '<circle cx="'+cx+'" cy="'+cy+'" r="4.5" fill="var(--bg-2)" stroke="var(--mark-1)" stroke-width="2" data-tip="'+tip+'"/>';
+    else s += '<circle class="pt red" cx="'+cx+'" cy="'+cy+'" r="4.5" data-tip="'+tip+'"/>';
+    if (it.v !== 80) s += '<text class="v" x="'+cx+'" y="'+(cy-9)+'" text-anchor="middle">'+it.v+'</text>';
+    s += '<text transform="translate('+(cx+3)+','+(H-mB+8)+') rotate(55)" style="font-size:9.5px">'+esc(it.label)+'</text>';
+  });
+  return s + '</svg>';
+}
+
+function tableHTML(id, head, rows, hiIdx){ const t = $(id); if (!t) return; t.innerHTML = '<thead><tr>'+head.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map((r,i)=>'<tr'+(i===hiIdx?' class="hi"':'')+'>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody>'; }
+
+/* ---------- 07 · rank list ---------- */
+(function(){
+  const rows = [
+    {n:'VISTA', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'—', a:'7,302'},
+    {n:'Tycho', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'183/183', a:'6,641'},
+    {n:'arc-skill', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'183/183', a:'7,645'},
+    {n:'Retrodict', bb:'gpt-5.6-sol · uncapped', r:99.86, g:'25/25', l:'183/183', a:'7,703'},
+    {n:'ASSAY (campaign)', bb:'Opus 5 · hard caps, gated', r:96.54, g:'24/25', l:'177/183', a:'8,157', hi:true},
+    {n:'Prime Agent (median)', bb:'Opus 5 · uncapped', r:95.24, g:'24/25', l:'178/183', a:'11,245'},
+    {n:'PRO-LONG', bb:'Fable 5 · uncapped', r:94.71, g:'19/25', l:'—', a:'11,156'},
+    {n:'NOOA', bb:'gpt-5.6-sol · 2 h fleet cap', r:85.1, g:'—', l:'170/183', a:'—'},
+  ];
+  const el = $('#ranklist');
+  el.innerHTML = rows.map(r => '<div class="r'+(r.hi?' hi':'')+'" data-tip="'+esc(r.n+' · RHAE <b>'+r.r.toFixed(2)+'</b> · games '+r.g+' · levels '+r.l+' · actions '+r.a)+'"><span class="n">'+esc(r.n)+'<small>'+esc(r.bb)+'</small></span><span class="tr"><i data-w="'+r.r+'"></i></span><span class="v">'+r.r.toFixed(2)+'</span></div>').join('');
+  bindTips(el);
+  const fills = $$('.tr i', el);
+  const go = () => { fills.forEach((f,i) => { if (A && motionOK) A({targets:f, width:[0, f.dataset.w+'%'], duration:900, delay:i*60, easing:'easeOutCubic'}); else f.style.width = f.dataset.w+'%'; }); };
+  const io = new IntersectionObserver(es => { if (es.some(e=>e.isIntersecting)){ io.disconnect(); go(); } }, {threshold:.3}); io.observe(el);
+  tableHTML('#tbl-rank', ['System','Backbone · regime','RHAE','Games','Levels','Actions'], rows.map(r=>[esc(r.n), esc(r.bb), r.r.toFixed(2), r.g, r.l, r.a]), 4);
+})();
+
+/* ---------- 07 · charts ---------- */
+mountChart('#e1-svg', w => groupedBars(w, {yMax:500, step:100, h:280, aria:'E1 paid actions to the win by game, arm and seed',
+  groups:[
+    {label:'ft09', sub:'cap 200 · prior 75 to 152', band:[75,152], bars:[{v:80,cls:'red',name:'gated s1'},{v:75,cls:'red',name:'gated s2'},{v:80,cls:'m1',name:'ungated s1'},{v:80,cls:'m1',name:'ungated s2'},{v:80,cls:'tex',name:'removed s1'},{v:80,cls:'tex',name:'removed s2'}]},
+    {label:'tr87', sub:'cap 1500 · prior 162', ref:162, bars:[{v:324,cls:'red',name:'gated s1'},{v:216,cls:'red',name:'gated s2'},{v:282,cls:'m1',name:'ungated s1'},{v:185,cls:'m1',name:'ungated s2'},{v:449,cls:'tex',name:'removed s1'},{v:156,cls:'tex',name:'removed s2'}]},
+    {label:'cn04', sub:'cap 1500 · prior 223', ref:223, bars:[{v:222,cls:'red',name:'gated s1'},{v:275,cls:'red',name:'gated s2'},{v:201,cls:'m1',name:'ungated s1'},{v:300,cls:'m1',name:'ungated s2'},{v:212,cls:'tex',name:'removed s1'},{v:220,cls:'tex',name:'removed s2'}]},
+  ]}));
+tableHTML('#tbl-e1', ['Game (cap)','gated s1','gated s2','ungated s1','ungated s2','removed s1','removed s2','prior gated runs'], [['ft09 (200)','80','75','80','80','80','80','75 to 152 (four)'],['tr87 (1500)','324','216','282','185','449','156','162 (one)'],['cn04 (1500)','222','275','201','300','212','220','223 (one)'],['sum per arm','1,192','','1,128','','1,197','','']]);
+mountChart('#e1b-svg', w => stackedH(w, [
+  {label:'ungated', segs:[{v:836,cls:'red',name:'explicit change'},{v:171,cls:'m1',name:'verifier'},{v:359,cls:'m2',name:'state outcome'},{v:39,cls:'m3',name:'other'}]},
+  {label:'gated', segs:[{v:28,cls:'red',name:'explicit change'},{v:1054,cls:'m1',name:'verifier'},{v:368,cls:'m2',name:'state outcome'},{v:41,cls:'m3',name:'other'}]},
+], {aria:'Graded outcomes by kind for the ungated and gated arms'}));
+mountChart('#e2-svg', w => groupedBars(w, {yMax:450, step:100, h:280, aria:'E2 paid actions after the cut per state and arm',
+  groups:[
+    {label:'s5i5', sub:'cut e273', bars:[{v:91,cls:'m1',name:'control'},{v:106,cls:'red',name:'module'},{v:94,cls:'m3',name:'historical, hinted'}]},
+    {label:'wa30', sub:'cut e990', bars:[{v:317,cls:'m1',name:'control'},{v:190,cls:'red',name:'module'},{v:181,cls:'m3',name:'historical, hinted'}]},
+    {label:'sk48', sub:'cut e111', bars:[{v:370,cls:'m1',name:'control'},{v:351,cls:'red',name:'module'},{v:293,cls:'m3',name:'historical, hinted'}]},
+    {label:'dc22', sub:'cut e634', bars:[{v:160,cls:'m1',name:'control'},{v:177,cls:'red',name:'module'},{v:408,cls:'m3',name:'historical, no hint'}]},
+    {label:'bp35', sub:'cut e368', bars:[{v:350,cls:'m1',name:'control'},{v:129,cls:'red',name:'module'},{v:229,cls:'m3',name:'historical, two sessions (116 + 113)'}]},
+  ]}));
+tableHTML('#tbl-e2', ['State','cut','control','module','module firings','ctrl sessions','module sessions','historical hinted session'], [['s5i5','e273','91','106','1','1','1','94'],['wa30','e990','317','190','1','1','1','181'],['sk48','e111','370','351','15','1','2','293'],['dc22','e634','160','177','9','2','1','408 (no hint)'],['bp35','e368','350','129','0','3','1','116 and 113 (two hints)'],['sum','','1,288','953','26','','','']]);
+mountChart('#e3-svg', w => groupedBars(w, {yMax:350, step:50, h:260, labelAll:true, aria:'E3 import run against cold gated runs',
+  groups:[
+    {label:'ft09 · to win', bars:[{v:80,cls:'red',name:'import'},{v:80,cls:'m1',name:'cold s1'},{v:75,cls:'m2',name:'cold s2'}]},
+    {label:'tr87 · to win', bars:[{v:119,cls:'red',name:'import'},{v:324,cls:'m1',name:'cold s1'},{v:216,cls:'m2',name:'cold s2'}]},
+    {label:'ft09 · first level', bars:[{v:4,cls:'red',name:'import'},{v:4,cls:'m1',name:'cold s1'},{v:4,cls:'m2',name:'cold s2'}]},
+    {label:'tr87 · first level', bars:[{v:14,cls:'red',name:'import'},{v:28,cls:'m1',name:'cold s1'},{v:27,cls:'m2',name:'cold s2'}]},
+  ]}));
+tableHTML('#tbl-e3', ['Game','Measure','import','cold gated s1','cold gated s2'], [['ft09','actions to win','80','80','75'],['ft09','actions to first level','4','4','4'],['tr87','actions to win','119','324','216'],['tr87','actions to first level','14','28','27']]);
+mountChart('#fac-svg', w => {
+  const rows = [{l:'iron plate', v:5, c:'$1.99', st:7},{l:'iron gear wheel', v:9, c:'$4.87', st:7},{l:'electronic circuit', v:9, c:'$4.44', st:15}];
+  const lab = 130, bh = 22, H = rows.length*40+36, pw = w-lab-60, x = v => lab + (v/64)*pw;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="Factorio paid actions against the cap of 64">';
+  s += '<g class="grid">'; [0,16,32,48,64].forEach(t => { s += '<line x1="'+x(t)+'" x2="'+x(t)+'" y1="4" y2="'+(H-28)+'"/><text x="'+x(t)+'" y="'+(H-12)+'" text-anchor="middle">'+t+'</text>'; }); s += '</g>';
+  rows.forEach((r,i)=>{ const y = 8+i*40; s += '<text class="cat" x="'+(lab-10)+'" y="'+(y+bh/2+4)+'" text-anchor="end">'+r.l+'</text><rect class="bar red" x="'+lab+'" y="'+y+'" width="'+(x(r.v)-lab)+'" height="'+bh+'" rx="0" style="transform-origin:'+lab+'px '+(y+bh)+'px" data-tip="'+esc(r.l+' · <b>'+r.v+'</b> paid actions · '+r.c+' · '+r.st+' states declared')+'"/><text class="v" x="'+(x(r.v)+8)+'" y="'+(y+bh/2+4)+'">'+r.v+' · '+r.c+'</text>'; });
+  s += '<text x="'+x(64)+'" y="'+(H-28)+'" text-anchor="end" style="font-size:9.5px">cap 64 paid actions</text>';
+  return s + '</svg>';
+});
+mountChart('#oo-svg', w => lineChart(w, {cats:['128K','1M','4M'], yMin:0.4, yMax:1.0, step:0.1, h:250, aria:'OOLONG accuracy over the length ladder',
+  series:[{name:'Prime Agent', cls:'m2', vals:[0.859,0.740,0.850]},{name:'Claude Code, no hint', cls:'m1', vals:[0.818,0.740,1.000]},{name:'Assay de-hinted', cls:'red', vals:[0.764,0.740,1.000]}],
+  points:[{i:0, v:0.447, cls:'m3', name:'raw Opus 5, corpus in context'}]}));
+mountChart('#oo-cost-svg', w => groupedBars(w, {yMax:50, step:10, h:220, fmtY:t=>'$'+t, aria:'OOLONG cost of the completing run per rung',
+  groups:[
+    {label:'128K', bars:[{v:12.64,dec:2,cls:'red',name:'Assay de-hinted',lab:'12.64'},{v:null},{v:4.11,dec:2,cls:'m1',name:'Claude Code'},{v:1.11,dec:2,cls:'m3',name:'raw Opus 5'}]},
+    {label:'1M', bars:[{v:48.76,dec:2,cls:'red',name:'Assay de-hinted',lab:'48.76'},{v:43.39,dec:2,cls:'tex',name:'Assay batched actuator (E5)'},{v:8.20,dec:2,cls:'m1',name:'Claude Code'},{v:null}]},
+    {label:'4M', bars:[{v:2.40,dec:2,cls:'red',name:'Assay de-hinted',lab:'2.40'},{v:null},{v:0.89,dec:2,cls:'m1',name:'Claude Code'},{v:null}]},
+  ]}));
+tableHTML('#tbl-oo', ['System','acc 128K','acc 1M','acc 4M','cost 128K','cost 1M','cost 4M'], [['raw Opus 5, corpus in context','0.447','—','—','$1.11 / 2 min','—','—'],['Assay de-hinted (fair arm)','0.764','0.740','1.000','$12.64 / 33','$48.76 / 114','$2.40 / 8'],['Assay de-hinted, batched (E5)','—','0.740','—','—','$43.39 / 76','—'],['Claude Code, no hint','0.818','0.740','1.000','$4.11 / 16','$8.20 / 30','$0.89 / 4'],['Prime Agent','0.859','0.740','0.850','— / 10','— / 5','— / 2'],['Assay hinted (reference)','0.870','0.701','1.000','$10.10','$5.16','$2.37']], 1);
+mountChart('#ft09-svg', w => dotStrip(w, {yMin:60, yMax:160, step:20, ref:80, aria:'ft09 fifteen wins in the order played',
+  items:[{label:'pre 1',v:75,t:'g',kind:'gated'},{label:'pre 2',v:81,t:'g',kind:'gated'},{label:'pre 3',v:82,t:'g',kind:'gated'},{label:'pre 4',v:152,t:'g',kind:'gated'},{label:'E1 g s1',v:80,t:'g',kind:'gated'},{label:'E1 g s2',v:75,t:'g',kind:'gated'},{label:'E1 u s1',v:80,t:'u',kind:'ungated'},{label:'E1 u s2',v:80,t:'u',kind:'ungated'},{label:'E1b s1',v:80,t:'b',kind:'instrument removed'},{label:'E1b s2',v:80,t:'b',kind:'instrument removed'},{label:'E3',v:80,t:'g',kind:'gated, with import'},{label:'Oct',v:80,t:'g',kind:'gated, October build'},{label:'1.2.0',v:80,t:'g',kind:'gated, release 1.2.0'},{label:'1.2.0 b',v:75,t:'g',kind:'gated, 1.2.0 after the rename of channels to states'},{label:'1.2.0 c',v:80,t:'g',kind:'gated, 1.2.0 after the rename of claims to outcomes'}]}));
+
+/* ---------- 07 · evidence tabs ---------- */
+(function(){
+  const tabs = $$('.ev-tabs [role=tab]'), panes = $$('.ev-pane');
+  function show(k){
+    tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.ev === k)));
+    panes.forEach(p => { p.hidden = p.id !== 'ev-' + k; });
+    chartRegistry.forEach(o => { if (o.el.closest('#ev-'+k)) draw(o); });
+  }
+  tabs.forEach(t => t.addEventListener('click', ()=>show(t.dataset.ev)));
+  const h = location.hash.replace('#',''); if (['e1','e2','e3','worlds','cost'].includes(h)) show(h);
+})();
+
+/* ---------- 07 · s5i5 timeline ---------- */
+(function(){
+  const E = [
+    {e:'e272', s:'session 2', g:'held', pred:'verify:checks/l7p40.py', body:'The agent clicks the socket under a verifier outcome that held: <q>c tip lands on socket (16,25). Socket (7,22) is still empty (arm a capped at L=3), so I expect the board to just show socket 2 filled and the level NOT to advance.</q>'},
+    {e:'e273', s:'session 2', g:'reset · the proof', pred:'(a reset carries a note and no prediction)', body:'The reset note is the proof: <q>level 7 is in a proven dead end: arm 8 is irreversibly rotated RIGHT (its only other CCW target, UP, is off-board) which caps arm a at L=3 so socket (7,22) can never be refilled.</q> The session ended by its own judgment with budget remaining.'},
+    {e:'e274', s:'session 3 · first paid action', g:'missed', pred:'verify:checks/s2_p1_arm8_left.py', body:'A probe of a region the proof had never visited. The agent predicted that a different arm of the rotate glyph was a separate directional button. The verifier\'s actual value read <q>want 88888888 got 55555555</q>.'},
+    {e:'e275', s:'session 3', g:'missed', pred:'verify:checks/s2_p2_c_rot.py', body:'A probe for a hidden rotate control, which missed as well: <q>want 33 got cc</q>. Each miss is written with its actual value and is the first thing the receipt shows.'},
+    {e:'e279', s:'session 3 · the decisive probe', g:'missed', pred:'verify:checks/s2_p3_8left.py', body:'In the agent\'s words: <q>THE decisive probe. The unwinnability argument rests on one rule: from RIGHT, arm 8\'s next CCW target UP is off-board, so the click refuses and arm 8 can never reach LEFT. That rule was NEVER exercised.</q> It predicted the off-board target would be skipped. The outcome missed: <q>9 rows differ, first row 0 cols [12, 13, 14]: want 555 got 888</q>. The world had done a third thing: the rotation was accepted and the arm was clipped to the board.'},
+    {e:'e280–e319', s:'session 3', g:'held', pred:'forty exact-board verifier steps', body:'With the clip rule in hand, forty verifier steps followed, each predicting the exact board and each held.'},
+    {e:'e320', s:'session 3', g:'held', pred:'level+1', body:'<q>Arm a goes L=4 to L=5 … arm 8 parked UP at L=3 clears rows 15-17.</q> Level 7 completes. A gamble outcome, bucketed apart from the world-model outcomes so a reader can separate predictions about progress from predictions about mechanics.'},
+    {e:'e363', s:'session 3 · level 8', g:'held', pred:'verify:checks/s8_desync10.py', body:'The same clip rule carried level 8. The agent wrote: <q>a transform blocked by an OBJECT or a WALL is refused, but one that runs off the BOARD EDGE is accepted with the segment CLIPPED to fit.</q>'},
+    {e:'e367', s:'session 3', g:'held · win', pred:'win', body:'<q>state WIN.</q> Session 3\'s meters closed at 86 outcomes held and 8 missed, and the agent\'s report noted that every one of the eight misses was a deliberate probe of an unexercised rule. In E2, both fresh sessions resumed from the archived e273 state probed the same untested off-board rotation within five actions, at the same event, e278.'},
+  ];
+  const tabs = $$('#s5i5 [role=tab]'), note = $('#tl-note');
+  function show(i){ tabs.forEach((t,j)=>t.setAttribute('aria-selected', String(i===j))); const d = E[i]; note.innerHTML = '<div class="h"><b>'+d.e+'</b><span>'+esc(d.s)+'</span><span class="'+(/missed/.test(d.g)?'miss':'')+'">'+esc(d.g)+'</span></div><div class="pred"><span class="k">predict:</span> '+esc(d.pred)+'</div><p>'+d.body+'</p>'; if (A && motionOK) A({targets:note.children, opacity:[0,1], translateY:[4,0], duration:300, delay:A.stagger(40), easing:'easeOutQuad'}); }
+  tabs.forEach(t => t.addEventListener('click', ()=>show(parseInt(t.dataset.evI,10))));
+  show(4);
+})();
+
+/* ---------- footer · copy citation ---------- */
+(function(){
+  const b = $('#copy-cite'), toast = $('#toast');
+  const text = 'Arjmandi, M. (2026). ASSAY: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint. https://github.com/arjmandi/assay';
+  const say = m => { toast.textContent = m; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1800); };
+  b.addEventListener('click', ()=>{
+    const done = () => say('Citation copied');
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('#cite')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say('Select and copy the citation'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  });
+})();
+})();
+</script>
+
+<script>
+(function(){
+'use strict';
+const {$, $$, motionOK, A, esc} = window.__assay;
+const root = $('#game'); if (!root) return;
+
+/* ---- the world: a POMDP with no reward, three typed actions, a goal predicate the agent never sees ---- */
+const BUDGET = 12;
+let obs, prev, spent, events, head, won, ungated, lastDelta;
+const fresh = () => ({dial:0, lamp:'off', drawer:'closed', state:'NOT_FINISHED'});
+function stepWorld(o, a){
+  const n = Object.assign({}, o);
+  if (a === 'TURN') n.dial = (o.dial + 1) % 4;
+  if (a === 'PRESS' && o.dial % 2 === 1) n.lamp = o.lamp === 'on' ? 'off' : 'on';
+  if (a === 'PULL' && o.lamp === 'on' && o.drawer === 'closed') n.drawer = 'open';
+  if (n.drawer === 'open' && n.lamp === 'on' && n.dial === 3) n.state = 'WIN';
+  return n;
+}
+const keys = ['dial','lamp','drawer','state'];
+const changed = (b, a) => keys.filter(k => b[k] !== a[k]);
+
+/* ---- the grader: code over the pair (o, o′), never a model ---- */
+function grade(pred, b, a){
+  const ch = changed(b, a);
+  const deltaStr = ch.length ? ch.map(k => k+' '+b[k]+' → '+a[k]).join(', ') : 'no observed change';
+  switch (pred){
+    case 'noop': return {ok: ch.length === 0, actual: deltaStr, bucket:'world_model'};
+    case 'change': return {ok: ch.length > 0, actual: deltaStr, bucket:'world_model'};
+    case 'ch dial delta +1': return {ok: a.dial - b.dial === 1, actual: 'dial '+b.dial+' → '+a.dial+' (delta '+(a.dial-b.dial>0?'+':'')+(a.dial-b.dial)+')', bucket:'world_model'};
+    case 'ch lamp = on': return {ok: a.lamp === 'on', actual: 'lamp '+a.lamp, bucket:'world_model'};
+    case 'ch lamp = off': return {ok: a.lamp === 'off', actual: 'lamp '+a.lamp, bucket:'world_model'};
+    case 'ch drawer = open': return {ok: a.drawer === 'open', actual: 'drawer '+a.drawer, bucket:'world_model'};
+    case 'win': return {ok: a.state === 'WIN', actual: 'state '+a.state, bucket:'gamble'};
+  }
+  return {ok:false, actual:'unknown form', bucket:'world_model'};
+}
+
+/* ---- the record: SHA-256 chain over the raw lines ---- */
+async function sha(s){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
+const canHash = !!(window.crypto && crypto.subtle);
+
+/* ---- UI refs ---- */
+const el = {
+  obs: $('#g-obs'), delta: $('#g-delta'), budget: $('#g-budget'), budgetBar: $('#g-budget-bar'),
+  act: $('#g-act'), ungated: $('#g-ungated'), audit: $('#g-audit'), reset: $('#g-reset'),
+  receipt: $('#g-receipt'), rc: $('#g-receipt-body'), head: $('#g-head'), jbody: $('#g-journal-body'),
+  mWm: $('#g-m-wm'), mWmT: $('#g-m-wm-t'), mGb: $('#g-m-gb'), mGbT: $('#g-m-gb-t'), mSp: $('#g-m-sp'), mUg: $('#g-m-ug'), auditOut: $('#g-audit-out'),
+  needle: $('#g-needle'), lamp: $('#g-lamp'), drawer: $('#g-drawer'),
+};
+const actionBtns = $$('#g-actions button'), predBtns = $$('#g-preds button');
+const selAction = () => actionBtns.find(b => b.getAttribute('aria-checked') === 'true').dataset.action;
+const selPred = () => predBtns.find(b => b.getAttribute('aria-checked') === 'true').dataset.pred;
+
+function renderObs(){
+  const ch = prev ? changed(prev, obs) : [];
+  el.obs.innerHTML = '{ ' + keys.map(k => '<span class="k">"'+k+'"</span>: <span class="'+(ch.includes(k)?'chg':'')+'">'+(typeof obs[k]==='number'? obs[k] : '"'+obs[k]+'"')+'</span>').join(', ') + ' }';
+  el.delta.innerHTML = lastDelta == null ? '— (no paid action yet)' : (lastDelta.length ? lastDelta.map(k => '<b>'+k+'</b>: '+prev[k]+' → '+obs[k]).join(' · ') : '<span class="dim">no key changed</span>');
+  el.budget.textContent = spent + ' / ' + BUDGET;
+  el.budgetBar.style.width = (spent / BUDGET * 100) + '%';
+  el.budgetBar.classList.toggle('hot', spent >= BUDGET - 2);
+  // cabinet
+  const ang = obs.dial * 90;
+  if (A && motionOK) A({targets: el.needle, rotate: ang, duration: 500, easing: 'easeOutBack'}); else el.needle.style.transform = 'rotate('+ang+'deg)';
+  el.lamp.classList.toggle('on', obs.lamp === 'on');
+  const dy = obs.drawer === 'open' ? 22 : 0;
+  if (A && motionOK) A({targets: el.drawer, translateY: dy, duration: 450, easing: 'easeOutCubic'}); else el.drawer.style.transform = 'translateY('+dy+'px)';
+  const done = won || spent >= BUDGET;
+  el.act.disabled = done; el.ungated.disabled = done;
+  el.act.innerHTML = '<span class="mono">assay act '+esc(selAction())+' --predict "'+esc(selPred())+'"</span>';
+}
+function renderMeters(){
+  const graded = events.filter(e => e.predict);
+  const wm = graded.filter(e => e.bucket === 'world_model'), gb = graded.filter(e => e.bucket === 'gamble');
+  el.mWm.textContent = wm.filter(e => e.predict_ok).length; el.mWmT.textContent = '/ ' + wm.length;
+  el.mGb.textContent = gb.filter(e => e.predict_ok).length; el.mGbT.textContent = '/ ' + gb.length;
+  el.mSp.textContent = graded.length ? (1 - graded.filter(e => e.predict === 'change').length / graded.length).toFixed(2) : '—';
+  el.mUg.textContent = ungated;
+  el.head.textContent = head ? head.slice(0, 8) : '…';
+}
+function renderJournal(newRow){
+  if (!events.length){ el.jbody.innerHTML = '<tr class="empty"><td colspan="4">No events yet. Pick an action, pick a prediction, act.</td></tr>'; return; }
+  el.jbody.innerHTML = events.map((e, i) => {
+    const pg = e.predict ? '<span class="dim">'+esc(e.predict)+'</span> → <span class="'+(e.predict_ok?'held':'miss')+'">'+(e.predict_ok?'held':'missed')+'</span>' : '<span class="ug">no prediction · UNGATED</span>';
+    return '<tr'+(newRow && i === events.length-1 ? ' class="new"' : '')+'><td class="id">e'+e.event+'</td><td>'+esc(e.action)+'</td><td class="pg">'+pg+'</td><td class="h" title="'+e.head+'">'+e.head.slice(0,8)+'</td></tr>';
+  }).join('');
+  el.jbody.parentElement.parentElement.scrollTop = 1e6;
+}
+function receipt(html, flash){ el.rc.innerHTML = html; if (flash && motionOK){ el.receipt.classList.remove('flash'); void el.receipt.offsetWidth; el.receipt.classList.add('flash'); } }
+
+async function append(line){ head = await sha(head + line); return head; }
+
+async function act(withPrediction){
+  if (won){ receipt('<span class="dim">refused · run complete</span> · the run reached WIN; start a new run to keep playing', true); return; }
+  if (spent >= BUDGET){ receipt('<span class="ref">BUDGET_EXHAUSTED</span> · refused, free, journaled as a refusal · the record stands', true); return; }
+  const a = selAction(), p = withPrediction ? selPred() : null;
+  const before = obs, after = stepWorld(before, a);
+  const g = p ? grade(p, before, after) : null;
+  spent += 1; prev = before; obs = after; lastDelta = changed(before, after);
+  const ev = {event: events.length + 1, action: a, predict: p, predict_ok: g ? g.ok : null, actual: g ? g.actual : null, bucket: g ? g.bucket : null, obs: after};
+  const line = JSON.stringify({event: ev.event, action: a, predict: p, predict_ok: ev.predict_ok, actual: ev.actual, obs: after});
+  ev.head = canHash ? await append(line) : 'no-sha';
+  if (!p) ungated += 1;
+  events.push(ev);
+  if (after.state === 'WIN') won = true;
+  el.auditOut.hidden = true;
+  if (p){
+    const kd = lastDelta.length ? lastDelta.map(k => k+': '+before[k]+' → '+after[k]).join(' · ') : 'no key changed';
+    receipt((g.ok ? '<span class="held">✓ '+esc(p)+'   HELD</span>' : '<span class="miss">✗ '+esc(p)+'   MISSED</span><br>  actual: '+esc(g.actual))+'<br><span class="dim">KEY DELTA  '+esc(kd)+'</span>'+(won ? '<br><span class="held">state WIN · the run is complete</span>' : ''), true);
+  } else {
+    receipt('<span class="ref">UNGATED</span> · the action was executed and journaled with no prediction, no verdict and no grade.<br><span class="dim">One ungated event makes the run invalid for scoring. Nothing you learned from it is in the record as a fact.</span>', true);
+  }
+  renderObs(); renderMeters(); renderJournal(true);
+}
+
+function audit(){
+  const paid = events.length;
+  const ug = events.filter(e => !e.predict).length;
+  const lines = [];
+  lines.push('event ids contiguous: e1…e'+paid+' · <b>ok</b>');
+  lines.push(ug ? '<b class="r">'+ug+' ungated paid event'+(ug>1?'s':'')+'</b> · the ungated rule fails' : 'no ungated paid event · <b>ok</b>');
+  lines.push(canHash ? 'stored chain matches the head recomputed over the raw lines · <b>ok</b>' : 'SHA-256 unavailable in this context · chain not checked');
+  lines.push('paid '+paid+' of '+BUDGET+' · final state '+obs.state+' · '+(events.filter(e=>e.predict && e.predict_ok).length)+' held, '+(events.filter(e=>e.predict && !e.predict_ok).length)+' missed');
+  const verdict = ug ? '<b class="r">INVALID FOR SCORING</b>' : (paid ? '<b>CLEAN</b>' : '<b>CLEAN</b> · empty record');
+  el.auditOut.innerHTML = verdict + '<br>' + lines.join('<br>');
+  el.auditOut.hidden = false;
+  if (A && motionOK) A({targets: el.auditOut, opacity:[0,1], translateY:[6,0], duration:350, easing:'easeOutQuad'});
+}
+
+async function reset(){
+  obs = fresh(); prev = null; spent = 0; events = []; won = false; ungated = 0; lastDelta = null;
+  head = canHash ? await sha('assay-chain-v1') : '';
+  el.auditOut.hidden = true;
+  receipt('Pick an action, pick a prediction, act. The first miss is the most valuable thing that can happen.');
+  renderObs(); renderMeters(); renderJournal(false);
+}
+
+actionBtns.forEach(b => b.addEventListener('click', () => { actionBtns.forEach(x => x.setAttribute('aria-checked', String(x === b))); renderObs(); }));
+predBtns.forEach(b => b.addEventListener('click', () => { predBtns.forEach(x => x.setAttribute('aria-checked', String(x === b))); renderObs(); }));
+el.act.addEventListener('click', () => act(true));
+el.ungated.addEventListener('click', () => act(false));
+el.audit.addEventListener('click', audit);
+el.reset.addEventListener('click', reset);
+reset();
+})();
+</script>
+
+</body>
+</html>
