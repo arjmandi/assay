@@ -217,13 +217,14 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .loop-panel{padding:14px 14px 14px}
 .loop-panel .eyebrow{margin-bottom:12px}
 .loop-svg{width:100%; height:auto}
-.loop-svg .node rect{fill:#F2F3F4; stroke:var(--panel-rule); stroke-width:1}
+.loop-svg .node rect{fill:#F2F3F4; stroke:var(--panel-rule); stroke-width:1; transition:stroke .3s}
+.loop-svg .node.lit rect{stroke:var(--panel-red); stroke-width:1.5}
 .loop-svg .node.harness rect{fill:var(--panel-raised)}
 .loop-svg text{font-family:var(--mono); font-size:10.5px; fill:var(--panel-ink); letter-spacing:.04em}
 .loop-svg .node.harness text{fill:var(--panel-ink)}
 .loop-svg .node:not(.harness) text{fill:#17191B}
 .loop-svg text.lab{fill:var(--panel-ink-2); font-size:9.5px}
-.loop-svg .wire{fill:none; stroke:var(--panel-ink-2); stroke-width:1; opacity:.6}
+.loop-svg .wire{fill:none; stroke:var(--panel-ink-2); stroke-width:1; opacity:.6; transition:stroke .3s, opacity .3s}
 .loop-svg .wire.hot{stroke:var(--panel-red); opacity:1; stroke-width:1.25}
 .loop-svg .token{fill:var(--panel-red)}
 .loop-svg .token.ok{fill:var(--panel-ink)}
@@ -782,8 +783,14 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
           <path id="w-rc" class="wire" d="M314 192 H151" marker-end="url(#ah)"/>
           <path id="w-ra" class="wire" d="M176 335 H85 V211" marker-end="url(#ah)"/>
 
+          <!-- tokens: drawn under the nodes, so a token shows only on a wire -->
+          <circle id="tok-main" class="token" r="4.5" cx="150" cy="85" opacity="0"/>
+          <circle id="tok-obs" class="token ok" r="3.5" cx="449" cy="103" opacity="0"/>
+          <circle id="tok-rcpt" class="token" r="3.5" cx="314" cy="192" opacity="0"/>
+          <circle id="tok-read" class="token ok" r="3.5" cx="176" cy="335" opacity="0"/>
+
           <!-- nodes -->
-          <g class="node"><rect x="20" y="60" width="130" height="150"/>
+          <g class="node" id="n-agent"><rect x="20" y="60" width="130" height="150"/>
             <text x="34" y="88" style="font-size:12px;font-weight:500">AGENT</text>
             <text x="34" y="108">language model</text>
             <text x="34" y="124">one page of notes</text>
@@ -802,7 +809,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
           <g class="node harness" id="n-grader"><rect x="314" y="170" width="96" height="44"/>
             <text x="326" y="196">grader</text>
           </g>
-          <g class="node"><rect x="449" y="60" width="96" height="60"/>
+          <g class="node" id="n-world"><rect x="449" y="60" width="96" height="60"/>
             <text x="461" y="82" style="font-weight:500">WORLD</text>
             <text x="461" y="98" class="lab" style="fill:#4F5457">adapter</text>
             <text x="461" y="111" class="lab" style="fill:#4F5457">registry</text>
@@ -823,13 +830,6 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
           <text class="lab" x="160" y="222">actual value on a miss</text>
           <text class="lab" x="92" y="262">reads by address:</text>
           <text class="lab" x="92" y="274">status, states, facts, meters</text>
-
-          <!-- tokens -->
-          <circle id="tok-main" class="token" r="4.5" cx="150" cy="85" opacity="0"/>
-          <circle id="tok-obs" class="token ok" r="3.5" cx="449" cy="103" opacity="0"/>
-          <circle id="tok-rcpt" class="token" r="3.5" cx="314" cy="192" opacity="0"/>
-          <circle id="tok-read" class="token ok" r="3.5" cx="176" cy="335" opacity="0"/>
-          <path id="tok-path" d="M150 85 H260 H362 H497 V103 H362 V192 V335" fill="none" stroke="none"/>
         </svg></div>
         <div class="loop-status" aria-live="polite"><span class="led on" id="loop-led"></span><span id="loop-status"><b>e279</b> · predict verify:checks/s2_p3_8left.py</span></div>
       </aside>
@@ -1424,13 +1424,7 @@ if (motionOK && 'IntersectionObserver' in window){
 /* ---------- hero loop animation ---------- */
 (function(){
   const svg = $('.loop-svg'); if (!svg) return;
-  const st = $('#loop-status'), led = $('#loop-led');
-  const wires = id => $('#'+id, svg);
-  const mk = d => { const p = document.createElementNS('http://www.w3.org/2000/svg','path'); p.setAttribute('d', d); p.setAttribute('fill','none'); p.setAttribute('stroke','none'); svg.appendChild(p); return p; };
-  const pA = mk('M150 85 H260 H497'), pB = mk('M497 103 H362 V192 V335'), pC = mk('M314 192 H151'), pD = mk('M176 335 H85 V211');
-  const tM = $('#tok-main'), tO = $('#tok-obs'), tR = $('#tok-rcpt'), tD = $('#tok-read'), gate = $('#gate-bar');
-  [tM,tO,tR,tD].forEach(t => { t.setAttribute('cx',0); t.setAttribute('cy',0); });
-  const hot = (ids, on) => ids.forEach(id => wires(id).classList.toggle('hot', on));
+  const st = $('#loop-status'), led = $('#loop-led'), gate = $('#gate-bar');
   const setStatus = (html, isMiss) => { st.innerHTML = html; led.classList.toggle('on', !!isMiss); led.classList.toggle('ok', !isMiss); };
   const steps = [
     {status:'<b>e279</b> · predict <span class="mono">verify:checks/s2_p3_8left.py</span> · act ACTION6 x=60 y=58', miss:true},
@@ -1441,26 +1435,38 @@ if (motionOK && 'IntersectionObserver' in window){
     {status:'<b>receipt</b> · MISSED, actual value first · e279 appended, chain extended', miss:true},
     {status:'<b>agent</b> reads by address · fixes the notes before the next action', miss:false},
   ];
-  if (!motionOK || !A){ setStatus(steps[4].status, true); tM.setAttribute('opacity',0); return; }
-  function run(){
-    const tl = A.timeline({easing:'linear', complete(){ setTimeout(run, 900); }});
-    const pathA = A.path(pA), pathB = A.path(pB), pathC = A.path(pC), pathD = A.path(pD);
-    tl.add({targets:tM, opacity:1, duration:150, begin(){ setStatus(steps[0].status, steps[0].miss); hot(['w-ag'], true); }});
-    tl.add({targets:tM, translateX:pathA('x'), translateY:pathA('y'), duration:2000, easing:'easeInOutSine',
-      update(a){ const p = a.progress; if (p > 30 && p < 34){ } },
-      begin(){ setTimeout(()=>{ setStatus(steps[1].status, steps[1].miss); hot(['w-ag'],false); hot(['w-gw'],true); A({targets:gate, scaleY:[1,0], duration:350, easing:'easeOutQuad', transformOrigin:'262px 85px'}); }, 560);
-               setTimeout(()=>{ setStatus(steps[2].status, false); hot(['w-gw'],false); hot(['w-ww'],true); }, 1200); }
-    }, '-=0');
-    tl.add({targets:tM, opacity:0, duration:200, complete(){ hot(['w-ww'],false); A({targets:gate, scaleY:1, duration:300, transformOrigin:'262px 85px'}); }});
-    tl.add({targets:tO, opacity:1, duration:150, begin(){ setStatus(steps[3].status, false); hot(['w-wo','w-wg'], true); }});
-    tl.add({targets:tO, translateX:pathB('x'), translateY:pathB('y'), duration:2200, easing:'easeInOutSine',
-      begin(){ setTimeout(()=>{ setStatus(steps[4].status, true); hot(['w-wo','w-wg'],false); $('#n-grader', svg).querySelector('rect').style.stroke = 'var(--panel-red)'; tO.classList.remove('ok'); }, 1250);
-               setTimeout(()=>{ setStatus(steps[5].status, true); hot(['w-gr','w-rc'], true); tR.setAttribute('opacity',1); A({targets:tR, translateX:pathC('x'), translateY:pathC('y'), duration:900, easing:'easeInOutSine', complete(){ tR.setAttribute('opacity',0); A.set(tR,{translateX:0,translateY:0}); }}); }, 1450); }
-    });
-    tl.add({targets:tO, opacity:0, duration:200, complete(){ hot(['w-gr','w-rc'],false); $('#n-grader', svg).querySelector('rect').style.stroke=''; tO.classList.add('ok'); A.set(tO,{translateX:0,translateY:0}); A.set(tM,{translateX:0,translateY:0}); }});
-    tl.add({targets:tD, opacity:1, duration:150, begin(){ setStatus(steps[6].status, false); hot(['w-ra'], true); }});
-    tl.add({targets:tD, translateX:pathD('x'), translateY:pathD('y'), duration:1300, easing:'easeInOutSine'});
-    tl.add({targets:tD, opacity:0, duration:200, complete(){ hot(['w-ra'],false); A.set(tD,{translateX:0,translateY:0}); }});
+  if (!motionOK){ setStatus(steps[4].status, true); return; }
+  // pace: a token travels SPEED viewBox units a second, and every step holds long enough to read its status line
+  const SPEED = 70, MIN_HOP = 800;
+  const tok = {main:$('#tok-main'), obs:$('#tok-obs'), rcpt:$('#tok-rcpt'), read:$('#tok-read')};
+  const wire = id => $('#w-'+id, svg), nodes = $$('.node', svg);
+  const lit = (...ids) => nodes.forEach(n => n.classList.toggle('lit', ids.includes(n.id)));
+  const status = i => setStatus(steps[i].status, steps[i].miss);
+  const wait = ms => new Promise(r => setTimeout(r, ms));
+  const frames = (dur, fn) => new Promise(r => { let t0 = null; const f = now => { if (t0 === null) t0 = now; const k = Math.min(1, (now - t0) / dur); fn(k); if (k < 1) requestAnimationFrame(f); else r(); }; requestAnimationFrame(f); });
+  // a token runs on the wire itself, from just inside the box it leaves to just inside the box it enters
+  function hop(t, w){
+    const L = w.getTotalLength(), ext = +t.getAttribute('r') + 1.5, run = L + 2 * ext;
+    const a = w.getPointAtLength(0), a1 = w.getPointAtLength(1), b = w.getPointAtLength(L), b0 = w.getPointAtLength(L - 1);
+    const at = s => s < 0 ? {x:a.x + (a1.x - a.x) * s, y:a.y + (a1.y - a.y) * s} : s > L ? {x:b.x + (b.x - b0.x) * (s - L), y:b.y + (b.y - b0.y) * (s - L)} : w.getPointAtLength(s);
+    const put = s => { const p = at(s); t.setAttribute('cx', p.x.toFixed(2)); t.setAttribute('cy', p.y.toFixed(2)); };
+    put(-ext); t.setAttribute('opacity', 1); w.classList.add('hot');
+    return frames(Math.max(MIN_HOP, run / SPEED * 1000), k => put(k * run - ext)).then(() => { t.setAttribute('opacity', 0); w.classList.remove('hot'); });
+  }
+  const gateTo = open => { const y1 = +gate.getAttribute('y1'), y2 = +gate.getAttribute('y2'), e1 = open ? 85 : 70, e2 = open ? 85 : 100; return frames(400, k => { const e = 1 - (1 - k) * (1 - k); gate.setAttribute('y1', y1 + (e1 - y1) * e); gate.setAttribute('y2', y2 + (e2 - y2) * e); }); };
+  async function run(){
+    for (;;){
+      status(0); lit('n-agent'); tok.obs.classList.add('ok'); await wait(1400);
+      await hop(tok.main, wire('ag'));
+      status(1); lit('n-gate'); await gateTo(true); await wait(1100);
+      await hop(tok.main, wire('gw')); gateTo(false);
+      status(2); lit('n-step'); await wait(900);
+      await hop(tok.main, wire('ww')); lit('n-world'); await wait(500);
+      status(3); await hop(tok.obs, wire('wo')); lit('n-step'); await wait(250); await hop(tok.obs, wire('wg'));
+      status(4); lit('n-grader'); tok.obs.classList.remove('ok'); await wait(2000);
+      status(5); await Promise.all([hop(tok.rcpt, wire('rc')), hop(tok.obs, wire('gr'))]); lit('n-agent', 'n-record'); await wait(700);
+      status(6); lit('n-record'); await hop(tok.read, wire('ra')); lit('n-agent'); await wait(1200);
+    }
   }
   // start when visible
   const io = new IntersectionObserver(es => { if (es.some(e=>e.isIntersecting)){ io.disconnect(); run(); } }, {threshold:.2});
