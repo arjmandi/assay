@@ -146,6 +146,8 @@ def load_recipe(path: Path | str) -> Recipe:
 
     if not isinstance(raw, dict):
         raise fail("recipe", "the file must hold one JSON object")
+    if isinstance(raw.get("world"), dict) and raw["world"].get("mode") == "service":
+        raise fail("world.mode", "a service recipe loads with service_world.load_service_recipe; its adapter.py names ServiceWorld")
     unknown = sorted(set(raw) - TOP_LEVEL_KEYS)
     if unknown:
         raise fail(unknown[0], f"not a recipe key; the keys are {sorted(TOP_LEVEL_KEYS)}")

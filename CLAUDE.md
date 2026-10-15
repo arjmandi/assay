@@ -59,8 +59,11 @@ hooks/               the Claude Code hooks: pre_tool_use.py, the PreToolUse
 examples/            counter_world.py and example_registry.json (the quickstart),
                       new_world/ (the template a new world copies)
 worlds/              the catalog: archetypes/command_world.py (the command-world
-                      engine a recipe configures), archetypes/{local,repo}/ (their
-                      READMEs and runnable templates), recipes/<pack>/ (packs:
+                      engine a recipe configures), archetypes/service_world.py and
+                      mcp_client.py (the service engine and its stdlib MCP client),
+                      archetypes/{local,repo,service}/ (their READMEs and runnable
+                      templates; service/make_registry.py drafts a registry from
+                      an MCP server or an OpenAPI document), recipes/<pack>/ (packs:
                       recipe, registry, the one adapter stub, world scripts,
                       checks/); worlds/README.md is the recipe's reference
 skills/attach/       the Claude Code skill /assay:attach: SKILL.md, rubric.md (the

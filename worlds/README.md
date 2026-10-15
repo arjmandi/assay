@@ -12,6 +12,7 @@ then starts a pack, or writes a new recipe from an archetype's template.
 | Pack | Code | Clock | Family | What it shows |
 |---|---|---|---|---|
 | `recipes/spreadsheet-reconcile` | M-E-C-0 | s | Solve | three months of a bank statement against a company's books, with seeded discrepancies; `checks/score.py` scores any final copy against the answer key |
+| `recipes/legacy-api` | S-E-C-U | s | Solve | a legacy CRM's customers moved into a new hub through two HTTP APIs whose documentation leaves things out; the hub's own verdict decides the WIN, and `checks/score.py` scores any arm's hub |
 
 A code is the four answers of the rubric: where the agent acts (M this
 machine, S a remote system a program drives, H the physical world through
@@ -29,14 +30,18 @@ they are the owner's research runs, started by their own protocols.
 |---|---|---|---|
 | `local` | copy | files, a simulator or a game on this machine, rebuilt in `.assay/world/` | yes: the world scripts are deterministic given the seed and the actions |
 | `repo` | worktree | a code repository copied into `work/`, which the agent edits; the paid action runs the tests | no: the tree changes outside the journal, so the run lives one daemon long |
+| `service` | service | an MCP server over stdio or an HTTP API; each paid action is one call, and the observation holds the answer, a dashboard of free reads and the counts | only when the service is local and starts the same every time |
 
-Both are the command-world engine, `archetypes/command_world.py`, configured
-by a recipe. Each archetype directory has a README and a template: a small
-world that runs as it is (`local/template/` is a switchboard, `repo/template/`
-a project with a failing test), which a new world copies.
-
-The `service` archetype (an MCP server or a REST API as a world) comes next;
-see the connector's release scope.
+The first two are the command-world engine, `archetypes/command_world.py`,
+configured by a recipe whose commands are the world. The third is the service
+engine, `archetypes/service_world.py`, with the standard-library MCP client
+`archetypes/mcp_client.py`; its recipe names the calls instead of commands
+(`service/README.md`). Each archetype directory has a README and a template:
+a small world that runs as it is, which a new world copies.
+`local/template/` is a switchboard, `repo/template/` a project with a failing
+test, and `service/template/` a notebook MCP server.
+`service/make_registry.py` drafts a service world's registry and calls from
+an MCP server's tool list or an OpenAPI document.
 
 ## A pack, file by file
 
@@ -65,6 +70,11 @@ assay start reconcile1 \
 The player's session then begins in `run1` at `assay status` (GUIDE section 5).
 
 ## The recipe
+
+This section is the command-world recipe. A service recipe keeps the same
+`recipe`, `name`, `card`, `player` and the rules in `world`, says `"mode":
+"service"`, and puts its calls in a `service` block, which
+`archetypes/service/README.md` describes.
 
 ```json
 {

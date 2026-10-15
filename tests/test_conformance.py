@@ -37,6 +37,8 @@ ADAPTERS = {
     "spreadsheet-reconcile": REPO / "worlds" / "recipes" / "spreadsheet-reconcile" / "adapter.py",
     "switchboard": REPO / "worlds" / "archetypes" / "local" / "template" / "adapter.py",
     "repo-template": REPO / "worlds" / "archetypes" / "repo" / "template" / "adapter.py",
+    "legacy-api": REPO / "worlds" / "recipes" / "legacy-api" / "adapter.py",
+    "notebook": REPO / "worlds" / "archetypes" / "service" / "template" / "adapter.py",
 }
 # The test adapters, held to the same contract.
 FAKES = {

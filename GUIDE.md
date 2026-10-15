@@ -403,8 +403,13 @@ acts as the builder, the operator's side of a run:
    writes the player's prompt into the run directory.
 4. It tells you the command that starts the player. It never plays the run.
 
-The preview builds worlds on this machine: files, simulators and games
-driven by commands, and repositories whose tests decide the goal. A remote
-system or the physical world gets a proxy or a plain no. `worlds/README.md`
-is the recipe's reference: a recipe configures the command-world engine, so
-a world needs no adapter code.
+The preview builds three kinds of world:
+- worlds on this machine: files, simulators and games driven by commands;
+- repositories whose tests decide the goal;
+- services with an MCP server or an HTTP API, one call per paid action,
+  their registry drafted from the service itself. A sandbox or a test
+  account comes first.
+
+The physical world gets a proxy or a plain no. `worlds/README.md` is the
+recipe's reference: a recipe configures one of the engines, so a world needs
+no adapter code.

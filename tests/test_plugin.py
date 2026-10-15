@@ -16,7 +16,12 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 WORLDS = REPO / "worlds"
-STUB = WORLDS / "archetypes" / "local" / "template" / "adapter.py"
+# The one stub, in two flavors: the command-world engine (the local and repo
+# archetypes) and the service engine.
+STUBS = {
+    "command": WORLDS / "archetypes" / "local" / "template" / "adapter.py",
+    "service": WORLDS / "archetypes" / "service" / "template" / "adapter.py",
+}
 CODE = re.compile(r"^[MSH]-[ERF]-[CNP]-[0UX]$")
 MANIFEST_FIELDS = {
     "name", "displayName", "version", "description", "author", "homepage", "repository", "license", "keywords",
@@ -24,6 +29,7 @@ MANIFEST_FIELDS = {
 
 sys.path.insert(0, str(WORLDS / "archetypes"))
 from command_world import load_recipe  # noqa: E402
+from service_world import load_service_recipe  # noqa: E402
 
 
 def _frontmatter(path: Path) -> tuple[dict[str, str], str]:
@@ -101,21 +107,31 @@ def _templates() -> list[Path]:
 def test_the_catalog_lists_every_pack():
     readme = (WORLDS / "README.md").read_text()
     packs = _packs()
-    assert [path.name for path in packs] == ["spreadsheet-reconcile"]
+    assert [path.name for path in packs] == ["legacy-api", "spreadsheet-reconcile"]
     for pack in packs:
         assert f"`recipes/{pack.name}`" in readme
         for name in ("recipe.json", "registry.json", "adapter.py", "README.md"):
             assert (pack / name).is_file(), f"{pack.name}: {name}"
 
 
+def _body(path: Path) -> str:
+    return path.read_text().split("from __future__ import annotations", 1)[1]
+
+
+def test_the_two_stubs_differ_only_in_their_engine():
+    command, service = (_body(path).splitlines() for path in STUBS.values())
+    differing = [(a, b) for a, b in zip(command, service) if a != b]
+    assert len(command) == len(service) and len(differing) == 4, differing
+
+
 def test_every_pack_and_template_agrees_with_itself():
-    stub_body = STUB.read_text().split("from __future__ import annotations", 1)[1]
     for world in (*_packs(), *_templates()):
-        recipe = load_recipe(world / "recipe.json")
+        raw = json.loads((world / "recipe.json").read_text())
+        flavor = "service" if raw["world"].get("mode") == "service" else "command"
+        recipe = load_service_recipe(world / "recipe.json") if flavor == "service" else load_recipe(world / "recipe.json")
         registry = json.loads((world / "registry.json").read_text())
         assert sorted(action["name"] for action in registry["actions"]) == sorted(recipe.actions), world
         assert CODE.match(recipe.card["code"]), world
         assert recipe.card["clock"] in ("s", "h", "d", "rt") and recipe.card["family"], world
-        body = (world / "adapter.py").read_text().split("from __future__ import annotations", 1)[1]
-        assert body == stub_body, f"{world}/adapter.py differs from the stub below its docstring"
+        assert _body(world / "adapter.py") == _body(STUBS[flavor]), f"{world}/adapter.py differs from the {flavor} stub"
         assert recipe.extra.get("player", {}).get("note"), world

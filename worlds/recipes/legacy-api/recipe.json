@@ -1,0 +1,111 @@
+{
+ "recipe": 1,
+ "name": "legacy-api",
+ "card": {
+  "code": "S-E-C-U",
+  "family": "Solve",
+  "fit": "yes",
+  "clock": "s",
+  "proxy": "a local copy of both systems, rebuilt from the seed",
+  "scarce_commit": null,
+  "hypothesis": "an agent without the gate pages until a short page, imports archived customers or skips a page, and says done when the counts look right; here the hub's own verdict decides, and checks/score.py scores any arm's hub"
+ },
+ "world": {
+  "mode": "service",
+  "actions": [
+   "LIST_CUSTOMERS",
+   "COUNT_CUSTOMERS",
+   "GET_CUSTOMER",
+   "IMPORT_CUSTOMERS",
+   "COUNT_IMPORTED",
+   "REMOVE_IMPORTED",
+   "WAIT"
+  ],
+  "timeout_seconds": 20
+ },
+ "service": {
+  "backend": "http",
+  "start": {
+   "command": [
+    "{python}",
+    "{recipe}/legacy_crm.py",
+    "--port",
+    "{port}",
+    "--seed",
+    "{seed}",
+    "--state",
+    "{state}"
+   ],
+   "ready": "/health",
+   "timeout_seconds": 20
+  },
+  "http": {
+   "base_url": "http://127.0.0.1:{port}"
+  },
+  "actions": {
+   "LIST_CUSTOMERS": {
+    "method": "GET",
+    "path": "/v1/customers",
+    "query": true
+   },
+   "COUNT_CUSTOMERS": {
+    "method": "GET",
+    "path": "/v1/customers/count"
+   },
+   "GET_CUSTOMER": {
+    "method": "GET",
+    "path": "/v1/customers/{id}",
+    "path_params": [
+     "id"
+    ]
+   },
+   "IMPORT_CUSTOMERS": {
+    "method": "POST",
+    "path": "/v2/import",
+    "body": true
+   },
+   "COUNT_IMPORTED": {
+    "method": "GET",
+    "path": "/v2/import/count"
+   },
+   "REMOVE_IMPORTED": {
+    "method": "DELETE",
+    "path": "/v2/import/{id}",
+    "path_params": [
+     "id"
+    ]
+   }
+  },
+  "wait": {
+   "call": {
+    "method": "POST",
+    "path": "/__world/clock",
+    "body": {
+     "advance": "{seconds}"
+    }
+   }
+  },
+  "dashboard": [
+   {
+    "name": "imported",
+    "call": {
+     "method": "GET",
+     "path": "/v2/import/count"
+    },
+    "select": "count"
+   }
+  ],
+  "verdict": {
+   "call": {
+    "method": "GET",
+    "path": "/__world/verdict"
+   },
+   "select": "complete"
+  },
+  "replayable": true,
+  "reset": "restart"
+ },
+ "player": {
+  "note": "The API's answers arrive in the observation's response (status, the headers that matter, the body), and each full answer is saved in the file response.saved names. The documented API is the registry's; the rest is for you to find."
+ }
+}

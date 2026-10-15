@@ -1,0 +1,15 @@
+{
+  "actions": [
+    {"name": "ADD_NOTE",
+     "params": {"title": {"type": "string", "minLength": 1, "maxLength": 80},
+                "body": {"type": "string", "maxLength": 2000}},
+     "description": "Add a note to the notebook."},
+    {"name": "LIST_NOTES", "params": {}, "description": "List every note's id and title."},
+    {"name": "DELETE_NOTE", "params": {"id": {"type": "integer", "minimum": 1}}, "destructive": true,
+     "description": "Remove one note by its id."}
+  ],
+  "budget": {"actions": 20},
+  "goal": {"text": "leave the notebook holding exactly three notes, one of them titled groceries"},
+  "batching": {"hand_cap": 3},
+  "mode_note": "the service archetype's template world, worlds/archetypes/service/template"
+}

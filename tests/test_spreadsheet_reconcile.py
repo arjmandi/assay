@@ -8,6 +8,7 @@ checker confirms."""
 from __future__ import annotations
 
 import csv
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -21,9 +22,13 @@ PACK = REPO / "worlds" / "recipes" / "spreadsheet-reconcile"
 SCORE = PACK / "checks" / "score.py"
 
 sys.path.insert(0, str(PACK))
-sys.path.insert(0, str(PACK / "checks"))
 import reconcile  # noqa: E402
-import score  # noqa: E402
+
+# Every pack's checker is checks/score.py: load this one by its path, under a
+# name of its own, so another pack's checker never answers for it.
+_spec = importlib.util.spec_from_file_location("spreadsheet_reconcile_score", SCORE)
+score = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(score)
 
 
 def _rows(path: Path) -> dict[str, dict[str, str]]:

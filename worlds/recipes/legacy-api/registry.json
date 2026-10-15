@@ -1,0 +1,16 @@
+{
+  "actions": [
+    {"name": "LIST_CUSTOMERS", "params": {"query": {"type": "object", "properties": {"page": {"type": "integer", "minimum": 0}, "per_page": {"type": "integer", "minimum": 1, "maximum": 100}, "status": {"type": "string", "enum": ["active", "archived"]}}}}, "description": "List customers, a page at a time."},
+    {"name": "COUNT_CUSTOMERS", "params": {}, "description": "Count the customers."},
+    {"name": "GET_CUSTOMER", "params": {"id": {"type": "string", "minLength": 2, "maxLength": 12}}, "description": "Read one customer."},
+    {"name": "IMPORT_CUSTOMERS", "params": {"body": {"type": "object", "properties": {"customers": {"type": "array", "items": {"type": "object", "properties": {"id": {"type": "string", "minLength": 2, "maxLength": 12}, "name": {"type": "string", "minLength": 1, "maxLength": 120}, "email": {"type": "string", "minLength": 3, "maxLength": 200}}, "required": ["id", "name", "email"]}, "maxItems": 100}}, "required": ["customers"]}}, "description": "Import a batch of customers into the hub."},
+    {"name": "COUNT_IMPORTED", "params": {}, "description": "Count the customers in the hub."},
+    {"name": "REMOVE_IMPORTED", "params": {"id": {"type": "string", "minLength": 2, "maxLength": 12}}, "destructive": true, "description": "Remove one customer from the hub."},
+    {"name": "WAIT", "params": {"seconds": {"type": "integer", "minimum": 1, "maximum": 60}}, "description": "lets time pass on the service's clock"}
+  ],
+  "budget": {"actions": 60},
+  "goal": {"text": "Move the legacy CRM's customers into the customer hub: every active customer in the hub, with its id, its name and its email, and no archived customer. The run is won when the hub holds exactly that."},
+  "batching": {"hand_cap": 3},
+  "module_modes": {"coverage_audit": "advise", "hazard": "advise"},
+  "mode_note": "the legacy-api pack, worlds/recipes/legacy-api; the documented API is openapi.json there"
+}

@@ -44,7 +44,14 @@ Every new world gets one, and so does a pack the first time on a machine.
    - for a pack, its world script's name (such as `reconcile[.]py`) and the
      catalog (`worlds/recipes`);
    - for a world you wrote, its script and its directory;
-   - for the repo archetype, the test runner (such as `pytest`).
+   - for the repo archetype, the test runner (such as `pytest`);
+   - for a service, its host and its clients, so that only `assay act`
+     reaches it: the API's host name (such as `api[.]example[.]com`),
+     `curl` and `wget` to it, and the MCP server's command.
+
+   A service's credential is in the daemon's environment, exported in the
+   shell that runs the start. Do not export it in the shell that starts the
+   player.
 
    Then `ASSAY=LAUNCHER LAUNCHER --run-dir <run dir> hooks install --check`.
    Setting `ASSAY` on the install pins it in the policy, so the player's

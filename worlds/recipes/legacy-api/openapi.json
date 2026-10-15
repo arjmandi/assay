@@ -1,0 +1,106 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Legacy CRM v1 and Customer Hub v2",
+    "version": "2014.3",
+    "description": "The legacy CRM's read API and the customer hub's import API, as their teams documented them."
+  },
+  "servers": [{"url": "http://127.0.0.1:{port}"}],
+  "paths": {
+    "/v1/customers": {
+      "get": {
+        "operationId": "listCustomers",
+        "summary": "List customers, a page at a time.",
+        "parameters": [
+          {"name": "page", "in": "query", "description": "The page to return.", "schema": {"type": "integer", "minimum": 0}},
+          {"name": "per_page", "in": "query", "description": "Customers per page.", "schema": {"type": "integer", "minimum": 1, "maximum": 100, "default": 10}},
+          {"name": "status", "in": "query", "description": "Only customers with this status.", "schema": {"type": "string", "enum": ["active", "archived"]}}
+        ],
+        "responses": {
+          "200": {
+            "description": "A page of customers.",
+            "content": {"application/json": {"schema": {
+              "type": "object",
+              "properties": {"data": {"type": "array", "items": {"$ref": "#/components/schemas/Customer"}}, "page": {"type": "integer"}}
+            }}}
+          }
+        }
+      }
+    },
+    "/v1/customers/count": {
+      "get": {
+        "operationId": "countCustomers",
+        "summary": "Count the customers.",
+        "responses": {"200": {"description": "The count.", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}}}}}}}
+      }
+    },
+    "/v1/customers/{id}": {
+      "get": {
+        "operationId": "getCustomer",
+        "summary": "Read one customer.",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 2, "maxLength": 12}}],
+        "responses": {
+          "200": {"description": "The customer.", "content": {"application/json": {"schema": {"$ref": "#/components/schemas/Customer"}}}},
+          "404": {"description": "No such customer."}
+        }
+      }
+    },
+    "/v2/import": {
+      "post": {
+        "operationId": "importCustomers",
+        "summary": "Import a batch of customers into the hub.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {
+            "type": "object",
+            "properties": {
+              "customers": {
+                "type": "array",
+                "maxItems": 100,
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {"type": "string", "minLength": 2, "maxLength": 12},
+                    "name": {"type": "string", "minLength": 1, "maxLength": 120},
+                    "email": {"type": "string", "format": "email", "minLength": 3, "maxLength": 200}
+                  },
+                  "required": ["id", "name", "email"]
+                }
+              }
+            },
+            "required": ["customers"]
+          }}}
+        },
+        "responses": {"200": {"description": "Imported."}, "422": {"description": "A record did not validate."}}
+      }
+    },
+    "/v2/import/count": {
+      "get": {
+        "operationId": "countImported",
+        "summary": "Count the customers in the hub.",
+        "responses": {"200": {"description": "The count.", "content": {"application/json": {"schema": {"type": "object", "properties": {"count": {"type": "integer"}}}}}}}
+      }
+    },
+    "/v2/import/{id}": {
+      "delete": {
+        "operationId": "removeImported",
+        "summary": "Remove one customer from the hub.",
+        "parameters": [{"name": "id", "in": "path", "required": true, "schema": {"type": "string", "minLength": 2, "maxLength": 12}}],
+        "responses": {"200": {"description": "Removed."}, "404": {"description": "Not in the hub."}}
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Customer": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "email": {"type": "string", "format": "email"},
+          "status": {"type": "string"}
+        }
+      }
+    }
+  }
+}

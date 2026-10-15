@@ -116,6 +116,58 @@ Changelog. Dates are UTC.
   through the real CLI and daemon where a run is involved. The three catalog
   adapters join the conformance table, and ruff now checks `worlds/` beside
   `src`, `tests` and `hooks`.
+- The service archetype. `worlds/archetypes/service_world.py` makes a remote
+  system a program drives into a world: an MCP server over stdio, through
+  `worlds/archetypes/mcp_client.py` (a standard-library client), or an HTTP
+  API.
+  - **A paid action is one call:** a tool call, or a request with its path
+    parameters, a `query` object and a `body` object.
+  - **The observation** shows the answer trimmed (`response`), with the full
+    answer saved under `.assay/world_state/responses/`. It also shows a
+    dashboard of free reads made after every action, and the counts of calls
+    and errors.
+  - **An error answer is the world refusing,** and is spent and journaled.
+    That covers an HTTP status of 400 or more, an MCP result with isError,
+    and a JSON-RPC error. A service that cannot be reached is a fault, and
+    nothing is spent.
+  - **The recipe may declare:**
+    - a local service the session starts on a free port and stops;
+    - `${env:NAME}` credentials taken from the daemon's environment;
+    - a built-in WAIT that advances a mock's clock or sleeps;
+    - caps on scarce actions;
+    - a verdict call that decides the WIN without entering the data;
+    - a RESET that restarts the service;
+    - replay, for a local service that starts the same every time. A remote
+      service declares no replay.
+  - **`worlds/archetypes/service/make_registry.py`** drafts the registry and
+    the call map from an MCP server's tool list or an OpenAPI document. It
+    converts schemas into the registry's subset and names what it drops, and
+    it marks a tool not declared read-only or non-destructive, and an HTTP
+    DELETE or PUT, as destructive.
+  - **The template** is a notebook MCP server with a capped destructive
+    delete.
+  - **The second pack, `worlds/recipes/legacy-api` (S-E-C-U),** is a legacy
+    CRM and its successor hub as one seeded local HTTP service with a
+    logical clock. The task is to move the active customers into the hub. The
+    documentation is drafted into the registry, and the agent has to find
+    what it leaves out or gets wrong:
+    - pages count from 0 and hold at most 25;
+    - archived customers appear unless filtered out;
+    - a rate limit with Retry-After;
+    - an import cap of 20;
+    - emails that must be lowercase and trimmed.
+
+    The hub's hidden verdict decides the WIN, and `checks/score.py` scores
+    any arm's hub.
+  - **The attach skill** now builds service worlds, with a sandbox or a test
+    account proposed first.
+
+  `tests/test_worlds_service.py` covers the recipe's checks, the MCP client,
+  the drafts, the conversion, and both worlds through the real CLI and
+  daemon. Both worlds include a resume that replays, and the test confirms
+  that the started service is gone when the run is. The two new adapters
+  join the conformance table. Each pack's checker is loaded by its path in
+  the tests, since every pack names its checker `checks/score.py`.
 
 ## 1.2.0 (2026-10-09)
 

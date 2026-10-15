@@ -50,7 +50,7 @@ Q1-Q2-Q3-Q4, for example M-E-C-0.
 | Code | Option | What it sets |
 |---|---|---|
 | M | On this machine: files, a code repository, a simulator, a game, an archive replay | the `local` archetype, or `repo` for a repository with tests; the world is a copy |
-| S | A remote system a program drives: an MCP server, a REST API, a CLI, a website, an instrument with an API | the `service` archetype, which is not in this version |
+| S | A remote system a program drives: an MCP server, an HTTP API, a website (through a browser's MCP server), an instrument with an API | the `service` archetype: each paid action is one call; no replay unless the service is local and starts the same every time |
 | H | The physical world through people: a person carries out the action or reads the result | not in this version; offer a proxy |
 
 **Q2. After one action, can a program read what the world did?** Ask it about
@@ -92,8 +92,9 @@ world is a copy, so Q4 is 0 unless the user says otherwise: skip it.
 ## Skip rules and families
 
 - Q1 = M skips Q4.
-- Q1 = H or S stops after the card's first line in this version, with a proxy
-  offered when there is one.
+- Q1 = H stops after the card's first line in this version, with a proxy
+  offered when there is one. So does an S world with neither an MCP server
+  nor an HTTP API.
 - F with P is where ASSAY adds least. Say so, and look for a checkable step
   inside the task (a claim with a source, a query, a test).
 
