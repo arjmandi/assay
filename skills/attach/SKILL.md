@@ -131,7 +131,8 @@ Tell the user:
 
 - the world card;
 - where the world, the run and the token file are;
-- the command that starts the player, from `start.md`;
+- that `/assay:run` starts the player, and the interactive command from
+  `start.md`;
 - how to approve, resume, audit and score.
 
 Keep it short. Do not start the player unless the user asks. When the run

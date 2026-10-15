@@ -23,6 +23,112 @@ From the repository root (`python3 -m tools.eval`), or by path from anywhere
 (`python3 <repo>/tools/eval/__main__.py`). `python3 -m tools.eval --help`
 lists the options.
 
+The session mode plays one run that already exists, as the next section
+describes. It is what `/assay:run` (`skills/run/`) launches.
+
+## The session mode
+
+```bash
+python3 -m tools.eval session --run-dir <run> [--player claude|codex|opencode] [--model M] \
+    [--hours 8] [--max-sessions 5] [--max-usd USD] [--dry-run]
+python3 -m tools.eval session --run-dir <run> -- <player command template ...>
+```
+
+It takes a run that `/assay:attach`, or an operator's `assay start`, left
+waiting for its player. It does what the operator would do by hand overnight:
+one host session after another, until the run says it is over. Before each
+session:
+
+1. `assay --run-dir <run> start <world>` resumes the run: RESUMED while the
+   daemon is up, a replay of the journal when it is gone. A world without
+   replay cannot come back, and the mode ends START_FAILED.
+2. The player runs in the run directory with the prompt (`PLAYER.md`, or
+   `--prompt FILE`) as its argument. Its environment is the runner's without
+   the names the pinned registry lists under `secrets`, without
+   ASSAY_OWNER_TOKEN_FILE, and without any `--strip NAME`. So a world's
+   credentials stay in the daemon's environment, and the player has no route
+   around the adapter. `ASSAY` names the launcher: by default the one the
+   run's hook policy pins, else `bin/assay`.
+
+The hosts, as templates in `session.py`:
+
+| `--player` | The command | Stop gate | Tested |
+|---|---|---|---|
+| `claude` (default) | `claude -p <prompt> [--model M] [--max-budget-usd USD] --output-format json --permission-mode acceptEdits --allowedTools Bash Read Glob Grep 'Write(./**)' 'Edit(./**)' --disallowedTools WebFetch WebSearch Agent` | yes | yes |
+| `codex` | `codex exec --json --skip-git-repo-check --sandbox workspace-write -c sandbox_workspace_write.network_access=true [--model M] <prompt>` (the network is on so that the launcher reaches the daemon's socket) | no | no |
+| `opencode` | `opencode run --format json --auto [--model M] <prompt>` | no | no |
+
+A command after `--` replaces the template. Its placeholders are `{prompt}`,
+`{prompt_file}`, `{run_dir}`, `{model}`, `{assay}`, `{repo}`, `{python}` and
+`{session}`, and it gets the prompt on stdin as well. The tests use it with
+the fake player. The host's `--version` is read once, and a named host that
+does not run is refused before anything is touched.
+
+When a session ends, the runner reads the run with the Stop gate's rules
+(below):
+
+| The run says | Outcome | The daemon |
+|---|---|---|
+| WIN, the paid actions at the registry's cap, the reported spend at its dollar cap | `WIN`, `CAP`, `USD_CAP` | stopped |
+| an APPROVAL_REQUIRED or REHEARSAL_REQUIRED refusal in this session that no `approval_granted` or `liveness_waived` answered | `OWNER_NEEDED`, with an `OWNER |` line naming the refusal and the owner's command | up |
+| a line beginning `STOP:` added to `.assay/NOTES.md` in this session | `SELF_STOP`, with a `DECLARED |` line | up |
+| none of these | the next session starts | up |
+
+The mode also ends, with the daemon left up, when this invocation reaches
+`--max-sessions` (`SESSIONS_EXHAUSTED`), its `--hours` (`TIME_EXHAUSTED`,
+the running session terminated), or the `--max-usd` its sessions reported
+(`USD_EXHAUSTED`; the `claude` host also gets the dollars left as
+`--max-budget-usd`). It ends when two sessions in a row exit non-zero
+without a paid action (`PLAYER_FAILING`), at a `STOP` file in the state
+directory (after the current session), and at SIGINT or SIGTERM, which end
+the current session at once (`STOPPED`). A session that a usage limit cut
+short (the same signal as the batch mode) pauses the runner
+`--pause-minutes` and does not count. The last line is always `OUTCOME |
+<outcome> | <sessions> | paid actions <n>/<cap> | $<spend> reported by the
+host | <the daemon>`, and the exit status is 0. A refusal before anything
+runs is `ERROR | ...`, exit 2.
+
+A relaunched session's prompt gains an operator's note when the owner acted
+since the previous one: an approval the daemon still holds (granted less than
+600 seconds ago, unused, on a daemon the start kept), a waiver, a ratified
+goal. The bill of a `claude -p` session (`total_cost_usd` and the tokens of
+its report) is posted to the run with `assay spend report --id
+claude-<session id>`, so `assay status` shows it and a registry's
+`budget.usd` applies.
+
+The state directory, `--state-dir`, by default `<run>.sessions` beside the
+run directory and outside the player's: `sessions.json` (the ledger, one
+record per session: the host and its version, the model, times, the exit
+code, the start's line, the launch counts, the paid actions at exit, the
+names kept from the player, the report, the gate's decisions, the spend
+posted, why it ended), `s<n>.prompt.md`, `s<n>.start.log`,
+`s<n>.player.out`, `s<n>.player.err`, `status.json`, `stop_gate.json`,
+`runner.lock` (one runner per run) and `STOP`.
+
+### The Stop gate
+
+`hooks/stop_gate.py` is the Stop hook of a Claude Code player: the session's
+`/goal` with the journal as the judge. The runner merges it into the run
+directory's `.claude/settings.json`, beside the kernel's PreToolUse and
+PostToolUse entries; `assay hooks install` keeps it. It reads the journal,
+the pinned registry, the activity log and the notes, and lets the session
+end only:
+
+- at WIN, at the action cap, or at the dollar cap;
+- when an owner action is pending since the session's launch;
+- after a line beginning `STOP:`, with a reason, that the session added to
+  `.assay/NOTES.md`. In this version that declaration is not journaled.
+
+Otherwise it answers `{"decision": "block", "reason": ...}`, and the reason
+tells the player to continue from `assay status`, or to write the `STOP:`
+line. After three blocks with no paid action between them it lets the stop
+through, and the runner decides what comes next. It acts only when
+ASSAY_STOP_GATE names its state file, which the runner sets for the player
+and rewrites with the launch's counts before each session. A person's own
+session in the run directory is never held. A run it cannot read is never
+held either. The runner loads the same file by path, so the gate and the
+runner apply one rule.
+
 ## The job file
 
 JSON, one object. JSON because every other contract file of the harness is
@@ -223,14 +329,18 @@ there is any. It writes nothing: no state directory, no rendered prompt.
 `tools/eval/fake_player` is a scripted stand-in for the LLM player, for the
 runner's own tests: it reads the rendered prompt on stdin, runs every line
 of it that begins with `assay ` through the launcher `ASSAY` names, in the
-run directory, and prints a report in the shape `claude -p` prints, with a
-fixed cost per command. `tests/test_eval_runner.py` runs one queue with it
+run directory, appends every line that begins with `note: ` to
+`.assay/NOTES.md`, and prints a report in the shape `claude -p` prints, with
+a fixed cost per command and the names of its environment. `tests/test_eval_runner.py` runs one queue with it
 against the counter example (`examples/counter_world.py`) through the real
 launcher, CLI and daemon: two seeds, two players at a time, each session a
 `status`, one `act` and a `stop`, so the second session goes through the
 operator's resume (`RECOVERED | replayed 1 paid actions`) and reaches WIN.
-The suite never starts a session against anything under `bench/`; the E1
-and E1b job files are only dry-run there.
+`tests/test_eval_session.py` runs the session mode with it, through the same
+launcher and daemon: to a WIN, through an approval, to a declared stop, and
+past a STOP file, a failing player and a usage limit. The suite never starts
+a session against anything under `bench/`; the E1 and E1b job files are only
+dry-run there.
 
 ## Reproducing E1 and E1b
 

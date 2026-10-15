@@ -168,6 +168,53 @@ Changelog. Dates are UTC.
   that the started service is gone when the run is. The two new adapters
   join the conformance table. Each pack's checker is loaded by its path in
   the tests, since every pack names its checker `checks/score.py`.
+- `/assay:run` and the session mode of the evaluation runner, `python3 -m
+  tools.eval session --run-dir DIR`. It plays one run the operator already
+  started, one host session after another.
+  - **Before each session,** `assay start WORLD` resumes the run (RESUMED
+    while the daemon is up, a replay when it is gone).
+  - **The player** is `claude -p`, `codex exec` or `opencode run` from a
+    template, or any command given after `--`. Its environment holds neither
+    the names the pinned registry lists under `secrets` nor
+    ASSAY_OWNER_TOKEN_FILE, so a world's credentials stay in the daemon's
+    environment.
+  - **When a session ends,** the run decides. WIN, the action cap or the
+    dollar cap ends the mode and stops the daemon. An approval or a waiver
+    the session left pending ends it OWNER_NEEDED, with the owner's command
+    printed and the daemon left up. A stop the player declared ends it
+    SELF_STOP. Otherwise the next session starts, within `--max-sessions`,
+    `--hours` and `--max-usd`.
+  - **A usage limit** pauses the runner, and the session does not count.
+    Two sessions in a row that exit non-zero without a paid action end it
+    PLAYER_FAILING.
+  - **A relaunched session's prompt** carries an operator's note when the
+    owner acted since the previous one, such as an approval the daemon
+    still holds.
+  - **Every session's record** carries the host and its `--version`, the
+    launch counts and the session's bill. The bill of a `claude -p` session
+    is posted to the run with `assay spend report`, so `assay status` shows
+    it and a registry's dollar cap applies.
+
+  The Stop gate, `hooks/stop_gate.py` (standard library only, strict mypy),
+  is the session's `/goal` with the journal as the judge. The runner merges
+  it into the run directory's `.claude/settings.json` for a Claude Code
+  player, beside the kernel's hooks, which keep it on a reinstall. It lets
+  the player stop only at WIN, at either cap, at a pending owner action, or
+  after a line beginning `STOP:` added to `.assay/NOTES.md` during the
+  session; otherwise it blocks the stop and says what to do. After three
+  blocks with no paid action between them it lets the stop through. It is
+  inert outside the runner, which names its state file in ASSAY_STOP_GATE,
+  so a person's own session in the run directory is never held. In a live
+  check, a Haiku player told to stop after one `status` was blocked, drove
+  the counter world to WIN in two actions, and was then let through ($0.10).
+  The Codex and OpenCode templates are untested and get no gate in this
+  version. The player's prompt in `skills/attach/start.md` now says how to
+  declare a stop. The fake player gains `note:` lines and reports its
+  environment's names. `tests/test_eval_session.py` covers the gate's rules
+  and the hook process, the templates, the environment and the settings
+  merge, and runs the fake player through the real CLI and daemon: to a
+  WIN, through an approval, to a declared stop, and past a STOP file, a
+  failing player and a usage limit.
 
 ## 1.2.0 (2026-10-09)
 

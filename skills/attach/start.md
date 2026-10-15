@@ -61,19 +61,17 @@ Every new world gets one, and so does a pack the first time on a machine.
 
 ## The player
 
-Do not start the player yourself unless the user asks. Give the user the
-command:
+Do not start the player yourself unless the user asks. The way to run it is
+`/assay:run` (`skills/run/SKILL.md`). Its session runner launches the player
+in the background, one session after another, and keeps the world's
+credentials out of the player's environment. It installs a Stop gate, so
+that the player stops only at WIN, at the budget, at an owner action, or
+after a `STOP:` line in its notes. It pauses when the owner must act.
+
+By hand, interactively, with no gate and no relaunch:
 
 ```bash
 cd <run dir> && ASSAY=LAUNCHER claude "$(cat PLAYER.md)"
-```
-
-Or, headless, which ends when the player stops:
-
-```bash
-cd <run dir> && ASSAY=LAUNCHER claude -p "$(cat PLAYER.md)" --output-format json \
-    --permission-mode acceptEdits --allowedTools Bash Read Glob Grep 'Write(./**)' 'Edit(./**)' \
-    --disallowedTools WebFetch WebSearch Agent
 ```
 
 A session that ends before the goal can be started again with the same
@@ -108,8 +106,10 @@ Rules:
 - Read nothing outside this run directory except the constitution named above.
 - Never edit anything inside .assay/ except .assay/NOTES.md. Never run start or stop: the run is
   the operator's.
-- The registry caps paid actions at <budget>. If you reach the cap, or judge the world
-  unfinishable, stop cleanly and say why.
+- The registry caps paid actions at <budget>. Stop at WIN, at the cap, or when an action
+  needs the owner's approval. If you judge the goal unreachable with what is left, or you
+  need something only the owner can give, first add one line to .assay/NOTES.md that
+  begins with STOP: and says why. A stop for any other reason is refused or restarted.
 - Do the work yourself; do not start other agents.
 
 When you stop, report: the progress, the paid actions spent, the predictions held and missed

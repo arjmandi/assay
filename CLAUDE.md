@@ -15,7 +15,7 @@ code. `AGENTS.md` is the short version of this file for any coding agent.
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/      # full suite
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/test_registry.py  # one file
 uv run --with ruff ruff check src tests hooks worlds                          # the linter
-uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks  # strict typing, the kernel, the extra and the hook script
+uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks  # strict typing, the kernel, the extra and the hook scripts
 ```
 
 Or, in a venv with the editable install: `pip install -e '.[grid,dev]'` then
@@ -53,9 +53,10 @@ src/assay_grid/      the frame-world extra: perception, grid outcomes, rendering
                       views
 src/assay_cli.py     PEP 723 entry point for the zero-install launcher
 bin/assay            the launcher (ASSAY_PYTHON pins the interpreter)
-hooks/               the Claude Code hooks: pre_tool_use.py, the PreToolUse
-                      script (standard library only, imports nothing from
-                      assay), installed by `assay hooks install`
+hooks/               the Claude Code hooks, standard library only, importing
+                      nothing from assay: pre_tool_use.py, the PreToolUse
+                      script `assay hooks install` installs; stop_gate.py, the
+                      Stop gate the session runner installs
 examples/            counter_world.py and example_registry.json (the quickstart),
                       new_world/ (the template a new world copies)
 worlds/              the catalog: archetypes/command_world.py (the command-world
@@ -68,6 +69,10 @@ worlds/              the catalog: archetypes/command_world.py (the command-world
                       checks/); worlds/README.md is the recipe's reference
 skills/attach/       the Claude Code skill /assay:attach: SKILL.md, rubric.md (the
                       world card), start.md (smoke test, start, the player's prompt)
+skills/run/          the skill /assay:run: the player through the session mode
+tools/eval/          the evaluation runner (not the kernel): the batch mode over
+                      a job file, and session.py, the session mode behind
+                      /assay:run; tools/eval/README.md is its manual
 .claude-plugin/      the repository as a Claude Code plugin and its own
                       marketplace (plugin.json, marketplace.json); the plugin's
                       root is the repository, so bin/assay is on its PATH

@@ -73,7 +73,7 @@ def test_no_hook_file_applies_to_every_session():
 
 def test_every_skill_names_its_directory_and_its_paths_exist():
     skills = sorted((REPO / "skills").glob("*/SKILL.md"))
-    assert [path.parent.name for path in skills] == ["attach"]
+    assert [path.parent.name for path in skills] == ["attach", "run"]
     for path in skills:
         fields, body = _frontmatter(path)
         assert fields["name"] == path.parent.name
@@ -94,6 +94,23 @@ def test_the_attach_skill_carries_its_rubric_and_start_procedure():
     assert "WORLD CARD" in rubric
     start = (attach / "start.md").read_text()
     assert "--owner-token-file ~/assay/tokens/" in start and "hooks install --check" in start
+
+
+def test_the_run_skill_drives_the_session_mode_and_names_its_outcomes():
+    run = (REPO / "skills" / "run" / "SKILL.md").read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py session --run-dir <run dir>" in run
+    session = (REPO / "tools" / "eval" / "session.py").read_text()
+    outcomes = set(re.findall(r'outcome(?:, detail)? = "([A-Z_]+)"', session)) | set(re.findall(r'"(WIN|CAP|USD_CAP)"', session))
+    outcomes |= set(re.findall(r'record\["ended_because"\] = outcome = "([A-Z_]+)"', session))
+    assert outcomes == {
+        "WIN", "CAP", "USD_CAP", "STOPPED", "SESSIONS_EXHAUSTED", "TIME_EXHAUSTED", "USD_EXHAUSTED",
+        "START_FAILED", "OWNER_NEEDED", "SELF_STOP", "PLAYER_FAILING",
+    }
+    for outcome in outcomes:
+        assert outcome in run, outcome
+    # The player's prompt tells it how to declare a stop, in the gate's words.
+    start = (REPO / "skills" / "attach" / "start.md").read_text()
+    assert "begins with STOP: and says why" in start and "/assay:run" in start
 
 
 def _packs() -> list[Path]:

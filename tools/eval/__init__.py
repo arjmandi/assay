@@ -7,6 +7,7 @@ no LLM calls, and it imports nothing from `assay`.
 
     python3 -m tools.eval --jobs bench/arcagi/jobs/e1.json --dry-run
     python3 -m tools.eval --jobs bench/arcagi/jobs/e1.json --state-dir <dir>
+    python3 -m tools.eval session --run-dir <run>    (one started run, session.py)
 
 `tools/eval/README.md` is the manual.
 """

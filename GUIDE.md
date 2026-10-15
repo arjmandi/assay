@@ -401,7 +401,17 @@ acts as the builder, the operator's side of a run:
 3. It smoke-tests the world in a scratch directory, starts the run with the
    owner token in `~/assay/tokens/`, installs the hooks of section 5, and
    writes the player's prompt into the run directory.
-4. It tells you the command that starts the player. It never plays the run.
+4. It tells you how to start the player. It never plays the run.
+
+`/assay:run` starts the player: `claude -p`, `codex exec` or `opencode run`,
+in the background, one session after another, through the session mode of
+`tools/eval` (`tools/eval/README.md`). The player's environment holds none of
+the registry's `secrets`. A session that ends before the run is over is
+followed by another. For a Claude Code player, a Stop gate lets a session end
+only at WIN, at the budget, when an owner action is pending, or after the
+player writes a line beginning `STOP:` in `.assay/NOTES.md`. When the owner
+must approve or waive an action, the runner stops and Claude asks you, runs
+the owner's command with your token file, and starts the player again.
 
 The preview builds three kinds of world:
 - worlds on this machine: files, simulators and games driven by commands;

@@ -32,8 +32,8 @@ uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_
 
 ruff is configured in `pyproject.toml` with its default rule set and nothing
 more; mypy is configured there too, strict over the kernel, the frame-world
-extra and the Claude Code hook script (`hooks/`, standard library only, which
-imports nothing from `assay`) and checked as Python 3.12, so a plain `mypy`
+extra and the Claude Code hook scripts (`hooks/`, standard library only, which
+import nothing from `assay`) and checked as Python 3.12, so a plain `mypy`
 from the root is the same run.
 `tests/test_hygiene.py` enforces the writing rule over every tracked
 file: no em dash and no arrow in the source or the docs, no machine path, the
