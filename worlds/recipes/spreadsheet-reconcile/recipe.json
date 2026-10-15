@@ -1,0 +1,26 @@
+{
+  "recipe": 1,
+  "name": "spreadsheet-reconcile",
+  "card": {
+    "code": "M-E-C-0",
+    "family": "Solve",
+    "fit": "yes",
+    "clock": "s",
+    "proxy": "a copy of the ledgers, rebuilt from the seed",
+    "scarce_commit": null,
+    "hypothesis": "an agent without the gate says reconciled while lines are still paired wrongly or flagged without cause; here a month closes only when the world's rules say so, and checks/score.py scores the result against the answer key"
+  },
+  "world": {
+    "mode": "copy",
+    "setup": ["{python}", "{recipe}/reconcile.py", "setup", "--workdir", "{workdir}", "--seed", "{seed}"],
+    "observe": ["{python}", "{recipe}/reconcile.py", "observe", "--workdir", "{workdir}"],
+    "act": ["{python}", "{recipe}/reconcile.py", "act", "{action}", "--workdir", "{workdir}"],
+    "actions": ["AUTO_MATCH", "MATCH", "UNMATCH", "FIX", "RECORD", "FLAG", "UNFLAG", "DELETE"],
+    "timeout_seconds": 30,
+    "win": {"path": "months_closed", "op": ">=", "value": 3},
+    "levels": {"completed": {"path": "months_closed"}, "total": 3}
+  },
+  "player": {
+    "note": "The ledgers are bank.csv and books.csv in the working copy, the directory the observation's workdir names. Read them with your own tools; change them only through assay act."
+  }
+}

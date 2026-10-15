@@ -1,0 +1,14 @@
+{
+  "name": "assay",
+  "owner": {"name": "Mohsen Arjmandi", "url": "https://github.com/arjmandi"},
+  "description": "ASSAY as a Claude Code plugin: the harness, its launcher, the attach skill and the catalog of worlds.",
+  "plugins": [
+    {
+      "name": "assay",
+      "source": ".",
+      "description": "Classify a task, build a world for it and start an ASSAY run.",
+      "category": "development",
+      "tags": ["agents", "evaluation", "harness"]
+    }
+  ]
+}

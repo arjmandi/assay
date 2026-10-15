@@ -373,3 +373,38 @@ process that bypasses the CLI still cannot spend without its step being
 journaled and flagged. The registry's `gate: optional` and `gate: off` are
 control-arm switches for experiments; the audit marks such runs invalid for
 scoring.
+
+## 9. From Claude Code: the plugin (preview)
+
+The repository is a Claude Code plugin, and its own marketplace. Install it
+in a session:
+
+```
+/plugin marketplace add arjmandi/assay
+/plugin install assay@assay
+```
+
+or from a shell, `claude plugin marketplace add arjmandi/assay` and then
+`claude plugin install assay@assay`. While the plugin is enabled, the
+launcher `bin/assay` is on the Bash tool's PATH as `assay`.
+
+`/assay:attach "<the task, in plain words>"` puts ASSAY on a task. Claude
+acts as the builder, the operator's side of a run:
+
+1. It classifies the task with the world card of `skills/attach/rubric.md`.
+   Step 0 asks whether this is a world or a program over worlds. The fit
+   check asks whether the world answers back, whether there are many cheap
+   graded interactions, and whether the clock fits. Four three-option
+   questions follow, which you confirm on one screen.
+2. It picks a pack from `worlds/`, or writes a world from an archetype's
+   template.
+3. It smoke-tests the world in a scratch directory, starts the run with the
+   owner token in `~/assay/tokens/`, installs the hooks of section 5, and
+   writes the player's prompt into the run directory.
+4. It tells you the command that starts the player. It never plays the run.
+
+The preview builds worlds on this machine: files, simulators and games
+driven by commands, and repositories whose tests decide the goal. A remote
+system or the physical world gets a proxy or a plain no. `worlds/README.md`
+is the recipe's reference: a recipe configures the command-world engine, so
+a world needs no adapter code.

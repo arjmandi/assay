@@ -1,0 +1,12 @@
+{
+  "actions": [
+    {"name": "RUN_TESTS",
+     "params": {"selector": {"type": "string", "minLength": 1, "maxLength": 200},
+                "repeat": {"type": "integer", "minimum": 1, "maximum": 5}},
+     "description": "runs the tests the selector names over the working tree as it stands, repeat times"}
+  ],
+  "budget": {"actions": 25},
+  "goal": {"text": "make every test in check_calc.py pass"},
+  "batching": {"hand_cap": 3},
+  "mode_note": "the repo archetype's template world, worlds/archetypes/repo/template"
+}

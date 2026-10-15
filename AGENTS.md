@@ -26,7 +26,7 @@ suite before calling a task done, and the linter and the type checker with
 it:
 
 ```bash
-uv run --with ruff ruff check src tests hooks
+uv run --with ruff ruff check src tests hooks worlds
 uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks
 ```
 
@@ -72,7 +72,11 @@ policy lives in the adapter. Module code never bans, it demands structure.
 Copy `examples/new_world/` (the adapter and registry contracts are in
 `docs/ARCHITECTURE.md` sections 2.1 and 2.2 and in the template's README),
 add the adapter to the `ADAPTERS` table in `tests/test_conformance.py`, and
-run the template test against it.
+run the template test against it. A world driven by commands needs no adapter
+code: copy a template under `worlds/archetypes/` instead and write its recipe
+(`worlds/README.md`). A pack added under `worlds/recipes/` joins the catalog
+table in `worlds/README.md` and the `ADAPTERS` table, and `tests/test_plugin.py`
+holds it to the one adapter stub.
 
 ## Never launch
 
@@ -87,7 +91,7 @@ commands' output in its description.
 
 1. The suite green and ruff clean:
    `uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/`
-   and `uv run --with ruff ruff check src tests hooks`. From #27 on, strict mypy
+   and `uv run --with ruff ruff check src tests hooks worlds`. From #27 on, strict mypy
    clean as well: `uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks`.
 2. A change under `src/` runs G2 and G3. G2 is the replay diff over the 25
    published run directories, run from the owner's archive:

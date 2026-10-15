@@ -53,6 +53,70 @@ Changelog. Dates are UTC.
   published run directories passes with two entries added to its vocabulary
   map, one for each renamed status line.
 
+### Added
+
+- The repository as a Claude Code plugin (preview). `.claude-plugin/marketplace.json`
+  makes the repository its own marketplace, with one plugin, `assay`, whose
+  source is the repository root, so an install carries the kernel, the
+  launcher, the skill and the catalog together: `/plugin marketplace add
+  arjmandi/assay`, then `/plugin install assay@assay`. `.claude-plugin/plugin.json`
+  is the manifest; it sets no version yet, so the preview tracks commits.
+  While the plugin is enabled, `bin/assay` is on the Bash tool's PATH. The
+  one skill, `skills/attach` (`/assay:attach "<task>"`), makes Claude the
+  builder, the operator's side of a run. It classifies the task with the
+  world card of `skills/attach/rubric.md`: step 0 (a world, or a program over
+  worlds), a fit check (the world answers back to a program, many cheap
+  graded interactions, a clock this version can carry), four three-option
+  questions whose letters make a world code such as M-E-C-0, and the
+  inferred clock, proxy and scarce-commit tags. It then starts a catalog pack
+  or writes a world from an archetype's template, smoke-tests it in a scratch
+  directory, and starts the run with the owner token in `~/assay/tokens/`
+  and the hooks installed, as `skills/attach/start.md` says. It writes the
+  player's prompt into the run directory and never plays the run itself. The
+  plugin declares no hooks file and no MCP server: the hooks stay per run
+  directory (`assay hooks install`), and a plugin MCP server would be
+  configured per project rather than per run. `claude plugin validate .`
+  passes, with two warnings: no version, and the developer `CLAUDE.md` at the
+  root, which a plugin does not load.
+- `worlds/`, a catalog of worlds that need no adapter code. The command-world
+  engine, `worlds/archetypes/command_world.py`, is the session contract
+  around a recipe's commands. observe prints the world's data, act takes the
+  validated parameters on stdin and prints `{"status": "ok" | "refused"}` (a
+  refusal goes through the observation and is spent and journaled), and
+  setup builds the world. The recipe holds declarative win, lose and level
+  rules over the data. The engine adds `workdir`, `last_result` and
+  `refusals` to the data. A fault of the world scripts (an exit, a timeout,
+  output that is not one object) restores the copy and raises, so the kernel
+  spends nothing. A recipe that does not fit is refused at start, with its
+  field named. Two archetypes run on it:
+  - `local`, the copy mode: the world is rebuilt in `.assay/world/` at every
+    start and replayed on resume, and a RESET restores the copy as it stood
+    when the unit began. Its template is a switchboard with a hidden wiring
+    and a jammed switch.
+  - `repo`, the worktree mode: the repository is copied into `work/`, which
+    the agent edits freely, and `RUN_TESTS selector=... repeat=N` runs the
+    recipe's JUnit-writing test command over the tree. The observation
+    carries the run counts, the failing ids and a content hash of the tree.
+    A selector that would pass a flag to the runner is refused. The world
+    declares no replay. Its template is a project with one bug and two
+    failing tests.
+
+  Every pack and template carries the same `adapter.py` stub, which finds the
+  engine in the catalog or in the checkout the daemon runs from. The first
+  pack, `worlds/recipes/spreadsheet-reconcile` (M-E-C-0), is three months of
+  a bank statement against a company's books, generated from the seed, with
+  five discrepancies a month drawn from eight kinds. A month closes when its
+  lines are paired, recorded or flagged under the world's rules.
+  `checks/score.py` scores any final copy against the answer key, which never
+  enters the run directory, so a run under ASSAY and a baseline working on
+  its own copy are scored alike. The kernel is unchanged: the engine imports
+  only `SessionCapability` from `assay.adapters`, as the ARC adapter does.
+  `tests/test_worlds_engine.py`, `tests/test_worlds_repo.py`,
+  `tests/test_spreadsheet_reconcile.py` and `tests/test_plugin.py` cover them,
+  through the real CLI and daemon where a run is involved. The three catalog
+  adapters join the conformance table, and ruff now checks `worlds/` beside
+  `src`, `tests` and `hooks`.
+
 ## 1.2.0 (2026-10-09)
 
 The first open-source release, under the Apache License 2.0 (`LICENSE`,

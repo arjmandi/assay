@@ -13,11 +13,11 @@ repos:
   - repo: local
     hooks:
       - id: ruff
-        name: ruff check src tests hooks
-        entry: uv run --with ruff ruff check src tests hooks
+        name: ruff check src tests hooks worlds
+        entry: uv run --with ruff ruff check src tests hooks worlds
         language: system
         pass_filenames: false
-        files: '^(src/.*\.py|tests/.*\.py|hooks/.*\.py|pyproject\.toml)$'
+        files: '^(src/.*\.py|tests/.*\.py|hooks/.*\.py|worlds/.*\.py|pyproject\.toml)$'
       - id: mypy
         name: mypy --strict src/assay src/assay_grid hooks
         entry: uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks

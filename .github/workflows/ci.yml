@@ -68,7 +68,7 @@ jobs:
       # (the suite, or the extra's resolution) does not skip them.
       - name: ruff
         if: ${{ !cancelled() }}
-        run: uv run --with ruff ruff check src tests hooks
+        run: uv run --with ruff ruff check src tests hooks worlds
       # Strict over the kernel, the frame-world extra and the Claude Code
       # hook script, checked as Python 3.12 (pyproject's python_version)
       # under each cell's interpreter; the same run as a plain `mypy` from

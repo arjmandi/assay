@@ -1,0 +1,10 @@
+{
+  "actions": [
+    {"name": "TOGGLE", "params": {"switch": {"type": "integer", "minimum": 1, "maximum": 5}},
+     "description": "flips one switch on the board"}
+  ],
+  "budget": {"actions": 30},
+  "goal": {"text": "turn every lamp on"},
+  "batching": {"hand_cap": 3},
+  "mode_note": "the local archetype's template world, worlds/archetypes/local/template"
+}

@@ -1,0 +1,25 @@
+{
+  "recipe": 1,
+  "name": "switchboard",
+  "card": {
+    "code": "M-E-C-0",
+    "family": "Solve",
+    "fit": "yes",
+    "clock": "s",
+    "proxy": "none needed: the world is on this machine",
+    "scarce_commit": null,
+    "hypothesis": "the template world; it shows the protocol, not a weakness of any agent"
+  },
+  "world": {
+    "mode": "copy",
+    "setup": ["{python}", "{recipe}/world.py", "setup", "--workdir", "{workdir}"],
+    "observe": ["{python}", "{recipe}/world.py", "observe", "--workdir", "{workdir}"],
+    "act": ["{python}", "{recipe}/world.py", "act", "{action}", "--workdir", "{workdir}", "--seed", "{seed}"],
+    "actions": ["TOGGLE"],
+    "timeout_seconds": 20,
+    "win": {"path": "on", "op": "==", "value": 4}
+  },
+  "player": {
+    "note": "The lamps are in lamps.json in the working copy, the directory the observation's workdir names. Read it with your own tools; change it only through assay act."
+  }
+}

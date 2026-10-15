@@ -32,6 +32,11 @@ ADAPTERS = {
     "oolong": REPO / "bench" / "oolong" / "adapter.py",
     "counter": REPO / "examples" / "counter_world.py",
     "template": REPO / "examples" / "new_world" / "adapter.py",
+    # The catalog's command worlds (worlds/README.md): every pack and template
+    # carries the same stub over the command-world engine.
+    "spreadsheet-reconcile": REPO / "worlds" / "recipes" / "spreadsheet-reconcile" / "adapter.py",
+    "switchboard": REPO / "worlds" / "archetypes" / "local" / "template" / "adapter.py",
+    "repo-template": REPO / "worlds" / "archetypes" / "repo" / "template" / "adapter.py",
 }
 # The test adapters, held to the same contract.
 FAKES = {

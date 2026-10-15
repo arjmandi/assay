@@ -1,0 +1,10 @@
+{
+  "name": "assay",
+  "displayName": "ASSAY",
+  "description": "Put ASSAY, the harness that grades a prediction before every action an agent takes, on a task: classify it with four questions, build a world for it, and start the run with the owner token kept out of the agent's reach.",
+  "author": {"name": "Mohsen Arjmandi", "url": "https://github.com/arjmandi"},
+  "homepage": "https://arjmandi.github.io/assay/",
+  "repository": "https://github.com/arjmandi/assay",
+  "license": "Apache-2.0",
+  "keywords": ["agents", "evaluation", "world models", "predictions", "harness", "journal"]
+}

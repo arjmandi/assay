@@ -14,15 +14,15 @@ code. `AGENTS.md` is the short version of this file for any coding agent.
 ```sh
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/      # full suite
 uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/test_registry.py  # one file
-uv run --with ruff ruff check src tests hooks                                 # the linter
+uv run --with ruff ruff check src tests hooks worlds                          # the linter
 uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks  # strict typing, the kernel, the extra and the hook script
 ```
 
 Or, in a venv with the editable install: `pip install -e '.[grid,dev]'` then
 `pytest tests/`. The suite isolates anchors and caches under the pytest temp
 root and stops every daemon it started. ruff is configured in `pyproject.toml`
-with its default rule set, and `uv run --with ruff ruff check src tests hooks`
-must pass; mypy is configured there too, strict over `src/assay`,
+with its default rule set, and `uv run --with ruff ruff check src tests hooks
+worlds` must pass; mypy is configured there too, strict over `src/assay`,
 `src/assay_grid` and `hooks` and checked as Python 3.12, and `uv run --with
 mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks`
 must be clean (a plain `mypy` from the root is the same run).
@@ -58,6 +58,16 @@ hooks/               the Claude Code hooks: pre_tool_use.py, the PreToolUse
                       assay), installed by `assay hooks install`
 examples/            counter_world.py and example_registry.json (the quickstart),
                       new_world/ (the template a new world copies)
+worlds/              the catalog: archetypes/command_world.py (the command-world
+                      engine a recipe configures), archetypes/{local,repo}/ (their
+                      READMEs and runnable templates), recipes/<pack>/ (packs:
+                      recipe, registry, the one adapter stub, world scripts,
+                      checks/); worlds/README.md is the recipe's reference
+skills/attach/       the Claude Code skill /assay:attach: SKILL.md, rubric.md (the
+                      world card), start.md (smoke test, start, the player's prompt)
+.claude-plugin/      the repository as a Claude Code plugin and its own
+                      marketplace (plugin.json, marketplace.json); the plugin's
+                      root is the repository, so bin/assay is on its PATH
 tests/               pytest; e2e tests drive the real CLI and daemon through the
                       adapters in tests/, not mocks; test_conformance.py and
                       test_vocabulary.py enforce the kernel's boundaries,
