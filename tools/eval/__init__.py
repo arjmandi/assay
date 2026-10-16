@@ -10,6 +10,8 @@ no LLM calls, and it imports nothing from `assay`.
     python3 -m tools.eval session --run-dir <run>    (one started run, session.py)
     python3 -m tools.eval report --run-dir <run>     (the report of one run, report.py)
     python3 -m tools.eval compare --pack <pack>      (ASSAY against /goal on one pack, compare.py)
+    python3 -m tools.eval watch --run-dir <run>      (one line per change of a run, watch.py)
+    python3 -m tools.eval diagnose --run-dir <run>   (a run read against the five layers, diagnose.py)
 
 `tools/eval/README.md` is the manual.
 """

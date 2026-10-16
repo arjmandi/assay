@@ -498,7 +498,8 @@ def sections(notes: str) -> dict[str, list[str]]:
             else:
                 current = None
             continue
-        if current is not None and stripped:
+        # A stop declaration is not a claim about the world, wherever it sits.
+        if current is not None and stripped and not stripped.startswith("STOP:"):
             found[current].append(re.sub(r"^(?:[-*+]|\d+[.)])\s+", "", stripped))
     return found
 

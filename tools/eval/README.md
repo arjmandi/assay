@@ -187,6 +187,37 @@ output, as JSON when it prints a JSON object. `--sessions DIR` names the
 runner's state when it is not `<run>.sessions`. `--items N` caps the
 document's lists, 25 by default. The JSON record always holds every item.
 
+## The watch and diagnose modes
+
+```bash
+python3 -m tools.eval watch --run-dir <run> [--every 10] [--once] [--until-end]
+python3 -m tools.eval diagnose --run-dir <run> [--json]
+```
+
+`watch.py` prints one line whenever the run changes: the session runner's
+state, the run's outcome so far, the paid actions of the cap, the outcomes
+held and missed (as `assay status` counts them), the last paid action and how
+it graded, the spend reported to the run and the Stop gate's blocks.
+`--once` prints one line; `--until-end` stops when the session runner ends
+or the run reaches WIN or a cap. `/assay:watch` runs it, in the background
+with the Monitor tool when the user wants to follow a run.
+
+`diagnose.py` reads the report's record against the five layers of the
+README ("Reasoning layers") and prints, per layer, each finding with its
+evidence and where to steer:
+
+| Layer | What it finds |
+|---|---|
+| 1 the constitution | a declared stop, or a conclusion of impossibility, that rests on untested rules; milestone predictions that keep missing |
+| 2 the modules | an outcome form missed three times or more with no hold; a stalled progress unit; actions taken six times that never changed the world; refusals a module's demand caused; three or more blocked stops |
+| 3 the registry and the adapter | outcomes the code could not grade; three or more commands refused for their form (a parameter, an action, a state name, the prediction's syntax) |
+| 4 the addressable states | predictions that name no particular result; declared states never graded; world-model misses of 30 percent or more over five or more outcomes, with the forms that missed most; Verified lines that cite nothing the record holds |
+| 5 the model | nothing above, and the run is not won |
+
+A finding is a place to look, not a verdict. Both modes read the run's
+files and write nothing; `/assay:diagnose` explains the findings and offers
+changes only to what is the operator's (a registry, a recipe, a prompt).
+
 ## The compare mode
 
 ```bash

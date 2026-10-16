@@ -422,6 +422,10 @@ against the journal, what the run never exercised, and what the sessions
 cost. Read a declared stop against its "Never exercised" section: a
 conclusion that rests on an untested rule is untested.
 
+`/assay:watch` follows a run as it plays, one line per change.
+`/assay:diagnose` reads a run against the five layers of the README and says,
+per layer, what the record shows and where to steer.
+
 `/assay:compare` runs a pack's pre-registered comparison: ASSAY against
 Claude Code with `/goal`, the same model, dollars and hours per run, and the
 same checker. The goal arm works on a bare copy of the world with no

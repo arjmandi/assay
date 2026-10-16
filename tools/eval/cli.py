@@ -7,6 +7,8 @@
     python3 -m tools.eval session --run-dir DIR ...    (the session mode, session.py)
     python3 -m tools.eval report --run-dir DIR ...     (the report of one run, report.py)
     python3 -m tools.eval compare --pack DIR ...       (ASSAY against /goal on one pack, compare.py)
+    python3 -m tools.eval watch --run-dir DIR ...      (one line per change of a run, watch.py)
+    python3 -m tools.eval diagnose --run-dir DIR       (a run read against the five layers, diagnose.py)
 
 One error voice, as the kernel's: `ERROR | message`, exit 2.
 """
@@ -21,8 +23,10 @@ from . import EvalError
 from .jobs import load_design
 from .runner import DEFAULT_LAUNCHER, Runner, default_state_dir, launcher_argv
 from .compare import main as compare_main
+from .diagnose import main as diagnose_main
 from .report import main as report_main
 from .session import main as session_main
+from .watch import main as watch_main
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -64,6 +68,10 @@ def main(argv: list[str] | None = None) -> int:
         return report_main(arguments[1:])
     if arguments[:1] == ["compare"]:
         return compare_main(arguments[1:])
+    if arguments[:1] == ["watch"]:
+        return watch_main(arguments[1:])
+    if arguments[:1] == ["diagnose"]:
+        return diagnose_main(arguments[1:])
     args = _parser().parse_args(arguments)
     try:
         for name in ("max_concurrency", "max_sessions"):

@@ -69,8 +69,8 @@ The arguments: $ARGUMENTS
 3. Tell the user:
    - the logs: `<run dir>.sessions/` (`sessions.json` is the ledger,
      `s<n>.player.out` a session's output);
-   - how to watch: `${CLAUDE_PLUGIN_ROOT}/bin/assay --run-dir <run dir>
-     status`;
+   - how to watch: `/assay:watch`, or `${CLAUDE_PLUGIN_ROOT}/bin/assay
+     --run-dir <run dir> status`;
    - how to stop: create `<run dir>.sessions/STOP` to stop after the
      current session, or stop the background task to stop at once.
 

@@ -73,7 +73,7 @@ def test_no_hook_file_applies_to_every_session():
 
 def test_every_skill_names_its_directory_and_its_paths_exist():
     skills = sorted((REPO / "skills").glob("*/SKILL.md"))
-    assert [path.parent.name for path in skills] == ["attach", "compare", "report", "run"]
+    assert [path.parent.name for path in skills] == ["attach", "compare", "diagnose", "report", "run", "watch"]
     for path in skills:
         fields, body = _frontmatter(path)
         assert fields["name"] == path.parent.name
@@ -138,6 +138,20 @@ def test_the_compare_skill_runs_the_compare_mode_on_a_pack_with_a_design():
     assert designs == ["flaky-test", "hidden-grammar"]
     for name in designs:
         assert "## Compare it with /goal" in (WORLDS / "recipes" / name / "README.md").read_text(), name
+
+
+def test_the_watch_and_diagnose_skills_run_their_modes_and_name_the_layers():
+    watch = (REPO / "skills" / "watch" / "SKILL.md").read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py watch --run-dir <run dir> --once" in watch
+    assert "--until-end" in watch and "Monitor" in watch and "/assay:diagnose" in watch
+    skill = (REPO / "skills" / "diagnose" / "SKILL.md").read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py diagnose --run-dir <run dir>" in skill
+    module = (REPO / "tools" / "eval" / "diagnose.py").read_text()
+    for number, name in ((1, "the constitution"), (2, "the modules"), (3, "the registry and the adapter"),
+                         (4, "the addressable states"), (5, "the model")):
+        assert f'{number}: "{name}"' in module and name in skill, name
+    readme = (REPO / "README.md").read_text()
+    assert all(f"{n}. **{word}" in readme for n, word in ((1, "The constitution"), (2, "Modules"), (5, "The model")))
 
 
 def _packs() -> list[Path]:

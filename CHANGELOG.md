@@ -5,6 +5,25 @@ Changelog. Dates are UTC.
 
 ## Unreleased
 
+### Added
+
+- `/assay:watch` and `/assay:diagnose`, the last two skills of the connector's
+  design, with their modes in the evaluation runner.
+  - `python3 -m tools.eval watch --run-dir DIR` prints one line whenever the
+    run changes: the runner's state, the paid actions of the cap, held and
+    missed, the last action and how it graded, the spend, the Stop gate's
+    blocks. `--once` and `--until-end`; the skill follows a run with the
+    Monitor tool.
+  - `python3 -m tools.eval diagnose --run-dir DIR` reads the report's record
+    against the README's five layers of reasoning and prints, per layer,
+    each finding with its evidence (counts and event ids) and where to
+    steer. A finding is a place to look, not a verdict.
+  - The report no longer reads a `STOP:` line under the notes' Verified
+    heading as a Verified claim.
+  - `tests/test_eval_diagnose.py` covers each layer's symptom, the printed
+    and JSON forms, the watch line and its end, and a real run through the
+    CLI and daemon diagnosed at layers 1, 2 and 4.
+
 ### Removed
 
 - The independent checker, `verify/assay_verify.py`, with its two test files
