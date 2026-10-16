@@ -38,8 +38,9 @@ When a session ends, the runner reads the run with the Stop gate's own rules
 
 For the `claude` host the runner merges the Stop gate into the run
 directory's `.claude/settings.json` before the first session. Codex and
-OpenCode get no gate in this version, and their templates are untested; for
-them the relaunch is the gate. Every session's record carries the host and
+OpenCode get no gate in this version, and for them the relaunch is the gate.
+The Codex template was played once, on 2026-10-16 with Codex 0.163.0 on the
+counter world, to a WIN; the OpenCode template is untested. Every session's record carries the host and
 its `--version`. A `claude -p` session's bill (its report's dollars and
 tokens) is posted to the run with `assay spend report`, so `assay status`
 shows it and a registry's dollar cap applies.
@@ -127,7 +128,8 @@ HOSTS: dict[str, Host] = {
         tested=True,
     ),
     # The sandbox writes the workspace; its network is on so that the
-    # launcher reaches the daemon's socket. Untested in this version.
+    # launcher reaches the daemon's socket. Played to a WIN on the counter
+    # world with Codex 0.163.0; its JSONL output reports no cost.
     "codex": Host(
         name="codex",
         command=(
@@ -135,6 +137,7 @@ HOSTS: dict[str, Host] = {
             "-c", "sandbox_workspace_write.network_access=true", "{options}", "{prompt}",
         ),
         model=("--model", "{model}"),
+        tested=True,
     ),
     # `--auto` answers the permission requests a headless run would reject.
     # Untested in this version.

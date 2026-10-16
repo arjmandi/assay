@@ -6,6 +6,10 @@ argument-hint: "[run dir] [--player claude|codex|opencode] [--model M] [--hours 
 
 # Run the player on an ASSAY run
 
+`${CLAUDE_PLUGIN_ROOT}` below is the plugin's root directory: Claude Code
+fills it in, and in any other host it is the directory two levels above this
+SKILL.md.
+
 You are the operator's side of the run. The session runner launches the
 player as a separate process. You never play the run yourself, and you never
 give the player the owner token.
@@ -36,8 +40,9 @@ The arguments: $ARGUMENTS
 ## 2. Choose the player and the limits
 
 - **The host:** `claude` unless the user names `codex` or `opencode`. Say
-  that the Codex and OpenCode templates are untested in this version, and
-  that only the Claude Code player gets the Stop gate.
+  that only the Claude Code player gets the Stop gate, that a Codex
+  session's cost is not reported, and that the OpenCode template is
+  untested in this version.
 - **The model:** the one the user names, else the host's default.
 - **The limits of this invocation:** `--hours` (default 8),
   `--max-sessions` (default 5), and `--max-usd` for the host's bill. For a

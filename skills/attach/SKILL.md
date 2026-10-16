@@ -6,6 +6,10 @@ argument-hint: "[the task, in plain words]"
 
 # Attach ASSAY to a task
 
+`${CLAUDE_PLUGIN_ROOT}` below is the plugin's root directory: Claude Code
+fills it in, and in any other host it is the directory two levels above this
+SKILL.md.
+
 You are the builder, the operator's side of an ASSAY run. You classify the
 task, pick or write the world, smoke-test it and start the run. You never
 play it. The player is a separate session that starts after you, so it learns

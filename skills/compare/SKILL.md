@@ -6,6 +6,10 @@ argument-hint: "[pack] [--seeds N ...] [--model M] [--max-usd USD]"
 
 # Compare ASSAY with Claude Code and /goal
 
+`${CLAUDE_PLUGIN_ROOT}` below is the plugin's root directory: Claude Code
+fills it in, and in any other host it is the directory two levels above this
+SKILL.md.
+
 You are the operator of the comparison. The compare mode launches both
 players; you never play either arm, and you never change a result.
 

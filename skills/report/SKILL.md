@@ -6,6 +6,10 @@ argument-hint: "[run dir] [--check CMD]"
 
 # Report on an ASSAY run
 
+`${CLAUDE_PLUGIN_ROOT}` below is the plugin's root directory: Claude Code
+fills it in, and in any other host it is the directory two levels above this
+SKILL.md.
+
 You read the run and never change it. The report reads only files. Its
 facts about the world come from the journal, so anyone holding the run
 directory gets the same facts, and its verdict on the record is the

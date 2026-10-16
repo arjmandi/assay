@@ -12,6 +12,13 @@ Changelog. Dates are UTC.
   updates by version rather than by commit. The README's first screen is the
   two install lines for Claude Code and one `/assay:attach` example, followed
   by the description as it was.
+- The plugin under Codex. Codex 0.163.0 adds the repository as a marketplace
+  from `.claude-plugin/marketplace.json`, installs `assay@assay` at 1.3.0,
+  and lists the four skills. Each skill now says what `${CLAUDE_PLUGIN_ROOT}`
+  means outside Claude Code: the directory two levels above its SKILL.md. The
+  session mode's Codex template played the counter world to a WIN through the
+  daemon from inside Codex's `workspace-write` sandbox. It is marked tested,
+  with no Stop gate, and its JSONL output reports no cost.
 - The words for a prediction. A prediction is what the agent writes before
   an action. An outcome is one checkable part of it, and a prediction
   carries several outcomes separated by `;`. Held and missed are the labels

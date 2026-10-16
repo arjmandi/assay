@@ -58,7 +58,7 @@ The hosts, as templates in `session.py`:
 | `--player` | The command | Stop gate | Tested |
 |---|---|---|---|
 | `claude` (default) | `claude -p <prompt> [--model M] [--max-budget-usd USD] --output-format json --permission-mode acceptEdits --allowedTools Bash Read Glob Grep 'Write(./**)' 'Edit(./**)' --disallowedTools WebFetch WebSearch Agent` | yes | yes |
-| `codex` | `codex exec --json --skip-git-repo-check --sandbox workspace-write -c sandbox_workspace_write.network_access=true [--model M] <prompt>` (the network is on so that the launcher reaches the daemon's socket) | no | no |
+| `codex` | `codex exec --json --skip-git-repo-check --sandbox workspace-write -c sandbox_workspace_write.network_access=true [--model M] <prompt>` (the network is on so that the launcher reaches the daemon's socket) | no | yes, once: the counter world to a WIN with Codex 0.163.0; no cost reported |
 | `opencode` | `opencode run --format json --auto [--model M] <prompt>` | no | no |
 
 A command after `--` replaces the template. Its placeholders are `{prompt}`,
