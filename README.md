@@ -22,8 +22,8 @@ it from the catalog in `worlds/`, and starts the run. `/assay:run` plays it,
 session after session, until the run says it is over. `/assay:report` writes
 up what the run verified, and `/assay:compare` runs the same task under
 Claude Code with `/goal` and scores both with one checker. Without Claude
-Code, `pip install assay-harness` gives the `assay` command line, and
-`GUIDE.md` starts from there.
+Code, `pip install git+https://github.com/arjmandi/assay` gives the `assay`
+command line, and `GUIDE.md` starts from there.
 
 ## What it is
 
