@@ -3,9 +3,11 @@
 **The commitment:** the recomputed `assay-journal-v1` chain head of the one E5 journal: OOLONG synth1m answered in batched bank mode by claude-opus-5 on 2026-10-07 under the release build, commit 6ea56e4, the build the paper calls 1.1.0 (the checkout was `release/1.1.0` at d99c0a6, the same kernel and adapters, which is how `heads.json` records it), the de-hinted prompt and `bench/oolong/registry_200_batch.json`. The design is pre-registered in `E5_PROTOCOL.md`. Whenever this run directory is shared with anyone, it must verify against its head here:
 
 ```bash
-gunzip -k synth1m-batch/journal.jsonl.gz
-python3 ../../verify/assay_verify.py synth1m-batch/journal.jsonl --expect-head <head below>
+python3 ../verify_all.py --pack e5
 ```
+
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
 
 The journal was verified this way from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too.
 

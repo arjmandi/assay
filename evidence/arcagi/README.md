@@ -54,7 +54,5 @@ dc22 run, 1,043 events, 1,042 paid actions, WIN 6/6. Verify it against its
 published head:
 
 ```bash
-gunzip -k journal-dc22.jsonl.gz
-python3 ../../verify/assay_verify.py journal-dc22.jsonl \
-  --expect-head f7a0991384f645d42280949e1946f6a33bd59373012f6a9c47b46d0ef4a0561d
+python3 ../verify_all.py --pack arcagi
 ```

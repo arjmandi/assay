@@ -8,9 +8,11 @@ of that day). Whenever this run directory is shared with anyone, it must
 verify against its head here:
 
 ```bash
-gunzip -k ft09-release-s1/journal.jsonl.gz
-python3 ../../verify/assay_verify.py ft09-release-s1/journal.jsonl --expect-head <head below>
+python3 ../verify_all.py --pack g4
 ```
+
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
 
 The journal was verified this way from the published copy before the commit,
 with `chain.json` beside the decompressed journal so the stored chain is

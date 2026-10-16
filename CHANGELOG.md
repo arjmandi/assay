@@ -3,6 +3,38 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## Unreleased
+
+### Removed
+
+- The independent checker, `verify/assay_verify.py`, with its two test files
+  (`tests/test_verify_checker.py`, `tests/test_verify_independence.py`). It
+  existed so that a third party could verify a journal while the harness
+  was closed; the harness is open source, so its own `assay audit` is the
+  check. The tag `v1.3.0` holds the checker's last version, the one the
+  paper describes.
+  - `evidence/verify_all.py` (gate G3) judges every published journal by
+    the verdict rules of `verify/JOURNAL_SPEC.md` with the kernel's own
+    chain and ungated code, and still reports 66 journals, 0 failed.
+    `tests/test_evidence.py` runs it and checks that it notices an edited,
+    a deleted and a reordered line and an injected bare paid event.
+  - `tools/eval/report.py` takes its verdict from the kernel's audit, which
+    it runs through the launcher (`--assay CMD`, `--no-audit` to read the
+    last `audit.json`), and the head the kernel stored in `chain.json`. A
+    directory with neither audit nor run is reported as not audited.
+  - The kernel tests that compared their verdicts with the checker's
+    (`test_gate_off`, `test_gate_optional`, `test_reconcile`,
+    `test_properties`) keep the kernel's own audit and the spec's reference
+    rules.
+  - `verify/` is the journal standard alone: `JOURNAL_SPEC.md`,
+    `PREDICTION_GRAMMAR.md` and a README that says how to check a journal
+    with the audit. The evidence packs' commands are the gate's, and their
+    HEADS files say the published verdicts came from the checker of 1.2.0.
+    The README, NOTICE, GUIDE, ONBOARDING, AGENTS, CONTRIBUTING,
+    ARCHITECTURE, the release checklist's G3 row and one kernel docstring
+    follow. The published heads, their recorded verdicts, `bench/` and this
+    changelog's past entries stay as they were.
+
 ## 1.3.0 (2026-10-16)
 
 ### Changed

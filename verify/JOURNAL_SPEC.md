@@ -92,8 +92,8 @@ newline; blank lines are skipped). The writer maintains `chain.json` as
 `{"event_id": <last id>, "head": <hex>}` and periodically anchors heads
 outside the run directory. Anchor files are operator-side and out of scope;
 **published heads** (e.g. `evidence/<world>/heads.json` in this repository)
-are the third-party reference: verify a shared journal with
-`--expect-head <published head>`.
+are the third-party reference: a shared journal verifies when its
+recomputed head equals the published one.
 
 A consequence worth stating: the chain covers raw lines, so a journal with
 any field redacted after the fact can no longer match its published head.

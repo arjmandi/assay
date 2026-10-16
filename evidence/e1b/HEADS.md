@@ -3,11 +3,13 @@
 **The commitment:** these are the recomputed `assay-journal-v1` chain heads of the six E1b journals: three ARC-AGI-3 games, two seeds, played by claude-opus-5 on 2026-10-07 under the release build, commit 6ea56e4, the build the paper calls 1.1.0 (the checkout was `release/1.1.0` at a4e1d90, renamed 063d3c4 by the history rewrite of that day, which is how `heads.json` still records it) with the registry key `gate: off`, a manual that carries no prediction discipline and the ungated prompt template. The design is pre-registered in `E1B_PROTOCOL.md`. Whenever one of these run directories is shared with anyone, it must verify against its head here:
 
 ```bash
-gunzip -k <run>/journal.jsonl.gz
-python3 ../../verify/assay_verify.py <run>/journal.jsonl --expect-head <head below>
+python3 ../verify_all.py --pack e1b
 ```
 
-Every journal below was verified this way from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too. The `assay-verify` column is the checker's verdict on that copy and `ungated` is its count of paid non-reset events without a prediction. In this arm every paid action is ungated, so every verdict is INVALID FOR SCORING: that is the arm's design, not a defect, and the heads commit to it.
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
+
+Every journal below was verified, when it was published, with the independent checker of 1.2.0 (retired after 1.3.0; the tag `v1.3.0` holds it), from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too. The `assay-verify` column is the checker's verdict on that copy and `ungated` is its count of paid non-reset events without a prediction. In this arm every paid action is ungated, so every verdict is INVALID FOR SCORING: that is the arm's design, not a defect, and the heads commit to it.
 
 | Run | Game | Arm | Seed | Gate | Cap | Events | Paid | Progress | State | Stored chain | ungated | assay-verify | Chain head (SHA-256) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|---|

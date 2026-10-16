@@ -1,14 +1,12 @@
 """`gate: off`, the second control-arm mode. The instrument is removed: no
 prediction is accepted or graded, every paid action is journaled UNGATED with
 the marker gate_off, status shows a neutral `GATE | off | n action(s)` line,
-the audit keeps the run INVALID FOR SCORING and names the mode, and the
-independent checker agrees. Not the default, never scorable."""
+and the audit keeps the run INVALID FOR SCORING and names the mode. Not the
+default, never scorable."""
 
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 from conftest import FAKE_ADAPTER, run_cli, stop_run
@@ -38,7 +36,6 @@ def _events(run: Path) -> list[dict]:
     return [json.loads(line) for line in lines if line.strip()]
 
 
-CHECKER = Path(__file__).resolve().parents[1] / "verify" / "assay_verify.py"
 
 
 def test_off_is_a_valid_value_and_the_default_is_required():
@@ -95,14 +92,6 @@ def test_off_removes_the_instrument_and_audits_invalid(tmp_path):
         assert report["chain"] == "intact"
     finally:
         stop_run(run)
-    checker = CHECKER
-    checked = subprocess.run(
-        [sys.executable, str(checker), str(run), "--json"],
-        capture_output=True, text=True, timeout=60,
-    )
-    assert checked.returncode == 1, checked.stdout + checked.stderr
-    verdict = json.loads(checked.stdout)
-    assert verdict["verdict"] == "INVALID FOR SCORING" and verdict["ungated"] == [1, 2, 3]
 
 
 def test_required_and_optional_are_unchanged(tmp_path):

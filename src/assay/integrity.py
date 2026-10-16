@@ -397,8 +397,8 @@ def redact_mapping(
 
 def ungated_events(events: Sequence[Event]) -> list[int]:
     """Paid non-RESET events with no prediction and no grade: the ungated-event
-    rule of verify/JOURNAL_SPEC.md section 6, the one the independent checker
-    (verify/assay_verify.py) applies over the same journal fields."""
+    rule of verify/JOURNAL_SPEC.md section 6, evaluated over the journal
+    fields alone, so any reader of the journal reaches the same list."""
     return [event.id for event in events if event.ungated]
 
 

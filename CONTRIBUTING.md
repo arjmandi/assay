@@ -7,8 +7,7 @@ open-contribution project yet.
 Report what you find as an issue: a journal that audits wrong, a world the
 harness refuses, a document that misleads. Include the output of `assay
 version` and `assay doctor`, and for anything about a run, its
-`.assay/audit.json` and the verdict of `verify/assay_verify.py` on the run
-directory.
+`.assay/audit.json` (the output of `assay audit`).
 
 If you work on the source anyway, for a fork or for what comes after 1.2.0,
 `.pre-commit-config.yaml` runs the checks CI runs (`ruff check src tests`,

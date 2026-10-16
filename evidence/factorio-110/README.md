@@ -15,7 +15,7 @@ cite it.
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row per run,
-  with the checker's verdict on the published copy, the cost at list price
+  with the verdict recorded when the pack was published, the cost at list price
   and the count of channel outcomes on paid actions.
 - **`<run>/`**, one folder per run:
   - `journal.jsonl.gz`: the complete journal (every prediction registered
@@ -34,13 +34,12 @@ materials.
 ## Verify a journal
 
 ```bash
-gunzip -k circuit/journal.jsonl.gz
-python3 ../../verify/assay_verify.py circuit/journal.jsonl \
-  --expect-head cb67fea573f4cb667b807f0ccfffe3f704ff5e7df9eedab909d2d5d0b3e19188
+python3 ../verify_all.py --pack factorio-110
 ```
 
-Decompressing beside `chain.json` lets the checker report the stored chain
-as `intact` as well as recomputing the head. The other heads are in
+The gate reads the journal from its gzip, checks it against the `chain.json`
+beside it as well as against the published head, and applies the kernel's
+own chain and ungated rules. The other heads are in
 `heads.json`.
 
 ## What the table says

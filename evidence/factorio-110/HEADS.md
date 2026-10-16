@@ -3,11 +3,13 @@
 **The commitment:** the recomputed `assay-journal-v1` chain heads of the two Factorio lab-task wins replayed on the release build, commit 6ea56e4, the build the paper calls 1.1.0 (the checkout was `release/1.1.0` at d99c0a6, the same kernel and adapters; 2026-10-07, claude-opus-5, cap 64, the M2 registry and strategy hints) and of the hand-played smoke that preceded them on the same build. Any shared copy of these runs must verify against its head here:
 
 ```bash
-gunzip -k <run>/journal.jsonl.gz
-python3 ../../verify/assay_verify.py <run>/journal.jsonl --expect-head <head below>
+python3 ../verify_all.py --pack factorio-110
 ```
 
-Every journal below was verified this way from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too.
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
+
+Every journal below was verified, when it was published, with the independent checker of 1.2.0 (retired after 1.3.0; the tag `v1.3.0` holds it), from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too.
 
 | Task | Player | Cap | Events | Paid | Progress | State | Stored chain | ungated | assay-verify | Chain head (SHA-256) |
 |---|---|---|---|---|---|---|---|---|---|---|

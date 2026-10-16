@@ -48,8 +48,8 @@ gate.
 `docs/ARCHITECTURE.md` is the component model and the single source: one
 section per component, the frame-world extra, the conformance table, and the
 list of what never changes. The public journal contract lives in `verify/`:
-`JOURNAL_SPEC.md` (`assay-journal-v1`) and `PREDICTION_GRAMMAR.md`, beside the
-independent checker. The kernel must keep honoring both.
+`JOURNAL_SPEC.md` (`assay-journal-v1`) and `PREDICTION_GRAMMAR.md`. The kernel
+must keep honoring both.
 
 ## What never changes
 

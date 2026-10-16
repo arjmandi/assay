@@ -26,7 +26,7 @@ The pre-registered protocol is `E5_PROTOCOL.md` and the results write-up is
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row, with the
-  checker's verdict on the published copy, the accuracy, the cost at list
+  verdict recorded when the pack was published, the accuracy, the cost at list
   price and the wall time.
 - **`synth1m-batch/`**:
   - `journal.jsonl.gz`: the complete journal (every prediction registered
@@ -42,13 +42,12 @@ score and the agent's offline work stay with the archived run directory.
 ## Verify the journal
 
 ```bash
-gunzip -k synth1m-batch/journal.jsonl.gz
-python3 ../../verify/assay_verify.py synth1m-batch/journal.jsonl \
-  --expect-head eda4c0bd5f8d315268b604e7f2946dc599eacbeb613852039612ae1ac7e89f8e
+python3 ../verify_all.py --pack e5
 ```
 
-Decompressing beside `chain.json` lets the checker report the stored chain
-as `intact` as well as recomputing the head.
+The gate reads the journal from its gzip, checks it against the `chain.json`
+beside it as well as against the published head, and applies the kernel's
+own chain and ungated rules.
 
 ## What the table says
 

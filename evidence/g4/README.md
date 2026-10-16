@@ -20,7 +20,7 @@ journal field and no grading rule (`CHANGELOG.md`), so the gate stands for it.
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row, with the
-  checker's verdict on the published copy, the per-unit paid actions and the
+  verdict recorded when the pack was published, the per-unit paid actions and the
   bar.
 - **`ft09-release-s1/`**:
   - `journal.jsonl.gz`: the complete journal (every prediction registered
@@ -36,10 +36,9 @@ paths).
 ## Verify the journal
 
 ```bash
-gunzip -k ft09-release-s1/journal.jsonl.gz
-python3 ../../verify/assay_verify.py ft09-release-s1/journal.jsonl \
-  --expect-head cc65462fd7dc52106ed3afe90a51d0e5c2fa7f3e5045b218c496166d7a8e8350
+python3 ../verify_all.py --pack g4
 ```
 
-Decompressing beside `chain.json` lets the checker report the stored chain
-as `intact` as well as recomputing the head.
+The gate reads the journal from its gzip, checks it against the `chain.json`
+beside it as well as against the published head, and applies the kernel's
+own chain and ungated rules.

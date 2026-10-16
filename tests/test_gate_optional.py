@@ -4,15 +4,12 @@ Default (absent or "required"): a bare `assay act` without --predict is refused
 before any spend, exactly as before. Under "optional" the daemon accepts it,
 executes it, and journals it UNGATED (predict null, predict_ok null, grade [],
 marker gate_optional true). The audit counts those events separately as
-ungated_permitted while keeping the run INVALID FOR SCORING, and the
-independent checker (verify/assay_verify.py) agrees. Everything runs through the real CLI,
-broker and fake adapter."""
+ungated_permitted while keeping the run INVALID FOR SCORING. Everything runs
+through the real CLI, broker and fake adapter."""
 
 from __future__ import annotations
 
 import json
-import subprocess
-import sys
 from pathlib import Path
 
 import pytest
@@ -25,7 +22,6 @@ ACTIONS = [
 ]
 
 
-CHECKER = Path(__file__).resolve().parents[1] / "verify" / "assay_verify.py"
 
 
 def _registry(run_dir: Path, **extra) -> Path:
@@ -170,8 +166,7 @@ def test_an_unmarked_ungated_event_is_still_an_integrity_finding(tmp_path):
         stop_run(run)
 
 
-def test_assay_verify_reports_an_optional_gate_journal_invalid(tmp_path):
-    checker = CHECKER
+def test_the_audit_reports_an_optional_gate_journal_invalid_from_the_files_alone(tmp_path):
     run = tmp_path / "ver"
     run.mkdir()
     registry = _registry(run, gate="optional")
@@ -182,12 +177,10 @@ def test_assay_verify_reports_an_optional_gate_journal_invalid(tmp_path):
         assert run_cli(run, "act", "INC", "amount=1", "--predict", "change").returncode == 0
     finally:
         stop_run(run)
-    checked = subprocess.run(
-        [sys.executable, str(checker), str(run), "--json"],
-        capture_output=True, text=True, timeout=60,
-    )
-    assert checked.returncode == 1, checked.stdout + checked.stderr
-    report = json.loads(checked.stdout)
-    assert report["verdict"] == "INVALID FOR SCORING"
+    # With the daemon gone, the audit reads the run's files alone.
+    audited = run_cli(run, "audit", "--json")
+    assert audited.returncode == 0, audited.stdout + audited.stderr
+    report = json.loads(audited.stdout)
+    assert report["invalid_for_scoring"] is True
     assert report["ungated"] == [1]
-    assert report["stored_chain"] == "intact"
+    assert report["chain"] == "intact"

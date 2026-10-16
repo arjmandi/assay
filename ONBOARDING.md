@@ -816,12 +816,11 @@ is `head_0 = sha256("assay-chain-v1")`, `head_n = sha256(hex(head_{n-1}) ||
 line_n)` over the raw journal lines, and the anchors are its heads written
 outside the run.
 
-The independent checker is `verify/assay_verify.py`. It shares no code with
-the harness and reads only the journal:
+The audit recomputes all of it from the run's files:
 
 ```bash
-python3 verify/assay_verify.py <run-directory>
-python3 verify/assay_verify.py <run-directory> --expect-head <sha256>
+assay --run-dir <run-directory> audit
+assay --run-dir <run-directory> audit --json
 ```
 
 To publish a run, publish the journal (`.assay/events.jsonl`) and its chain

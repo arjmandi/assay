@@ -33,9 +33,7 @@ zero ungated events.
 ## Verify a journal
 
 ```bash
-gunzip -k journal-synth128k.jsonl.gz
-python3 ../../verify/assay_verify.py journal-synth128k.jsonl \
-  --expect-head 2dc2360a10e77f51cbfb82abd6d1ac24ca500806485db8aeee29c7b39f540ec8
+python3 ../verify_all.py --pack oolong
 ```
 
 The other heads are in `heads.json`.

@@ -3,11 +3,13 @@
 **The commitment:** these are the recomputed `assay-journal-v1` chain heads of the twelve E1 journals: three ARC-AGI-3 games, two seeds, a gated arm (`gate: required`) and an ungated control arm (`gate: optional`), played by claude-opus-5 under the ASSAY harness on 2026-10-06. The design is pre-registered in `E1_E2_PROTOCOL.md` sections 1 to 10. Whenever one of these run directories is shared with anyone, it must verify against its head here:
 
 ```bash
-gunzip -k <run>/journal.jsonl.gz
-python3 ../../verify/assay_verify.py <run>/journal.jsonl --expect-head <head below>
+python3 ../verify_all.py --pack e1
 ```
 
-Every journal below was verified this way from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too. The `assay-verify` column is the checker's verdict on that copy, and `ungated` is its count of paid non-reset events without a prediction.
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
+
+Every journal below was verified, when it was published, with the independent checker of 1.2.0 (retired after 1.3.0; the tag `v1.3.0` holds it), from the published copy before the commit, with `chain.json` beside the decompressed journal so the stored chain is checked too. The `assay-verify` column is the checker's verdict on that copy, and `ungated` is its count of paid non-reset events without a prediction.
 
 | Run | Game | Arm | Seed | Gate | Events | Paid | Progress | State | Stored chain | ungated | assay-verify | Chain head (SHA-256) |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|

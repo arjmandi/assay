@@ -96,4 +96,4 @@ gaps).
 Out of scope for v1: re-executing grades. The spec makes every
 `predict`/`grade` pair readable; a shared run directory additionally contains
 the agent's state declarations and verifier programs, so grades are
-re-derivable in principle, but the reference checker does not re-run them.
+re-derivable in principle, but the harness's audit does not re-run them.

@@ -5,8 +5,11 @@ three un-hinted OOLONG synth runs (neutral task framing, Opus 5). Any
 shared copy of these runs must verify against its head here:
 
 ```bash
-python3 ../../verify/assay_verify.py <run-or-journal> --expect-head <head below>
+python3 ../verify_all.py --pack oolong
 ```
+
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
 
 Note: `WIN` in this world means all questions were submitted through the
 gate. It is a completion state, not a score. Scoring is sealed at finalize

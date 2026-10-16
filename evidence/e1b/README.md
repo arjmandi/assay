@@ -26,7 +26,7 @@ The pre-registered protocol is `E1B_PROTOCOL.md`. The results write-up is
 ## Why every verdict reads INVALID FOR SCORING
 
 Under `gate: off` the kernel journals every paid action as UNGATED, because
-no prediction was registered before it. The checker marks a journal with any
+no prediction was registered before it. The audit marks a journal with any
 UNGATED event invalid for scoring, which is the property the gated runs are
 scored on. In this arm every paid action is ungated, so the verdict on all six
 journals is INVALID FOR SCORING, and the `ungated` column of `HEADS.md` equals
@@ -38,7 +38,7 @@ commits to the clean ones.
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row per run,
-  with the checker's verdict on the published copy.
+  with the verdict recorded when the pack was published.
 - **`<run>/`**, one folder per run, named `<game>-off-s<seed>`:
   - `journal.jsonl.gz`: the complete journal (every action, every machine
     grade, the agent's notes in full).
@@ -52,13 +52,11 @@ archived run directories (they carry the experiment machine's paths).
 ## Verify a journal
 
 ```bash
-gunzip -k ft09-off-s1/journal.jsonl.gz
-python3 ../../verify/assay_verify.py ft09-off-s1/journal.jsonl \
-  --expect-head 96b5583fb5cc8232af2d6919a7dd39ab39e2436bddc56fb74130b6b38e2db421
+python3 ../verify_all.py --pack e1b
 ```
 
-The checker exits 1 on this pack, because the verdict is INVALID FOR SCORING,
-while reporting the head as a match. The other heads are in `heads.json`.
+The gate expects INVALID FOR SCORING on this pack, as `heads.json` records
+it, with the head as a match. The other heads are in `heads.json`.
 
 ## What the table says
 

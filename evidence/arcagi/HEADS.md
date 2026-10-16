@@ -8,8 +8,11 @@ They are published **before** any journal is shared: whenever a run
 directory is later shared with anyone, it must verify against its head here:
 
 ```bash
-python3 ../../verify/assay_verify.py <shared-run-dir> --expect-head <head below>
+python3 ../verify_all.py --pack arcagi
 ```
+
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
 
 All 25 journals are now published alongside this table as
 `journal-<game>.jsonl.gz`. Every paid-action count below equals the

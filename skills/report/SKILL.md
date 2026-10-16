@@ -1,6 +1,6 @@
 ---
 name: report
-description: Write the report of an ASSAY run as a document beside it. The report gives how the run ended, the independent checker's verdict and the chain head, the predictions that held with their event ids, the misses with what the world reported instead, the player's Verified lines checked against the journal, what the run never exercised, and what the sessions cost. Use when the user wants a report, a write-up, the results or the evidence of an ASSAY run, wants to know what a run verified, or must decide whether to accept a player's declared stop.
+description: Write the report of an ASSAY run as a document beside it. The report gives how the run ended, the kernel's audit and the chain head, the predictions that held with their event ids, the misses with what the world reported instead, the player's Verified lines checked against the journal, what the run never exercised, and what the sessions cost. Use when the user wants a report, a write-up, the results or the evidence of an ASSAY run, wants to know what a run verified, or must decide whether to accept a player's declared stop.
 argument-hint: "[run dir] [--check CMD]"
 ---
 
@@ -10,10 +10,10 @@ argument-hint: "[run dir] [--check CMD]"
 fills it in, and in any other host it is the directory two levels above this
 SKILL.md.
 
-You read the run and never change it. The report reads only files. Its
-facts about the world come from the journal, so anyone holding the run
-directory gets the same facts, and its verdict on the record is the
-independent checker's own.
+You read the run and never change it. Its facts about the world come from
+the journal, so anyone holding the run directory gets the same facts, and
+its verdict on the record is the kernel's own audit, which the report runs
+through the launcher.
 
 - **The launcher:** `${CLAUDE_PLUGIN_ROOT}/bin/assay`. Use this absolute path
   in every command.
@@ -37,16 +37,12 @@ The arguments: $ARGUMENTS
    `pid` is alive (`kill -0 <pid>`), a runner is still playing the run. The
    report is then a snapshot; say so.
 
-## 2. Refresh the kernel's audit
+## 2. Run it from the run's shell
 
-```bash
-${CLAUDE_PLUGIN_ROOT}/bin/assay --run-dir <run dir> audit
-```
-
-The audit checks the chain heads anchored outside the run directory, which
-the report cannot read on its own, and writes `.assay/audit.json` for it.
-Run it from the shell that started the run, so that ASSAY_ANCHOR_DIR is the
-same. A problem line `anchor_env_mismatch` means it is not.
+The report runs `assay audit` itself, which checks the chain, the ungated
+rule and the heads anchored outside the run directory. Run the report from
+the shell that started the run, so that ASSAY_ANCHOR_DIR is the same. A
+problem line `anchor_env_mismatch` means it is not.
 
 ## 3. Add the external check, when the world has one
 
@@ -64,7 +60,8 @@ nothing about one.
 ## 4. Write the report
 
 ```bash
-python3 ${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py report --run-dir <run dir> [--check "..."]
+python3 ${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py report --run-dir <run dir> \
+    --assay ${CLAUDE_PLUGIN_ROOT}/bin/assay [--check "..."]
 ```
 
 The first line names the document and the JSON record. The last line,

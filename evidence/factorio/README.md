@@ -24,9 +24,7 @@ at M0), so the recorded programs replay without any model in the loop.
 ## Verify a journal
 
 ```bash
-gunzip -k journal-circuit.jsonl.gz
-python3 ../../verify/assay_verify.py journal-circuit.jsonl \
-  --expect-head eadd060eb596e48a84541d1fa2dc825ddf5afc970b24e1bf133d8bfde778fca4
+python3 ../verify_all.py --pack factorio
 ```
 
 The other heads are in `heads.json`. The verifier checks the chain, the

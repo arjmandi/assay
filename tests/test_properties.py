@@ -4,10 +4,9 @@ ungated rule and the registry parameters (#26, part one).
 Each property restates a public contract inside the test (the outcome forms of
 verify/PREDICTION_GRAMMAR.md, the two-line chain rule and the ungated rule of
 verify/JOURNAL_SPEC.md sections 4 and 6, the parameter schema documented in
-src/assay/registry.py) and holds the kernel to it over generated inputs; where
-the standalone checker has its own implementation, the kernel is held to the
-checker as well. The profile is derandomized, so a run is reproducible, and
-the example database is off, so a run writes nothing beside the tree.
+src/assay/registry.py) and holds the kernel to it over generated inputs. The
+profile is derandomized, so a run is reproducible, and the example database is
+off, so a run writes nothing beside the tree.
 """
 
 from __future__ import annotations
@@ -15,8 +14,6 @@ from __future__ import annotations
 import dataclasses
 import hashlib
 import math
-import sys
-from pathlib import Path
 from typing import Any
 
 import pytest
@@ -29,9 +26,6 @@ from assay.core import AssayError, RunPaths
 from assay.integrity import CHAIN_SEED, chain_over, chain_over_bytes, ungated_events
 from assay.predictions import parse_prediction
 from assay.registry import parse_registry_action, validate_registry
-
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "verify"))
-import assay_verify  # noqa: E402  the independent checker, as in test_verify_checker.py
 
 settings.register_profile(
     "assay", derandomize=True, max_examples=200, deadline=None, database=None
@@ -385,32 +379,27 @@ def kernel_chain(rows: list[str]) -> tuple[int, str]:
     return sum(1 for row in rows if row.strip()) - 1, chain_over(rows)
 
 
-def test_both_implementations_seed_with_the_spec_string():
+def test_the_kernel_seeds_with_the_spec_string():
     assert CHAIN_SEED == SPEC_SEED
-    assert assay_verify.CHAIN_SEED == SPEC_SEED
 
 
 def test_empty_journal_head_is_the_seed_hash():
     assert kernel_chain([]) == (-1, spec_chain([]))
-    assert assay_verify.compute_chain([]) == spec_chain([])
 
 
 @given(rows=st.lists(_line | _blank, max_size=12))
-def test_kernel_checker_and_spec_chains_agree(journal, rows):
+def test_the_kernel_and_the_spec_chains_agree(journal, rows):
     lines = [row for row in rows if row.strip()]  # blank lines are skipped
     last_id, head = kernel_chain(rows)
     assert last_id == len(lines) - 1
     assert head == spec_chain(lines)
-    assert head == assay_verify.compute_chain(lines)
     journal.events.write_text("".join(row + "\n" for row in rows))
-    assert assay_verify.read_lines(journal.events) == lines
     # `verify_disk` hashes the file's bytes without decoding them: the same head.
     assert chain_over_bytes(journal.events.read_bytes()) == head
 
 
 def _assert_heads_differ(lines: list[str], mutated: list[str]) -> None:
     assert spec_chain(mutated) != spec_chain(lines)
-    assert assay_verify.compute_chain(mutated) != assay_verify.compute_chain(lines)
     assert kernel_chain(mutated)[1] != kernel_chain(lines)[1]
 
 
@@ -518,16 +507,15 @@ def spec_ungated(events: list[dict[str, Any]]) -> list[int]:
 
 
 @given(events=journals)
-def test_kernel_and_checker_agree_on_ungated_events(events):
+def test_the_kernel_flags_the_spec_s_ungated_events(events):
     flagged = ungated_events(_kernel_events(events))
-    assert flagged == assay_verify.ungated_events(events)
     assert flagged == spec_ungated(events)
 
 
 @given(events=journals, data=st.data())
 def test_an_injected_bare_paid_event_is_always_flagged(events, data):
     # Injecting a paid, prediction-free action anywhere adds exactly its id, even
-    # when the chain is recomputed around it (test_verify_checker's attack).
+    # when the chain is recomputed around it.
     position = data.draw(st.integers(0, len(events)), label="position")
     before = ungated_events(_kernel_events(events))
     bare = {"action": "GO", "counts_action": True, "note": "injected"}
@@ -539,7 +527,6 @@ def test_an_injected_bare_paid_event_is_always_flagged(events, data):
         {index if index < position else index + 1 for index in before} | {position}
     )
     assert ungated_events(_kernel_events(rewritten)) == expected
-    assert assay_verify.ungated_events(rewritten) == expected
 
 
 # ------------------------------------------------------ registry parameters

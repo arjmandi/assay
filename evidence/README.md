@@ -1,7 +1,7 @@
 # evidence: the published journals
 
 Every run the harness reports is published here as its complete journal, a
-committed chain head and the checker's verdict, under the `assay-journal-v1`
+committed chain head and the verdict recorded at publication, under the `assay-journal-v1`
 standard (`../verify/JOURNAL_SPEC.md`). The packs:
 
 | pack | what | journals |
@@ -22,12 +22,15 @@ verdicts, and the machine-readable `heads.json`. Journals are gzipped
 (`journal-<name>.jsonl.gz`, or `<run>/journal.jsonl.gz` beside the writer's
 `chain.json`).
 
-Check every journal against its published head with the standard library
-alone:
+Check every journal against its published head with the kernel's own chain
+and ungated rules (run it with the interpreter the test suite uses):
 
 ```bash
 python3 evidence/verify_all.py
 ```
+
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal the head published here.
 
 The packs are MIT (`../verify/LICENSE`). They moved here from the retired
 `assay-verify` repository in 1.2.0.

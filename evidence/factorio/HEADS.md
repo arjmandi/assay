@@ -6,8 +6,11 @@ Opus 5, connect_entities-fixed adapter). Any shared copy of these runs must
 verify against its head here:
 
 ```bash
-python3 ../../verify/assay_verify.py <run-or-journal> --expect-head <head below>
+python3 ../verify_all.py --pack factorio
 ```
+
+A run directory shared later verifies with `assay --run-dir <run> audit`, and
+its `.assay/chain.json` head must equal its head below.
 
 | Task | Events | Paid | Progress | State | Stored chain | Chain head (SHA-256) |
 |---|---|---|---|---|---|---|

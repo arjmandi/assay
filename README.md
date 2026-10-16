@@ -226,7 +226,8 @@ unchanged. The experiments of October 2026 ran on commit 6ea56e4 of it
 
 ASSAY is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`). In
 1.2.0 the repository takes issues only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
-(`NOTICE`). The journal standard, the independent checker and the published
-journals are in `verify/` and `evidence/` under MIT (`verify/LICENSE`), so
-anyone can verify a journal without a license to the harness. They moved here
-from the retired assay-verify repository, which is archived with a pointer.
+(`NOTICE`). The journal standard and the published journals are in `verify/`
+and `evidence/` under MIT (`verify/LICENSE`). They moved here from the retired
+assay-verify repository, which is archived with a pointer. A journal is
+checked with the harness's own audit (`assay audit`); the independent checker
+of 1.2.0 was retired after 1.3.0, and the tag `v1.3.0` holds it.

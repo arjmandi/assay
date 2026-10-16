@@ -46,8 +46,8 @@ dc22 control and bp35 control were paused by the usage limit at 21:22Z on
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row per run,
-  with the cut event, the paid actions after the cut, the checker's verdict
-  on the published copy and the archived prefix's head.
+  with the cut event, the paid actions after the cut, the verdict recorded
+  when the pack was published and the archived prefix's head.
 - **`<run>/`**, one folder per run, named `<game>-resume` (module arm) or
   `<game>-resume-ctrl` (control arm):
   - `journal.jsonl.gz`: the complete journal, prefix and continuation.
@@ -61,9 +61,7 @@ path on the experiment machine). The arm and the cut of every run are in
 ## Verify a journal
 
 ```bash
-gunzip -k s5i5-resume/journal.jsonl.gz
-python3 ../../verify/assay_verify.py s5i5-resume/journal.jsonl \
-  --expect-head 3f7b3d133a6b502d0df72b41ecbe14bfc82a91163628674274bb550c15786f7b
+python3 ../verify_all.py --pack e2
 ```
 
 To confirm the shared prefix for a state, decompress the archived journal

@@ -5,7 +5,7 @@ counts it, the forms and the misses, the coverage as the kernel's coverage
 ledger reads the same events, the Verified lines against the journal, the
 ending by the Stop gate's rules and the runner's ledger, the declarations, the
 escaping of the player's text, the command line and an external check. A
-published journal gets the head its pack published, and the runner imports
+published journal on its own is reported as not audited, and the runner imports
 only the standard library and itself. End to end, a run the fake player
 played through the session mode, reported against the kernel's own
 PREDICTIONS line, its chain and its audit. Nothing here starts a model."""
@@ -314,19 +314,21 @@ def test_an_external_check_is_run_and_recorded(tmp_path, capsys):
     assert "ERROR | the check `no-such-checker-anywhere` is not on PATH" in capsys.readouterr().err
 
 
-def test_a_published_journal_reports_the_head_its_pack_published(tmp_path):
+def test_a_published_journal_alone_is_reported_and_called_not_audited(tmp_path):
     heads = json.loads((REPO / "evidence" / "factorio" / "heads.json").read_text())
     published = {entry["task"]: entry for entry in heads["runs"]}["circuit"]
     run = tmp_path.resolve() / "circuit"
     (run / ".arc").mkdir(parents=True)
     with gzip.open(REPO / "evidence" / "factorio" / "journal-circuit.jsonl.gz", "rb") as source:
         (run / ".arc" / "events.jsonl").write_bytes(source.read())
+    # A journal without its run is no run the kernel can audit, and holds no
+    # audit file: the report reads its facts and says it is not audited.
     record = report.build(run)
-    checker = record["integrity"]["checker"]
-    assert (checker["chain_head"], checker["verdict"], checker["state_dir"]) == (published["chain_head"], "CLEAN", ".arc")
+    assert record["integrity"]["verdict"] == "NOT AUDITED" and record["integrity"]["audit"] is None
     assert (record["ending"]["outcome"], record["ending"]["paid"]) == ("WIN", published["paid"])
     assert record["run"]["state_dir"] == ".arc" and record["sessions"] is None and record["notes"] is None
-    assert "## Never exercised" in report.render(record)
+    document = report.render(record)
+    assert "## Never exercised" in document and "- **Integrity:** not audited" in document
 
 
 def test_the_runner_imports_only_the_standard_library_and_itself():
@@ -398,9 +400,9 @@ def test_the_report_of_a_played_run_agrees_with_the_kernel(tmp_path):
         record = json.loads(run.with_name("run.report.json").read_text())
         assert record["predictions"]["line"] == line
         chain = json.loads((run / ".assay" / "chain.json").read_text())
-        checker = record["integrity"]["checker"]
-        assert (checker["verdict"], checker["chain_head"], checker["stored_chain"]) == ("CLEAN", chain["head"], "intact")
-        assert record["integrity"]["audit"]["current"] is True and record["integrity"]["audit"]["verdict"] == "CLEAN"
+        verdict = record["integrity"]
+        assert (verdict["verdict"], verdict["head"], verdict["audit"]["chain"]) == ("CLEAN", chain["head"], "intact")
+        assert verdict["audit"]["source"] == "assay audit, run for this report" and verdict["audit"]["current"] is True
         lines = (run / ".assay" / "events.jsonl").read_text().splitlines()
         ledger = coverage_ledger([Event.from_json(json.loads(text)) for text in lines])
         unit = record["coverage"]["unit"]

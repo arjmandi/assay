@@ -114,10 +114,10 @@ def test_the_run_skill_drives_the_session_mode_and_names_its_outcomes():
     assert "/assay:report" in run
 
 
-def test_the_report_skill_audits_then_reports_and_reads_a_stop_against_the_gaps():
+def test_the_report_skill_audits_through_the_launcher_and_reads_a_stop_against_the_gaps():
     skill = (REPO / "skills" / "report" / "SKILL.md").read_text()
-    assert "${CLAUDE_PLUGIN_ROOT}/bin/assay --run-dir <run dir> audit" in skill
     assert "${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py report --run-dir <run dir>" in skill
+    assert "--assay ${CLAUDE_PLUGIN_ROOT}/bin/assay" in skill and "assay audit" in skill
     assert '--check "python3 <pack>/checks/score.py --run {run_dir} --json"' in skill
     for word in ("SELF_STOP", "INVALID FOR SCORING", "Never exercised", "/assay:run"):
         assert word in skill, word

@@ -135,7 +135,8 @@ runner apply one rule.
 ## The report
 
 ```bash
-python3 -m tools.eval report --run-dir <run> [--out FILE] [--sessions DIR] [--check CMD] [--items N]
+python3 -m tools.eval report --run-dir <run> [--out FILE] [--sessions DIR] [--check CMD] [--items N] \
+    [--assay CMD | --no-audit]
 ```
 
 `report.py` writes what one run verified as a Markdown document,
@@ -154,7 +155,7 @@ The document's sections:
 |---|---|---|
 | Summary | one line each: how it ended, integrity, the predictions, what was never exercised, the external check when there is one, the cost | the sections below |
 | How it ended | WIN, CAP, USD_CAP, SELF_STOP with the declaration, OWNER_NEEDED, or UNFINISHED, by the Stop gate's rules; the final state and progress; the paid actions of the cap; an external check's verdict | the journal; the registry, the notes, the activity log and the runner's ledger for the stop's reason |
-| Integrity | the independent checker's verdict, the chain head, the kernel's last audit (the anchors outside the run directory) | `verify/assay_verify.py` over the journal; `.assay/audit.json` |
+| Integrity | the kernel's audit (the chain, the contiguity, the ungated rule, the anchors outside the run directory) and the head the kernel stored | `assay audit --json`, run for the report, else `.assay/audit.json`; `.assay/chain.json` |
 | What held | the PREDICTIONS line, as `assay status` prints it; per action and per outcome form (the text with its value left out), the events where it held and missed | the journal |
 | The misses | each missed outcome, with what the code read instead | the journal |
 | The player's Verified lines | each line of the notes' Verified section, with how the events it cites graded | the notes and the journal |
@@ -164,8 +165,12 @@ The document's sections:
 
 The facts about the world come from the journal alone, the public contract
 of `verify/JOURNAL_SPEC.md`, so anyone holding the run directory gets the
-same facts. The verdict on the record is the checker's own: the report
-loads `verify/assay_verify.py` by path and calls it. The meters count as
+same facts. The verdict on the record is the kernel's own: the report runs
+`assay audit --json` through the launcher (`--assay CMD`, by default the
+repository's `bin/assay`) and reads the head the kernel stored in
+`.assay/chain.json`. With `--no-audit`, or when the audit cannot run, it reads
+the last `audit.json` and says so; a directory with neither is reported as
+not audited. The meters count as
 `assay status` counts its PREDICTIONS line, leaving out notes, free text
 graded as change, the kernel's own predictions and the passes of a vacuous
 verifier (the identity rule of 1.2.0, recomputed from the journal). The
@@ -465,7 +470,7 @@ launcher and daemon: to a WIN, through an approval, to a declared stop, and
 past a STOP file, a failing player and a usage limit.
 `tests/test_eval_compare.py` runs both compare arms with stand-in players
 through the same launcher and daemon. `tests/test_eval_report.py` reports on fixture journals, on one published
-journal against its pack's head, and on a run the fake player played through
+journal on its own (not audited), and on a run the fake player played through
 the session mode, against the kernel's own PREDICTIONS line, coverage ledger,
 chain and audit. The suite never starts a session against anything under
 `bench/`; the E1 and E1b job files are only dry-run there.

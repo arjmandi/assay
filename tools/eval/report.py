@@ -2,7 +2,7 @@
 a person and a JSON record for a tool.
 
     python3 -m tools.eval report --run-dir DIR [--out FILE] [--sessions DIR]
-        [--check CMD] [--items N]
+        [--check CMD] [--items N] [--assay CMD | --no-audit]
 
 The document says how the run ended, whether its record is intact, which
 predictions held and on which events, what the world reported where they
@@ -13,11 +13,15 @@ because `assay export` already names the knowledge file a later run imports.
 
 Its facts about the world come from the journal alone (`events.jsonl`, the
 public contract of verify/JOURNAL_SPEC.md), so anyone holding the run
-directory gets the same facts, and its verdict on the record is the
-independent checker's own (verify/assay_verify.py, loaded by path). The
-meters are counted as `assay status` counts its PREDICTIONS line, and the
-coverage as the kernel's coverage audit counts it. Every other source is
-named in the section that uses it, because the chain covers none of them:
+directory gets the same facts. Its verdict on the record is the kernel's own:
+the report runs `assay audit --json` through the launcher, which checks the
+chain, the contiguity, the ungated rule and the anchors outside the run
+directory, and reads the head the kernel stored in `chain.json`. When the
+audit cannot run (`--no-audit`, or a directory that is no run of this
+kernel's) it reads the last `audit.json`, and says so. The meters are counted
+as `assay status` counts its PREDICTIONS line, and the coverage as the
+kernel's coverage audit counts it. Every other source is named in the section
+that uses it, because the chain covers none of them:
 
 - the pinned registry (`registry.json`): the goal and the caps;
 - the player's notes (`NOTES.md`): its Verified lines, its open questions,
@@ -25,8 +29,6 @@ named in the section that uses it, because the chain covers none of them:
 - the declared states (`channels.json`);
 - the activity log (`activity.jsonl`): the refusals, the owner's acts, the
   spend reports;
-- the kernel's last audit (`audit.json`, which `assay audit` writes): the
-  anchors outside the run directory, which only the kernel reads;
 - the session runner's ledger and status (`<run dir>.sessions/`): the
   hosts, the sessions, their bills, the Stop gate's decisions.
 
@@ -34,7 +36,9 @@ The verifier meter applies the identity rule of 1.2.0. A run recorded under
 the earlier never-failed rule can show a different count there than its own
 status line.
 
-It imports nothing from `assay` and writes nothing in the run directory. The
+It imports nothing from `assay`; the kernel runs as a subprocess, as the
+operator's launcher. Apart from the audit's own `audit.json`, it writes
+nothing in the run directory. The
 document goes to `<run dir>.report.md` and the record beside it, as
 `<run dir>.report.json`, unless `--out` names another file, which may not lie
 under the run's `.assay` or `.claude`. `--check CMD` runs an external
@@ -47,7 +51,6 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
-import importlib.util
 import json
 import math
 import re
@@ -60,11 +63,11 @@ from types import ModuleType
 from typing import Any
 
 from . import EvalError
-from .runner import REPO
+from .runner import DEFAULT_LAUNCHER
 from .session import STATE_SUFFIX, load_gate
 
 REPORT_VERSION = 1
-CHECKER_SCRIPT = REPO / "verify" / "assay_verify.py"
+AUDIT_TIMEOUT_SECONDS = 300
 STATE_DIRS = (".assay", ".arc")
 DOCUMENT_SUFFIX = ".report.md"
 RECORD_SUFFIX = ".report.json"
@@ -93,22 +96,6 @@ FORM_NAMES = {"level_up": "level+1", "coerced": "free text, graded as change"}
 
 
 # --- loading ---------------------------------------------------------------------
-
-
-def load_checker() -> ModuleType:
-    """The independent checker, loaded by path: the report's verdict on the
-    record is the one a third party gets from the same file."""
-    name = "assay_verify_checker"
-    loaded = sys.modules.get(name)
-    if loaded is not None:
-        return loaded
-    spec = importlib.util.spec_from_file_location(name, CHECKER_SCRIPT)
-    if spec is None or spec.loader is None:
-        raise EvalError(f"the checker {CHECKER_SCRIPT} cannot be loaded")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def find_state(run_dir: Path) -> Path:
@@ -177,7 +164,7 @@ def _invalid(grade: Mapping[str, Any]) -> bool:
 
 def event_id(event: Mapping[str, Any], index: int) -> int:
     """The event's id, or its position when the id is not a number (the
-    checker reports that as a contiguity problem)."""
+    audit reports that as a contiguity problem)."""
     value = event.get("id")
     return value if isinstance(value, int) and not isinstance(value, bool) else index
 
@@ -664,23 +651,59 @@ def sessions_view(state: Path) -> dict[str, Any] | None:
     }
 
 
-def audit_view(state: Path, events: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    """The kernel's last audit, when `assay audit` wrote one, and whether it
-    covers the whole journal: computed after its last event, over as many
-    events."""
-    audit = load_gate().read_json(state / "audit.json")
+def kernel_audit(
+    run_dir: Path, state: Path, events: Sequence[Mapping[str, Any]], launcher: list[str] | None,
+) -> dict[str, Any] | None:
+    """The kernel's audit of the run: `assay audit --json` through the
+    launcher, else the last `audit.json` it wrote, with whether that covers
+    the whole journal (computed after its last event, over as many events);
+    None when there is neither."""
+    audit: Any = None
+    source = None
+    if launcher:
+        try:
+            done = subprocess.run([*launcher, "--run-dir", str(run_dir), "audit", "--json"], capture_output=True,
+                                  text=True, timeout=AUDIT_TIMEOUT_SECONDS, check=False)
+            audit = json.loads(done.stdout) if done.returncode == 0 else None
+            source = "assay audit, run for this report"
+        except (OSError, subprocess.TimeoutExpired, ValueError):
+            audit = None
+    if not isinstance(audit, Mapping):
+        audit = load_gate().read_json(state / "audit.json")
+        source = "the last .assay/audit.json"
     if not isinstance(audit, Mapping):
         return None
     computed = _instant(audit.get("computed_at"))
     last = _instant(events[-1].get("timestamp"))
     return {
+        "source": source,
         "computed_at": computed.isoformat() if computed else None,
         "current": bool(computed and last and computed >= last) and audit.get("events") == len(events),
         "verdict": "INVALID FOR SCORING" if audit.get("invalid_for_scoring") else "CLEAN",
+        "events": audit.get("events"),
+        "paid": audit.get("paid"),
+        "contiguous": audit.get("contiguous"),
+        "ungated": list(audit.get("ungated") or []),
         "chain": audit.get("chain"),
         "anchors": audit.get("anchors"),
         "anchor_count": audit.get("anchor_count"),
         "problems": list(audit.get("problems") or []),
+    }
+
+
+def integrity(
+    run_dir: Path, state: Path, events: Sequence[Mapping[str, Any]], config: Mapping[str, Any],
+    launcher: list[str] | None,
+) -> dict[str, Any]:
+    """The kernel's verdict on the record, the head it stored, the spec."""
+    chain = _mapping(load_gate().read_json(state / "chain.json"))
+    audit = kernel_audit(run_dir, state, events, launcher)
+    return {
+        "verdict": audit["verdict"] if audit else "NOT AUDITED",
+        "audit": audit,
+        "head": chain.get("head") if isinstance(chain.get("head"), str) else None,
+        "head_event": chain.get("event_id"),
+        "spec": str(config.get("journal_spec") or "assay-journal-v1"),
     }
 
 
@@ -773,14 +796,15 @@ def ending(
     }
 
 
-def build(run_dir: Path, *, sessions_dir: Path | None = None, check: str | None = None) -> dict[str, Any]:
-    """The report's record of one run directory."""
+def build(
+    run_dir: Path, *, sessions_dir: Path | None = None, check: str | None = None, launcher: list[str] | None = None,
+) -> dict[str, Any]:
+    """The report's record of one run directory. `launcher` runs the
+    kernel's audit; without one the report reads the last audit file."""
     run_dir = run_dir.resolve()
     state = find_state(run_dir)
-    checker = load_checker()
     gate = load_gate()
-    verdict = checker.verify(run_dir)
-    events, _ = checker.parse_events(checker.read_lines(state / "events.jsonl"))
+    events = gate.read_jsonl(state / "events.jsonl")
     if not events:
         raise EvalError(f"the journal in {state} holds no events")
     registry = _mapping(gate.read_json(state / "registry.json"))
@@ -825,7 +849,7 @@ def build(run_dir: Path, *, sessions_dir: Path | None = None, check: str | None 
             "events": len(events),
         },
         "ending": ending(events, view, gate, activity, said, sessions, last_session),
-        "integrity": {"checker": verdict, "audit": audit_view(state, events)},
+        "integrity": integrity(run_dir, state, events, config, launcher),
         "predictions": {
             "meter": counts,
             "line": meter_line(counts),
@@ -933,13 +957,12 @@ def _held_missed(counts: Mapping[str, Any]) -> tuple[int, int]:
 def summary_lines(record: Mapping[str, Any]) -> list[str]:
     """The short form, for the command line."""
     end = record["ending"]
-    checker = record["integrity"]["checker"]
     held, missed = _held_missed(record["predictions"]["meter"])
     cap = end["cap"] if end["cap"] is not None else "no cap"
     spend = record["activity"]["spend"]
     return [
         f"REPORT | {end['outcome']} | progress {end['progress'][0]}/{end['progress'][1]} | paid actions {end['paid']}/{cap} | "
-        f"{checker['verdict']} | held {held}, missed {missed} | "
+        f"{record['integrity']['verdict']} | held {held}, missed {missed} | "
         + (f"{_money(spend['usd'])} reported to the run" if spend["reports"] else "no spend reported"),
     ]
 
@@ -954,7 +977,7 @@ def _head(record: Mapping[str, Any], items: int) -> list[str]:
     identity = [f"Run `{run['name']}` ({run['dir']})"]
     if run["harness_version"]:
         identity.append(f"harness {run['harness_version']}")
-    identity.append(f"journal spec {record['integrity']['checker']['spec']}")
+    identity.append(f"journal spec {record['integrity']['spec']}")
     out.append(", ".join(identity) + ".")
     if run["goal"]:
         out.append(f"The goal, from the pinned registry: {_prose(run['goal'])}.")
@@ -967,8 +990,8 @@ def _head(record: Mapping[str, Any], items: int) -> list[str]:
 
 def _summary(record: Mapping[str, Any], items: int) -> list[str]:
     end = record["ending"]
-    checker = record["integrity"]["checker"]
-    audit = record["integrity"]["audit"]
+    verdict = record["integrity"]
+    audit = verdict["audit"]
     counts = record["predictions"]["meter"]
     cover = record["coverage"]
     check = record["check"]
@@ -985,15 +1008,12 @@ def _summary(record: Mapping[str, Any], items: int) -> list[str]:
         f"- **How it ended:** {where}. Progress {end['progress'][0]}/{end['progress'][1]}, "
         f"{_plural(end['paid'], 'paid action')} {_cap_text(end)}."
     )
-    anchors = ""
-    if audit is not None:
-        anchors = f"; {_anchors(audit)} at the kernel's last audit"
-        if not audit["current"]:
-            anchors += ", which is older than the journal"
-    out.append(
-        f"- **Integrity:** {checker['verdict']} by the independent checker; chain head "
-        f"`{checker['chain_head'][:16]}`{anchors}."
-    )
+    if audit is None:
+        out.append("- **Integrity:** not audited: `assay audit` could not run here and no audit file is there.")
+    else:
+        head = f"; chain head `{verdict['head'][:16]}`" if verdict["head"] else ""
+        stale = ", from an audit older than the journal" if not audit["current"] else ""
+        out.append(f"- **Integrity:** {audit['verdict']} by the kernel's audit{head}; {_anchors(audit)}{stale}.")
     left_out = counts["coerced"] + counts["machine"] + counts["vacuous_passes"]
     out.append(
         f"- **Predictions:** {_plural(held, 'outcome')} held and {missed} missed on {_plural(end['paid'], 'paid action')}, "
@@ -1094,38 +1114,34 @@ def _against_the_gaps(unit: Mapping[str, Any]) -> str:
 
 
 def _integrity(record: Mapping[str, Any], items: int) -> list[str]:
-    checker = record["integrity"]["checker"]
-    audit = record["integrity"]["audit"]
-    head = checker["chain_head"]
+    verdict = record["integrity"]
+    audit = verdict["audit"]
     out = ["", "## Integrity", ""]
-    out.append(
-        f"The independent checker, verify/assay_verify.py (spec {checker['spec']}), over the journal alone: "
-        f"**{checker['verdict']}**. {checker['events']} events, {checker['paid']} paid; contiguous "
-        f"{'yes' if checker['contiguous'] else 'NO'}; {len(checker['ungated'])} ungated paid events; the stored "
-        f"chain state is {checker['stored_chain']}."
-    )
-    for problem in checker["contiguity_problems"][:items]:
-        out.append(f"- problem: {_prose(problem)}")
-    if checker["ungated"]:
-        out.append(f"- ungated: {ids(checker['ungated'], items)}. One ungated event invalidates the run for scoring.")
-    out += ["", f"The chain head: `{head}` (after e{checker['events'] - 1}).", ""]
     if audit is None:
         out.append(
-            "The kernel's audit has not been run on this run directory (`assay audit` writes it). It checks the "
-            "chain heads anchored outside the run directory, which the journal alone cannot show."
+            "Not audited: `assay audit` could not run on this directory and it holds no audit file. The audit "
+            "checks the chain, the contiguity of the ids, the ungated rule (verify/JOURNAL_SPEC.md sections 4 to 6) "
+            "and the heads anchored outside the run directory."
         )
     else:
         out.append(
-            f"The kernel's last audit (.assay/audit.json, {_when(audit['computed_at'])}"
+            f"The kernel's audit ({audit['source']}, {_when(audit['computed_at'])}"
             + ("" if audit["current"] else "; older than the journal's last event, so rerun `assay audit`")
-            + f"): {audit['verdict']}, chain {audit['chain']}, {_anchors(audit)}."
+            + f"): **{audit['verdict']}**. {audit['events']} events, {audit['paid']} paid; contiguous "
+            f"{'yes' if audit['contiguous'] else 'NO'}; {len(audit['ungated'])} ungated paid events; chain "
+            f"{audit['chain']}; {_anchors(audit)}."
         )
+        if audit["ungated"]:
+            out.append(f"- ungated: {ids(audit['ungated'], items)}. One ungated event invalidates the run for scoring.")
         for problem in audit["problems"][:items]:
             out.append(f"- problem: {_prose(problem)}")
+    if verdict["head"]:
+        event = f"after e{verdict['head_event']}" if verdict["head_event"] is not None else "as stored"
+        out += ["", f"The chain head the kernel stored (`.assay/chain.json`, {event}): `{verdict['head']}`."]
     out += [
         "",
-        "To check a copy of this journal against this report: "
-        f"`python3 verify/assay_verify.py <run dir> --expect-head {head}`.",
+        "To check this run again, or a copy of it: `assay --run-dir <run dir> audit`, and compare the copy's "
+        "`.assay/chain.json` head with the one above.",
     ]
     return out
 
@@ -1414,6 +1430,8 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--sessions", type=Path, metavar="DIR", help="the session runner's state (default: <run dir>.sessions)")
     parser.add_argument("--check", metavar="CMD", help="an external checker to run, `{run_dir}` replaced; exit status 0 is a pass")
     parser.add_argument("--items", type=int, default=DEFAULT_ITEMS, metavar="N", help=f"the longest list the document shows (default {DEFAULT_ITEMS})")
+    parser.add_argument("--assay", metavar="CMD", help=f"the launcher that runs the kernel's audit, split like a shell line (default: {DEFAULT_LAUNCHER})")
+    parser.add_argument("--no-audit", action="store_true", help="read the last .assay/audit.json instead of running the audit")
     return parser
 
 
@@ -1429,7 +1447,8 @@ def main(argv: list[str]) -> int:
             raise EvalError(f"no session ledger at {args.sessions}: expected sessions.json")
         document = args.out or run_dir.with_name(run_dir.name + DOCUMENT_SUFFIX)
         _refuse_inside(run_dir, document)
-        record = build(run_dir, sessions_dir=args.sessions, check=args.check)
+        launcher = None if args.no_audit else (shlex.split(args.assay) if args.assay else [str(DEFAULT_LAUNCHER)])
+        record = build(run_dir, sessions_dir=args.sessions, check=args.check, launcher=launcher)
         try:
             data = write(record, document, args.items)
         except OSError as error:

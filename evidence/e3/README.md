@@ -43,7 +43,7 @@ gap is a preparation artifact, not a session boundary.
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row per run,
-  with the import source and the checker's verdict on the published copy.
+  with the import source and the verdict recorded when the pack was published.
 - **`<run>/`**, one folder per run, named `<game>-import-s1`:
   - `journal.jsonl.gz`: the complete journal.
   - `chain.json`: the writer's stored chain state `{event_id, head}`.
@@ -56,9 +56,7 @@ is recorded in the archived creation records.
 ## Verify a journal
 
 ```bash
-gunzip -k tr87-import-s1/journal.jsonl.gz
-python3 ../../verify/assay_verify.py tr87-import-s1/journal.jsonl \
-  --expect-head bae62c21c55d3e2a1e58e5bcdf86e03e3f41a7241d28cdbe81df5f2896afdfbb
+python3 ../verify_all.py --pack e3
 ```
 
 The other head is in `heads.json`.

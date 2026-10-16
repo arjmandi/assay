@@ -1188,8 +1188,8 @@ the modules do not observe a recovered result, an aggregate outcome on a recover
 is not opened, and no receipt is written, since no command is waiting for one. The audit
 names a recovered event without its prediction (`recovered_without_prediction` in
 `audit.json`, the line `n of them recovered without its prediction: the record predates
-1.2.0 or was a model-plan step; counted UNGATED above`); the independent checker needs
-no change, since the ungated rule reads the fields. `grade_pending(run, outcomes, prior,
+1.2.0 or was a model-plan step; counted UNGATED above`); the ungated rule reads the
+fields, so a reader of the journal alone reaches the same verdict. `grade_pending(run, outcomes, prior,
 pending, *, elapsed_s)` takes the duration as a required keyword, so every live caller
 passes the measured one and only recovery passes None.
 

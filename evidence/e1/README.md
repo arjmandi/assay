@@ -27,16 +27,16 @@ materials.
 The six `*-ungated-*` journals come from a control arm run with
 `gate: optional` (the Gate column of `HEADS.md`). Under that
 key the kernel accepts an action without a prediction and journals it as an
-UNGATED event, which this checker marks invalid for scoring, as a control arm
+UNGATED event, which the audit marks invalid for scoring, as a control arm
 should be. The agents attached a prediction to every paid action except
 resets (which never carry one), so these six journals contain no UNGATED
-events and verify CLEAN. The `ungated` column of `HEADS.md` is the checker's
-own count on the published copy, and anyone can recompute it.
+events and verify CLEAN. The `ungated` column of `HEADS.md` is the count
+recorded on the published copy, and anyone can recompute it.
 
 ## Contents
 
 - **`HEADS.md` / `heads.json`**: the commitment artifact, one row per run,
-  with the checker's verdict on the published copy.
+  with the verdict recorded when the pack was published.
 - **`<run>/`**, one folder per run, named `<game>-<arm>-s<seed>`:
   - `journal.jsonl.gz`: the complete journal (every prediction registered
     before its action, every machine grade, the agent's notes in full).
@@ -51,13 +51,12 @@ agent string; the value itself is never stored anywhere in a run.
 ## Verify a journal
 
 ```bash
-gunzip -k ft09-gated-s1/journal.jsonl.gz
-python3 ../../verify/assay_verify.py ft09-gated-s1/journal.jsonl \
-  --expect-head b089902b55c474664afcfc6131fc4750adacc2220f9aaf566ec820c17a9ccfe9
+python3 ../verify_all.py --pack e1
 ```
 
-Decompressing beside `chain.json` lets the checker report the stored chain
-as `intact` as well as recomputing the head. The other heads are in
+The gate reads the journal from its gzip, checks it against the `chain.json`
+beside it as well as against the published head, and applies the kernel's
+own chain and ungated rules. The other heads are in
 `heads.json`.
 
 ## What the table says
