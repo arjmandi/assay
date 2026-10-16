@@ -3,10 +3,15 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
-## 1.3.0 (unreleased)
+## 1.3.0 (2026-10-16)
 
 ### Changed
 
+- The release of the plugin. The version is 1.3.0 in the package and in
+  `.claude-plugin/plugin.json`, which now carries it, so an installed plugin
+  updates by version rather than by commit. The README's first screen is the
+  two install lines for Claude Code and one `/assay:attach` example, followed
+  by the description as it was.
 - The words for a prediction. A prediction is what the agent writes before
   an action. An outcome is one checkable part of it, and a prediction
   carries several outcomes separated by `;`. Held and missed are the labels

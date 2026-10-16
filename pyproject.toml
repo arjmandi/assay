@@ -30,7 +30,8 @@ dev = ["pytest", "hypothesis", "ruff", "mypy"]
 assay = "assay.cli:main"
 
 [project.urls]
-Homepage = "https://arjmandi.github.io/assay-site/"
+Homepage = "https://arjmandi.github.io/assay/"
+Repository = "https://github.com/arjmandi/assay"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

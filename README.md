@@ -1,5 +1,32 @@
 # ASSAY
 
+ASSAY is a referee for agents: the agent must predict what each action will
+do before it acts, code grades the prediction against the world's response,
+and the run is over when the world says so, not when the agent believes it.
+
+## Start in Claude Code
+
+```
+/plugin marketplace add arjmandi/assay
+/plugin install assay@assay
+```
+
+Then put it on a task:
+
+```
+/assay:attach "reconcile the bank statement against the books in ledger.csv, month by month"
+```
+
+`/assay:attach` asks up to four questions about the task, builds a world for
+it from the catalog in `worlds/`, and starts the run. `/assay:run` plays it,
+session after session, until the run says it is over. `/assay:report` writes
+up what the run verified, and `/assay:compare` runs the same task under
+Claude Code with `/goal` and scores both with one checker. Without Claude
+Code, `pip install assay-harness` gives the `assay` command line, and
+`GUIDE.md` starts from there.
+
+## What it is
+
 ASSAY is a reasoning harness. To start, it needs a world to interact with, tools it
 has access to, and the goal we want it to achieve. Then it starts to explore that world
 by building a small formal language that symbolically describes the world. It trusts
