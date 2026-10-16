@@ -3,7 +3,7 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
-## Unreleased
+## 1.4.0 (2026-10-16)
 
 ### Added
 

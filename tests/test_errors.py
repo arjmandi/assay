@@ -345,7 +345,7 @@ def test_a_command_without_a_result_record_prints_its_lines_under_json(tmp_path)
     version = run_cli(run, "version", "--json")
     assert version.returncode == 0 and version.stderr == ""
     document = json.loads(version.stdout)
-    assert list(document) == ["lines"] and document["lines"][0].startswith("assay 1.3.0 | journal spec ")
+    assert list(document) == ["lines"] and document["lines"][0].startswith("assay 1.4.0 | journal spec ")
     assert version.stdout.count("\n") == 1
     try:
         assert _start(run).returncode == 0

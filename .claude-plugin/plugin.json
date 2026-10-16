@@ -1,7 +1,7 @@
 {
   "name": "assay",
   "displayName": "ASSAY",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Put ASSAY, the harness that grades a prediction before every action an agent takes, on a task: classify it with four questions, build a world for it, start the run with the owner token kept out of the agent's reach, play it session after session, stopping only when the run says so, report what the run verified, and compare it with Claude Code and /goal.",
   "author": {
     "name": "Mohsen Arjmandi",
