@@ -215,6 +215,43 @@ Changelog. Dates are UTC.
   merge, and runs the fake player through the real CLI and daemon: to a
   WIN, through an approval, to a declared stop, and past a STOP file, a
   failing player and a usage limit.
+- `/assay:report` and the report mode of the evaluation runner, `python3 -m
+  tools.eval report --run-dir DIR`. It writes what one run verified as a
+  Markdown document beside the run directory, `<run>.report.md`, with the
+  same facts as a JSON record beside it, and nothing in the run directory.
+  - **How it ended:** WIN, CAP, USD_CAP, SELF_STOP with the player's
+    declaration, OWNER_NEEDED or UNFINISHED, by the Stop gate's rules and
+    the runner's ledger.
+  - **Integrity:** the verdict of `verify/assay_verify.py`, which the report
+    loads by path, the chain head with the command that checks a copy
+    against it, and the kernel's last audit for the anchors outside the
+    run directory.
+  - **What held and the misses:** the PREDICTIONS line exactly as `assay
+    status` prints it; per action and outcome form, the events where it
+    held and missed; each miss with what the code read instead.
+  - **The player's Verified lines,** each with how the events it cites
+    graded in the journal.
+  - **Never exercised:** the coverage audit over the journal, the unit where
+    the run stands as the kernel's audit reads it, the conclusions of
+    impossibility journaled with their coverage audits, and the player's
+    open questions.
+  - **The owner's acts, the refusals by code, and the sessions and their
+    cost** from the activity log and the runner's ledger.
+
+  The facts about the world come from the journal alone, so anyone holding
+  the run directory gets the same ones, and each section names the other
+  files it reads. `--check CMD` runs an external checker, such as a pack's
+  `checks/score.py`, and records its verdict. Over the 66 published
+  journals the report's heads and verdicts equal the published ones. The
+  skill refreshes the kernel's audit, adds a pack's checker when the world
+  has one, and sets a declared stop beside what the run never exercised.
+  `/assay:run` now offers it when a run ends. `tests/test_eval_report.py`
+  covers the meters, the forms, the coverage against the kernel's coverage
+  ledger, the Verified lines, the ending, the declarations, the escaping of
+  the player's text, the command line and the check, one published journal
+  against its pack's head, the runner's imports (the standard library and
+  itself), and a run the fake player played through the session mode,
+  against the kernel's own PREDICTIONS line, chain and audit.
 
 ## 1.2.0 (2026-10-09)
 

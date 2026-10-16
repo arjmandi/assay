@@ -73,7 +73,7 @@ def test_no_hook_file_applies_to_every_session():
 
 def test_every_skill_names_its_directory_and_its_paths_exist():
     skills = sorted((REPO / "skills").glob("*/SKILL.md"))
-    assert [path.parent.name for path in skills] == ["attach", "run"]
+    assert [path.parent.name for path in skills] == ["attach", "report", "run"]
     for path in skills:
         fields, body = _frontmatter(path)
         assert fields["name"] == path.parent.name
@@ -111,6 +111,22 @@ def test_the_run_skill_drives_the_session_mode_and_names_its_outcomes():
     # The player's prompt tells it how to declare a stop, in the gate's words.
     start = (REPO / "skills" / "attach" / "start.md").read_text()
     assert "begins with STOP: and says why" in start and "/assay:run" in start
+    assert "/assay:report" in run
+
+
+def test_the_report_skill_audits_then_reports_and_reads_a_stop_against_the_gaps():
+    skill = (REPO / "skills" / "report" / "SKILL.md").read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/bin/assay --run-dir <run dir> audit" in skill
+    assert "${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py report --run-dir <run dir>" in skill
+    assert '--check "python3 <pack>/checks/score.py --run {run_dir} --json"' in skill
+    for word in ("SELF_STOP", "INVALID FOR SCORING", "Never exercised", "/assay:run"):
+        assert word in skill, word
+    # Every pack's checker takes the run directory as the skill passes it.
+    for pack in _packs():
+        assert "--run" in (pack / "checks" / "score.py").read_text()
+    # The document's section names the skill quotes are the report's own.
+    report = (REPO / "tools" / "eval" / "report.py").read_text()
+    assert '"## Never exercised"' in report and "### The external check" in report
 
 
 def _packs() -> list[Path]:

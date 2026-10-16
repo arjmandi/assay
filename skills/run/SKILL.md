@@ -108,3 +108,6 @@ The last line of the output is `OUTCOME | <outcome> | ...`.
 
 Keep it short: the outcome, the sessions, the paid actions of the budget,
 the spend the host reported, the audit's verdict, and where the logs are.
+Then offer `/assay:report`, which writes what the run verified as a
+document. When the run ended SELF_STOP, the report sets the declaration
+beside what the run never exercised.

@@ -413,6 +413,15 @@ player writes a line beginning `STOP:` in `.assay/NOTES.md`. When the owner
 must approve or waive an action, the runner stops and Claude asks you, runs
 the owner's command with your token file, and starts the player again.
 
+`/assay:report` writes what the run verified as a document beside the run
+directory, `<run>.report.md`, with a JSON record beside it. It says how the
+run ended, whether the record is intact (the independent checker's verdict
+and the chain head), which predictions held and on which events, what the
+world reported where they missed, how the player's Verified lines stand
+against the journal, what the run never exercised, and what the sessions
+cost. Read a declared stop against its "Never exercised" section: a
+conclusion that rests on an untested rule is untested.
+
 The preview builds three kinds of world:
 - worlds on this machine: files, simulators and games driven by commands;
 - repositories whose tests decide the goal;

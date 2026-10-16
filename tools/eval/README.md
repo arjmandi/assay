@@ -24,7 +24,9 @@ From the repository root (`python3 -m tools.eval`), or by path from anywhere
 lists the options.
 
 The session mode plays one run that already exists, as the next section
-describes. It is what `/assay:run` (`skills/run/`) launches.
+describes. It is what `/assay:run` (`skills/run/`) launches. The report mode
+writes up one run, for `/assay:report` (`skills/report/`), as the section
+after it describes.
 
 ## The session mode
 
@@ -128,6 +130,56 @@ and rewrites with the launch's counts before each session. A person's own
 session in the run directory is never held. A run it cannot read is never
 held either. The runner loads the same file by path, so the gate and the
 runner apply one rule.
+
+## The report
+
+```bash
+python3 -m tools.eval report --run-dir <run> [--out FILE] [--sessions DIR] [--check CMD] [--items N]
+```
+
+`report.py` writes what one run verified as a Markdown document,
+`<run>.report.md` beside the run directory, and the same facts as a JSON
+record beside it, `<run>.report.json`, for a tool to read. It writes nothing
+in the run directory, and `--out` may not point under its `.assay` or
+`.claude`. The last line it prints is the short form:
+
+```
+REPORT | SELF_STOP | progress 0/1 | paid actions 3/40 | CLEAN | held 1, missed 1 | $0.04 reported to the run
+```
+
+The document's sections:
+
+| Section | What it says | Read from |
+|---|---|---|
+| Summary | one line each: how it ended, integrity, the predictions, what was never exercised, the external check when there is one, the cost | the sections below |
+| How it ended | WIN, CAP, USD_CAP, SELF_STOP with the declaration, OWNER_NEEDED, or UNFINISHED, by the Stop gate's rules; the final state and progress; the paid actions of the cap; an external check's verdict | the journal; the registry, the notes, the activity log and the runner's ledger for the stop's reason |
+| Integrity | the independent checker's verdict, the chain head, the kernel's last audit (the anchors outside the run directory) | `verify/assay_verify.py` over the journal; `.assay/audit.json` |
+| What held | the PREDICTIONS line, as `assay status` prints it; per action and per outcome form (the text with its value left out), the events where it held and missed | the journal |
+| The misses | each missed outcome, with what the code read instead | the journal |
+| The player's Verified lines | each line of the notes' Verified section, with how the events it cites graded | the notes and the journal |
+| Never exercised | the actions advertised and never taken, the ones taken six times or more that never changed the world, the ones never given a specific outcome, the declared states never graded; the progress unit where the run stands, as the kernel's coverage audit reads it; the conclusions of impossibility the player journaled, with their coverage audits; the player's open questions | the journal; `.assay/channels.json`; the notes |
+| The owner's acts and the refusals | approvals, waivers, ratified goals, and the commands the harness refused, by code | the activity log |
+| Sessions and cost | per session, the host and its version, the model, the minutes, the paid actions, the bill, the Stop gate's blocks and why it ended; the spend reported to the run | the runner's ledger; the activity log |
+
+The facts about the world come from the journal alone, the public contract
+of `verify/JOURNAL_SPEC.md`, so anyone holding the run directory gets the
+same facts. The verdict on the record is the checker's own: the report
+loads `verify/assay_verify.py` by path and calls it. The meters count as
+`assay status` counts its PREDICTIONS line, leaving out notes, free text
+graded as change, the kernel's own predictions and the passes of a vacuous
+verifier (the identity rule of 1.2.0, recomputed from the journal). The
+coverage counts as the kernel's coverage audit counts it. The report imports
+nothing from `assay`. Each section names the other files it reads, because
+the chain covers none of them. The registry, the notes, the declared states,
+the activity log, the audit file and the ledger are operator-side and
+agent-side state, outside the journal.
+
+`--check CMD` runs an external checker, such as a pack's
+`checks/score.py --run {run_dir} --json`, with `{run_dir}` replaced by the
+run directory. The report records its exit status (0 is a pass) and its
+output, as JSON when it prints a JSON object. `--sessions DIR` names the
+runner's state when it is not `<run>.sessions`. `--items N` caps the
+document's lists, 25 by default. The JSON record always holds every item.
 
 ## The job file
 
@@ -338,9 +390,12 @@ launcher, CLI and daemon: two seeds, two players at a time, each session a
 operator's resume (`RECOVERED | replayed 1 paid actions`) and reaches WIN.
 `tests/test_eval_session.py` runs the session mode with it, through the same
 launcher and daemon: to a WIN, through an approval, to a declared stop, and
-past a STOP file, a failing player and a usage limit. The suite never starts
-a session against anything under `bench/`; the E1 and E1b job files are only
-dry-run there.
+past a STOP file, a failing player and a usage limit.
+`tests/test_eval_report.py` reports on fixture journals, on one published
+journal against its pack's head, and on a run the fake player played through
+the session mode, against the kernel's own PREDICTIONS line, coverage ledger,
+chain and audit. The suite never starts a session against anything under
+`bench/`; the E1 and E1b job files are only dry-run there.
 
 ## Reproducing E1 and E1b
 

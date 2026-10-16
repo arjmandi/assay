@@ -5,6 +5,7 @@
         [--max-hours H] [--poll-seconds S] [--pause-minutes M]
         [--bootstrap-seed N] [--bootstrap-resamples N]
     python3 -m tools.eval session --run-dir DIR ...    (the session mode, session.py)
+    python3 -m tools.eval report --run-dir DIR ...     (the report of one run, report.py)
 
 One error voice, as the kernel's: `ERROR | message`, exit 2.
 """
@@ -18,6 +19,7 @@ from pathlib import Path
 from . import EvalError
 from .jobs import load_design
 from .runner import DEFAULT_LAUNCHER, Runner, default_state_dir, launcher_argv
+from .report import main as report_main
 from .session import main as session_main
 
 
@@ -27,7 +29,7 @@ def _parser() -> argparse.ArgumentParser:
         description="Run the jobs of a design: worlds times arms times seeds from one job file, "
         "the operator's start before each player session, per-seed results and a bootstrap summary.",
         epilog="`python3 -m tools.eval session --help`: the session mode, one run the operator already "
-        "started, played session after session.",
+        "started, played session after session. `python3 -m tools.eval report --help`: the report of one run.",
     )
     parser.add_argument("--jobs", type=Path, required=True, help="the job file (JSON; tools/eval/README.md)")
     parser.add_argument(
@@ -55,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
     arguments = sys.argv[1:] if argv is None else list(argv)
     if arguments[:1] == ["session"]:
         return session_main(arguments[1:])
+    if arguments[:1] == ["report"]:
+        return report_main(arguments[1:])
     args = _parser().parse_args(arguments)
     try:
         for name in ("max_concurrency", "max_sessions"):
