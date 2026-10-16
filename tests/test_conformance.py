@@ -35,6 +35,8 @@ ADAPTERS = {
     # The catalog's command worlds (worlds/README.md): every pack and template
     # carries the same stub over the command-world engine.
     "spreadsheet-reconcile": REPO / "worlds" / "recipes" / "spreadsheet-reconcile" / "adapter.py",
+    "flaky-test": REPO / "worlds" / "recipes" / "flaky-test" / "adapter.py",
+    "hidden-grammar": REPO / "worlds" / "recipes" / "hidden-grammar" / "adapter.py",
     "switchboard": REPO / "worlds" / "archetypes" / "local" / "template" / "adapter.py",
     "repo-template": REPO / "worlds" / "archetypes" / "repo" / "template" / "adapter.py",
     "legacy-api": REPO / "worlds" / "recipes" / "legacy-api" / "adapter.py",

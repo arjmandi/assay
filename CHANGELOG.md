@@ -252,6 +252,44 @@ Changelog. Dates are UTC.
   against its pack's head, the runner's imports (the standard library and
   itself), and a run the fake player played through the session mode,
   against the kernel's own PREDICTIONS line, chain and audit.
+- Two packs and `/assay:compare`.
+  - **`worlds/recipes/flaky-test`** (M-R-C-0, the repo archetype): a
+    sales-report library whose suite fails on about half its runs,
+    because a sort keeps a set's hash-dependent order for ties. The world
+    is won when the suite passes twenty runs of twenty. Its checker puts
+    the project's tests and runner back, adds tests of its own, and runs
+    them under thirty fixed hash seeds, so a retry, a skip or an
+    alphabetical sort that breaks the documented order scores wrong. The
+    project carries its own standard-library runner, `runtests.py`, which
+    writes the JUnit report the repo world reads, so the pack needs no
+    pytest.
+  - **`worlds/recipes/hidden-grammar`** (M-E-N-0, the local archetype): a
+    constructed language drawn from the seed, five rules, and a speaker
+    who answers 40 questions with acceptable or not. The agent writes
+    `accept.py`. Its checker scores the classifier on 400 held-out
+    sentences, by rule, and names the rules the arm never tested with a
+    sentence that broke only that rule.
+  - **The compare mode,** `python3 -m tools.eval compare --pack DIR`, runs
+    a pack's pre-registered `compare.json`. The assay arm is the session
+    mode with its Stop gate, then the report with the checker. The goal
+    arm is one `claude -p "/goal ..."` session on a bare copy of the world,
+    through a `world.py` that runs the recipe's own commands with no
+    prediction and no gate. Its acts are logged, and replayed in the copy
+    mode to name a copy changed by hand. Both arms get the same model, no
+    MCP server, the same tools, and the same dollars and hours per run. The
+    rows say how each run ended, whether it claimed the goal, the checker's
+    verdict and the cost. `COMPARE.md` counts the false completions. A
+    changed design in a pre-registered state directory is refused.
+  - **`skills/compare`** confirms the pack, the model, the seeds and the
+    most it can cost, runs a dry run, and launches in the background.
+  - **The claude host of the session mode** now passes
+    `--strict-mcp-config`, so the player reaches the world through the
+    launcher alone.
+
+  `tests/test_flaky_test.py`, `tests/test_hidden_grammar.py` and
+  `tests/test_eval_compare.py` cover the packs' worlds and checkers, both
+  through the real CLI and daemon, the goal arm's copy and replay, how a
+  `/goal` stream ended, and both arms with stand-in players.
 
 ## 1.2.0 (2026-10-09)
 

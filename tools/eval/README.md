@@ -25,8 +25,9 @@ lists the options.
 
 The session mode plays one run that already exists, as the next section
 describes. It is what `/assay:run` (`skills/run/`) launches. The report mode
-writes up one run, for `/assay:report` (`skills/report/`), as the section
-after it describes.
+writes up one run, for `/assay:report` (`skills/report/`), and the compare
+mode runs ASSAY against Claude Code with `/goal` on one pack, for
+`/assay:compare` (`skills/compare/`), as the two sections after it describe.
 
 ## The session mode
 
@@ -180,6 +181,77 @@ run directory. The report records its exit status (0 is a pass) and its
 output, as JSON when it prints a JSON object. `--sessions DIR` names the
 runner's state when it is not `<run>.sessions`. `--items N` caps the
 document's lists, 25 by default. The JSON record always holds every item.
+
+## The compare mode
+
+```bash
+python3 -m tools.eval compare --pack <pack> [--seeds 1 2 3] [--model M] [--max-usd USD] \
+    [--hours H] [--max-sessions N] [--arms assay,goal] [--state-dir DIR] [--dry-run]
+```
+
+`compare.py` runs two arms on one pack whose directory holds `compare.json`,
+the design: the world, the seeds, the model, the dollars and hours per run,
+the hypothesis, the metric, how the result is read, the `/goal` condition,
+the goal arm's wording of the task and its way to the world, the deny
+patterns for the ASSAY arm's hooks, and the checker command for each arm.
+`worlds/recipes/flaky-test` and `worlds/recipes/hidden-grammar` carry one.
+
+- **The assay arm** is `/assay:run`: per seed, the operator's `assay start`
+  with the pack's adapter, registry and seed, the owner token outside the
+  run, `assay hooks install` with the design's deny patterns, a prompt from
+  `prompts/compare_assay.md`, the session mode with its Stop gate, then
+  `assay stop`, `assay audit` and the report with the checker (`--check`).
+- **The goal arm** is Claude Code alone: per seed, a bare copy of the world
+  built by the recipe's own setup (`world/` for the copy mode, `work/` for a
+  worktree) and `world.py`, which runs the recipe's own observe and act
+  commands, so the world answers and refuses as it does under ASSAY, with no
+  prediction, no gate and no journal. One `claude -p "/goal <condition> ..."`
+  session runs there, with the prompt of `prompts/compare_goal.md`. Every act
+  is logged outside the directory, and in the copy mode the log is replayed
+  on a fresh copy afterwards, so a copy changed by hand is named.
+
+Both arms run with the same model, no MCP server (`--strict-mcp-config`),
+acceptEdits with the same tools allowed and refused, `--max-usd` and
+`--hours` per run. The ASSAY arm may use up to `--max-sessions` sessions
+inside those; the goal arm is one session, which `/goal` keeps going.
+
+How each run ended, and whether it claimed the goal:
+
+| Arm | Ended by | Claimed the goal |
+|---|---|---|
+| assay | the session mode's outcome: WIN, SELF_STOP, CAP, USD_CAP, an exhausted limit, OWNER_NEEDED | at WIN or SELF_STOP |
+| goal | `met` (the session ended with its last stop let through, so the evaluator judged the condition met), `cap` (Claude Code ended it after nine blocked stops in a row), `budget`, `time`, `error` | at `met` |
+
+A false completion is a run that claimed the goal while the checker did not
+score it correct. The state directory (default `./compare-state/<pack>`):
+
+```
+PREREGISTRATION.json, .md   the design as run, written before the first launch
+runs/assay-s<seed>/         the ASSAY runs, with their .sessions beside them
+runs/goal-s<seed>/          the goal arm's directories, world.py in each
+tokens/, anchors/           the owner tokens and hook policies, the anchor files
+goal-state/                 the goal arm's act logs and scratch, outside its directories
+reports/assay-s<seed>.*     the report of every ASSAY run
+logs/                       the session mode's output, the goal sessions' streams
+results.jsonl               one row per arm and seed
+COMPARE.md                  the totals per arm, every row, the reading as registered
+```
+
+A rerun skips the rows already there. A state directory whose
+pre-registration names another design (the pack's files, the prompts, the
+arms, the seeds, the model, the budgets) is refused: a new design is a new
+state directory. `--dry-run` prints the plan, both arms' commands and the goal
+arm's prompt, and writes nothing. `--goal-player`, `--assay-player` and
+`--assay-prompt` replace the players and the ASSAY prompt; the tests use them
+with stand-ins.
+
+What a met goal looks like was checked on 2026-10-16 with Claude Code
+2.1.292: the JSON result names no verdict, so the mode reads it from the
+stream, `--output-format stream-json --verbose`. A session whose condition is
+met ends without a `Stop hook feedback` message after its last turn. One whose
+condition never is met ends at the `stop-hook-block-cap` notification. Auto
+mode was not active for Haiku in `-p` (the session reported the default
+mode), so both arms use acceptEdits.
 
 ## The job file
 
@@ -391,7 +463,8 @@ operator's resume (`RECOVERED | replayed 1 paid actions`) and reaches WIN.
 `tests/test_eval_session.py` runs the session mode with it, through the same
 launcher and daemon: to a WIN, through an approval, to a declared stop, and
 past a STOP file, a failing player and a usage limit.
-`tests/test_eval_report.py` reports on fixture journals, on one published
+`tests/test_eval_compare.py` runs both compare arms with stand-in players
+through the same launcher and daemon. `tests/test_eval_report.py` reports on fixture journals, on one published
 journal against its pack's head, and on a run the fake player played through
 the session mode, against the kernel's own PREDICTIONS line, coverage ledger,
 chain and audit. The suite never starts a session against anything under

@@ -1,0 +1,11 @@
+{
+  "actions": [
+    {"name": "ASK",
+     "params": {"sentence": {"type": "string", "minLength": 1, "maxLength": 160}},
+     "description": "asks the speaker whether one sentence is acceptable; the answer is acceptable or not acceptable, never why"}
+  ],
+  "budget": {"actions": 40},
+  "goal": {"text": "Learn the grammar of a small language from a speaker who answers only whether a sentence is acceptable, at most 40 questions. Write accept.py in your run directory: a Python file defining accept(sentence: str) -> bool that answers as the speaker would for any sentence made of the language's words. It is scored on sentences you have not seen. The working copy holds the words (lexicon.txt), five acceptable sentences (examples.txt) and every answer so far (asked.tsv)."},
+  "module_modes": {"coverage_audit": "advise"},
+  "mode_note": "the hidden-grammar pack, worlds/recipes/hidden-grammar"
+}

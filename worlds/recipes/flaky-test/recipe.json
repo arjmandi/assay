@@ -1,0 +1,36 @@
+{
+  "recipe": 1,
+  "name": "flaky-test",
+  "card": {
+    "code": "M-R-C-0",
+    "family": "Solve",
+    "fit": "yes",
+    "clock": "s",
+    "proxy": "a copy of the project in work/",
+    "scarce_commit": null,
+    "hypothesis": "an agent without the gate calls the test fixed after one green run, or after a change that only makes the failure rarer; here the suite has to hold over twenty runs, and checks/score.py runs the project's own tests and the checker's under thirty fixed hash seeds"
+  },
+  "world": {
+    "mode": "worktree",
+    "source": "project",
+    "observe": ["{python}", "{archetypes}/repo/repo_world.py", "observe", "--recipe", "{recipe}", "--workdir", "{workdir}", "--state", "{state}"],
+    "act": ["{python}", "{archetypes}/repo/repo_world.py", "act", "{action}", "--recipe", "{recipe}", "--workdir", "{workdir}", "--state", "{state}"],
+    "actions": ["RUN_TESTS"],
+    "timeout_seconds": 1260,
+    "win": {
+      "all": [
+        {"path": "selector", "op": "==", "value": "tests"},
+        {"path": "runs", "op": ">=", "value": 20},
+        {"path": "failed_runs", "op": "==", "value": 0}
+      ]
+    }
+  },
+  "tests": {
+    "command": ["{python}", "runtests.py", "{selector}", "--junit", "{junit}"],
+    "timeout_seconds": 60,
+    "max_repeat": 20
+  },
+  "player": {
+    "note": "The project is in work/ in your run directory. Read and edit its files freely; run its tests only through assay act RUN_TESTS, never directly. The goal is the root cause, not a quieter failure: the suite has to pass on every run."
+  }
+}

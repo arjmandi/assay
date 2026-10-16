@@ -208,7 +208,7 @@ def test_the_host_templates(tmp_path):
     argv = claude.player_argv(2, "PROMPT", 1.5)
     # The prompt follows -p; the options come before the variadic tool lists.
     assert argv[:7] == ["claude", "-p", "PROMPT", "--model", "haiku", "--max-budget-usd", "1.50"]
-    assert argv[-4:] == ["--disallowedTools", "WebFetch", "WebSearch", "Agent"]
+    assert argv[-5:] == ["--disallowedTools", "WebFetch", "WebSearch", "Agent", "--strict-mcp-config"]
     assert _runner(run).player_argv(1, "PROMPT", None)[:4] == ["claude", "-p", "PROMPT", "--output-format"]
     assert claude.player_text(2, None).startswith(f'claude -p "$(cat {run.parent / "run.sessions" / "s2.prompt.md"})" --model haiku ')
     codex = _runner(run, host="codex", model="gpt-x").player_argv(1, "PROMPT", 3.0)

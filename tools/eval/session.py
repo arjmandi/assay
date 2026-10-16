@@ -111,14 +111,15 @@ class Host:
 
 HOSTS: dict[str, Host] = {
     # The prompt follows `-p` directly: the tool lists are variadic and
-    # would take a prompt placed after them.
+    # would take a prompt placed after them. No MCP server: the player
+    # reaches the world through the launcher alone.
     "claude": Host(
         name="claude",
         command=(
             "claude", "-p", "{prompt}", "{options}", "--output-format", "json",
             "--permission-mode", "acceptEdits",
             "--allowedTools", "Bash", "Read", "Glob", "Grep", "Write(./**)", "Edit(./**)",
-            "--disallowedTools", "WebFetch", "WebSearch", "Agent",
+            "--disallowedTools", "WebFetch", "WebSearch", "Agent", "--strict-mcp-config",
         ),
         model=("--model", "{model}"),
         usd=("--max-budget-usd", "{usd}"),

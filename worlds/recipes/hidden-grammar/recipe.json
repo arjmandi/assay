@@ -1,0 +1,24 @@
+{
+  "recipe": 1,
+  "name": "hidden-grammar",
+  "card": {
+    "code": "M-E-N-0",
+    "family": "Explore",
+    "fit": "yes",
+    "clock": "s",
+    "proxy": "a constructed language drawn from the seed, standing in for a speaker",
+    "scarce_commit": null,
+    "hypothesis": "an agent without the gate writes a confident grammar that fits every sentence it asked but was never tested on the constructions that would break it; checks/score.py scores the classifier on 400 held-out sentences, and its breakdown names the rules the arm never tested"
+  },
+  "world": {
+    "mode": "copy",
+    "setup": ["{python}", "{recipe}/grammar.py", "setup", "--workdir", "{workdir}", "--seed", "{seed}"],
+    "observe": ["{python}", "{recipe}/grammar.py", "observe", "--workdir", "{workdir}"],
+    "act": ["{python}", "{recipe}/grammar.py", "act", "{action}", "--workdir", "{workdir}", "--seed", "{seed}"],
+    "actions": ["ASK"],
+    "timeout_seconds": 30
+  },
+  "player": {
+    "note": "The working copy the observation's workdir names holds lexicon.txt (the words), examples.txt (five acceptable sentences) and asked.tsv (every answer so far). Ask with assay act ASK --params '{\"sentence\": \"...\"}', since a sentence has spaces. Every question changes the record, so the outcome change predicts nothing here: declare the state last_ok (assay state declare last_ok --path last_ok) and predict the answer, ch last_ok = true or ch last_ok = false. Write your classifier to accept.py in your run directory, not in the working copy: a Python file defining accept(sentence: str) -> bool."
+  }
+}

@@ -73,7 +73,7 @@ def test_no_hook_file_applies_to_every_session():
 
 def test_every_skill_names_its_directory_and_its_paths_exist():
     skills = sorted((REPO / "skills").glob("*/SKILL.md"))
-    assert [path.parent.name for path in skills] == ["attach", "report", "run"]
+    assert [path.parent.name for path in skills] == ["attach", "compare", "report", "run"]
     for path in skills:
         fields, body = _frontmatter(path)
         assert fields["name"] == path.parent.name
@@ -129,6 +129,17 @@ def test_the_report_skill_audits_then_reports_and_reads_a_stop_against_the_gaps(
     assert '"## Never exercised"' in report and "### The external check" in report
 
 
+def test_the_compare_skill_runs_the_compare_mode_on_a_pack_with_a_design():
+    skill = (REPO / "skills" / "compare" / "SKILL.md").read_text()
+    assert "${CLAUDE_PLUGIN_ROOT}/tools/eval/__main__.py compare --pack <pack dir>" in skill
+    for word in ("--dry-run", "run_in_background", "AskUserQuestion", "COMPARE.md", "false completions"):
+        assert word in skill, word
+    designs = sorted(path.parent.name for path in (WORLDS / "recipes").glob("*/compare.json"))
+    assert designs == ["flaky-test", "hidden-grammar"]
+    for name in designs:
+        assert "## Compare it with /goal" in (WORLDS / "recipes" / name / "README.md").read_text(), name
+
+
 def _packs() -> list[Path]:
     return sorted(path for path in (WORLDS / "recipes").iterdir() if path.is_dir())
 
@@ -140,7 +151,7 @@ def _templates() -> list[Path]:
 def test_the_catalog_lists_every_pack():
     readme = (WORLDS / "README.md").read_text()
     packs = _packs()
-    assert [path.name for path in packs] == ["legacy-api", "spreadsheet-reconcile"]
+    assert [path.name for path in packs] == ["flaky-test", "hidden-grammar", "legacy-api", "spreadsheet-reconcile"]
     for pack in packs:
         assert f"`recipes/{pack.name}`" in readme
         for name in ("recipe.json", "registry.json", "adapter.py", "README.md"):

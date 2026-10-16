@@ -9,6 +9,7 @@ no LLM calls, and it imports nothing from `assay`.
     python3 -m tools.eval --jobs bench/arcagi/jobs/e1.json --state-dir <dir>
     python3 -m tools.eval session --run-dir <run>    (one started run, session.py)
     python3 -m tools.eval report --run-dir <run>     (the report of one run, report.py)
+    python3 -m tools.eval compare --pack <pack>      (ASSAY against /goal on one pack, compare.py)
 
 `tools/eval/README.md` is the manual.
 """

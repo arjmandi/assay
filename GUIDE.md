@@ -422,6 +422,13 @@ against the journal, what the run never exercised, and what the sessions
 cost. Read a declared stop against its "Never exercised" section: a
 conclusion that rests on an untested rule is untested.
 
+`/assay:compare` runs a pack's pre-registered comparison: ASSAY against
+Claude Code with `/goal`, the same model, dollars and hours per run, and the
+same checker. The goal arm works on a bare copy of the world with no
+prediction and no gate. The result is how often each arm claimed the goal
+while the checker disagreed. The flaky-test and hidden-grammar packs carry a
+design.
+
 The preview builds three kinds of world:
 - worlds on this machine: files, simulators and games driven by commands;
 - repositories whose tests decide the goal;

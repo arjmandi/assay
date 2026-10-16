@@ -71,10 +71,12 @@ skills/attach/       the Claude Code skill /assay:attach: SKILL.md, rubric.md (t
                       world card), start.md (smoke test, start, the player's prompt)
 skills/run/          the skill /assay:run: the player through the session mode
 skills/report/       the skill /assay:report: the report of one run
+skills/compare/      the skill /assay:compare: ASSAY against /goal on one pack
 tools/eval/          the evaluation runner (not the kernel): the batch mode over
                       a job file, session.py, the session mode behind
-                      /assay:run, and report.py, the report behind
-                      /assay:report; tools/eval/README.md is its manual
+                      /assay:run, report.py, the report behind /assay:report,
+                      and compare.py, the comparison behind /assay:compare;
+                      tools/eval/README.md is its manual
 .claude-plugin/      the repository as a Claude Code plugin and its own
                       marketplace (plugin.json, marketplace.json); the plugin's
                       root is the repository, so bin/assay is on its PATH

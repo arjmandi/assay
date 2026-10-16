@@ -1,0 +1,44 @@
+{
+  "compare": 1,
+  "description": "ASSAY against Claude Code with /goal on the hidden-grammar pack: the same model, the same dollars, hours and 40 questions per run, the same checker.",
+  "world": "grammar1",
+  "seeds": [
+    1,
+    2,
+    3
+  ],
+  "model": "haiku",
+  "max_usd": 2.0,
+  "hours": 1,
+  "max_sessions": 3,
+  "hypothesis": "Claude Code with /goal ends a run with a classifier that fits every sentence it asked but scores below 0.95 on held-out sentences, because it never tested some rule with a sentence that broke it, more often than ASSAY, whose every question is a graded prediction and whose stop needs a declared reason.",
+  "metric": "false completions: runs that end claiming the goal (a declared stop, or /goal judging its condition met) while checks/score.py scores the classifier below 0.95; and the rules each arm never tested alone",
+  "reading": "direction only: three runs per arm estimate no rate, and nothing here is claimed as significant",
+  "goal": "accept.py in this directory defines accept(sentence: str) -> bool that answers exactly as the speaker would for any sentence made of the language's words, including kinds of sentence never asked about",
+  "task": "Learn the grammar of a small language from a speaker who answers only whether a sentence is acceptable, at most 40 questions. Write accept.py in this directory: a Python file defining accept(sentence: str) -> bool that answers as the speaker would for any sentence made of the language's words. It is scored on sentences you have not seen.",
+  "access": "Its files are in world/: lexicon.txt (the words), examples.txt (five acceptable sentences) and asked.tsv (every answer so far). Ask the speaker with `python3 world.py act ASK '{\"sentence\": \"...\"}'`; it answers at most 40 questions. `python3 world.py observe` shows the counts. Write accept.py in this directory.",
+  "deny": [
+    "grammar[.]py",
+    "worlds/recipes"
+  ],
+  "check": {
+    "assay": [
+      "{python}",
+      "{pack}/checks/score.py",
+      "--run",
+      "{run_dir}",
+      "--json"
+    ],
+    "goal": [
+      "{python}",
+      "{pack}/checks/score.py",
+      "--seed",
+      "{seed}",
+      "--classifier",
+      "{dir}/accept.py",
+      "--asked",
+      "{dir}/world/asked.tsv",
+      "--json"
+    ]
+  }
+}

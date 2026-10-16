@@ -11,8 +11,10 @@ then starts a pack, or writes a new recipe from an archetype's template.
 
 | Pack | Code | Clock | Family | What it shows |
 |---|---|---|---|---|
-| `recipes/spreadsheet-reconcile` | M-E-C-0 | s | Solve | three months of a bank statement against a company's books, with seeded discrepancies; `checks/score.py` scores any final copy against the answer key |
+| `recipes/flaky-test` | M-R-C-0 | s | Solve | a sales-report library whose suite fails on about half its runs; the world is won at twenty green runs in a row, and `checks/score.py` runs the project's tests and its own under thirty fixed hash seeds |
+| `recipes/hidden-grammar` | M-E-N-0 | s | Explore | a constructed language drawn from the seed and a speaker who answers only acceptable or not; the agent writes a classifier, and `checks/score.py` scores it on 400 held-out sentences with a breakdown by rule |
 | `recipes/legacy-api` | S-E-C-U | s | Solve | a legacy CRM's customers moved into a new hub through two HTTP APIs whose documentation leaves things out; the hub's own verdict decides the WIN, and `checks/score.py` scores any arm's hub |
+| `recipes/spreadsheet-reconcile` | M-E-C-0 | s | Solve | three months of a bank statement against a company's books, with seeded discrepancies; `checks/score.py` scores any final copy against the answer key |
 
 A code is the four answers of the rubric: where the agent acts (M this
 machine, S a remote system a program drives, H the physical world through
@@ -54,6 +56,9 @@ an MCP server's tool list or an OpenAPI document.
 - The world scripts the recipe's commands run, such as `reconcile.py`.
 - `checks/`: the external success checker, which scores a final state the
   same way whichever arm produced it.
+- `compare.json`, optional: the pre-registered comparison of ASSAY with
+  Claude Code and `/goal` on this pack, which `/assay:compare` runs
+  (`tools/eval/README.md`, the compare mode).
 - `README.md`: what the pack shows, how to start it, what it costs.
 
 Start a pack from an operator's shell (one directory is one run; the token
