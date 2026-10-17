@@ -11,7 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
-__version__ = "1.4.0"
+__version__ = "1.5.0"
 JOURNAL_SPEC = "assay-journal-v1"
 
 
