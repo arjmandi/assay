@@ -437,7 +437,7 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
   </div>
 
   <h3>Run it yourself</h3>
-  <p>A game needs its own Python and an ARC API key once, to download it. Because this world ships with the repository rather than the plugin catalog, you start the run yourself as the operator, then hand it to the plugin.</p>
+  <p>You need Claude Code with the plugin installed (step 1 above), <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a>, and an API key from <a href="https://arcprize.org" target="_blank" rel="noopener">arcprize.org</a>. This world ships with the repository rather than the plugin catalog, so you start the run yourself as the operator, then hand it to the plugin. Steps 1 and 2 run in one terminal, one after the other.</p>
   <div class="steps">
     <div class="agent-tabs" role="tablist">
       <button class="on" role="tab" aria-selected="true">Claude Code</button>
@@ -447,27 +447,27 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
     <ol>
       <li>
         <strong>Get the repository and the game's Python</strong>
-        <p>In a terminal. <code>assay doctor</code> confirms the interpreter and its packages.</p>
-        <div class="code bare"><pre id="a1">git clone https://github.com/arjmandi/assay ~/assay/repo
-cd ~/assay/repo
-uv venv --python 3.14.5 ~/assay/envs/arc_agi
-uv pip install --python ~/assay/envs/arc_agi/bin/python -r bench/arcagi/requirements.txt
-export ASSAY_PYTHON=~/assay/envs/arc_agi/bin/python
-export ARC_API_KEY=your-key            <span class="c"># once, to download the game</span>
-bin/assay doctor</pre><button class="copy" data-copy="a1">Copy</button></div>
+        <p>In a terminal. <code>assay doctor</code> confirms the interpreter and its packages. The last line asks for your ARC API key, which downloads the game once and is never written to the journal.</p>
+        <div class="code bare"><pre id="a1">git clone https://github.com/arjmandi/assay "$HOME/assay/repo"
+uv venv --allow-existing --python 3.14.5 "$HOME/assay/envs/arc_agi"
+uv pip install --python "$HOME/assay/envs/arc_agi/bin/python" -r "$HOME/assay/repo/bench/arcagi/requirements.txt"
+export ASSAY_PYTHON="$HOME/assay/envs/arc_agi/bin/python"
+"$HOME/assay/repo/bin/assay" doctor
+printf 'ARC API key: '; read -rs ARC_API_KEY; export ARC_API_KEY; echo</pre><button class="copy" data-copy="a1">Copy</button></div>
       </li>
       <li>
-        <strong>Start the run</strong>
-        <p>The registry caps the run at 200 paid actions and keeps <code>ARC_API_KEY</code> out of the journal. The owner token goes to a file outside the run, out of the player's reach.</p>
-        <div class="code bare"><pre id="a2">mkdir -p ~/assay/runs/ft09 ~/assay/tokens && cd ~/assay/runs/ft09
-~/assay/repo/bin/assay start ft09 \
-    --adapter ~/assay/repo/bench/arcagi/adapter.py:factory \
-    --registry ~/assay/repo/bench/arcagi/registry_200.json \
-    --owner-token-file ~/assay/tokens/ft09.token</pre><button class="copy" data-copy="a2">Copy</button></div>
+        <strong>Start the run, then open Claude Code here</strong>
+        <p>The registry caps the run at 200 paid actions. The owner token goes to a file outside the run, out of the player's reach. Claude Code opens from this same terminal, so the player's runner inherits the game's Python.</p>
+        <div class="code bare"><pre id="a2">mkdir -p "$HOME/assay/runs/ft09" &amp;&amp; mkdir -p -m 700 "$HOME/assay/tokens"
+"$HOME/assay/repo/bin/assay" --run-dir "$HOME/assay/runs/ft09" start ft09 \
+    --adapter "$HOME/assay/repo/bench/arcagi/adapter.py:factory" \
+    --registry "$HOME/assay/repo/bench/arcagi/registry_200.json" \
+    --owner-token-file "$HOME/assay/tokens/ft09.token"
+cd "$HOME/assay" &amp;&amp; claude</pre><button class="copy" data-copy="a2">Copy</button></div>
       </li>
       <li>
         <strong>Play it from Claude Code</strong>
-        <p><code>/assay:run</code> writes the player's prompt if the run has none, and launches the player in the background, one session after another, until the game is won or the budget is spent.</p>
+        <p>In the Claude Code that just opened. <code>/assay:run</code> writes the player's prompt if the run has none, and launches the player in the background, one session after another, until the game is won or the budget is spent.</p>
         <div class="code bare"><pre id="a3">/assay:run ~/assay/runs/ft09</pre><button class="copy" data-copy="a3">Copy</button></div>
       </li>
       <li>

@@ -398,79 +398,8 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .wm-tuple .t .s{font-family:var(--display); font-style:italic; font-size:20px}
 .wm-tuple .t .d{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
 
-/* ---------- record / chain ---------- */
-.chain{border:1px solid var(--panel-rule); background:var(--panel); color:var(--panel-ink)}
-.chain .ch{padding:16px 20px; border-bottom:1px solid var(--panel-rule); display:flex; justify-content:space-between; align-items:center; gap:14px; flex-wrap:wrap}
-.chain .ch .eyebrow::after{display:none}
-.chain .ch .ctl{display:flex; gap:8px; flex-wrap:wrap}
-.chain .ch .ctl button{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:9px 14px; border:1px solid var(--panel-rule); color:var(--panel-ink); min-height:36px}
-.chain .ch .ctl button:hover{border-color:var(--panel-ink)}
-.chain .lines{overflow-x:auto}
-.chain table{border-collapse:collapse; width:100%; min-width:880px; table-layout:fixed; font-family:var(--mono); font-size:12px}
-.chain .eyebrow{color:var(--panel-ink-2)} .chain .eyebrow .num{color:var(--panel-red)} .datum .eyebrow{color:var(--panel-ink-2)} .datum .eyebrow .num{color:var(--panel-red)} .datum .eyebrow::after{background:var(--panel-rule)}
-.chain th{font-weight:400; text-align:left; font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2); padding:10px 14px; border-bottom:1px solid var(--panel-rule)}
-.chain td{padding:9px 14px; border-bottom:1px solid var(--panel-rule); vertical-align:top; white-space:nowrap}
-.chain tr:last-child td{border-bottom:0}
-.chain td.e{color:var(--panel-ink-2)}
-.chain td.l{white-space:normal; word-break:break-word; color:#DDE0E2}
-.chain td.l .k{color:var(--panel-red)}
-.chain td.l .ok{color:var(--panel-ink)}
-.chain td.h{color:var(--panel-ink-2)}
-.chain td.a{text-align:center}
-.chain tr.tampered td.l{background:rgba(127,176,245,.12)}
-.chain tr.broken td.h{color:var(--panel-red)}
-.chain tr.broken td.h::before{content:"≠ "; }
-.chain .edit{font-family:var(--mono); font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; padding:5px 9px; border:1px solid var(--panel-rule); color:var(--panel-ink-2); min-height:28px; white-space:normal; text-align:left; line-height:1.3}
-.chain .edit:hover{border-color:var(--panel-ink); color:var(--panel-ink)}
-.chain tr.tampered .edit{border-color:var(--panel-red); color:var(--panel-red)}
-.chain .anchor{font-size:10.5px; letter-spacing:.08em; text-transform:uppercase; padding:3px 7px; border:1px solid var(--panel-rule); color:var(--panel-ink-2); display:inline-block; white-space:normal; line-height:1.4}
-.chain .anchor.bad{border-color:var(--panel-red); color:var(--panel-red)}
-.chain .anchor.good{border-color:var(--panel-ink-2); color:var(--panel-ink)}
-.chain .verdict{padding:16px 20px; border-top:1px solid var(--panel-rule); display:flex; gap:14px; align-items:center; font-family:var(--mono); font-size:12px; letter-spacing:.06em; flex-wrap:wrap}
-.chain .verdict .led{flex-shrink:0}
-.chain .verdict b{font-weight:500}
-.chain .verdict .r{color:var(--panel-red)}
-
-.chain-notes{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-top:0}
-@media (max-width: 960px){ .chain-notes{grid-template-columns:repeat(2, minmax(0,1fr))} }
-@media (max-width: 520px){ .chain-notes{grid-template-columns:1fr} }
-.chain-notes .cn{background:var(--bg-2); padding:14px 18px; display:flex; flex-direction:column; gap:6px; min-width:0}
-.chain-notes .cn .k{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--red-text)}
-.chain-notes .cn p{font-size:13.5px; line-height:1.5; color:var(--ink-2)}
-.chain-notes .cn code{font-size:12px; color:var(--ink)}
-
-.trust{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
-@media (max-width: 860px){ .trust{grid-template-columns:1fr} }
-.trust .c{background:var(--bg-2); padding:22px; display:flex; flex-direction:column; gap:10px}
-.trust .c .w{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2)}
-.trust .c .n{font-family:var(--display); font-size:24px}
-.trust .c p{font-size:14px; color:var(--ink-2); line-height:1.5}
-.trust .c code{font-size:12px; color:var(--ink)}
-
-/* ---------- batch ---------- */
-.batch{display:grid; grid-template-columns:repeat(5, minmax(0,1fr)); gap:10px; align-items:stretch}
-.batch .st{border:1px solid var(--rule); background:var(--bg-2); padding:14px; display:flex; flex-direction:column; gap:8px; position:relative; min-height:112px}
-.batch .st .i{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
-.batch .st code{font-size:12px}
-.batch .st .g{margin-top:auto; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; display:flex; align-items:center; gap:7px; color:var(--ink-2)}
-.batch .st.held .g{color:var(--ink)}
-.batch .st.missed{border-color:var(--red)}
-.batch .st.missed .g{color:var(--red-text)}
-.batch .st.unspent{border-style:dashed; color:var(--ink-3); background:transparent}
-.batch .st.unspent .g{color:var(--ink-3)}
-.batch .halt{position:absolute; right:-7px; top:-1px; bottom:-1px; width:2px; background:var(--red)}
-.batch .halt::after{content:"halt"; position:absolute; top:-18px; left:-8px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--red-text)}
-@media (max-width: 700px){ .batch{grid-template-columns:repeat(2, minmax(0,1fr))} .batch .halt{display:none} }
-.rights{margin-top:24px; border:1px solid var(--rule); background:var(--bg-2); padding:22px; display:grid; grid-template-columns:minmax(0,1fr) minmax(180px,220px); gap:20px; align-items:center}
-@media (max-width: 700px){ .rights{grid-template-columns:1fr} }
-.rights .cond{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:13px}
-.rights .cond span{display:inline-flex; align-items:center; gap:8px}
-.rights .cond .led{width:7px; height:7px}
-.rights .out{font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; padding:12px 14px; border:1px solid var(--rule); text-align:center; line-height:1.5}
-.rights .out.on{border-color:var(--ink); background:var(--ink); color:var(--bg)}
-.rights input[type=range]{width:100%; accent-color:var(--red)}
-.rights .sl{display:grid; grid-template-columns:1fr; gap:10px; margin-top:14px}
-.rights .sl label{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); display:flex; justify-content:space-between}
+/* ---------- datum (layers) ---------- */
+.datum .eyebrow{color:var(--panel-ink-2)} .datum .eyebrow .num{color:var(--panel-red)} .datum .eyebrow::after{background:var(--panel-rule)}
 
 /* ---------- layers ---------- */
 .layers{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:24px; align-items:start}
@@ -713,6 +642,38 @@ table.journal tr.new td{animation:rowin .5s var(--ease)}
 .game-note{font-size:14px; line-height:1.55; color:var(--panel-ink-2)}
 .game-note code{color:var(--panel-ink); font-size:12.5px}
 
+/* ---------- 01 start: Claude Code ---------- */
+.use{border-top:1px solid var(--rule)}
+.use-step{display:grid; grid-template-columns:minmax(0,4fr) minmax(0,8fr); gap:18px 40px; padding:26px 0; border-bottom:1px solid var(--rule); align-items:start}
+@media (max-width: 860px){ .use-step{grid-template-columns:minmax(0,1fr)} }
+.use-k{display:grid; grid-template-columns:40px 1fr; gap:4px 12px; align-items:baseline}
+.use-k .i{font-family:var(--mono); font-size:11px; letter-spacing:.1em; color:var(--red-text)}
+.use-k .t{font-family:var(--display); font-size:24px; line-height:1.2}
+.use-k .d{grid-column:2; font-size:14.5px; line-height:1.55; color:var(--ink-2); margin-top:6px}
+.use-k code{font-size:12.5px; color:var(--ink)}
+.cmd{border:1px solid var(--panel-rule); background:var(--panel-well); min-width:0}
+.cmd-h{display:flex; justify-content:space-between; align-items:center; gap:12px; padding:8px 10px 8px 16px; border-bottom:1px solid var(--panel-rule); font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2)}
+.cmd-h .cp{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; padding:6px 11px; border:1px solid var(--panel-rule); color:var(--panel-ink); min-height:30px}
+.cmd-h .cp:hover{border-color:var(--panel-ink)}
+.cmd-h .cp.done{border-color:var(--panel-red); color:var(--panel-red)}
+.cmd pre{margin:0; padding:16px 18px; font-size:12.5px; line-height:1.65; color:#DDE0E2; white-space:pre-wrap; overflow-wrap:anywhere}
+.use-play{margin-top:clamp(48px, 6vw, 80px)}
+.use-play-h{display:flex; flex-direction:column; gap:10px; margin-bottom:22px; max-width:70ch}
+.use-tabs{display:flex; border:1px solid var(--rule); background:var(--bg-2); overflow-x:auto; scrollbar-width:none}
+.use-tabs::-webkit-scrollbar{display:none}
+.use-tabs button{flex:1 0 auto; padding:14px 18px; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); border-right:1px solid var(--rule); min-height:48px; white-space:nowrap}
+.use-tabs button:last-child{border-right:0}
+.use-tabs button[aria-selected="true"]{background:var(--panel); color:var(--panel-ink)}
+.use-pane{border:1px solid var(--rule); border-top:0; background:var(--bg-2); padding:0 28px}
+.use-pane[hidden]{display:none}
+.use-pane .use-step:last-child{border-bottom:0}
+@media (max-width: 600px){ .use-pane{padding:0 16px} }
+.use-more{margin-top:18px}
+.use-pre{padding:22px 0 0; max-width:72ch}
+.use-pre a{color:var(--red-text); border-bottom:1px solid var(--red-soft)}
+.use-more a{color:var(--red-text); border-bottom:1px solid var(--red-soft)}
+.use-more a:hover{border-color:var(--red)}
+
 /* footer */
 footer{border-top:0; padding-block:24px 64px; position:relative; z-index:1}
 footer .fgrid{display:grid; grid-template-columns:minmax(0,6fr) minmax(0,6fr); gap:40px}
@@ -739,9 +700,9 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
   <div class="wrap">
     <a class="brand" href="#top" aria-label="ASSAY, top of page"><span class="mark" aria-hidden="true"></span><span>Assay</span></a>
     <nav class="sections" aria-label="Sections">
-      <a href="#problem"><span class="n">01</span>Problem</a>
-      <a href="#play"><span class="n">02</span>Play</a>
-      <a href="#record"><span class="n">03</span>Record</a>
+      <a href="#start"><span class="n">01</span>Start</a>
+      <a href="#problem"><span class="n">02</span>Problem</a>
+      <a href="#play"><span class="n">03</span>Play</a>
       <a href="#layers"><span class="n">04</span>Layers</a>
       <a href="#harness"><span class="n">05</span>Harness</a>
       <a href="#evidence"><span class="n">06</span>Evidence</a>
@@ -762,6 +723,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
         <p class="lede abstract rv">An agent that works for hours in a world it does not know has to keep what it learns somewhere. <span class="sym">Assay</span> keeps it outside the model and outside the harness: the agent names the parts of the world it cares about, writes a prediction over them before every action, and the harness grades every outcome against the real behavior inside the world. A fact enters the world model only through a prediction that held.</p>
         <div class="cta rv">
           <a class="btn red" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 13 13 3M6 3h7v7"/></svg></a>
+          <a class="btn" href="#start">Get started</a>
           <a class="btn" href="#evidence">Evidence</a>
         </div>
       </div>
@@ -846,11 +808,116 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
   </div>
 </section>
 
-<!-- ============ 01 PROBLEM ============ -->
+<!-- ============ 01 START ============ -->
+<section class="section" id="start">
+  <div class="wrap">
+    <div class="section-head">
+      <p class="eyebrow rv"><span class="num">§ 01</span><span>Get started</span></p>
+      <h2 class="rv">Use <span class="sym">Assay</span> in Claude Code.</h2>
+      <p class="lede rv">Install the plugin, say what you want in plain words, and the run plays until the world says it is over. Every block below copies with one click.</p>
+    </div>
+
+    <div class="use rv">
+      <div class="use-step">
+        <div class="use-k"><span class="i">01</span><span class="t">Install the plugin</span><p class="d">Once, in any Claude Code session.</p></div>
+        <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/plugin marketplace add arjmandi/assay
+/plugin install assay@assay</pre></div>
+      </div>
+      <div class="use-step">
+        <div class="use-k"><span class="i">02</span><span class="t">Attach it to a task</span><p class="d">Up to four questions, a fit check, then a world built for the task from the catalog or from your project. The run starts with the owner token kept out of the agent's reach.</p></div>
+        <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:attach "reconcile the bank statement against the books in ledger.csv, month by month"</pre></div>
+      </div>
+      <div class="use-step">
+        <div class="use-k"><span class="i">03</span><span class="t">Run it, watch it, read the report</span><p class="d">The player runs session after session until WIN, the budget, or a stop it declares with a reason. It pauses and asks you when an action needs your approval.</p></div>
+        <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:run
+/assay:watch
+/assay:report</pre></div>
+      </div>
+    </div>
+
+    <div class="use-play rv">
+      <div class="use-play-h">
+        <h3>Play ARC-AGI-3, or any other game.</h3>
+        <p class="small">A game is a world like any other: actions, an observation after each one, and a goal the world reports reached.</p>
+      </div>
+      <div class="use-tabs" role="tablist" aria-label="Games">
+        <button type="button" role="tab" aria-selected="true" data-use="arc">ARC-AGI-3</button>
+        <button type="button" role="tab" aria-selected="false" data-use="any">Any other game</button>
+      </div>
+
+      <div class="use-pane" id="use-arc" role="tabpanel">
+        <p class="small use-pre">You need Claude Code with the plugin installed (step 01 above), <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a>, and an API key from <a href="https://arcprize.org" target="_blank" rel="noopener">arcprize.org</a>. Steps 01 and 02 run in one terminal, one after the other.</p>
+        <div class="use-step">
+          <div class="use-k"><span class="i">01</span><span class="t">The repository and the game's Python</span><p class="d">Clones the repository, builds the interpreter the ARC games run on, and checks it. The last line asks for your ARC API key, which downloads the game once and is never written to the journal.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>git clone https://github.com/arjmandi/assay "$HOME/assay/repo"
+uv venv --allow-existing --python 3.14.5 "$HOME/assay/envs/arc_agi"
+uv pip install --python "$HOME/assay/envs/arc_agi/bin/python" -r "$HOME/assay/repo/bench/arcagi/requirements.txt"
+export ASSAY_PYTHON="$HOME/assay/envs/arc_agi/bin/python"
+"$HOME/assay/repo/bin/assay" doctor
+printf 'ARC API key: '; read -rs ARC_API_KEY; export ARC_API_KEY; echo</pre></div>
+        </div>
+        <div class="use-step">
+          <div class="use-k"><span class="i">02</span><span class="t">Start the run, then open Claude Code here</span><p class="d">Starts ft09, capped at 200 paid actions, with the owner token in a file outside the run. Claude Code opens from this same terminal, so the player's runner inherits the game's Python.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>mkdir -p "$HOME/assay/runs/ft09" && mkdir -p -m 700 "$HOME/assay/tokens"
+"$HOME/assay/repo/bin/assay" --run-dir "$HOME/assay/runs/ft09" start ft09 \
+    --adapter "$HOME/assay/repo/bench/arcagi/adapter.py:factory" \
+    --registry "$HOME/assay/repo/bench/arcagi/registry_200.json" \
+    --owner-token-file "$HOME/assay/tokens/ft09.token"
+cd "$HOME/assay" && claude</pre></div>
+        </div>
+        <div class="use-step">
+          <div class="use-k"><span class="i">03</span><span class="t">Play it, watch it, read the report</span><p class="d">In the Claude Code that just opened. The player starts at <code>assay status</code> and plays until the game is won or the budget is spent. The published ft09 run won 6 of 6 levels in 82 paid actions, with 185 outcomes held and 5 missed.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:run ~/assay/runs/ft09</pre></div>
+          <div class="cmd" style="margin-top:12px"><div class="cmd-h"><span>Claude Code, while it plays and after</span><button type="button" class="cp">Copy</button></div><pre>/assay:watch ~/assay/runs/ft09
+/assay:report ~/assay/runs/ft09</pre></div>
+        </div>
+      </div>
+
+      <div class="use-pane" id="use-any" role="tabpanel" hidden>
+        <div class="use-step">
+          <div class="use-k"><span class="i">01</span><span class="t">A game on this machine</span><p class="d">Name the game, where it is, and the moves it takes. Attach builds the world around it, smoke-tests it and starts the run.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:attach "win the puzzle game in ./game; it takes the moves up, down, left and right and prints the board after each"
+/assay:run</pre></div>
+        </div>
+        <div class="use-step">
+          <div class="use-k"><span class="i">02</span><span class="t">Or attach it by hand</span><p class="d">One adapter file carries a move to the game and the board back; ASSAY never sees the game any other way. The registry names the moves, the budget and the goal, and never what a move does: the agent earns that by acting.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>mygame.py</span><button type="button" class="cp">Copy</button></div><pre>class MyGame:
+    def __init__(self, root, config):
+        self.board, self.state = new_board(config["seed"]), "NOT_FINISHED"
+
+    @property
+    def observation(self):
+        return {"state": self.state, "levels_completed": 0, "win_levels": 1,
+                "available_actions": ["MOVE"], "data": {"board": self.board}}
+
+    def step(self, action, data, reasoning):
+        self.board, self.state = apply_move(self.board, data["dir"])
+        return self.observation
+
+def factory(root, config):
+    return MyGame(root, config)</pre></div>
+        </div>
+        <div class="use-step">
+          <div class="use-k"><span class="i">03</span><span class="t">The registry, and the start</span><p class="d">Then hand the run to the player with <code>/assay:run</code>, as above.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>registry.json</span><button type="button" class="cp">Copy</button></div><pre>{
+  "actions": [{"name": "MOVE", "params": {"dir": {"type": "str", "enum": ["up", "down", "left", "right"]}}}],
+  "budget": {"actions": 200},
+  "goal": {"text": "win the game"}
+}</pre></div>
+          <div class="cmd" style="margin-top:12px"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>assay start mygame --adapter mygame.py:factory --registry registry.json \
+    --owner-token-file ~/assay/tokens/mygame.token</pre></div>
+        </div>
+      </div>
+      <p class="tiny use-more">The full guide, twelve more examples and every setting: <a href="https://arjmandi.github.io/assay/docs/">the docs</a>.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 02 PROBLEM ============ -->
 <section class="section" id="problem">
   <div class="wrap">
     <div class="section-head">
-      <p class="eyebrow rv"><span class="num">§ 01</span><span>The problem</span></p>
+      <p class="eyebrow rv"><span class="num">§ 02</span><span>The problem</span></p>
       <h2 class="rv">LLMs consume context, but context rots.</h2>
       <p class="lede rv">The agent runs for hours, across sessions, with a budget of actions and a context window as its only working memory. What it learns has to be written somewhere, and the choice of where decides three things: what happens when the context fills, when the session ends, and when the agent is wrong. <span class="sym">Assay</span> is the fourth system in one research line. The first three documented their own failures, and the paper states them in the formal terms it later uses. <strong>Referent grounding</strong>: a rule written in prose names something the model cannot reliably locate in the observation again, so the rule can never be checked and silently degrades to a belief. <strong>Belief accounting</strong>: a theory that fits every observation made so far is treated as supported in regions no observation visited. Forgetting across a long context makes both chronic. The prose that stood in for the referent and the evidence that stood in for the support are the first things a long context loses.</p>
     </div>
@@ -870,7 +937,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
 <section class="section" id="play">
   <div class="wrap">
     <div class="section-head stacked">
-      <p class="eyebrow rv"><span class="num">§ 02</span><span>Play</span></p>
+      <p class="eyebrow rv"><span class="num">§ 03</span><span>Play</span></p>
       <h2 class="rv">A toy world: Unknown Cabinet</h2>
       <p class="lede rv">Learn the mechanics one prediction at a time, win, and review your moves. Read the observation, check your registry and see what tools you have. Then choose a prediction and run <span class="sym">Assay</span> with that prediction. See what happens to your world, what is written to your world model, what happens to your status. This is how <span class="sym">Assay</span> helps agents internalize knowledge.</p>
     </div>
@@ -965,69 +1032,6 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
           </div>
           <div class="audit" id="g-audit-out" hidden></div>
         </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- ============ 04 RECORD ============ -->
-<section class="section" id="record">
-  <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow rv"><span class="num">§ 03</span><span>The record</span></p>
-      <h2 class="rv">A record that writes itself, and that a third party recomputes.</h2>
-      <p class="lede rv">One directory is one run. The journal is <code>.assay/events.jsonl</code>, one JSON object per line, append-only. Every line carries the action, the observation verbatim, the prediction, its grades and the agent's note. A hash chain runs over the raw lines, the head is anchored outside the run directory every 25 events and on WIN, and a standard-library checker that shares no code with the harness verifies the whole thing.</p>
-    </div>
-
-    <div class="chain rv" id="chain">
-      <div class="ch">
-        <p class="eyebrow"><span class="num">Try it</span><span>Tamper with the journal of s5i5</span></p>
-        <div class="ctl">
-          <button type="button" id="chain-reset">Restore all lines</button>
-        </div>
-      </div>
-      <div class="lines">
-        <table>
-          <colgroup><col style="width:64px"><col><col style="width:168px"><col style="width:130px"><col style="width:150px"></colgroup>
-          <thead><tr><th>event</th><th>journal line ℓ<sub>t</sub> (abridged)</th><th>h<sub>t</sub> = SHA-256(hex(h<sub>t−1</sub>) ‖ ℓ<sub>t</sub>)</th><th>anchor</th><th></th></tr></thead>
-          <tbody id="chain-body"></tbody>
-        </table>
-      </div>
-      <div class="verdict" id="chain-verdict"><span class="led ok"></span><span>computing heads…</span></div>
-    </div>
-
-    <div class="grid g5-7" style="margin-top:clamp(48px,6vw,80px); align-items:start">
-      <div class="prose rv">
-        <h3>Batches, and the only route past the hand cap.</h3>
-        <p>A batch is a sequence of steps, each with its own prediction. Every step is validated before the first one spends. Steps then execute in order, each graded against its own prior event, so a batch is a chain of single-step predictions and not one prediction about the end state. Execution halts at the first step whose prediction missed or was invalid, and also on a win, a unit advance and a loss state. The remaining steps are never journaled.</p>
-        <p>The model tier is the only route past the hand cap. The agent writes a transition function <span class="sym">T</span> over declared states; replay runs it over every recorded paid transition. A model earns by predicting what it had not seen. Three replays were computed in the campaign; none was promoted, and no plan executed.</p>
-      </div>
-      <div class="rv">
-        <div class="batch" id="batch" aria-label="A batch halting at the first miss">
-          <div class="st held"><span class="i">step 1</span><code>a<sub>1</sub>, P<sub>1</sub></code><span class="g"><i class="led ok"></i>held</span></div>
-          <div class="st held"><span class="i">step 2</span><code>a<sub>2</sub>, P<sub>2</sub></code><span class="g"><i class="led ok"></i>held</span></div>
-          <div class="st missed"><span class="i">step 3</span><code>a<sub>3</sub>, P<sub>3</sub></code><span class="g"><i class="led on"></i>missed</span><span class="halt" aria-hidden="true"></span></div>
-          <div class="st unspent"><span class="i">step 4</span><code>a<sub>4</sub>, P<sub>4</sub></code><span class="g">unspent</span></div>
-          <div class="st unspent"><span class="i">step 5</span><code>a<sub>5</sub>, P<sub>5</sub></code><span class="g">unspent</span></div>
-        </div>
-        <p class="tiny" style="margin-top:10px">Journaled whole: three events with their grades and actual values. Reported: each step by its grade, and two steps discarded. Default hand cap three steps; the three benchmark registries set it to unlimited.</p>
-        <div class="rights" id="rights">
-          <div>
-            <p class="eyebrow" style="margin-bottom:12px"><span class="num">Batching rights</span><span>replay fit, over counted transitions</span></p>
-            <div class="cond">
-              <span><i class="led" id="r-l0"></i><span>missed = <b id="r-v0">0</b></span></span>
-              <span><i class="led" id="r-l1"></i><span>counted ≥ 20 · <b id="r-v1">20</b></span></span>
-              <span><i class="led" id="r-l2"></i><span>recent ≥ 5 · <b id="r-v2">5</b></span></span>
-            </div>
-            <div class="sl">
-              <label for="r-s0"><span>misses on replay</span><span id="r-s0v">0</span></label><input type="range" id="r-s0" min="0" max="4" value="0">
-              <label for="r-s1"><span>transitions recorded after admission</span><span id="r-s1v">20</span></label><input type="range" id="r-s1" min="0" max="40" value="20">
-              <label for="r-s2"><span>of them in the most recent quarter</span><span id="r-s2v">5</span></label><input type="range" id="r-s2" min="0" max="10" value="5">
-            </div>
-          </div>
-          <div class="out" id="r-out">rights held</div>
-        </div>
-        <p class="tiny" style="margin-top:10px">Any new paid event voids the rights until a fresh replay. A plan searched from a promoted model runs past the cap with one machine-generated prediction per step, marked machine, so it never enters the agent's meters. An imported model carries no rights.</p>
       </div>
     </div>
   </div>
@@ -1494,70 +1498,6 @@ function bindTips(root){
   });
 }
 
-/* ---------- 04 · hash chain ---------- */
-(function(){
-  const body = $('#chain-body'), verdict = $('#chain-verdict');
-  const lines = [
-    {e:272, l:'{"event":272,"ts":"2026-08-23T12:03:43Z","action":"ACTION6","data":{"x":32,"y":58},"levels":"6/8","predict":"verify:checks/l7p40.py","predict_ok":true,"actual":"play area rows 0-44 exactly as predicted"}', t:'{"event":272,"ts":"2026-08-23T12:03:43Z","action":"ACTION6","data":{"x":32,"y":58},"levels":"6/8","predict":"verify:checks/l7p40.py","predict_ok":true,"actual":"play area rows 0-44 exactly as predicted","note":"edited"}', tl:'add a note'},
-    {e:273, l:'{"event":273,"ts":"2026-08-23T12:06:18Z","action":"RESET","data":null,"levels":"6/8","predict":null,"predict_ok":null}', t:'{"event":273,"ts":"2026-08-23T12:06:18Z","action":"ACTION6","data":null,"levels":"6/8","predict":null,"predict_ok":null}', tl:'RESET → ACTION6', ungatedIfTampered:true},
-    {e:274, l:'{"event":274,"ts":"2026-08-23T12:26:34Z","action":"ACTION6","data":{"x":59,"y":58},"predict":"verify:checks/s2_p1_arm8_left.py","predict_ok":false,"actual":"15 rows differ, first row 6 cols [0..7]: want 88888888 got 55555555"}', t:'{"event":274,"ts":"2026-08-23T12:26:34Z","action":"ACTION6","data":{"x":59,"y":58},"predict":"verify:checks/s2_p1_arm8_left.py","predict_ok":true,"actual":"exactly as predicted"}', tl:'flip the grade'},
-    {e:275, l:'{"event":275,"ts":"2026-08-23T12:27:47Z","action":"ACTION6","data":{"x":39,"y":58},"predict":"verify:checks/s2_p2_c_rot.py","predict_ok":false,"actual":"3 rows differ, first row 15 cols [54, 55]: want 33 got cc"}', t:'{"event":275,"ts":"2026-08-23T12:27:47Z","action":"ACTION6","data":{"x":39,"y":58},"predict":"verify:checks/s2_p2_c_rot.py","predict_ok":true,"actual":"exactly as predicted"}', tl:'flip the grade', anchor:'every 25'},
-    {e:279, l:'{"event":279,"ts":"2026-08-23T12:29:31Z","action":"ACTION6","data":{"x":60,"y":58},"predict":"verify:checks/s2_p3_8left.py","predict_ok":false,"actual":"9 rows differ, first row 0 cols [12, 13, 14]: want 555 got 888"}', t:'{"event":279,"ts":"2026-08-23T12:29:31Z","action":"ACTION6","data":{"x":60,"y":58},"predict":"verify:checks/s2_p3_8left.py","predict_ok":false,"actual":"9 rows differ, first row 0 cols [12, 13, 14]: want 555 got 555"}', tl:'change a digit'},
-    {e:320, l:'{"event":320,"ts":"2026-08-23T12:37:57Z","action":"ACTION6","data":{"x":60,"y":51},"levels":"7/8","predict":"level+1","predict_ok":true,"actual":"level advanced to 7 completed"}', t:'{"event":320,"ts":"2026-08-23T12:37:57Z","action":"ACTION6","data":{"x":60,"y":51},"levels":"7/8","predict":"level+1; win","predict_ok":true,"actual":"level advanced to 7 completed"}', tl:'add an outcome'},
-    {e:363, l:'{"event":363,"ts":"2026-08-23T13:09:31Z","action":"ACTION6","data":{"x":59,"y":11},"predict":"verify:checks/s8_desync10.py","predict_ok":true,"actual":"play area rows 0-52 (panel boxes masked) exactly as predicted"}', t:'{"event":363,"ts":"2026-08-23T13:09:31Z","action":"ACTION6","data":{"x":59,"y":12},"predict":"verify:checks/s8_desync10.py","predict_ok":true,"actual":"play area rows 0-52 (panel boxes masked) exactly as predicted"}', tl:'move the click'},
-    {e:367, l:'{"event":367,"ts":"2026-08-23T13:11:02Z","action":"ACTION6","data":{"x":59,"y":11},"state":"WIN","levels":"8/8","predict":"win","predict_ok":true,"actual":"state WIN"}', t:'{"event":367,"ts":"2026-08-23T13:10:02Z","action":"ACTION6","data":{"x":59,"y":11},"state":"WIN","levels":"8/8","predict":"win","predict_ok":true,"actual":"state WIN"}', tl:'shift the clock', anchor:'WIN'},
-  ];
-  const tampered = new Array(lines.length).fill(false);
-  let published = null;
-  async function sha(s){ const b = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(s)); return Array.from(new Uint8Array(b)).map(x=>x.toString(16).padStart(2,'0')).join(''); }
-  async function heads(useTamper){
-    let h = await sha('assay-chain-v1'); const out = [];
-    for (let i=0;i<lines.length;i++){ const l = useTamper && tampered[i] ? lines[i].t : lines[i].l; h = await sha(h + l); out.push(h); }
-    return out;
-  }
-  function hl(l){ return esc(l).replace(/"predict_ok":(true|false|null)/, (m,v)=>'"predict_ok":'+(v==='false'?'<span class="k">false</span>':v==='true'?'<span class="ok">true</span>':v)).replace(/"actual":"([^"]*)"/, (m,v)=>'"actual":"<span class="'+(/want/.test(v)?'k':'ok')+'">'+v+'</span>"').replace(/"action":"(RESET|ACTION6)"/, (m,v)=>'"action":"'+(v==='RESET'?'<span class="k">RESET</span>':v)+'"'); }
-  async function render(){
-    if (!window.crypto || !crypto.subtle){ verdict.innerHTML = '<span class="led on"></span><span>This browser context does not expose SHA-256 (crypto.subtle), so the heads cannot be recomputed here.</span>'; return; }
-    if (!published) published = await heads(false);
-    const now = await heads(true);
-    let firstBreak = -1, ungated = -1;
-    body.innerHTML = '';
-    lines.forEach((ln, i) => {
-      const broken = now[i] !== published[i]; if (broken && firstBreak < 0) firstBreak = i;
-      if (tampered[i] && ln.ungatedIfTampered) ungated = i;
-      const tr = document.createElement('tr'); tr.className = (tampered[i]?'tampered ':'') + (broken?'broken':'');
-      const anchorHtml = ln.anchor ? '<span class="anchor '+(broken?'bad':'good')+'">'+ln.anchor+(broken?' ✗':' ✓')+'</span>' : '';
-      tr.innerHTML = '<td class="e">e'+ln.e+'</td><td class="l">'+hl(tampered[i]?ln.t:ln.l)+'</td><td class="h" title="'+now[i]+'">'+now[i].slice(0,12)+'…'+now[i].slice(-6)+'</td><td class="a">'+anchorHtml+'</td><td><button type="button" class="edit" data-i="'+i+'">'+(tampered[i]?'restore':ln.tl)+'</button></td>';
-      body.appendChild(tr);
-    });
-    $$('button.edit', body).forEach(b => b.addEventListener('click', ()=>{ const i = parseInt(b.dataset.i,10); tampered[i] = !tampered[i]; render(); }));
-    if (firstBreak < 0 && ungated < 0){ verdict.innerHTML = '<span class="led ok"></span><span><b>CLEAN</b> · 8 lines · event ids as published · stored chain matches the recomputed head · published anchors match · no ungated event</span>'; }
-    else {
-      const parts = [];
-      if (firstBreak >= 0){ parts.push('<b class="r">TAMPER_DETECTED</b> · chain diverges at e'+lines[firstBreak].e+' and every head after it'); const badA = lines.filter((l,i)=>l.anchor && now[i]!==published[i]).map(l=>'e'+l.e); if (badA.length) parts.push('published anchor'+(badA.length>1?'s':'')+' at '+badA.join(', ')+' do'+(badA.length>1?'':'es')+' not match'); }
-      if (ungated >= 0) parts.push('<b class="r">UNGATED</b> event at e'+lines[ungated].e+': a paid non-reset event with no prediction · run <b class="r">INVALID FOR SCORING</b>');
-      verdict.innerHTML = '<span class="led on"></span><span>'+parts.join(' · ')+'</span>';
-    }
-  }
-  $('#chain-reset').addEventListener('click', ()=>{ tampered.fill(false); render(); });
-  render();
-})();
-
-/* ---------- 04 · batching rights ---------- */
-(function(){
-  const s = [$('#r-s0'),$('#r-s1'),$('#r-s2')], v = [$('#r-s0v'),$('#r-s1v'),$('#r-s2v')], rv = [$('#r-v0'),$('#r-v1'),$('#r-v2')], l = [$('#r-l0'),$('#r-l1'),$('#r-l2')], out = $('#r-out');
-  function up(){
-    const m = +s[0].value, c = +s[1].value, r = Math.min(+s[2].value, c);
-    v[0].textContent = m; v[1].textContent = c; v[2].textContent = r; rv[0].textContent = m; rv[1].textContent = c; rv[2].textContent = r;
-    const ok = [m===0, c>=20, r>=5];
-    ok.forEach((o,i)=>{ l[i].className = 'led ' + (o ? 'ok' : 'on'); });
-    const all = ok.every(Boolean);
-    out.textContent = all ? 'batching rights · plans may run past the cap' : 'no rights · hand cap applies';
-    out.classList.toggle('on', all);
-  }
-  s.forEach(x => x.addEventListener('input', up)); up();
-})();
-
 /* ---------- 05 · layers ---------- */
 (function(){
   const L = [
@@ -1936,6 +1876,32 @@ el.ungated.addEventListener('click', () => act(false));
 el.audit.addEventListener('click', audit);
 el.reset.addEventListener('click', reset);
 reset();
+})();
+</script>
+
+<script>
+/* ---------- 01 start: tabs and copy ---------- */
+(function(){
+  'use strict';
+  const tabs = Array.from(document.querySelectorAll('.use-tabs [role=tab]'));
+  tabs.forEach(t => t.addEventListener('click', () => {
+    tabs.forEach(x => x.setAttribute('aria-selected', String(x === t)));
+    document.querySelectorAll('.use-pane').forEach(p => { p.hidden = p.id !== 'use-' + t.dataset.use; });
+  }));
+  const toast = document.getElementById('toast');
+  const say = m => { if (!toast) return; toast.textContent = m; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1600); };
+  document.querySelectorAll('.cmd .cp').forEach(b => b.addEventListener('click', () => {
+    const pre = b.closest('.cmd').querySelector('pre');
+    const text = pre.textContent.replace(/[ \t]+$/gm, '').trim();
+    const done = () => { b.textContent = 'Copied'; b.classList.add('done'); say('Copied'); setTimeout(() => { b.textContent = 'Copy'; b.classList.remove('done'); }, 1400); };
+    const fallback = () => {
+      const ta = document.createElement('textarea'); ta.value = text; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { document.execCommand('copy'); done(); } catch (e) { say('Select the text and copy it'); }
+      document.body.removeChild(ta);
+    };
+    try { if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback(); } catch (e) { fallback(); }
+  }));
 })();
 </script>
 
