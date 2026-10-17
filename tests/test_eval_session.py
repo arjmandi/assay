@@ -260,6 +260,21 @@ def test_the_player_environment_keeps_the_world_secrets_out(tmp_path, monkeypatc
     assert "ASSAY_STOP_GATE" not in env
 
 
+def test_the_world_runs_under_the_interpreter_the_run_was_started_with(tmp_path, monkeypatch):
+    run = _fixture_run(tmp_path, paid=0)
+    (run / ".assay" / "config.json").write_text(json.dumps({"game_id": "w", "python": sys.executable}))
+    monkeypatch.delenv("ASSAY_PYTHON", raising=False)
+    runner = _runner(run)
+    assert runner.world_environment()["ASSAY_PYTHON"] == sys.executable
+    assert runner.player_environment()[0]["ASSAY_PYTHON"] == sys.executable
+    # A shell that names one keeps it, and a recorded interpreter that is gone is not passed on.
+    monkeypatch.setenv("ASSAY_PYTHON", "/chosen/python")
+    assert runner.world_environment()["ASSAY_PYTHON"] == "/chosen/python"
+    monkeypatch.delenv("ASSAY_PYTHON")
+    (run / ".assay" / "config.json").write_text(json.dumps({"game_id": "w", "python": str(tmp_path / "gone")}))
+    assert "ASSAY_PYTHON" not in runner.world_environment()
+
+
 def test_the_gate_merges_into_the_settings_beside_the_kernels_hooks(tmp_path):
     from assay.hooks import merge_hook_entries
 

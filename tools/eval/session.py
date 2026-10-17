@@ -21,6 +21,11 @@ overnight. Before each session:
    environment and the player has no route around the adapter. `ASSAY` names
    the launcher, and `ASSAY_STOP_GATE` the Stop gate's state file.
 
+Both run with `ASSAY_PYTHON` set to the interpreter the run was started
+with (its `config.json` records it) when the runner's own environment does
+not name one, so a world whose adapter needs its own packages resumes and
+plays from any shell.
+
 When a session ends, the runner reads the run with the Stop gate's own rules
 (`hooks/stop_gate.py`, loaded by path):
 
@@ -362,12 +367,24 @@ class SessionRunner:
         listed = [name for name in names if isinstance(name, str)] if isinstance(names, list) else []
         return sorted({*listed, *TOKEN_VARIABLES, *self.strip})
 
+    def world_environment(self) -> dict[str, str]:
+        """The runner's environment, with `ASSAY_PYTHON` set to the
+        interpreter the run was started with when it names none: the daemon
+        inherits it, and an adapter's packages live there."""
+        env = dict(os.environ)
+        if not env.get("ASSAY_PYTHON"):
+            config = _read_json(self.run_dir / ".assay" / "config.json")
+            python = config.get("python") if isinstance(config, dict) else None
+            if isinstance(python, str) and Path(python).is_file() and os.access(python, os.X_OK):
+                env["ASSAY_PYTHON"] = python
+        return env
+
     def player_environment(self) -> tuple[dict[str, str], list[str]]:
         """The runner's environment without the world's secrets and the
         owner token's variable, with `ASSAY` and `ASSAY_STOP_GATE` set; and
         the names it removed (never their values)."""
         names = set(self.secret_names())
-        env = {key: value for key, value in os.environ.items() if key not in names}
+        env = {key: value for key, value in self.world_environment().items() if key not in names}
         env["ASSAY"] = self.launcher_text
         if self.gate_wanted:
             env[self.gate.STATE_VARIABLE] = str(self.gate_state)
@@ -540,7 +557,9 @@ class SessionRunner:
         """The operator's start before the session; its first line."""
         command = self.launcher_command("start", world)
         try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=START_TIMEOUT_SECONDS)
+            done = subprocess.run(
+                command, capture_output=True, text=True, timeout=START_TIMEOUT_SECONDS, env=self.world_environment(),
+            )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise EvalError(f"`assay start` did not run: {error}") from None
         self.file(session, "start.log").write_text(f"$ {shlex.join(command)}\n{done.stdout}{done.stderr}")
@@ -553,7 +572,9 @@ class SessionRunner:
     def stop_daemon(self) -> str:
         command = self.launcher_command("stop")
         try:
-            done = subprocess.run(command, capture_output=True, text=True, timeout=STOP_TIMEOUT_SECONDS)
+            done = subprocess.run(
+                command, capture_output=True, text=True, timeout=STOP_TIMEOUT_SECONDS, env=self.world_environment(),
+            )
         except (OSError, subprocess.TimeoutExpired) as error:
             return f"`assay stop` failed: {error}"
         return (done.stdout + done.stderr).strip().splitlines()[0] if (done.stdout + done.stderr).strip() else ""

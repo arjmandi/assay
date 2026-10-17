@@ -388,20 +388,29 @@ or from a shell, `claude plugin marketplace add arjmandi/assay` and then
 `claude plugin install assay@assay`. While the plugin is enabled, the
 launcher `bin/assay` is on the Bash tool's PATH as `assay`.
 
-`/assay:attach "<the task, in plain words>"` puts ASSAY on a task. Claude
-acts as the builder, the operator's side of a run:
+A run needs a pack: the world's adapter, its registry, the world's scripts
+and a manifest, `pack.json` (`worlds/README.md`). The catalog ships packs,
+ARC-AGI-3 among them, and two skills cover the rest.
 
-1. It classifies the task with the world card of `skills/attach/rubric.md`.
+`/assay:connect "<your world, in plain words>"` builds a pack for a world of
+your own. Claude acts as the builder:
+
+1. It classifies the world with the world card of `skills/attach/rubric.md`.
    Step 0 asks whether this is a world or a program over worlds. The fit
    check asks whether the world answers back, whether there are many cheap
    graded interactions, and whether the clock fits. Four three-option
    questions follow, which you confirm on one screen.
-2. It picks a pack from `worlds/`, or writes a world from an archetype's
-   template.
-3. It smoke-tests the world in a scratch directory, starts the run with the
-   owner token in `~/assay/tokens/`, installs the hooks of section 5, and
-   writes the player's prompt into the run directory.
-4. It tells you how to start the player. It never plays the run.
+2. It writes the pack from an archetype's template into
+   `~/assay/worlds/<id>/`, and smoke-tests it in a scratch directory.
+3. It tells you the next command. It never starts or plays a run.
+
+`/assay:attach <pack> "<goal>"` starts a run on a pack, the catalog's (such
+as `arc-agi-3`) or one you or another tool built. It builds the pack's own
+interpreter when `pack.json` names one, checks the pack's key files without
+reading them, starts the run with the owner token in `~/assay/tokens/`,
+installs the hooks of section 5 with the pack's deny patterns, and writes
+the player's prompt with your goal. Given a task and no pack, it builds one
+with `/assay:connect` first. It never plays the run.
 
 `/assay:run` starts the player: `claude -p`, `codex exec` or `opencode run`,
 in the background, one session after another, through the session mode of

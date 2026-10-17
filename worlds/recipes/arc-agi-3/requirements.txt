@@ -1,0 +1,7 @@
+# The interpreter the ARC-AGI-3 pack runs under: Python 3.14.5, the version
+# pack.json names. /assay:attach builds it with uv; by hand:
+#   uv venv --python 3.14.5 <envs>/arc-agi-3 && uv pip install --python <envs>/arc-agi-3/bin/python -r requirements.txt
+arc-agi==0.9.9
+arcengine==0.9.3
+numpy==2.5.1
+pillow==12.3.0

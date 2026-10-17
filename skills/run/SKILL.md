@@ -62,10 +62,11 @@ The arguments: $ARGUMENTS
    An `ERROR` line names what to fix: no started run, no prompt, or a host
    that does not run.
 2. The same command without `--dry-run`, in the background (the Bash
-   tool's `run_in_background`), so that you hear when it ends. Run it from
-   the shell that started the run, where the world's credentials are
-   exported: the runner keeps them from the player and needs them only to
-   restart the daemon.
+   tool's `run_in_background`), so that you hear when it ends. The runner
+   restarts the daemon under the interpreter the run was started with, and
+   a pack's key file is read inside the daemon, so most runs need nothing
+   exported. A credential the user exported for a service is the exception:
+   the runner needs it to restart the daemon, and keeps it from the player.
 3. Tell the user:
    - the logs: `<run dir>.sessions/` (`sessions.json` is the ledger,
      `s<n>.player.out` a session's output);

@@ -3,8 +3,11 @@
 `LAUNCHER` below stands for the launcher's absolute path, which SKILL.md
 gives. Write it out in full in every command: your shell keeps no variables
 between commands. Pass `--run-dir` on every command rather than relying on
-the current directory. `<world dir>` is the pack, or the world you wrote;
-`<id>` is a short world id (letters, digits and dashes).
+the current directory. `<world dir>` is the pack; `<id>` is the world id
+(`pack.json` `world_id`, else the pack's name); `<registry>` is the run's
+registry when the goal changed it, else the pack's. When the pack names an
+interpreter, every launcher command starts with `ASSAY_PYTHON=<interpreter>`,
+written in full.
 
 ## The smoke test
 
@@ -12,7 +15,7 @@ Every new world gets one, and so does a pack the first time on a machine.
 
 1. A scratch directory: `mktemp -d`, then `mkdir <scratch>/run`.
 2. Start: `LAUNCHER --run-dir <scratch>/run start smoke --adapter <world
-   dir>/adapter.py:factory --registry <world dir>/registry.json
+   dir>/adapter.py:factory --registry <registry>
    --owner-token-file <scratch>/smoke.token`, plus `--seed 1` for a world
    built from a seed. It must print `STARTED`. An `ERROR` line names what to
    fix: a recipe field (the engine's RecipeError names it), the registry, or
@@ -33,14 +36,15 @@ Every new world gets one, and so does a pack the first time on a machine.
    owner token and hook policy go in `~/assay/tokens/`. Create both
    directories: `mkdir -p <run dir>` and `mkdir -p -m 700 ~/assay/tokens`.
 2. Start: `LAUNCHER --run-dir <run dir> start <id> --adapter <world
-   dir>/adapter.py:factory --registry <world dir>/registry.json
+   dir>/adapter.py:factory --registry <registry>
    --owner-token-file ~/assay/tokens/<run name>.token`, plus `--seed N` for a
    world built from a seed. The token goes to the file and is never printed.
    Do not read it, and do not show it to the user unless asked.
 3. The hooks, for a Claude Code player: `ASSAY=LAUNCHER LAUNCHER --run-dir
    <run dir> hooks install --policy ~/assay/tokens/<run name>.hooks.json
    --owner-token-file ~/assay/tokens/<run name>.token --deny '<pattern>'`,
-   one `--deny` for each way around the harness:
+   one `--deny` for each way around the harness: every pattern of the
+   pack's `pack.json` `deny`, and
    - for a pack, its world script's name (such as `reconcile[.]py`) and the
      catalog (`worlds/recipes`);
    - for a world you wrote, its script and its directory;
@@ -98,7 +102,7 @@ You are playing a world through ASSAY, a harness that grades a prediction before
    If .assay/NOTES.md exists, read it in full: it is your record from an earlier session of this run.
 
 The task: <the registry's goal text>
-<the recipe's player note, unless the goal text already says it>
+<the pack's player.note (pack.json, else the recipe's), unless the goal text already says it>
 
 Rules:
 - Touch the world only through "$ASSAY" (act, commit, reset). Read the world's files only where

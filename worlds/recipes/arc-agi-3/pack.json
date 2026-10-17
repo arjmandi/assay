@@ -1,0 +1,21 @@
+{
+  "pack": 1,
+  "name": "arc-agi-3",
+  "summary": "An ARC-AGI-3 public game, played from a local copy: a 64 by 64 grid of colours, seven actions, a level counter and no instructions.",
+  "adapter": "adapter.py:factory",
+  "registry": "registry.json",
+  "world_id": {
+    "is": "the game id",
+    "default": "ft09",
+    "values": ["ar25", "bp35", "cd82", "cn04", "dc22", "ft09", "g50t", "ka59", "lf52", "lp85", "ls20", "m0r0", "r11l",
+               "re86", "s5i5", "sb26", "sc25", "sk48", "sp80", "su15", "tn36", "tr87", "tu93", "vc33", "wa30"]
+  },
+  "python": {"version": "3.14.5", "requirements": "requirements.txt"},
+  "credentials": [
+    {"name": "ARC_API_KEY", "file": "~/assay/tokens/arc_api_key", "when": "once per game, to download it", "from": "https://arcprize.org"}
+  ],
+  "deny": ["arc_api_key", "arc_agi", "arcengine", "[.]cache/assay/arcade"],
+  "card": {"code": "M-E-C-0", "family": "Explore", "fit": "yes", "clock": "s"},
+  "player": {"note": "The observation is a 64x64 colour grid, with a level counter and a win state. ACTION6 clicks a cell: x is the column, y the row."},
+  "win": "the game's own: WIN when every level is completed"
+}

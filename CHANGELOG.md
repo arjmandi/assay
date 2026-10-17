@@ -3,6 +3,42 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## 1.5.0 (unreleased)
+
+### Added
+
+- Packs: a world ASSAY can referee is a pack, a directory with the adapter,
+  the registry, the world's scripts and a manifest, `pack.json`
+  (`worlds/README.md`, "The pack manifest"): the world id, the pack's own
+  interpreter, its key files, the hook's deny patterns, the card, the
+  player's note and the WIN in words. A pack without the manifest takes the
+  defaults, so every pack of 1.4.0 runs as before.
+- `worlds/recipes/arc-agi-3`, the ARC-AGI-3 pack: the adapter of the
+  published runs (`bench/arcagi/adapter.py`, unchanged) behind a loader that
+  reads the ARC API key from `~/assay/tokens/arc_api_key` inside the daemon,
+  the 200-action registry with a goal, the 25 public game ids and the pinned
+  interpreter. `tests/test_arc_pack.py` holds it to the benchmark's registry
+  and pins.
+- `/assay:connect`, the skill that builds a pack for a new world: the
+  classification, the archetype and the smoke test that `/assay:attach` did
+  before, ending with the pack in `~/assay/worlds/<id>/` and the command
+  that attaches it.
+
+### Changed
+
+- `/assay:attach <pack> "<goal>"` starts a run on a pack with the user's
+  goal: the catalog's, `/assay:connect`'s or anyone's. It builds the pack's
+  interpreter with uv, checks its key files without reading them, writes the
+  run's registry when the goal changes the goal text, and installs the
+  hooks with the pack's deny patterns. Given a task and no pack, it builds
+  one with `/assay:connect` first; a catalog pack serves a task only when
+  the user asked for that pack's own world, since the catalog's packs play
+  worlds built from a seed.
+- The session runner restarts the daemon and runs the player with
+  `ASSAY_PYTHON` set to the interpreter the run was started with, when the
+  shell names none, so `/assay:run` resumes a world with its own packages
+  from any shell.
+
 ## 1.4.0 (2026-10-16)
 
 ### Added

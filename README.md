@@ -11,19 +11,36 @@ and the run is over when the world says so, not when the agent believes it.
 /plugin install assay@assay
 ```
 
-Then put it on a task:
+Play an ARC-AGI-3 game with it. Save your ARC API key once (from
+arcprize.org), in your own terminal:
+
+```bash
+mkdir -p -m 700 ~/assay/tokens && (umask 077; printf 'ARC API key: '; read -rs k; echo; printf '%s\n' "$k" > ~/assay/tokens/arc_api_key)
+```
+
+then, in Claude Code:
 
 ```
-/assay:attach "reconcile the bank statement against the books in ledger.csv, month by month"
+/assay:attach arc-agi-3 "win the game ft09"
+/assay:run
 ```
 
-`/assay:attach` asks up to four questions about the task, builds a world for
-it from the catalog in `worlds/`, and starts the run. `/assay:run` plays it,
-session after session, until the run says it is over. `/assay:report` writes
-up what the run verified, and `/assay:compare` runs the same task under
-Claude Code with `/goal` and scores both with one checker. Without Claude
-Code, `pip install git+https://github.com/arjmandi/assay` gives the `assay`
-command line, and `GUIDE.md` starts from there.
+Or bring your own world. `/assay:connect` builds a pack for it, the adapter,
+the registry and the world's scripts, and smoke-tests it; `/assay:attach`
+then starts a run on the pack with your goal:
+
+```
+/assay:connect "the inventory service on localhost:8080, with its OpenAPI spec in ./openapi.json"
+/assay:attach ~/assay/worlds/inventory "every SKU below its reorder point has an open purchase order"
+/assay:run
+```
+
+`/assay:run` plays it, session after session, until the run says it is over.
+`/assay:watch` follows it, `/assay:report` writes up what the run verified,
+and `/assay:compare` runs the same task under Claude Code with `/goal` and
+scores both with one checker. Without Claude Code, `pip install
+git+https://github.com/arjmandi/assay` gives the `assay` command line, and
+`GUIDE.md` starts from there.
 
 ## What it is
 

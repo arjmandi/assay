@@ -51,7 +51,10 @@ session:
    ASSAY_OWNER_TOKEN_FILE, and without any `--strip NAME`. So a world's
    credentials stay in the daemon's environment, and the player has no route
    around the adapter. `ASSAY` names the launcher: by default the one the
-   run's hook policy pins, else `bin/assay`.
+   run's hook policy pins, else `bin/assay`. When the runner's shell names no
+   `ASSAY_PYTHON`, the start of step 1 and the player both get the
+   interpreter the run was started with, from its `config.json`, so a world
+   with its own packages (the `arc-agi-3` pack) resumes from any shell.
 
 The hosts, as templates in `session.py`:
 

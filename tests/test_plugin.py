@@ -73,7 +73,7 @@ def test_no_hook_file_applies_to_every_session():
 
 def test_every_skill_names_its_directory_and_its_paths_exist():
     skills = sorted((REPO / "skills").glob("*/SKILL.md"))
-    assert [path.parent.name for path in skills] == ["attach", "compare", "diagnose", "report", "run", "watch"]
+    assert [path.parent.name for path in skills] == ["attach", "compare", "connect", "diagnose", "report", "run", "watch"]
     for path in skills:
         fields, body = _frontmatter(path)
         assert fields["name"] == path.parent.name
@@ -121,7 +121,7 @@ def test_the_report_skill_audits_through_the_launcher_and_reads_a_stop_against_t
     assert '--check "python3 <pack>/checks/score.py --run {run_dir} --json"' in skill
     for word in ("SELF_STOP", "INVALID FOR SCORING", "Never exercised", "/assay:run"):
         assert word in skill, word
-    # Every pack's checker takes the run directory as the skill passes it.
+    # Every recipe pack's checker takes the run directory as the skill passes it.
     for pack in _packs():
         assert "--run" in (pack / "checks" / "score.py").read_text()
     # The document's section names the skill quotes are the report's own.
@@ -155,7 +155,16 @@ def test_the_watch_and_diagnose_skills_run_their_modes_and_name_the_layers():
 
 
 def _packs() -> list[Path]:
-    return sorted(path for path in (WORLDS / "recipes").iterdir() if path.is_dir())
+    """The recipe packs: a recipe over an archetype's engine, with a checker."""
+    return sorted(path for path in (WORLDS / "recipes").iterdir() if (path / "recipe.json").is_file())
+
+
+def _adapter_packs() -> list[Path]:
+    """The packs whose world is an adapter of their own, with a manifest."""
+    return sorted(
+        path for path in (WORLDS / "recipes").iterdir()
+        if path.is_dir() and not (path / "recipe.json").exists() and (path / "pack.json").exists()
+    )
 
 
 def _templates() -> list[Path]:
@@ -166,9 +175,19 @@ def test_the_catalog_lists_every_pack():
     readme = (WORLDS / "README.md").read_text()
     packs = _packs()
     assert [path.name for path in packs] == ["flaky-test", "hidden-grammar", "legacy-api", "spreadsheet-reconcile"]
+    assert [path.name for path in _adapter_packs()] == ["arc-agi-3"]
+    assert sorted(path.name for path in (WORLDS / "recipes").iterdir() if path.is_dir() and path.name != "__pycache__") == sorted(
+        path.name for path in (*packs, *_adapter_packs())
+    )
     for pack in packs:
         assert f"`recipes/{pack.name}`" in readme
         for name in ("recipe.json", "registry.json", "adapter.py", "README.md"):
+            assert (pack / name).is_file(), f"{pack.name}: {name}"
+    for pack in _adapter_packs():
+        assert f"`recipes/{pack.name}`" in readme
+        manifest = json.loads((pack / "pack.json").read_text())
+        assert manifest["name"] == pack.name
+        for name in (manifest["adapter"].split(":")[0], manifest["registry"], "README.md"):
             assert (pack / name).is_file(), f"{pack.name}: {name}"
 
 

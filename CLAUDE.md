@@ -67,8 +67,10 @@ worlds/              the catalog: archetypes/command_world.py (the command-world
                       an MCP server or an OpenAPI document), recipes/<pack>/ (packs:
                       recipe, registry, the one adapter stub, world scripts,
                       checks/); worlds/README.md is the recipe's reference
-skills/attach/       the Claude Code skill /assay:attach: SKILL.md, rubric.md (the
-                      world card), start.md (smoke test, start, the player's prompt)
+skills/connect/      the Claude Code skill /assay:connect: a pack for a new world
+skills/attach/       the skill /assay:attach: a run on a pack with a goal;
+                      SKILL.md, rubric.md (the world card), start.md (smoke
+                      test, start, the player's prompt)
 skills/run/          the skill /assay:run: the player through the session mode
 skills/report/       the skill /assay:report: the report of one run
 skills/compare/      the skill /assay:compare: ASSAY against /goal on one pack

@@ -41,6 +41,8 @@ ADAPTERS = {
     "repo-template": REPO / "worlds" / "archetypes" / "repo" / "template" / "adapter.py",
     "legacy-api": REPO / "worlds" / "recipes" / "legacy-api" / "adapter.py",
     "notebook": REPO / "worlds" / "archetypes" / "service" / "template" / "adapter.py",
+    # The ARC-AGI-3 pack: the benchmark's adapter behind a key-file loader.
+    "arc-agi-3": REPO / "worlds" / "recipes" / "arc-agi-3" / "adapter.py",
 }
 # The test adapters, held to the same contract.
 FAKES = {

@@ -2,15 +2,19 @@
 
 This directory holds worlds that ASSAY can referee without anyone writing an
 adapter. An archetype is an adapter written once, which a recipe configures.
-A pack is a recipe ready to run, with its world scripts and a checker. The
-`attach` skill (`skills/attach/`, the `/assay:attach` command in Claude Code)
-classifies a task with the four questions of `skills/attach/rubric.md` and
-then starts a pack, or writes a new recipe from an archetype's template.
+A pack is a world ready to run: an adapter, a registry, the world's scripts,
+a checker when there is one, and a manifest, `pack.json`. In Claude Code,
+`/assay:connect` (`skills/connect/`) builds a pack for a new world: it
+classifies the world with the four questions of `skills/attach/rubric.md`,
+writes a recipe from an archetype's template and smoke-tests it.
+`/assay:attach <pack> "<goal>"` (`skills/attach/`) starts a run on a pack,
+the catalog's or anyone's, with the user's goal.
 
 ## The catalog
 
 | Pack | Code | Clock | Family | What it shows |
 |---|---|---|---|---|
+| `recipes/arc-agi-3` | M-E-C-0 | s | Explore | an ARC-AGI-3 public game from a local copy, through the adapter of the published runs (`bench/arcagi/`); its own interpreter (`requirements.txt`) and the ARC API key from a key file, both named in `pack.json` |
 | `recipes/flaky-test` | M-R-C-0 | s | Solve | a sales-report library whose suite fails on about half its runs; the world is won at twenty green runs in a row, and `checks/score.py` runs the project's tests and its own under thirty fixed hash seeds |
 | `recipes/hidden-grammar` | M-E-N-0 | s | Explore | a constructed language drawn from the seed and a speaker who answers only acceptable or not; the agent writes a classifier, and `checks/score.py` scores it on 400 held-out sentences with a breakdown by rule |
 | `recipes/legacy-api` | S-E-C-U | s | Solve | a legacy CRM's customers moved into a new hub through two HTTP APIs whose documentation leaves things out; the hub's own verdict decides the WIN, and `checks/score.py` scores any arm's hub |
@@ -24,7 +28,10 @@ runs, N enough found, P a person judges), and the worst a wrong action does
 (0 nothing, U an undoable mess, X money, the irreversible, people or permits).
 
 The benchmark worlds live under `bench/` and are not part of this catalog:
-they are the owner's research runs, started by their own protocols.
+they are the owner's research runs, started by their own protocols. The
+`arc-agi-3` pack wraps the ARC-AGI-3 adapter and changes nothing under
+`bench/`. The other packs play worlds built from a seed: they are samples,
+not the user's own files or services, which get a pack of their own.
 
 ## The archetypes
 
@@ -46,6 +53,8 @@ test, and `service/template/` a notebook MCP server.
 an MCP server's tool list or an OpenAPI document.
 
 ## A pack, file by file
+
+- `pack.json`: the manifest (below).
 
 - `recipe.json`: the world for the engine (below), the card (the four
   answers and the tags), and a note for the player.
@@ -73,6 +82,27 @@ assay start reconcile1 \
 ```
 
 The player's session then begins in `run1` at `assay status` (GUIDE section 5).
+
+## The pack manifest
+
+`pack.json` tells `/assay:attach` what the pack needs. Every key is
+optional; a pack without the file takes the defaults.
+
+| Key | What it says | Default |
+|---|---|---|
+| `pack` | the manifest's version, 1 | 1 |
+| `name`, `summary` | the pack's name and one sentence on its world | the directory's name |
+| `adapter`, `registry` | the files, relative to the pack | `adapter.py:factory`, `registry.json` |
+| `world_id` | `is` (what the id names), `default`, and `values` when only some ids exist (the ARC game ids) | the pack's name |
+| `python` | `version` and `requirements`: the world runs under its own interpreter, which attach builds with uv in `~/assay/envs/<name>/` | the plugin's interpreter |
+| `credentials` | per credential: `name` (the variable, also in the registry's `secrets`), `file` when the adapter reads it from a file, `when`, `from` | none |
+| `deny` | the hook's deny patterns: every way around the harness to the world | none |
+| `card` | the rubric's answers: `code`, `family`, `fit`, `clock` | none |
+| `player` | `note`: what the player is told about where to read the world | the recipe's `player.note` |
+| `win` | what the world counts as WIN, in words; a goal given at attach changes what the player is told, never this | the recipe's `win` |
+
+A pack built elsewhere (by another tool, by hand) runs the same way, as long
+as its adapter keeps the contract of `docs/ARCHITECTURE.md` section 2.
 
 ## The recipe
 
