@@ -24,6 +24,12 @@ demoted, and the owner's gates (destructive, approval, budget, liveness). You
 supply two things: an adapter (one Python file) and a registry (one JSON
 file). Nothing else about your world enters the kernel.
 
+In Claude Code, `/assay:connect "<your world>"` writes both for you, with the
+world's scripts and a `pack.json` that says what the world needs, and
+`/assay:attach <pack> "<goal>"` starts the run (`worlds/README.md`, "The pack
+manifest"). This guide is the same work by hand, and what to check when a pack
+misbehaves.
+
 ## 1. Install on a clean machine
 
 Python 3.12 or newer, on macOS or Linux. The kernel uses `fcntl` file locks,
