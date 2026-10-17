@@ -135,8 +135,6 @@ hr{border:0;border-top:1px solid var(--line);margin:40px 0}
 .agent-tabs{display:flex;gap:2px;padding:8px 8px 0;border-bottom:1px solid var(--line);background:var(--bg-soft);overflow-x:auto}
 .agent-tabs button{border:0;background:none;padding:8px 14px;border-radius:8px 8px 0 0;font:400 12.5px var(--sans);color:var(--text-3);cursor:pointer;white-space:nowrap;border-bottom:2px solid transparent;margin-bottom:-1px}
 .agent-tabs button.on{color:var(--text);border-bottom-color:var(--accent);background:var(--panel)}
-.agent-tabs button:disabled{cursor:default}
-.agent-tabs .soon{font-size:11px;color:var(--text-3);margin-left:4px}
 .steps ol{list-style:none;margin:0;padding:22px 22px 6px;counter-reset:s}
 .steps li{position:relative;padding-left:40px;margin:0 0 20px;counter-increment:s}
 .steps li::before{content:counter(s);position:absolute;left:0;top:0;width:24px;height:24px;border-radius:50%;background:var(--accent);color:#fff;font:500 12px/24px var(--mono);text-align:center}
@@ -386,8 +384,6 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
   <div class="steps">
     <div class="agent-tabs" role="tablist">
       <button class="on" role="tab" aria-selected="true">Claude Code</button>
-      <button role="tab" disabled>Codex <span class="soon">soon</span></button>
-      <button role="tab" disabled>OpenCode <span class="soon">soon</span></button>
     </div>
     <ol>
       <li>
@@ -445,8 +441,6 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
   <div class="steps">
     <div class="agent-tabs" role="tablist">
       <button class="on" role="tab" aria-selected="true">Claude Code</button>
-      <button role="tab" disabled>Codex <span class="soon">soon</span></button>
-      <button role="tab" disabled>OpenCode <span class="soon">soon</span></button>
     </div>
     <ol>
       <li>
