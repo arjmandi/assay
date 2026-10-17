@@ -325,10 +325,9 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
     <div class="ob-icon"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 4.5 6 8l-3 3.5M8 12h5"/></svg></div>
     <div class="ob-body">
       <strong>Onboard your agent</strong>
-      <p>Paste this into Claude Code to install the plugin and put it on your first task.</p>
+      <p>Paste this into Claude Code to install the plugin, then play the ARC-AGI-3 sample or connect a world of your own.</p>
       <div class="code bare"><pre id="ob">/plugin marketplace add arjmandi/assay
-/plugin install assay@assay
-/assay:attach "describe your task in plain words"</pre><button class="copy" data-copy="ob">Copy</button></div>
+/plugin install assay@assay</pre><button class="copy" data-copy="ob">Copy</button></div>
     </div>
   </div>
 
@@ -360,7 +359,7 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
   <p>It does not replace your agent. Claude Code is still the one playing; ASSAY decides what counts as known, and when the work is finished.</p>
 
   <h2 id="when-it-fits">When it fits</h2>
-  <p><code>/assay:attach</code> checks the fit for you before it builds anything. The short version:</p>
+  <p><code>/assay:connect</code> checks the fit for you before it builds anything. The short version:</p>
   <div class="fit">
     <div>
       <h4>Good fit</h4>
@@ -383,7 +382,7 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
   <p class="muted small">On small, well-documented tasks, plain Claude Code with <code>/goal</code> is often quicker and cheaper. ASSAY earns its overhead when the agent has to discover how the world works.</p>
 
   <h2 id="apply">Apply it to a task</h2>
-  <p>Three steps. You describe the task; ASSAY builds the world around it.</p>
+  <p>ASSAY runs on a <strong>pack</strong>: the piece that connects it to one world. Play a sample pack as it is, or have Claude build a pack for a world of your own, then say what you want to achieve there.</p>
   <div class="steps">
     <div class="agent-tabs" role="tablist">
       <button class="on" role="tab" aria-selected="true">Claude Code</button>
@@ -398,20 +397,25 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
 /plugin install assay@assay</pre><button class="copy" data-copy="s1">Copy</button></div>
       </li>
       <li>
-        <strong>Attach it to your task</strong>
-        <p>Say what you want in plain words. ASSAY asks up to four questions, checks the fit, builds a world for the task from its catalog or from your project, smoke-tests it and starts the run.</p>
-        <div class="code bare"><pre id="s2">/assay:attach "reconcile the bank statement against the books in ledger.csv, month by month"</pre><button class="copy" data-copy="s2">Copy</button></div>
+        <strong>Connect your world</strong>
+        <p>Describe the world and what counts as done there. Claude checks the fit, asks up to four questions, builds the pack (its adapter, its registry, the world's scripts) and tests it. Files, a simulator or a game on your machine, a repository with tests, or a service with an MCP server or an HTTP API. Skip this step for a sample pack such as <code>arc-agi-3</code>.</p>
+        <div class="code bare"><pre id="s2">/assay:connect "the inventory service on localhost:8080, with its OpenAPI spec in ./openapi.json"</pre><button class="copy" data-copy="s2">Copy</button></div>
+      </li>
+      <li>
+        <strong>Say what to achieve</strong>
+        <p>Attach starts a run on the pack with your goal, and keeps the owner token out of the agent's reach. Connect prints the pack's path.</p>
+        <div class="code bare"><pre id="s3">/assay:attach ~/assay/worlds/inventory "every SKU below its reorder point has an open purchase order"</pre><button class="copy" data-copy="s3">Copy</button></div>
       </li>
       <li>
         <strong>Run it, and watch</strong>
         <p><code>/assay:run</code> plays the run session after session until the world says it is over. It pauses and asks you when an action needs your approval. <code>/assay:watch</code> gives you one line whenever something changes, and <code>/assay:report</code> writes up what the run verified.</p>
-        <div class="code bare"><pre id="s3">/assay:run
+        <div class="code bare"><pre id="s4">/assay:run
 /assay:watch
-/assay:report</pre><button class="copy" data-copy="s3">Copy</button></div>
+/assay:report</pre><button class="copy" data-copy="s4">Copy</button></div>
       </li>
     </ol>
   </div>
-  <p class="muted small">If a run goes badly, <code>/assay:diagnose</code> reads it against the five reasoning layers and says where to steer. <code>/assay:compare</code> runs the same task under plain Claude Code with <code>/goal</code> and scores both with one checker.</p>
+  <p class="muted small">If a run goes badly, <code>/assay:diagnose</code> reads it against the five reasoning layers and says where to steer. <code>/assay:compare</code> runs the same task under plain Claude Code with <code>/goal</code> and scores both with one checker. A pack built by another tool plugs into <code>/assay:attach</code> the same way.</p>
 
   <!-- ARC example -->
   <h2 id="arc-example">Example: win an ARC-AGI-3 game</h2>
@@ -437,7 +441,7 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
   </div>
 
   <h3>Run it yourself</h3>
-  <p>You need Claude Code with the plugin installed (step 1 above), <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a>, and an API key from <a href="https://arcprize.org" target="_blank" rel="noopener">arcprize.org</a>. This world ships with the repository rather than the plugin catalog, so you start the run yourself as the operator, then hand it to the plugin. Steps 1 and 2 run in one terminal, one after the other.</p>
+  <p>The ARC-AGI-3 pack ships with the plugin. You need <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a> and an API key from <a href="https://arcprize.org" target="_blank" rel="noopener">arcprize.org</a>.</p>
   <div class="steps">
     <div class="agent-tabs" role="tablist">
       <button class="on" role="tab" aria-selected="true">Claude Code</button>
@@ -446,35 +450,21 @@ td.hl{background:color-mix(in srgb,var(--accent-soft) 55%,transparent)}
     </div>
     <ol>
       <li>
-        <strong>Get the repository and the game's Python</strong>
-        <p>In a terminal. <code>assay doctor</code> confirms the interpreter and its packages. The last line asks for your ARC API key, which downloads the game once and is never written to the journal.</p>
-        <div class="code bare"><pre id="a1">git clone https://github.com/arjmandi/assay "$HOME/assay/repo"
-uv venv --allow-existing --python 3.14.5 "$HOME/assay/envs/arc_agi"
-uv pip install --python "$HOME/assay/envs/arc_agi/bin/python" -r "$HOME/assay/repo/bench/arcagi/requirements.txt"
-export ASSAY_PYTHON="$HOME/assay/envs/arc_agi/bin/python"
-"$HOME/assay/repo/bin/assay" doctor
-printf 'ARC API key: '; read -rs ARC_API_KEY; export ARC_API_KEY; echo</pre><button class="copy" data-copy="a1">Copy</button></div>
+        <strong>Save your ARC API key</strong>
+        <p>Once, in your own terminal rather than in Claude Code. It asks for the key without showing it. The harness reads the file when it downloads a game, so the key reaches neither the agent nor the record.</p>
+        <div class="code bare"><pre id="a1">mkdir -p -m 700 ~/assay/tokens &amp;&amp; (umask 077; printf 'ARC API key: '; read -rs k; echo; printf '%s\n' "$k" &gt; ~/assay/tokens/arc_api_key)</pre><button class="copy" data-copy="a1">Copy</button></div>
       </li>
       <li>
-        <strong>Start the run, then open Claude Code here</strong>
-        <p>The registry caps the run at 200 paid actions. The owner token goes to a file outside the run, out of the player's reach. Claude Code opens from this same terminal, so the player's runner inherits the game's Python.</p>
-        <div class="code bare"><pre id="a2">mkdir -p "$HOME/assay/runs/ft09" &amp;&amp; mkdir -p -m 700 "$HOME/assay/tokens"
-"$HOME/assay/repo/bin/assay" --run-dir "$HOME/assay/runs/ft09" start ft09 \
-    --adapter "$HOME/assay/repo/bench/arcagi/adapter.py:factory" \
-    --registry "$HOME/assay/repo/bench/arcagi/registry_200.json" \
-    --owner-token-file "$HOME/assay/tokens/ft09.token"
-cd "$HOME/assay" &amp;&amp; claude</pre><button class="copy" data-copy="a2">Copy</button></div>
+        <strong>Attach the pack with the game</strong>
+        <p>Any of the 25 public games, by its id. The first time, attach builds the game's Python (3.14.5 and the ARC client), then it starts the run, capped at 200 paid actions.</p>
+        <div class="code bare"><pre id="a2">/assay:attach arc-agi-3 "win the game ft09"</pre><button class="copy" data-copy="a2">Copy</button></div>
       </li>
       <li>
-        <strong>Play it from Claude Code</strong>
-        <p>In the Claude Code that just opened. <code>/assay:run</code> writes the player's prompt if the run has none, and launches the player in the background, one session after another, until the game is won or the budget is spent.</p>
-        <div class="code bare"><pre id="a3">/assay:run ~/assay/runs/ft09</pre><button class="copy" data-copy="a3">Copy</button></div>
-      </li>
-      <li>
-        <strong>Watch it, then read the report</strong>
-        <p>One line whenever something changes: the paid actions, held and missed, the last action and how it graded. The report says what the run verified and replays the journal through the audit.</p>
-        <div class="code bare"><pre id="a4">/assay:watch ~/assay/runs/ft09
-/assay:report ~/assay/runs/ft09</pre><button class="copy" data-copy="a4">Copy</button></div>
+        <strong>Play it, watch it, read the report</strong>
+        <p>The player starts at <code>assay status</code> and plays until the game is won or the budget is spent. One line whenever something changes; the report says what the run verified.</p>
+        <div class="code bare"><pre id="a3">/assay:run
+/assay:watch
+/assay:report</pre><button class="copy" data-copy="a3">Copy</button></div>
       </li>
     </ol>
   </div>
@@ -540,22 +530,22 @@ cd "$HOME/assay" &amp;&amp; claude</pre><button class="copy" data-copy="a2">Copy
 <section class="page" id="more-examples" data-area="daily">
   <p class="eyebrow">Daily tasks</p>
   <h1>More examples</h1>
-  <p class="lead">Twelve tasks from an ordinary week, each one a goal you can paste into <code>/assay:attach</code>. Swap in your own file names and numbers.</p>
+  <p class="lead">Twelve tasks from an ordinary week. A sample runs as it is, on its own world. For your own files, repository or service, connect it first, then attach it with your goal. Swap in your own names.</p>
   <div class="legend">
-    <span><span class="badge ready">Ready</span> a world for it ships with the plugin</span>
-    <span><span class="badge builds">Builds</span> attach builds the world from your project, from one of three archetypes</span>
+    <span><span class="badge ready">Sample</span> a pack in the catalog, on its own world: one command</span>
+    <span><span class="badge builds">Your world</span> <code>/assay:connect</code> builds the pack and prints its path; <code>/assay:attach</code> runs it</span>
   </div>
 
   <h2 id="ex-code">Code</h2>
   <div class="cards">
     <article class="card wide">
-      <div class="card-head"><h3>Fix a flaky test at its cause</h3><span class="badge ready">Ready</span></div>
+      <div class="card-head"><h3>Fix a flaky test at its cause</h3><span class="badge ready">Sample</span></div>
       <span class="src">worlds/recipes/flaky-test</span>
       <p>A test suite that fails on some runs and passes on others. One green run proves nothing, so the agent cannot stop at the first pass: it has to predict which runs fail and why, until it can name the cause.</p>
-      <div class="goal"><code id="g1">/assay:attach "find why the tests in this repo fail on some runs and fix the cause"</code><button class="copy" data-copy="g1">Copy</button></div>
+      <div class="goal"><code id="g1">/assay:attach flaky-test "make the suite pass on every run by fixing the cause"</code><button class="copy" data-copy="g1">Copy</button></div>
       <dl><dt>Done when</dt><dd>the suite passes 20 runs out of 20</dd><dt>Worst case</dt><dd>nothing: the agent works on a copy of the project</dd></dl>
       <details>
-        <summary>How the world is built</summary>
+        <summary>How the sample is built, and your own repository</summary>
         <div>
           <p>The pack ships a small sales-report library whose suite is flaky on purpose. The agent reads and edits the files freely, but runs the tests only through a paid <code>RUN_TESTS</code> action, so every run carries a prediction: how many runs fail, which tests, at what rate.</p>
 <pre class="wc">WORLD CARD  flaky-test        code M-R-C-0   family Solve   fit yes
@@ -564,40 +554,37 @@ answers     roughly: a run passes or fails by chance
 states      failed_runs, pass_rate, runs, failing
 done when   the suite passes 20 runs of 20
 worst case  nothing: a copy of the project in work/</pre>
-          <p>The checker then runs the project's tests, and its own, under thirty fixed hash seeds. A fix that only makes the failure quieter does not pass. For your own repository, name the test command and how many clean runs count as fixed.</p>
+          <p>The checker then runs the project's tests, and its own, under thirty fixed hash seeds. A fix that only makes the failure quieter does not pass. For your own repository, connect it first:</p>
+          <div class="goal"><code id="g13">/assay:connect "my repository in ./shop, whose tests fail on some runs; done when they pass 20 runs in a row"<br>/assay:attach ~/assay/worlds/shop "fix the cause of the flaky tests"</code><button class="copy" data-copy="g13">Copy</button></div>
         </div>
       </details>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Fix a bug the tests catch</h3><span class="badge ready">Ready</span></div>
-      <span class="src">worlds/archetypes/repo/template</span>
+      <div class="card-head"><h3>Fix a bug the tests catch</h3><span class="badge builds">Your world</span></div>
+      <span class="src">repo archetype</span>
       <p>The tests say what is wrong but not where. The agent predicts which tests each edit will turn green before it runs them.</p>
-      <div class="goal"><code id="g2">/assay:attach "make every test in tests/ pass without changing the tests"</code><button class="copy" data-copy="g2">Copy</button></div>
+      <div class="goal"><code id="g2">/assay:connect "my repository in ./calc; done when every test in tests/ passes without changing the tests"<br>/assay:attach ~/assay/worlds/calc "make every test pass without changing the tests"</code><button class="copy" data-copy="g2">Copy</button></div>
       <dl><dt>Done when</dt><dd>every test passes</dd></dl>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Speed up a slow function</h3><span class="badge builds">Builds</span></div>
+      <div class="card-head"><h3>Speed up a slow function</h3><span class="badge builds">Your world</span></div>
       <span class="src">repo archetype</span>
       <p>Every change is a guess about where the time goes. The agent predicts the timing before each benchmark run, and the output has to stay the same.</p>
-      <div class="goal"><code id="g3">/assay:attach "make build_report in stats.py five times faster with the same output"</code><button class="copy" data-copy="g3">Copy</button></div>
+      <div class="goal"><code id="g3">/assay:connect "the project in ./stats and its benchmark; done when build_report runs five times faster with the same output"<br>/assay:attach ~/assay/worlds/stats "make build_report five times faster with the same output"</code><button class="copy" data-copy="g3">Copy</button></div>
       <dl><dt>Done when</dt><dd>the benchmark meets the target and the outputs match</dd></dl>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Reproduce and fix a crash</h3><span class="badge builds">Builds</span></div>
+      <div class="card-head"><h3>Reproduce and fix a crash</h3><span class="badge builds">Your world</span></div>
       <span class="src">repo archetype</span>
       <p>First a test that crashes the way the report says, then a fix that makes it pass. A theory of the cause has to predict the crash before the fix counts.</p>
-      <div class="goal"><code id="g4">/assay:attach "reproduce the crash in issue 142 with a test, then fix it"</code><button class="copy" data-copy="g4">Copy</button></div>
+      <div class="goal"><code id="g4">/assay:connect "my repository in ./app and the crash in issue 142; done when a new test reproduces the crash and passes after the fix"<br>/assay:attach ~/assay/worlds/app "reproduce the crash in issue 142 with a test, then fix it"</code><button class="copy" data-copy="g4">Copy</button></div>
       <dl><dt>Done when</dt><dd>the new test fails before the fix and passes after</dd></dl>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Migrate a SQLite database</h3><span class="badge builds">Builds</span></div>
+      <div class="card-head"><h3>Migrate a SQLite database</h3><span class="badge builds">Your world</span></div>
       <span class="src">local archetype</span>
       <p>Hard to undo, and the old schema has surprises. Destructive steps need a declared worst case and a way back before they run.</p>
-      <div class="goal"><code id="g5">/assay:attach "migrate app.db to the schema in schema_v2.sql without losing a row"</code><button class="copy" data-copy="g5">Copy</button></div>
+      <div class="goal"><code id="g5">/assay:connect "app.db and the new schema in schema_v2.sql; done when the new schema is in place and every row is accounted for"<br>/assay:attach ~/assay/worlds/app-db "migrate app.db to schema_v2.sql without losing a row"</code><button class="copy" data-copy="g5">Copy</button></div>
       <dl><dt>Done when</dt><dd>the new schema is in place and every row is accounted for</dd></dl>
     </article>
   </div>
@@ -605,13 +592,13 @@ worst case  nothing: a copy of the project in work/</pre>
   <h2 id="ex-data">Data and office</h2>
   <div class="cards">
     <article class="card wide">
-      <div class="card-head"><h3>Reconcile a bank statement with the books</h3><span class="badge ready">Ready</span></div>
+      <div class="card-head"><h3>Reconcile a bank statement with the books</h3><span class="badge ready">Sample</span></div>
       <span class="src">worlds/recipes/spreadsheet-reconcile</span>
       <p>Two ledgers that should agree and do not. Each month hides a few discrepancies of the kinds a bookkeeper meets, and a month closes only when every line is accounted for. The agent predicts what each match or adjustment does to the open balance before it makes it.</p>
-      <div class="goal"><code id="g6">/assay:attach "reconcile the bank statement against the books in ledger.csv, month by month"</code><button class="copy" data-copy="g6">Copy</button></div>
+      <div class="goal"><code id="g6">/assay:attach spreadsheet-reconcile "close all three months"</code><button class="copy" data-copy="g6">Copy</button></div>
       <dl><dt>Done when</dt><dd>every month is closed</dd><dt>Worst case</dt><dd>nothing: the agent works on a copy, and deleting a line is flagged destructive</dd></dl>
       <details>
-        <summary>How the world is built</summary>
+        <summary>How the sample is built, and your own ledgers</summary>
         <div>
           <p>The pack generates three months of a bank statement and a company's books, July to September 2026, from the run's seed, with five discrepancies per month. The world refuses what its rules forbid, and says why.</p>
 <pre class="wc">WORLD CARD  spreadsheet-reconcile   code M-E-C-0   family Solve   fit yes
@@ -620,16 +607,16 @@ answers     exactly
 states      bank_open, books_open, carried_open, months_closed, difference
 done when   three months closed (one unit per month)
 worst case  nothing: a copy of the ledgers; DELETE is flagged destructive</pre>
-          <p>For your own ledgers, say which file is the bank side, which is the books, and the period. Attach builds the same world around your files.</p>
+          <p>The sample plays its own ledgers, not yours. For your own, connect them first: say which file is the bank side, which is the books, and the period.</p>
+          <div class="goal"><code id="g14">/assay:connect "my bank statement in bank.csv and my books in ledger.csv, July to September; done when every month is closed"<br>/assay:attach ~/assay/worlds/ledger "reconcile the statement against the books, month by month"</code><button class="copy" data-copy="g14">Copy</button></div>
         </div>
       </details>
     </article>
-
     <article class="card wide">
-      <div class="card-head"><h3>Clean a contacts spreadsheet</h3><span class="badge builds">Builds</span></div>
+      <div class="card-head"><h3>Clean a contacts spreadsheet</h3><span class="badge builds">Your world</span></div>
       <span class="src">local archetype</span>
       <p>Duplicates that are not quite duplicates, and formats that drift row by row. The agent predicts how many rows each rule merges or fixes before it applies it, so a rule that is too greedy shows up as a miss, not as lost contacts.</p>
-      <div class="goal"><code id="g7">/assay:attach "clean contacts.csv: one row per person, valid emails, every phone number in one format"</code><button class="copy" data-copy="g7">Copy</button></div>
+      <div class="goal"><code id="g7">/assay:connect "contacts.csv; done when there is one row per person, every email is valid and every phone number is in one format"<br>/assay:attach ~/assay/worlds/contacts "clean contacts.csv"</code><button class="copy" data-copy="g7">Copy</button></div>
       <dl><dt>Done when</dt><dd>the checks for duplicates, emails and phone formats all pass</dd></dl>
     </article>
   </div>
@@ -637,26 +624,24 @@ worst case  nothing: a copy of the ledgers; DELETE is flagged destructive</pre>
   <h2 id="ex-services">Services and the web</h2>
   <div class="cards">
     <article class="card wide">
-      <div class="card-head"><h3>Migrate customers from a legacy API</h3><span class="badge ready">Ready</span></div>
+      <div class="card-head"><h3>Migrate customers from a legacy API</h3><span class="badge ready">Sample</span></div>
       <span class="src">worlds/recipes/legacy-api</span>
       <p>The old CRM and its replacement, both as HTTP APIs, and documentation that is silent or wrong in places. Where the docs fail, the agent has to find out by asking the service, and every call carries a prediction of the answer.</p>
-      <div class="goal"><code id="g8">/assay:attach "move the active customers from the legacy CRM into the new hub with their ids, names and emails, and leave the archived ones"</code><button class="copy" data-copy="g8">Copy</button></div>
+      <div class="goal"><code id="g8">/assay:attach legacy-api "move the active customers into the hub with their ids, names and emails, and leave the archived ones"</code><button class="copy" data-copy="g8">Copy</button></div>
       <dl><dt>Done when</dt><dd>the hub holds exactly the active customers</dd></dl>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Organize a notebook through MCP</h3><span class="badge ready">Ready</span></div>
-      <span class="src">worlds/archetypes/service/template</span>
-      <p>Any MCP server can be a world. The registry is drafted from the server's own tool list, and each call predicts what the server answers.</p>
-      <div class="goal"><code id="g9">/assay:attach "leave the notebook holding exactly three notes, one of them titled groceries"</code><button class="copy" data-copy="g9">Copy</button></div>
+      <div class="card-head"><h3>Organize a notebook through MCP</h3><span class="badge builds">Your world</span></div>
+      <span class="src">service archetype</span>
+      <p>Any MCP server can be a world. Connect drafts the registry from the server's own tool list, and each call predicts what the server answers.</p>
+      <div class="goal"><code id="g9">/assay:connect "the notes MCP server I start with python3 notes_server.py; done when the notebook holds what I ask for"<br>/assay:attach ~/assay/worlds/notes "leave the notebook holding exactly three notes, one of them titled groceries"</code><button class="copy" data-copy="g9">Copy</button></div>
       <dl><dt>Done when</dt><dd>the notebook holds exactly what the goal says</dd></dl>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Clear a page's accessibility errors</h3><span class="badge builds">Builds</span></div>
+      <div class="card-head"><h3>Clear a page's accessibility errors</h3><span class="badge builds">Your world</span></div>
       <span class="src">repo archetype</span>
       <p>Fixing one error often uncovers another. The agent predicts the error count after each change, and the checker runs the audit tool, not the agent's opinion.</p>
-      <div class="goal"><code id="g10">/assay:attach "clear every accessibility error the audit reports on the checkout page"</code><button class="copy" data-copy="g10">Copy</button></div>
+      <div class="goal"><code id="g10">/assay:connect "the site in ./web and its audit, npm run audit; done when the checkout page reports zero errors"<br>/assay:attach ~/assay/worlds/web "clear every accessibility error on the checkout page"</code><button class="copy" data-copy="g10">Copy</button></div>
       <dl><dt>Done when</dt><dd>the audit reports zero errors on the page</dd></dl>
     </article>
   </div>
@@ -664,18 +649,17 @@ worst case  nothing: a copy of the ledgers; DELETE is flagged destructive</pre>
   <h2 id="ex-puzzles">Puzzles and discovery</h2>
   <div class="cards">
     <article class="card">
-      <div class="card-head"><h3>Learn a made-up language</h3><span class="badge ready">Ready</span></div>
+      <div class="card-head"><h3>Learn a made-up language</h3><span class="badge ready">Sample</span></div>
       <span class="src">worlds/recipes/hidden-grammar</span>
       <p>A speaker who only says whether a sentence is acceptable, never why, and 40 questions to ask. Nothing in the world says when the agent is done, so it has to judge its own classifier.</p>
-      <div class="goal"><code id="g11">/assay:attach "learn the speaker's grammar and write a classifier that judges sentences the way they do"</code><button class="copy" data-copy="g11">Copy</button></div>
+      <div class="goal"><code id="g11">/assay:attach hidden-grammar "write a classifier that judges sentences the way the speaker does"</code><button class="copy" data-copy="g11">Copy</button></div>
       <dl><dt>Done when</dt><dd>the agent declares it; the checker scores it on 400 unseen sentences</dd></dl>
     </article>
-
     <article class="card">
-      <div class="card-head"><h3>Light every lamp in a switchboard</h3><span class="badge ready">Ready</span></div>
-      <span class="src">worlds/archetypes/local/template</span>
-      <p>Switches wired to lamps in ways nobody wrote down. The smallest world in the catalog, and a good first run to see held and missed at work.</p>
-      <div class="goal"><code id="g12">/assay:attach "turn every lamp on"</code><button class="copy" data-copy="g12">Copy</button></div>
+      <div class="card-head"><h3>Light every lamp in a switchboard</h3><span class="badge builds">Your world</span></div>
+      <span class="src">local archetype</span>
+      <p>Switches wired to lamps in ways nobody wrote down. A small puzzle on your machine, and a good first world to connect.</p>
+      <div class="goal"><code id="g12">/assay:connect "the switchboard puzzle in ./switchboard, lamps.json and its flip command; done when every lamp is on"<br>/assay:attach ~/assay/worlds/switchboard "turn every lamp on"</code><button class="copy" data-copy="g12">Copy</button></div>
       <dl><dt>Done when</dt><dd>every lamp is on</dd></dl>
     </article>
   </div>
@@ -782,7 +766,20 @@ mkdir demo && cd demo
   <div class="note"><strong>One person, two roles.</strong> The quickstart has you start the run and play it. An evaluated agent does not start the run: the operator starts it with <code>--owner-token-file</code>, and the agent's session begins at <code>assay status</code>.</div>
 
   <h2 id="r-attach">Attach a world</h2>
-  <p>A world is an adapter and a registry. In Claude Code, <code>/assay:attach</code> does all of this for you from the catalog in <code>worlds/</code>. By hand, the steps are:</p>
+  <p>A world is an adapter and a registry; a <strong>pack</strong> is the two together with the world's scripts and a manifest, <code>pack.json</code>. In Claude Code, <code>/assay:connect</code> builds a pack for a new world from one of three archetypes (files, a simulator or a game on this machine; a repository with tests; a service with an MCP server or an HTTP API), and <code>/assay:attach &lt;pack&gt; "&lt;goal&gt;"</code> starts a run on it. A pack built by hand or by another tool runs the same way.</p>
+  <div class="code"><div class="code-head">pack.json (every key optional)</div><pre>{
+  "pack": 1,
+  "name": "arc-agi-3",
+  "adapter": "adapter.py:factory",
+  "registry": "registry.json",
+  "world_id": {"is": "the game id", "default": "ft09", "values": ["ft09", "ls20", "..."]},
+  "python": {"version": "3.14.5", "requirements": "requirements.txt"},
+  "credentials": [{"name": "ARC_API_KEY", "file": "~/assay/tokens/arc_api_key"}],
+  "deny": ["arc_api_key", "arc_agi", "arcengine"],
+  "player": {"note": "The observation is a 64x64 colour grid ..."},
+  "win": "the game's own: WIN when every level is completed"
+}</pre></div>
+  <p class="muted small"><code>worlds/README.md</code>, "The pack manifest", lists every key. By hand, the steps are:</p>
   <div class="steps">
     <ol>
       <li>
@@ -898,7 +895,7 @@ python3 evidence/verify_all.py                  <span class="c"># every publishe
   <p>The verdict is <code>CLEAN</code> or <code>INVALID FOR SCORING</code>. A verdict proves the journal matches its published head, that every paid action carried a prediction registered before it ran, and that nothing is missing, so published scores recompute. It does not re-execute the grading, and it cannot prove anything about live reasoning. The truth of a benchmark result rests with the benchmark's own public scorecards, linked in the evidence packs.</p>
 
   <h2 id="r-status">Status and license</h2>
-  <p>1.2.0 was the first open-source release; the plugin is at 1.4.0. The ARC-AGI-3 campaign of 2026-08-21 to 08-23 ran on the kernel published as v1.0-rc1, and the Factorio and OOLONG runs on that kernel plus two small fixes. The 1.2.0 kernel is a refactor of it, verified by replaying the 25 published run directories unchanged. See <code>CHANGELOG.md</code>.</p>
+  <p>1.2.0 was the first open-source release; the plugin is at 1.5.0. The ARC-AGI-3 campaign of 2026-08-21 to 08-23 ran on the kernel published as v1.0-rc1, and the Factorio and OOLONG runs on that kernel plus two small fixes. The 1.2.0 kernel is a refactor of it, verified by replaying the 25 published run directories unchanged. See <code>CHANGELOG.md</code>.</p>
   <p>ASSAY is open source under the Apache License 2.0. The journal standard and the published journals in <code>verify/</code> and <code>evidence/</code> are MIT. The independent checker of 1.2.0 was retired after 1.3.0, and the tag <code>v1.3.0</code> holds it. The repository takes issues, not pull requests.</p>
 
   <div class="next">

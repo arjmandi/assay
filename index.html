@@ -814,101 +814,62 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
     <div class="section-head">
       <p class="eyebrow rv"><span class="num">§ 01</span><span>Get started</span></p>
       <h2 class="rv">Use <span class="sym">Assay</span> in Claude Code.</h2>
-      <p class="lede rv">Install the plugin, say what you want in plain words, and the run plays until the world says it is over. Every block below copies with one click.</p>
+      <p class="lede rv"><span class="sym">Assay</span> ships as a Claude Code plugin. Play ARC-AGI-3 with it, or bring your own world: Claude builds the pack that connects <span class="sym">Assay</span> to it, and you say what to achieve there.</p>
     </div>
 
     <div class="use rv">
-      <div class="use-step">
-        <div class="use-k"><span class="i">01</span><span class="t">Install the plugin</span><p class="d">Once, in any Claude Code session.</p></div>
-        <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/plugin marketplace add arjmandi/assay
+        <div class="use-step">
+          <div class="use-k"><span class="i">01</span><span class="t">Install the plugin</span><p class="d">Once, in any Claude Code session.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/plugin marketplace add arjmandi/assay
 /plugin install assay@assay</pre></div>
-      </div>
-      <div class="use-step">
-        <div class="use-k"><span class="i">02</span><span class="t">Attach it to a task</span><p class="d">Up to four questions, a fit check, then a world built for the task from the catalog or from your project. The run starts with the owner token kept out of the agent's reach.</p></div>
-        <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:attach "reconcile the bank statement against the books in ledger.csv, month by month"</pre></div>
-      </div>
-      <div class="use-step">
-        <div class="use-k"><span class="i">03</span><span class="t">Run it, watch it, read the report</span><p class="d">The player runs session after session until WIN, the budget, or a stop it declares with a reason. It pauses and asks you when an action needs your approval.</p></div>
-        <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:run
-/assay:watch
-/assay:report</pre></div>
-      </div>
+        </div>
     </div>
 
     <div class="use-play rv">
       <div class="use-play-h">
-        <h3>Play ARC-AGI-3, or any other game.</h3>
-        <p class="small">A game is a world like any other: actions, an observation after each one, and a goal the world reports reached.</p>
+        <h3>Then pick a world.</h3>
       </div>
-      <div class="use-tabs" role="tablist" aria-label="Games">
-        <button type="button" role="tab" aria-selected="true" data-use="arc">ARC-AGI-3</button>
-        <button type="button" role="tab" aria-selected="false" data-use="any">Any other game</button>
+      <div class="use-tabs" role="tablist" aria-label="Worlds">
+        <button type="button" role="tab" aria-selected="true" data-use="arc">Play ARC-AGI-3</button>
+        <button type="button" role="tab" aria-selected="false" data-use="own">Bring your own world</button>
       </div>
 
       <div class="use-pane" id="use-arc" role="tabpanel">
-        <p class="small use-pre">You need Claude Code with the plugin installed (step 01 above), <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a>, and an API key from <a href="https://arcprize.org" target="_blank" rel="noopener">arcprize.org</a>. Steps 01 and 02 run in one terminal, one after the other.</p>
+        <p class="small use-pre">The ARC-AGI-3 pack ships with the plugin. You need <a href="https://docs.astral.sh/uv/" target="_blank" rel="noopener">uv</a> and an API key from <a href="https://arcprize.org" target="_blank" rel="noopener">arcprize.org</a>.</p>
         <div class="use-step">
-          <div class="use-k"><span class="i">01</span><span class="t">The repository and the game's Python</span><p class="d">Clones the repository, builds the interpreter the ARC games run on, and checks it. The last line asks for your ARC API key, which downloads the game once and is never written to the journal.</p></div>
-          <div class="cmd"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>git clone https://github.com/arjmandi/assay "$HOME/assay/repo"
-uv venv --allow-existing --python 3.14.5 "$HOME/assay/envs/arc_agi"
-uv pip install --python "$HOME/assay/envs/arc_agi/bin/python" -r "$HOME/assay/repo/bench/arcagi/requirements.txt"
-export ASSAY_PYTHON="$HOME/assay/envs/arc_agi/bin/python"
-"$HOME/assay/repo/bin/assay" doctor
-printf 'ARC API key: '; read -rs ARC_API_KEY; export ARC_API_KEY; echo</pre></div>
+          <div class="use-k"><span class="i">01</span><span class="t">Save your ARC API key</span><p class="d">Once, in your own terminal. It asks for the key without showing it, and only the harness reads the file, so the key reaches neither the agent nor the record.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>mkdir -p -m 700 ~/assay/tokens &amp;&amp; (umask 077; printf 'ARC API key: '; read -rs k; echo; printf '%s\n' "$k" &gt; ~/assay/tokens/arc_api_key)</pre></div>
         </div>
         <div class="use-step">
-          <div class="use-k"><span class="i">02</span><span class="t">Start the run, then open Claude Code here</span><p class="d">Starts ft09, capped at 200 paid actions, with the owner token in a file outside the run. Claude Code opens from this same terminal, so the player's runner inherits the game's Python.</p></div>
-          <div class="cmd"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>mkdir -p "$HOME/assay/runs/ft09" && mkdir -p -m 700 "$HOME/assay/tokens"
-"$HOME/assay/repo/bin/assay" --run-dir "$HOME/assay/runs/ft09" start ft09 \
-    --adapter "$HOME/assay/repo/bench/arcagi/adapter.py:factory" \
-    --registry "$HOME/assay/repo/bench/arcagi/registry_200.json" \
-    --owner-token-file "$HOME/assay/tokens/ft09.token"
-cd "$HOME/assay" && claude</pre></div>
+          <div class="use-k"><span class="i">02</span><span class="t">Attach the pack with a game</span><p class="d">Any of the 25 public games, by its id. The first time, it builds the game's Python; then it starts the run, capped at 200 actions.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:attach arc-agi-3 "win the game ft09"</pre></div>
         </div>
         <div class="use-step">
-          <div class="use-k"><span class="i">03</span><span class="t">Play it, watch it, read the report</span><p class="d">In the Claude Code that just opened. The player starts at <code>assay status</code> and plays until the game is won or the budget is spent. The published ft09 run won 6 of 6 levels in 82 paid actions, with 185 outcomes held and 5 missed.</p></div>
-          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:run ~/assay/runs/ft09</pre></div>
-          <div class="cmd" style="margin-top:12px"><div class="cmd-h"><span>Claude Code, while it plays and after</span><button type="button" class="cp">Copy</button></div><pre>/assay:watch ~/assay/runs/ft09
-/assay:report ~/assay/runs/ft09</pre></div>
+          <div class="use-k"><span class="i">03</span><span class="t">Play it, watch it, read the report</span><p class="d">The published ft09 run won 6 of 6 levels in 82 actions, with 185 outcomes held and 5 missed.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:run
+/assay:watch
+/assay:report</pre></div>
         </div>
       </div>
 
-      <div class="use-pane" id="use-any" role="tabpanel" hidden>
+      <div class="use-pane" id="use-own" role="tabpanel" hidden>
+        <p class="small use-pre">Files, a simulator or a game on your machine, a repository with tests, or a service with an MCP server or an HTTP API.</p>
         <div class="use-step">
-          <div class="use-k"><span class="i">01</span><span class="t">A game on this machine</span><p class="d">Name the game, where it is, and the moves it takes. Attach builds the world around it, smoke-tests it and starts the run.</p></div>
-          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:attach "win the puzzle game in ./game; it takes the moves up, down, left and right and prints the board after each"
-/assay:run</pre></div>
+          <div class="use-k"><span class="i">01</span><span class="t">Connect your world</span><p class="d">Describe it, and what counts as done there. Claude builds the pack that connects <span class="sym">Assay</span> to it, tests it, and prints where it is.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:connect "the inventory service on localhost:8080, with its OpenAPI spec in ./openapi.json"</pre></div>
         </div>
         <div class="use-step">
-          <div class="use-k"><span class="i">02</span><span class="t">Or attach it by hand</span><p class="d">One adapter file carries a move to the game and the board back; ASSAY never sees the game any other way. The registry names the moves, the budget and the goal, and never what a move does: the agent earns that by acting.</p></div>
-          <div class="cmd"><div class="cmd-h"><span>mygame.py</span><button type="button" class="cp">Copy</button></div><pre>class MyGame:
-    def __init__(self, root, config):
-        self.board, self.state = new_board(config["seed"]), "NOT_FINISHED"
-
-    @property
-    def observation(self):
-        return {"state": self.state, "levels_completed": 0, "win_levels": 1,
-                "available_actions": ["MOVE"], "data": {"board": self.board}}
-
-    def step(self, action, data, reasoning):
-        self.board, self.state = apply_move(self.board, data["dir"])
-        return self.observation
-
-def factory(root, config):
-    return MyGame(root, config)</pre></div>
+          <div class="use-k"><span class="i">02</span><span class="t">Say what to achieve</span><p class="d">The run starts on your pack with your goal, and the owner token stays out of the agent's reach.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:attach ~/assay/worlds/inventory "every SKU below its reorder point has an open purchase order"</pre></div>
         </div>
         <div class="use-step">
-          <div class="use-k"><span class="i">03</span><span class="t">The registry, and the start</span><p class="d">Then hand the run to the player with <code>/assay:run</code>, as above.</p></div>
-          <div class="cmd"><div class="cmd-h"><span>registry.json</span><button type="button" class="cp">Copy</button></div><pre>{
-  "actions": [{"name": "MOVE", "params": {"dir": {"type": "str", "enum": ["up", "down", "left", "right"]}}}],
-  "budget": {"actions": 200},
-  "goal": {"text": "win the game"}
-}</pre></div>
-          <div class="cmd" style="margin-top:12px"><div class="cmd-h"><span>Terminal</span><button type="button" class="cp">Copy</button></div><pre>assay start mygame --adapter mygame.py:factory --registry registry.json \
-    --owner-token-file ~/assay/tokens/mygame.token</pre></div>
+          <div class="use-k"><span class="i">03</span><span class="t">Play it, watch it, read the report</span><p class="d">The run ends when the world says so: the goal reached, the budget spent, or a stop the agent declares with its reason.</p></div>
+          <div class="cmd"><div class="cmd-h"><span>Claude Code</span><button type="button" class="cp">Copy</button></div><pre>/assay:run
+/assay:watch
+/assay:report</pre></div>
         </div>
       </div>
-      <p class="tiny use-more">The full guide, twelve more examples and every setting: <a href="https://arjmandi.github.io/assay/docs/">the docs</a>.</p>
+      <p class="tiny use-more">Twelve more examples, how a pack is built, and every setting: <a href="https://arjmandi.github.io/assay/docs/">the docs</a>.</p>
     </div>
   </div>
 </section>
