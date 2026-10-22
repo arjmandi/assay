@@ -1,6 +1,6 @@
 # ASSAY
 
-ASSAY is a referee for agents: the agent must predict what each action will
+ASSAY is an agent harness: the agent must predict what each action will
 do before it acts, code grades the prediction against the world's response,
 and the run is over when the world says so, not when the agent believes it.
 
