@@ -1,6 +1,6 @@
 name: CI
 
-# push only: with pull_request as well, every push to a branch with an open pull request ran the six-cell matrix twice, and the macOS cells bill at ten times the Linux rate.
+# push only: with pull_request as well, every push to a branch with an open pull request ran the matrix twice.
 on:
   push:
 
@@ -11,16 +11,13 @@ jobs:
     timeout-minutes: 25
     strategy:
       fail-fast: false
-      # Every Python on Linux, and one macOS cell at the floor: the macOS
-      # cells bill at ten times the Linux rate, the platform's own paths (the
-      # sandbox profile, the launcher's re-exec) do not depend on the Python
-      # version, and the owner's machine runs the newest Python on macOS.
+      # Every supported Python, on Linux. The suite covers the macOS paths
+      # (the sandbox-exec profile, the launcher's re-exec) on the owner's
+      # machine before a release; a macOS cell bills at ten times the Linux
+      # rate and its DNS made a local service miss its start deadline.
       matrix:
         os: [ubuntu-latest]
         python: ["3.12", "3.13", "3.14"]
-        include:
-          - os: macos-latest
-            python: "3.12"
     steps:
       - uses: actions/checkout@v4
       # The suite spawns the real daemon and runs the launcher, which looks for
@@ -37,8 +34,7 @@ jobs:
       # The sandbox on Linux is bubblewrap, which the runner image does not
       # ship; without it the suite runs with the process limits alone and
       # `assay doctor` warns, which tests/test_doctor.py counts.
-      - name: bubblewrap, so the Linux cells run under the sandbox
-        if: runner.os == 'Linux'
+      - name: bubblewrap, so the cells run under the sandbox
         run: |
           sudo apt-get update
           sudo apt-get install -y bubblewrap
@@ -50,7 +46,6 @@ jobs:
       # Failed RTM_NEWADDR: Operation not permitted` and the suite runs with
       # the process limits alone.
       - name: unprivileged user namespaces, which bwrap needs
-        if: runner.os == 'Linux'
         run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
       - name: The sandbox mode
         run: uv run --python ${{ matrix.python }} --with numpy python -c "from assay.sandbox import sandbox_mode, sandbox_text; print('sandbox |', sandbox_text(sandbox_mode()))"
@@ -76,6 +71,10 @@ jobs:
       - name: mypy, strict, over the kernel, the extra and the hooks
         if: ${{ !cancelled() }}
         run: uv run --python ${{ matrix.python }} --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks
+      # verify_all.py imports the kernel's integrity module, and the kernel
+      # imports numpy, which the runner's python3 does not have; the cell's
+      # interpreter with numpy is the same run as `python3 evidence/verify_all.py`
+      # in a checkout with the kernel installed.
       - name: The published journals against their heads
         if: ${{ !cancelled() }}
-        run: python3 evidence/verify_all.py
+        run: uv run --python ${{ matrix.python }} --with numpy python evidence/verify_all.py

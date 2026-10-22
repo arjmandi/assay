@@ -21,6 +21,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import socketserver
 import sys
 import threading
 import urllib.parse
@@ -258,13 +259,24 @@ def handler_for(world: World) -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
+class LocalServer(HTTPServer):
+    """HTTPServer without the hostname lookup in its server_bind: that lookup
+    asks DNS for the name of the bound address, which takes half a minute on
+    a macOS runner, and the service answers on 127.0.0.1 and needs no name."""
+
+    def server_bind(self) -> None:
+        socketserver.TCPServer.server_bind(self)
+        self.server_name = "127.0.0.1"
+        self.server_port = self.server_address[1]
+
+
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--state", type=Path, required=True)
     args = parser.parse_args(argv)
-    server = HTTPServer(("127.0.0.1", args.port), handler_for(World(args.seed, args.state)))
+    server = LocalServer(("127.0.0.1", args.port), handler_for(World(args.seed, args.state)))
 
     def watch_stdin() -> None:
         sys.stdin.read()

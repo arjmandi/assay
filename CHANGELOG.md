@@ -3,6 +3,22 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## 1.5.1 (unreleased)
+
+### Changed
+
+- CI runs on Linux alone, every supported Python. The macOS cell is gone:
+  the suite had been red on every push since 2026-10-16 because the runner's
+  DNS made the legacy-api service miss its start deadline, and the macOS
+  paths (the sandbox-exec profile, the launcher's re-exec) are covered on
+  the owner's machine before a release. The published-journal check runs
+  under the cell's interpreter with numpy, which `evidence/verify_all.py`
+  has needed since 1.4.0, when it began importing the kernel's integrity
+  module.
+- The legacy-api service binds without the hostname lookup of
+  `HTTPServer.server_bind`, which asks DNS for the name of 127.0.0.1 and
+  can take half a minute on a Mac whose name is not in `/etc/hosts`.
+
 ## 1.5.0 (2026-10-17)
 
 ### Added
