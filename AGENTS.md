@@ -76,7 +76,8 @@ run the template test against it. A world driven by commands needs no adapter
 code: copy a template under `worlds/archetypes/` instead and write its recipe
 (`worlds/README.md`). A pack added under `worlds/recipes/` joins the catalog
 table in `worlds/README.md` and the `ADAPTERS` table, and `tests/test_plugin.py`
-holds it to the one adapter stub.
+holds a recipe pack to the one adapter stub. A pack with an adapter of its own,
+such as `worlds/recipes/arc-agi-3`, says what it needs in `pack.json`.
 
 ## Never launch
 
