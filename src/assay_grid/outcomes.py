@@ -5,8 +5,13 @@ x = column and y = row. Their patterns live in the kernel's table of the forms
 (`assay.extras.FRAME_FORMS`), which recognizes them and refuses them by name
 before any spend without importing this package, the rule every published
 journal was recorded under; this module reads the table back for the fields
-and the grader. Whether frame worlds should admit them is a decision the
-owner has not made; until then no caller passes a kind to the parser.
+and the grader. A registry that sets `frame_forms: admit` admits them: the
+act passes the kind to the parser and the forms grade here.
+
+`region` grades a local change: something changes inside the box. Changes
+outside it are not graded, so a counter or step bar elsewhere on the board
+cannot fail it (the form was never admitted before this rule, so no recorded
+journal holds a `region` grade).
 
 `grade_outcomes` grades every plain outcome of a frame event, the general forms
 included, by cell comparison of the settled frames, exactly as the kernel did
@@ -32,13 +37,13 @@ PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = tuple(
 )
 
 HELP = """\
-FRAME WORLDS ONLY (grid observations) | x=column y=row | recognized, not admitted in 1.2.0
+FRAME WORLDS ONLY (grid observations) | x=column y=row | admitted when the registry sets frame_forms: admit
   cell X,Y=V           cell at column X, row Y becomes hex color V
   move X,Y DX,DY       the object covering X,Y shifts by (DX,DY) and vacates its old cells
   vanish X,Y           every cell of the object covering X,Y stops being its color
-  region X0:X1,Y0:Y1   all changes fall inside this half-open box, and something changes
+  region X0:X1,Y0:Y1   something changes inside this half-open box (changes outside are not graded)
 Example:
-  --predict "door opens; cell 12,5=0; region 10:14,3:8"
+  --predict "cell 12,5=0; region 10:14,3:8"
 """
 
 
@@ -185,16 +190,17 @@ def grade_outcomes(
             elif not changed:
                 actual = "no visible change"
             else:
-                outside = [
-                    (int(col), int(row))
+                inside = sum(
+                    1
                     for row, col in np.argwhere(before != after)
-                    if not (x0 <= col < x1 and y0 <= row < y1)
-                ]
-                ok = not outside
+                    if x0 <= col < x1 and y0 <= row < y1
+                )
+                ok = inside > 0
+                outside = int(changed) - inside
                 actual = (
-                    f"all {changed} changes inside the box"
+                    f"{inside} changes inside the box ({outside} outside, not graded)"
                     if ok
-                    else f"{len(outside)} changes outside, e.g. (x,y) {outside[0]}"
+                    else f"no change inside the box ({outside} outside)"
                 )
         graded.append(Grade.of(outcome, ok=bool(ok), actual=actual))
     return graded

@@ -50,6 +50,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
+from .registry import state_cap
 from .sandbox import run_program
 from .records import Event, Grade, Outcome
 
@@ -60,6 +61,7 @@ _NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
 HOST_STATES = ("goal", "level", "budget_remaining")
 MILESTONE_STATES = ("goal", "level")
 EXTRACT_TIMEOUT_SECONDS = 5.0
+# The default cap; a registry may set its own (`state_cap`).
 MAX_DECLARED_STATES = 16
 
 _RUNNER = """\
@@ -100,9 +102,19 @@ def extractor_dir(paths: RunPaths) -> Path:
     return paths.state / "channels"
 
 
-def load_declared(paths: RunPaths) -> dict[str, dict[str, Any]]:
+def load_declared(paths: RunPaths, *, include_retired: bool = False) -> dict[str, dict[str, Any]]:
+    """The declared states; a retired one (`assay state retire`) only when
+    asked, since it no longer reads, parses or counts toward the cap."""
     value = read_json(declarations_path(paths), {})
-    return value if isinstance(value, dict) else {}
+    if not isinstance(value, dict):
+        return {}
+    if include_retired:
+        return value
+    return {
+        name: spec
+        for name, spec in value.items()
+        if not (isinstance(spec, dict) and spec.get("retired"))
+    }
 
 
 def declare_state(
@@ -123,7 +135,7 @@ def declare_state(
         raise AssayError(f"{name!r} is a host state and cannot be redeclared", code="STATE_DECLARE")
     if bool(path) == bool(file):
         raise AssayError("declare a state with exactly one of --path or --file", code="STATE_DECLARE")
-    declared = load_declared(paths)
+    declared = load_declared(paths, include_retired=True)
     if path is not None:
         keys = [key for key in path.split(".") if key]
         if not keys:
@@ -155,16 +167,23 @@ def declare_state(
             stored.write_bytes(body)
         spec = {"form": "extractor", "hash": digest, "source": str(file)}
     existing = declared.get(name)
-    if existing is not None and existing != spec:
+    retired = bool(existing and existing.get("retired"))
+    if existing is not None and {key: value for key, value in existing.items() if key != "retired"} != spec:
         raise AssayError(
             f"state {name!r} is already declared with a different extractor; "
             "declare a new name instead of silently redefining a referent",
             code="STATE_REDEFINED",
         )
-    if existing is None and len(declared) >= MAX_DECLARED_STATES:
+    cap = state_cap(run.registry)
+    active = sum(1 for item in declared.values() if not (isinstance(item, dict) and item.get("retired")))
+    if (existing is None or retired) and active >= cap:
         raise AssayError(
-            f"at most {MAX_DECLARED_STATES} declared states per run",
+            f"at most {cap} declared states at a time in this run",
             code="STATE_CAP",
+            hint=(
+                "retire a state you no longer predict against (`assay state retire NAME`), "
+                "or the registry's state_cap sets the limit"
+            ),
         )
     declared[name] = spec
     atomic_json(declarations_path(paths), declared)
@@ -173,6 +192,33 @@ def declare_state(
         {"kind": "channel_declared", "channel": name, **spec},
     )
     return spec
+
+
+def retire_state(run: Run, name: str) -> dict[str, Any]:
+    """Retire a declared state: it stops reading at status, an outcome naming
+    it is refused like an unregistered one, and it frees its place under the
+    cap. Its record stays (grades already journaled still name it), and
+    declaring the same referent again brings it back."""
+    paths = run.paths
+    declared = load_declared(paths, include_retired=True)
+    spec = declared.get(name)
+    if spec is None or spec.get("retired"):
+        raise AssayError(
+            f"no active declared state named {name!r}",
+            code="STATE_UNKNOWN",
+            hint=f"active states: {sorted(load_declared(paths))}",
+        )
+    declared[name] = {**spec, "retired": True}
+    atomic_json(declarations_path(paths), declared)
+    append_jsonl(paths.activity, {"kind": "channel_retired", "channel": name})
+    return declared[name]
+
+
+def state_retired_text(name: str) -> str:
+    return (
+        f"STATE | {name} retired: it no longer reads or parses, and its place under the cap "
+        "is free; declaring the same referent again brings it back"
+    )
 
 
 def known_states(run: Run) -> list[str]:
@@ -286,7 +332,7 @@ def state_value(
         return True, int(event.levels_completed)
     if name == "budget_remaining":
         return _budget_remaining(run, event)
-    spec = load_declared(run.paths).get(name)
+    spec = load_declared(run.paths, include_retired=True).get(name)
     if spec is None:
         return False, f"state {name!r} is not registered"
     if spec["form"] == "path":

@@ -17,7 +17,7 @@ from .extras import kind_for
 from .records import Event, Receipt
 from .registry import budget_line, gate_mode, gate_text, status_budget
 from .status import actions_text, predictions_text, observation_text, render_status, status_of
-from .textobs import LINE_LIMIT, delta_lines, pretty_cuts
+from .textobs import LINE_LIMIT, changed_count, delta_lines, pretty_cuts
 from .words import progress_text
 
 if TYPE_CHECKING:
@@ -66,11 +66,33 @@ def _prediction_meter_lines(run: Run) -> list[str]:
     return [] if block is None else predictions_text(block, vacuous)
 
 
+def diff_summary(events: Sequence[Event], event: Event) -> str | None:
+    """The settled diff of an event against the one before: the observation
+    kind's own (cells, for frame worlds), else the changed keys of the dict
+    observation."""
+    if not event.id or len(events) <= event.id:
+        return None
+    kind = kind_for(event)
+    own = getattr(kind, "diff_summary", None) if kind is not None else None
+    if callable(own):
+        summary: str | None = own(events, event)
+        return summary
+    count = changed_count(events[event.id - 1].observation, event.observation)
+    return f"settled diff {count} {'key' if count == 1 else 'keys'}"
+
+
 def result_text(run: Run, receipt: Receipt) -> str:
     """Self-sufficient printout after a paid command: result, grade, new state."""
     events = run.events
     event = events[-1]
-    lines = [f"RESULT | {receipt.outcome} | {receipt.detail}"]
+    first = f"RESULT | {receipt.outcome} | {receipt.detail}"
+    if receipt.kind == "act":
+        # The settled diff on the first line: a player that reads only the
+        # first line of a receipt still sees how much changed, and where.
+        summary = diff_summary(events, event)
+        if summary:
+            first += f" | {summary}"
+    lines = [first]
     lines.extend(f"  {line}" for line in receipt.grade or ())
     lines.extend(str(line) for line in receipt.modules or ())
     lines.extend(str(line) for line in receipt.aggregates or ())

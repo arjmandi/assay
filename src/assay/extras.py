@@ -127,7 +127,8 @@ def refusal_text(form: OutcomeForm, part: str) -> str:
     journals' rule words it."""
     return (
         f"outcome {part!r} is a {form.kind}-world form and this run does "
-        "not admit it (frame-world forms are not admitted in 1.2.0)"
+        "not admit it (frame-world forms are admitted only when the registry "
+        "sets frame_forms: admit)"
     )
 
 

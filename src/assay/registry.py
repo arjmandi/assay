@@ -126,7 +126,14 @@ _TOP_KEYS = {
     "observers",
     "control",
     "gate",
+    "frame_forms",
+    "state_cap",
 }
+# Whether a frame world admits its own outcome forms (`cell`, `move`,
+# `vanish`, `region`): refused by name before any spend unless the registry
+# says `admit`, the rule every journal before the key was recorded under.
+FRAME_FORMS = ("refuse", "admit")
+DEFAULT_STATE_CAP = 16
 _ACTION_KEYS = {
     "name",
     "params",
@@ -326,12 +333,30 @@ def validate_registry(raw: Any) -> dict[str, Any]:
         if raw["gate"] not in _GATES:
             raise AssayError(f"gate must be one of {list(_GATES)}", code="REGISTRY_INVALID")
         output["gate"] = raw["gate"]
+    if "frame_forms" in raw:
+        if raw["frame_forms"] not in FRAME_FORMS:
+            raise AssayError(f"frame_forms must be one of {list(FRAME_FORMS)}", code="REGISTRY_INVALID")
+        output["frame_forms"] = raw["frame_forms"]
+    if "state_cap" in raw:
+        cap = raw["state_cap"]
+        if not isinstance(cap, int) or isinstance(cap, bool) or cap < 1:
+            raise AssayError("state_cap must be a positive integer", code="REGISTRY_INVALID")
+        output["state_cap"] = cap
     note = raw.get("mode_note")
     if note is not None:
         if not isinstance(note, str):
             raise AssayError("mode_note must be a string", code="REGISTRY_INVALID")
         output["mode_note"] = note
     return output
+
+
+def frame_forms_admitted(registry: Mapping[str, Any] | None) -> bool:
+    return bool(registry) and (registry or {}).get("frame_forms") == "admit"
+
+
+def state_cap(registry: Mapping[str, Any] | None) -> int:
+    cap = (registry or {}).get("state_cap")
+    return cap if isinstance(cap, int) and not isinstance(cap, bool) and cap > 0 else DEFAULT_STATE_CAP
 
 
 def action_spec(

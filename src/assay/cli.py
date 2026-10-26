@@ -39,7 +39,14 @@ from .carryover import (
     import_knowledge,
     registry_hash_of,
 )
-from .states import state_declared_text, state_list_of, state_list_text, declare_state
+from .states import (
+    declare_state,
+    retire_state,
+    state_declared_text,
+    state_list_of,
+    state_list_text,
+    state_retired_text,
+)
 from .integrity import (
     anchor_file,
     anchor_line,
@@ -1412,6 +1419,11 @@ def state_declare(paths: RunPaths, run: Run, status: CommandStatus, args: argpar
     print(state_declared_text(args.name, spec))
 
 
+def state_retire(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
+    retire_state(run, args.name)
+    print(state_retired_text(args.name))
+
+
 def state_list(paths: RunPaths, run: Run, status: CommandStatus, args: argparse.Namespace) -> None:
     listing = state_list_of(run, fresh=args.read)
     _emit(args, listing, "\n".join(state_list_text(listing)))
@@ -1918,6 +1930,13 @@ COMMANDS: tuple[Command, ...] = (
             arg("--path", help="dotted keys into the dict observation, e.g. counters.red"),
             arg("--file", help="extractor file: def extract(obs) -> value (sandboxed)"),
         ),
+    ),
+    Command(
+        "state_retire",
+        "state retire",
+        "retire a declared state: it stops reading and parsing and frees its place under the cap",
+        state_retire,
+        arguments=(arg("name"),),
     ),
     Command(
         "state_list",

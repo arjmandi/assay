@@ -60,7 +60,7 @@ def test_dict_run_never_loads_the_extra(tmp_path):
         before = len((run / ".assay" / "events.jsonl").read_text().splitlines())
         refused = run_cli(run, "act", "NOOP", "--predict", "cell 1,1=5")
         assert refused.returncode == 2
-        assert "frames-world form" in refused.stderr and "not admitted" in refused.stderr
+        assert "frames-world form" in refused.stderr and "does not admit it" in refused.stderr
         assert len((run / ".assay" / "events.jsonl").read_text().splitlines()) == before
     finally:
         stop_run(run)
@@ -103,7 +103,7 @@ def test_frame_run_loads_the_extra_and_the_perception_forwarders(tmp_path):
 
 _REFUSAL = (
     "outcome 'cell 1,1=5' is a frames-world form and this run does not admit it "
-    "(frame-world forms are not admitted in 1.2.0)"
+    "(frame-world forms are admitted only when the registry sets frame_forms: admit)"
 )
 # A finder that refuses the extra and pillow, for the probe that must refuse
 # a frame form without them.

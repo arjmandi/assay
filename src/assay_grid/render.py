@@ -82,6 +82,27 @@ def current_image(run: Run) -> Path:
     return destination.resolve()
 
 
+def diff_summary(events: Sequence[Event], event: Event) -> str | None:
+    """The settled diff of one event against the one before, for the first
+    line of its receipt: the changed-cell count and where, x the column and
+    y the row."""
+    grid = frame_at(event)
+    previous = frame_at(events[event.id - 1]) if event.id else None
+    if previous is None:
+        return None
+    if previous.shape != grid.shape:
+        return "settled diff: board size changed"
+    changed = np.argwhere(previous != grid)
+    if not len(changed):
+        return "settled diff 0 cells"
+    rows, cols = changed[:, 0], changed[:, 1]
+    noun = "cell" if len(changed) == 1 else "cells"
+    return (
+        f"settled diff {len(changed)} {noun} "
+        f"(x {int(cols.min())}..{int(cols.max())}, y {int(rows.min())}..{int(rows.max())})"
+    )
+
+
 def history_change(events: Sequence[Event], event: Event) -> tuple[int | None, str]:
     """The frame form of a history line's change: the count of cells that
     differ from the previous settled frame (None at the start, or when the

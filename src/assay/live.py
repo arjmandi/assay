@@ -32,7 +32,7 @@ from .core import (
     now_iso,
     read_json,
 )
-from .extras import kind_for
+from .extras import ObservationKind, kind_for
 from .integrity import redact, redact_mapping
 from .modules import consult_modules, observe_result
 from .ops import Step
@@ -43,6 +43,7 @@ from .registry import (
     check_budget,
     check_registry_action,
     check_usd_budget,
+    frame_forms_admitted,
     gate_mode,
     hand_cap,
     notes_cap,
@@ -255,6 +256,14 @@ def _enforce_registry_gates(
     return unique
 
 
+def _admitted_kind(registry: Mapping[str, Any], events: Sequence[Event]) -> ObservationKind | None:
+    """The observation kind whose own outcome forms this run admits: the
+    kind of the head event when the registry says `frame_forms: admit`."""
+    if not events or not frame_forms_admitted(registry):
+        return None
+    return kind_for(events[-1])
+
+
 def _admit_outcomes(run: Run, outcomes: Sequence[Outcome]) -> list[Outcome]:
     """Admit verifier outcomes (read, hash, store, journal) before any spend;
     the admitted outcomes carry their verifier hashes."""
@@ -382,10 +391,11 @@ def execute_action(
     # bare acts (the instrument is removed). Either way the act is journaled
     # UNGATED and the audit keeps the run invalid for scoring.
     ungated = _ungated_act(registry, predict)
-    # No observation kind's own outcome forms are admitted: parse_prediction runs
+    # An observation kind's own outcome forms parse only when the registry
+    # admits them (`frame_forms: admit`); otherwise parse_prediction runs
     # without a kind, so a frame form is refused by name before any spend, the
     # rule every published journal was recorded under.
-    outcomes = [] if ungated else parse_prediction(predict)
+    outcomes = [] if ungated else parse_prediction(predict, kind=_admitted_kind(registry, events))
     check_state_references(run, outcomes)
     outcomes = _admit_outcomes(run, outcomes)
     advisories = _enforce_registry_gates(
@@ -599,7 +609,9 @@ def execute_steps(
                 code="GATE_OFF",
                 hint='steps are bare on this run: --step "ACTION"',
             )
-        outcomes = [] if bare_ok and not predict else parse_prediction(predict)
+        outcomes = (
+            [] if bare_ok and not predict else parse_prediction(predict, kind=_admitted_kind(registry, events))
+        )
         parsed.append((name, data, predict, outcomes))
     admitted: list[tuple[str, dict[str, Any] | None, str, list[Outcome]]] = []
     for name, data, predict, outcomes in parsed:

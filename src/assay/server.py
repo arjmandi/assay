@@ -79,7 +79,14 @@ from . import __version__
 from .agenda import list_proposals, proposal_text, proposals_text, propose_goal
 from .analysis import run_python
 from .broker import broker_gated
-from .states import state_declared_text, state_list_of, state_list_text, declare_state
+from .states import (
+    declare_state,
+    retire_state,
+    state_declared_text,
+    state_list_of,
+    state_list_text,
+    state_retired_text,
+)
 from .core import (
     TOOL_SURFACE,
     AssayError,
@@ -331,6 +338,15 @@ class StateDeclareRequest(_OfflineRequest):
         "instead of path",
         None,
     )
+
+
+@dataclasses.dataclass(frozen=True, slots=True)
+class StateRetireRequest(_OfflineRequest):
+    """`state_retire`: retire a declared state, freeing its place under the cap."""
+
+    NAME: ClassVar[str] = "state_retire"
+
+    name: str = _field(_STRING, "the declared state's name")
 
 
 @dataclasses.dataclass(frozen=True, slots=True)
@@ -654,6 +670,11 @@ def _state_declare(paths: RunPaths, status: CommandStatus, request: StateDeclare
     return _lines([state_declared_text(request.name, spec)])
 
 
+def _state_retire(paths: RunPaths, status: CommandStatus, request: StateRetireRequest) -> ToolResult:
+    retire_state(status.run, request.name)
+    return _lines([state_retired_text(request.name)])
+
+
 def _state_list(paths: RunPaths, status: CommandStatus, request: StateListRequest) -> ToolResult:
     listing = state_list_of(status.run, fresh=request.read)
     return ToolResult(listing.to_json(), "\n".join(state_list_text(listing)))
@@ -748,6 +769,13 @@ TOOLS: tuple[Tool, ...] = (
         "into it or by an extractor file; outcomes like `ch NAME = V` then parse and grade.",
         StateDeclareRequest,
         _state_declare,
+    ),
+    Tool(
+        "state_retire",
+        "Retire a declared state: it stops reading and parsing and frees its place under the "
+        "state cap; declaring the same referent again brings it back.",
+        StateRetireRequest,
+        _state_retire,
     ),
     Tool(
         "state_list",

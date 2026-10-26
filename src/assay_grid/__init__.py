@@ -73,6 +73,9 @@ class FrameKind:
     def history_change(self, events: Sequence[Event], event: Event) -> tuple[int | None, str]:
         return render.history_change(events, event)
 
+    def diff_summary(self, events: Sequence[Event], event: Event) -> str | None:
+        return render.diff_summary(events, event)
+
     def canonical_action(self, event: Event) -> str | None:
         data = event.data
         if data and "x" in data and "y" in data:

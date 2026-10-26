@@ -228,11 +228,11 @@ def parse_prediction(
 
     The core forms parse on every run. An observation kind's own forms (the
     frame world's `cell`, `move`, `vanish`, `region`) parse only when `kind`
-    is given, which nothing in 1.2.0 does: such an outcome is refused by name
-    before any spend, the rule every published journal was recorded under,
-    from the kernel's own table of the forms (`extras.FRAME_FORMS`), so the
-    refusal imports neither the extra nor pillow. Admitting them on frame
-    worlds is a decision the owner has not made, so no caller passes `kind`.
+    is given, which the act and batch paths do when the registry sets
+    `frame_forms: admit`; otherwise such an outcome is refused by name before
+    any spend, the rule every published journal was recorded under, from the
+    kernel's own table of the forms (`extras.FRAME_FORMS`), so the refusal
+    imports neither the extra nor pillow.
     """
     extra_patterns = list(kind.outcome_patterns()) if kind is not None else []
     help_text = GENERAL_PREDICTION_HELP + (("\n" + kind.prediction_help()) if kind is not None else "")
