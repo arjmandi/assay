@@ -495,6 +495,20 @@ exported as the distinguished carryover class). 1.2.0 adds the world-neutral
 `coverage_audit` built-in (untried and never-productive actions, stall, the
 re-issue halt, the loop halt, the conclusion gate keyed on declares).
 
+The sonnet-haiku-5-5-experiment tag adds two built-ins, both advise by
+default: `conclusion_gate` (the coverage-audit demand keyed on the record: a
+reset that did not follow GAME_OVER, a verdict the notes' Plan gained since
+the last audit, and the resume check at status; the audit is journaled as the
+`coverage_audit` declaration and the module records `conclusion_audited`
+with the verdicts' fingerprint) and `gamble_streak` (three missed milestone
+gambles on a unit: a gamble names its win-rule hypothesis, `win_rule`). In
+the same tag `wall_spend` speaks at thresholds of paid actions on the unit
+(25, 50, 100, 200, 400, 800) and `miss_streak` counts world-model misses
+apart from gambles. Two registry keys: `frame_forms` (`admit` lets a frame
+world parse its own outcome forms; `region` grades a local change) and
+`state_cap` (the number of declared states active at a time; `assay state
+retire` frees a place).
+
 External modules: `modules: ["path.py"]` in the registry, copied into
 `.assay/modules/` at start (`modules.pin_external_modules`), loaded by
 `modules._load_external` from the manifest the run holds. 1.2.0 pins them by

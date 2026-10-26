@@ -261,21 +261,28 @@ def test_model_tier_promotion_and_plan(tmp_path):
         assert bad_value.stderr.startswith("ERROR | ACTION_PARAMS | INC amount=9 is above max 2\n")
         assert len(_events(run)) == 41
         plan_file.write_text(written)
+        # A verdict in the Plan the record has not audited: the conclusion
+        # gate's advisory, which rides on the plan's receipt below.
+        notes = run / ".assay" / "NOTES.md"
+        notes.write_text(notes.read_text() + "\n- parked: amounts above 2 are refused\n")
         committed = run_cli(run, "commit", "@.assay/model_plan.json")
         assert committed.returncode == 0, committed.stderr
         assert "RESULT | GAME_COMPLETE" in committed.stdout
         # The modules' advisories ride on a model-plan receipt like on every
         # other paid receipt (#24; before, the plan consulted them and
-        # discarded what they said): forty paid actions on this unit is
-        # past the wall_spend threshold.
-        wall = (
-            "MODULE wall_spend | 40 paid actions on this unit; stop manual probing; "
-            "model the mechanics offline (`assay python`, or the `assay model` tier: "
-            "replay-verified models earn batching rights)"
+        # discarded what they said). Forty paid actions on this unit sit
+        # between wall_spend's thresholds, so it is silent.
+        gate = (
+            "MODULE conclusion_gate | NOTES.md holds a verdict the record has not audited "
+            "('- parked: amounts above 2 are refused'): before relying on it, name the rules it "
+            "rests on with the graded event ids that exercised each, what the record never "
+            "exercised in the regime it needs, and the next cheapest probe (buy it unless you "
+            'say why not) (--declare "coverage_audit=...")'
         )
-        assert wall in committed.stdout.splitlines()
+        assert gate in committed.stdout.splitlines()
+        assert not any(line.startswith("MODULE wall_spend") for line in committed.stdout.splitlines())
         receipt = json.loads(sorted((run / ".assay" / "receipts").glob("*.json"))[-1].read_text())
-        assert receipt["plan"] == "model" and receipt["modules"] == [wall]
+        assert receipt["plan"] == "model" and receipt["modules"] == [gate]
         # Machine plan steps are gated (predict_ok set) and marked machine.
         events = _events(run)
         assert events[-1]["state"] == "WIN"

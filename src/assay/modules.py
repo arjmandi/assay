@@ -42,8 +42,12 @@ existed has it reconstructed from the registry's `modules` list once, at
 
 Built-ins (the standing nudge table plus the first structural module):
 
-- wall_spend:     spend escalation on one progress unit (the spend-judgment tier)
-- miss_streak:    repeated prediction misses mean the notes story is wrong
+- wall_spend:     spend escalation on one progress unit (the spend-judgment
+                  tier), at thresholds of paid actions on the unit
+- miss_streak:    repeated world-model misses mean the notes story is wrong
+                  (gamble misses counted apart)
+- gamble_streak:  three missed milestone gambles on one unit: the next gamble
+                  names its win-rule hypothesis (--declare win_rule=...)
 - null_forensics: a predicted-change/observed-nothing verdict flags the raw
                   observation for inspection before the hypothesis is closed
 - park_with_test: a reset should leave a re-entry test in the notes
@@ -93,7 +97,7 @@ from .core import (
 )
 from .extras import kind_for
 from .meters import level_action_count, recent_predictions, specificity, unit_indices
-from .records import Event
+from .records import Event, outcome_bucket
 from .registry import MODULE_MODES, module_modes
 
 if TYPE_CHECKING:
@@ -156,21 +160,28 @@ def _unit(view: ModuleView) -> str:
     return unit_noun(view.events[-1].win_levels) if view.events else "unit"
 
 
+# The paid actions on one progress unit at which wall_spend speaks: at a
+# threshold, not on every command past the first (it fired 1538 times in the
+# 2026-10-25 Haiku arm and its advice was taken once).
+WALL_SPEND_THRESHOLDS = (25, 50, 100, 200, 400, 800)
+
+
 class _WallSpend:
     NAME = "wall_spend"
     CONSTITUTION = (
-        "Spending long on one progress unit without progress means manual probing "
-        "has stopped paying; model the mechanics offline before spending more."
+        "Spending long on one progress unit without progress is a cue to check the "
+        "model offline against the journal before the next batch of probes."
     )
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         level_actions = level_action_count(view.events)
-        if level_actions >= 25:
+        if level_actions in WALL_SPEND_THRESHOLDS:
             return (
-                f"{level_actions} paid actions on this {_unit(view)}; stop manual "
-                "probing; model the mechanics offline (`assay python`, or the "
-                "`assay model` tier: replay-verified models earn batching rights)"
+                f"{level_actions} paid actions on this {_unit(view)}; check the model "
+                "offline against the journal before the next batch of probes "
+                "(`assay python`, or the `assay model` tier: replay-verified models "
+                "earn batching rights)"
             )
         return None
 
@@ -181,20 +192,38 @@ class _WallSpend:
         return {"level_actions": level_action_count(view.events)}
 
 
+def bucket_misses(events: Sequence[Event], window: int = 10) -> dict[str, tuple[int, int]]:
+    """Per bucket, (missed, graded) over the last `window` graded events that
+    carry an outcome of that bucket: a world-model miss and a gamble miss
+    are counted apart, so a run of missed level+1 gambles does not read as a
+    wrong mechanics story, nor the reverse."""
+    counts: dict[str, tuple[int, int]] = {}
+    for bucket in ("world_model", "gamble"):
+        graded = [
+            event for event in events
+            if event.predict_ok is not None and any(item.bucket == bucket for item in event.grade)
+        ][-window:]
+        missed = sum(
+            1 for event in graded if any(item.bucket == bucket and not item.ok for item in event.grade)
+        )
+        counts[bucket] = (missed, len(graded))
+    return counts
+
+
 class _MissStreak:
     NAME = "miss_streak"
     CONSTITUTION = (
-        "Repeated prediction misses mean the mechanics story in NOTES.md is "
-        "wrong; fix the story before spending more actions."
+        "Repeated world-model misses mean the mechanics story in NOTES.md is "
+        "wrong; fix the story before spending more actions. Missed gambles are "
+        "a different signal (the gamble streak)."
     )
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        hits, total = recent_predictions(view.events)
-        misses = total - hits
-        if misses >= 3:
+        missed, graded = bucket_misses(view.events)["world_model"]
+        if missed >= 3:
             return (
-                f"{misses} of the last {total} predictions missed: the mechanics "
+                f"{missed} of the last {graded} world-model predictions missed: the mechanics "
                 "story in NOTES.md is wrong; fix it before spending more actions"
             )
         return None
@@ -204,7 +233,79 @@ class _MissStreak:
 
     def telemetry(self, view: ModuleView) -> dict[str, Any]:
         hits, total = recent_predictions(view.events)
-        return {"recent_hits": hits, "recent_graded": total}
+        counts = bucket_misses(view.events)
+        return {
+            "recent_hits": hits,
+            "recent_graded": total,
+            "world_model_missed": counts["world_model"][0],
+            "gamble_missed": counts["gamble"][0],
+        }
+
+
+GAMBLE_STREAK_MIN = 3
+
+
+def _gamble_outcomes(pending: Mapping[str, Any] | None) -> bool:
+    """Does the pending action predict a milestone (a gamble outcome)?"""
+    for outcome in (pending or {}).get("outcomes") or ():
+        kind = getattr(outcome, "kind", None)
+        channel = getattr(outcome, "channel", None)
+        if isinstance(kind, str) and outcome_bucket(kind, channel) == "gamble":
+            return True
+    return False
+
+
+def gamble_misses_on_unit(events: Sequence[Event]) -> int:
+    return sum(
+        1
+        for index in unit_indices(events)
+        for item in events[index].grade
+        if item.bucket == "gamble" and not item.ok
+    )
+
+
+class _GambleStreak:
+    NAME = "gamble_streak"
+    CONSTITUTION = (
+        "Three missed milestone gambles on one progress unit mean the win rule is "
+        "a guess: name the win-rule hypothesis the next gamble tests. A gamble the "
+        "module holds can still be issued as `change`, which costs nothing extra."
+    )
+    MODE = "advise"
+
+    def _held(self, view: ModuleView, pending: Mapping[str, Any] | None) -> int | None:
+        if not pending or pending.get("kind") not in ("act", "commit") or not _gamble_outcomes(pending):
+            return None
+        declares = {str(key).lower(): value for key, value in (pending.get("declares") or {}).items()}
+        if str(declares.get("win_rule", "")).strip():
+            return None
+        missed = gamble_misses_on_unit(view.events)
+        return missed if missed >= GAMBLE_STREAK_MIN else None
+
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
+        missed = self._held(view, pending)
+        if missed is None:
+            return None
+        return (
+            f"{missed} milestone gambles missed on this {_unit(view)}: name the win-rule "
+            'hypothesis this one tests (--declare "win_rule=...") or predict `change` instead'
+        )
+
+    def demand(
+        self, view: ModuleView, pending: Mapping[str, Any] | None
+    ) -> dict[str, str] | None:
+        missed = self._held(view, pending)
+        if missed is None:
+            return None
+        return {
+            "win_rule": (
+                f"{missed} milestone gambles missed on this {_unit(view)}: the hypothesis about "
+                "what completes it that this prediction tests"
+            )
+        }
+
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
+        return {"gamble_missed_on_unit": gamble_misses_on_unit(view.events)}
 
 
 class _NullForensics:
@@ -851,6 +952,7 @@ BUILTINS: tuple[Module, ...] = (
     _Hazard(),
     _CoverageAudit(),
     _ConclusionGate(),
+    _GambleStreak(),
 )
 
 
