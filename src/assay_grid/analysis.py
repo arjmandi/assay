@@ -1,6 +1,11 @@
 """The grid namespace of `assay python`: settled grids, animation frames,
 transitions, and the perception and search helpers a frame world's offline
-analysis uses."""
+analysis uses.
+
+The names the manual documents for every world (`observations`,
+`transitions`, `actions`, `key_delta`, `delta_lines`) exist here too, in the
+grid's terms: an observation is the settled grid, and a key of `key_delta` is
+a cell `(x, y)`, x the column and y the row."""
 
 from __future__ import annotations
 
@@ -22,6 +27,39 @@ from .perception import (
     motion_trace,
     repeated_shapes,
 )
+
+
+def key_delta(before: Any, after: Any) -> dict[str, list[Any]]:
+    """The cells that differ between two grids, as the dict world's
+    `key_delta` shapes its answer: `changed` holds `((x, y), old, new)`;
+    `added` and `removed` stay empty unless the board's size changed, when
+    every cell of the other shape is listed there."""
+    left, right = np.asarray(before), np.asarray(after)
+    if left.shape != right.shape:
+        return {
+            "added": [((int(x), int(y)), int(right[y, x])) for y, x in np.argwhere(np.ones(right.shape, dtype=bool))],
+            "removed": [((int(x), int(y)), int(left[y, x])) for y, x in np.argwhere(np.ones(left.shape, dtype=bool))],
+            "changed": [],
+        }
+    changed = [
+        ((int(x), int(y)), int(left[y, x]), int(right[y, x]))
+        for y, x in np.argwhere(left != right)
+    ]
+    return {"added": [], "removed": [], "changed": changed}
+
+
+def delta_lines(before: Any, after: Any, limit: int = 24) -> list[str]:
+    """One line per changed cell, `~ (x,y): old -> new`, as the dict world
+    words a transition."""
+    delta = key_delta(before, after)
+    if delta["added"] or delta["removed"]:
+        return [f"board size changed: {np.asarray(before).shape} -> {np.asarray(after).shape}"]
+    lines = [f"~ ({x},{y}): {old:x} -> {new:x}" for (x, y), old, new in delta["changed"]]
+    if not lines:
+        return ["no observed change"]
+    if len(lines) > limit:
+        lines = lines[:limit] + [f"... {len(lines) - limit} more changed cells"]
+    return lines
 
 
 def crop(grid: np.ndarray[Any, Any], rows: tuple[int, int], cols: tuple[int, int]) -> np.ndarray[Any, Any]:
@@ -105,6 +143,9 @@ def namespace(events: Sequence[Event]) -> dict[str, Any]:
         "grid": settled[-1],
         "previous": settled[-2] if len(settled) > 1 else None,
         "settled": settled,
+        "observations": settled,
+        "key_delta": key_delta,
+        "delta_lines": delta_lines,
         "frames": frames,
         "events": [event.to_json() for event in events],
         "transitions": transitions,

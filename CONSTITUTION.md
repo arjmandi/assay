@@ -266,6 +266,16 @@ Model plans halt on the first divergence, like any batch.
   re-issue the exact move that just graded FALSE (say what you changed, or
   choose another action or region), and for `--declare coverage_audit=...`
   when a declaration tags an impossibility or absence (see below).
+- The **conclusion gate** module asks for `--declare coverage_audit=...` on a
+  reset that did not follow GAME_OVER, and on the first paid action after
+  your Plan gains a verdict (parked, blocked, dead end, stop, impossible). At
+  status it prints a RESUME CHECK when the notes hold a verdict that no paid
+  action has tested since they were written.
+- If the operator installed the **Stop gate**, ending your session with budget
+  left is held until `.assay/NOTES.md` carries a block of four lines:
+  `STOP:` (the conclusion), `RULES:` (each rule it rests on, with event ids),
+  `UNTESTED:` (what the record never exercised in the regime it needs) and
+  `NEXT PROBE:` (the cheapest probe not bought, and why).
 
 ## Before you conclude
 
@@ -290,6 +300,15 @@ declaration when a conclusion is tagged:
 A conclusion expressed as a reset carries the same declarations. A re-issued
 failing move carries `--declare revised=...`. The declarations are
 structural: name them and the action runs; the module never bans.
+
+A stop with budget left is a conclusion and carries the audit, whatever words
+it is written in: ending the session, parking a line, or a Plan that says
+blocked. The audit's gap list is a debt: buy the cheapest listed probe before
+you park. A Verified line about a mechanism states the regime it was seen in
+(the state, position or phase of the graded event), because the same rule is
+untested in every other regime. A verdict inherited from an earlier session of
+the same run is Assumed, exactly as a FOREIGN note is, until a graded probe in
+this session confirms it.
 
 ## The standing goal and your proposals
 
@@ -317,13 +336,26 @@ like any action.
 
 ## Free thinking, paid probing
 
-`assay python` preloads the full history: `observations` (list of dicts),
+`assay python` preloads the full history: `observations` (one per event),
 `transitions` (event, action, before, after), `actions`, plus `key_delta` /
-`delta_lines` helpers, `np`, and `json`:
+`delta_lines` helpers, `np`, and `json`. In a world whose observation is an
+object, an observation is a dict and a `key_delta` key is a dotted path:
 
 ```bash
 "$ASSAY" python 'set(k for t in transitions for k, *_ in key_delta(t["before"], t["after"])["changed"])'
 "$ASSAY" python '[t["action"] for t in transitions if t["before"] != t["after"]]'
+```
+
+In a world whose observation is a grid of colors, an observation is the
+settled grid (a numpy array, also named `settled`; `grid` is the current one)
+and a `key_delta` key is a cell `(x, y)`, x the column and y the row; the
+grid helpers (`connected_components`, `frame_delta`, `crop`, `show`) are
+loaded too:
+
+```bash
+"$ASSAY" python 'key_delta(transitions[-1]["before"], transitions[-1]["after"])["changed"][:10]'
+"$ASSAY" python '[(t["event"], t["action"], len(key_delta(t["before"], t["after"])["changed"])) for t in transitions[-8:]]'
+"$ASSAY" python 'print("\n".join(delta_lines(previous, grid)))'
 ```
 
 Thinking is free; probing is paid. Before spending an action to answer a
