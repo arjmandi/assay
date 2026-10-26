@@ -191,7 +191,8 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .hero .meta{display:flex; flex-wrap:wrap; gap:10px 28px; font-family:var(--mono); font-size:12px; letter-spacing:.08em; color:var(--ink-2); margin-top:28px}
 .hero .meta b{font-weight:500; color:var(--ink)}
 .hero .abstract{margin-top:34px}
-.hero .cta{display:flex; flex-wrap:wrap; gap:12px; margin-top:34px}
+.hero .cta{display:flex; flex-wrap:wrap; gap:10px; margin-top:34px}
+.hero .cta .btn{padding-inline:16px}
 .btn{
   display:inline-flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
   padding:14px 20px; border:1px solid var(--ink); color:var(--ink); transition:background .25s var(--ease), color .25s var(--ease);
@@ -705,9 +706,10 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
       <a href="#play"><span class="n">03</span>Play</a>
       <a href="#layers"><span class="n">04</span>Layers</a>
       <a href="#harness"><span class="n">05</span>Harness</a>
-      <a href="#evidence"><span class="n">06</span>Evidence</a>
+      <a href="https://arjmandi.github.io/assay/benchmarks/"><span class="n">06</span>Benchmarks</a>
     </nav>
     <div class="links">
+      <a href="https://arjmandi.github.io/assay/benchmarks/"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 13.5h11M4.5 11V7.5M8 11V4M11.5 11V6"/></svg><span>Benchmarks</span></a>
       <a href="https://arjmandi.github.io/assay/docs/"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h4A1.5 1.5 0 0 1 8 4.5V13a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 3h-4A1.5 1.5 0 0 0 8 4.5V13a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg><span>Docs</span></a>
       <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4" cy="3" r="1.6"/><circle cx="4" cy="13" r="1.6"/><circle cx="12" cy="5" r="1.6"/><path d="M4 4.6v6.8M12 6.6c0 2.6-2.2 3.2-4.6 3.6C5.9 10.5 4.6 11 4 11.4"/></svg><span>Code</span></a>
     </div>
@@ -724,7 +726,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
         <div class="cta rv">
           <a class="btn red" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 13 13 3M6 3h7v7"/></svg></a>
           <a class="btn" href="#start">Get started</a>
-          <a class="btn" href="#evidence">Evidence</a>
+          <a class="btn" href="https://arjmandi.github.io/assay/benchmarks/">Benchmarks</a>
         </div>
       </div>
       <aside class="panel dark loop-panel rv" aria-label="The gated loop, animated">
@@ -1082,222 +1084,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
   </div>
 </section>
 
-<!-- ============ 07 EVIDENCE ============ -->
-<section class="section" id="evidence">
-  <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow rv"><span class="num">§ 06</span><span>Evidence</span></p>
-      <h2 class="rv">One kernel, benchmarked in three worlds.</h2>
-    </div>
 
-    <div class="ev-tabs rv" role="tablist" aria-label="Evidence">
-      <button role="tab" aria-selected="true" data-ev="campaign">Campaign · ARC-AGI-3</button>
-      <button role="tab" aria-selected="false" data-ev="e1">E1 · the gate</button>
-      <button role="tab" aria-selected="false" data-ev="e2">E2 · five proofs</button>
-      <button role="tab" aria-selected="false" data-ev="e3">E3 · carryover</button>
-      <button role="tab" aria-selected="false" data-ev="worlds">Factorio · OOLONG</button>
-      <button role="tab" aria-selected="false" data-ev="cost">Cost · regression</button>
-    </div>
-
-    <!-- campaign -->
-    <div class="ev-pane rv" id="ev-campaign" role="tabpanel">
-      <div class="ev-grid">
-        <div class="read">
-          <h3>The campaign: 25 games, once each, under hard caps.</h3>
-          <p>Inputs were fixed at tier-2 information: the constitution, a registry with one-word action hints, a sentence that the observation is a 64×64 grid, the number of levels and the action cap of 200, 500 or 1,500. No game-specific strategy, no curriculum, no network.</p>
-          <p>The set is server-scored: a consolidated replay of the 25 recorded action sequences produced public scorecard <code>702ccd4f</code>, on which the benchmark's own scoring returns <b>96.54</b> with 177 of 183 levels, 24 of 25 games and 8,157 actions.</p>
-          <p>Four published systems sit at or within a fraction of 100. <b>The paper does not argue rank.</b> What distinguishes the <span class="sym">Assay</span> row is the record under it: every one of the 8,157 paid actions carried a graded prediction, every journal is clean under the public checker, and every win is triple-verified.</p>
-          <dl class="kv">
-            <dt>Probes</dt><dd>656 single discovery actions · 8.0%</dd>
-            <dt>Batch steps</dt><dd>7,501, inside verified predictions</dd>
-            <dt>Per level</dt><dd>46.1 actions</dd>
-            <dt>Open failure</dt><dd><code>lf52</code>, 4 of 10 levels in three runs</dd>
-          </dl>
-        </div>
-        <div class="chart" id="ch-rank">
-          <div class="ct"><span class="t">Published results on the ARC-AGI-3 public set, by RHAE</span><span class="u">Table 4 · 25 game instances</span></div>
-          <div class="ranklist" id="ranklist"></div>
-          <p class="tiny" style="margin-top:12px">RHAE saturates near 100 at this level: 23 of 25 games score 100.00 for the campaign; bp35 scores 95.27 for running over baseline on three late levels; lf52 scores 18.18 for ending at 4 of 10. Comparators ran uncapped and with different starting information. Directional context only.</p>
-          <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-rank"></table></div></details>
-        </div>
-      </div>
-    </div>
-
-    <!-- E1 -->
-    <div class="ev-pane rv" id="ev-e1" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>E1: the gate enforced, lifted, and the instrument removed.</h3>
-          <p>Three games, two seeds, three arms: <b>gated</b> (<code>gate: required</code>, the constitution), <b>ungated</b> (<code>gate: optional</code>, the instrument available and the manual silent on it), and <b>removed</b> (<code>gate: off</code>, the instrument refused, a manual with the discipline cut out). Eighteen runs, eighteen wins.</p>
-          <p>On every game the two seeds of one arm differ by more than the means of two arms differ. The pre-registered reading is the first one: wins equal, actions in band, so at this sample size the enforcement is not what carries the behavior.</p>
-          <p>One thing did move. <b>Agents whose manual never taught the discipline still attached a prediction to every paid action</b> once the instrument was there. What they predicted differed: 836 of the ungated arm's 1,405 graded outcomes were the explicit <code>change</code>, against 28 of 1,491 in the gated arm, where 1,054 were verifier outcomes. The manual decided how specific the prediction was.</p>
-          <dl class="kv">
-            <dt>Removed arm</dt><dd>six wins of six, zero predictions attempted</dd>
-            <dt>Cost</dt><dd>$73.85 list for the six removed runs against $118.41 for the six gated</dd>
-            <dt>Probe share</dt><dd>5.4% ungated · 8.4% gated</dd>
-          </dl>
-        </div>
-        <div class="stack">
-          <div class="chart" id="ch-e1">
-            <div class="ct"><span class="t">Paid actions to the win, by game, arm and seed</span><span class="u">Table 5 · caps in parentheses</span></div>
-            <div id="e1-svg"></div>
-            <div class="legend"><span><i class="red"></i>gated</span><span><i class="m1"></i>ungated</span><span><i class="tex"></i>instrument removed (E1b)</span><span><i class="ln" style="border-top:1px dashed var(--ink-3)"></i>prior gated runs</span></div>
-            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-e1"></table></div></details>
-          </div>
-          <div class="chart" id="ch-e1b">
-            <div class="ct"><span class="t">What the two arms predicted · graded outcomes by kind</span><span class="u">six runs per arm</span></div>
-            <div id="e1b-svg"></div>
-            <div class="legend"><span><i class="red"></i>explicit <code>change</code></span><span><i class="m1"></i>verifier</span><span><i class="m2"></i>state outcome</span><span><i class="m3"></i>other</span></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- E2 -->
-    <div class="ev-pane rv" id="ev-e2" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>E2: the five proofs, resumed without an operator.</h3>
-          <p>On six occasions across five games the campaign agent concluded, with an argument and in one case an exhaustive search over 8.2 million states, that a level was impossible. <b>Every proof was consistent with every recorded transition, and every proof was wrong in the same way</b>: a load-bearing rule had never been exercised in the regime where the proof needed it.</p>
-          <p>Each archived proof state was rebuilt from the read-only journal, cut at the proving session's last paid action, and resumed twice by fresh sessions under one neutral prompt: once with the coverage-audit module, once without. The prompt said nothing about coverage, impossibility, the proof or any module.</p>
-          <p><b>Ten runs, ten wins. All five proofs fell in both arms.</b> The module fired 26 times, every time as a loop breaker, and never named a rule a proof rested on. The correction was carried by the record: the inherited notes named the untested rule, the journal held the event ids that showed where it had and had not been exercised, and a fresh reader found it. This is the paper's central result.</p>
-        </div>
-        <div class="stack">
-          <div class="chart" id="ch-e2">
-            <div class="ct"><span class="t">Paid actions after the cut, per state</span><span class="u">Table 8 · one run per cell</span></div>
-            <div id="e2-svg"></div>
-            <div class="legend"><span><i class="m1"></i>control · no module</span><span><i class="red"></i>module arm</span><span><i class="m3"></i>historical session under an operator's hints</span></div>
-            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-e2"></table></div></details>
-          </div>
-        </div>
-      </div>
-      <hr class="rule" style="margin-block:32px">
-      <div class="ev-grid">
-        <div class="read">
-          <h3>s5i5, level 7, end to end.</h3>
-          <p>The proof came in session 2. At <code>e272</code> the agent clicked an arm under a verifier outcome that held, and at <code>e273</code> it reset with the proof as its note. Session 3 resumed the same directory, read the same notes, and its first paid action was a probe of a region the proof had never visited. Select an event.</p>
-          <p>The agent's own notes for level 6, written before the proof, already carried the seed of its refutation in the Assumed section: whether an impossible counter-clockwise target is skipped, or refuses the whole click, was marked untested.</p>
-        </div>
-        <div>
-          <div class="timeline" id="s5i5">
-            <div class="track" role="tablist" aria-label="Events of s5i5 around the proof">
-              <button class="ev" role="tab" aria-selected="false" data-ev-i="0"><span class="d"></span><span class="e">e272</span></button>
-              <button class="ev reset" role="tab" aria-selected="false" data-ev-i="1"><span class="d"></span><span class="e">e273</span></button>
-              <button class="ev miss" role="tab" aria-selected="false" data-ev-i="2"><span class="d"></span><span class="e">e274</span></button>
-              <button class="ev miss" role="tab" aria-selected="false" data-ev-i="3"><span class="d"></span><span class="e">e275</span></button>
-              <button class="ev miss" role="tab" aria-selected="true" data-ev-i="4"><span class="d"></span><span class="e">e279</span></button>
-              <button class="ev" role="tab" aria-selected="false" data-ev-i="5"><span class="d"></span><span class="e">e280–319</span></button>
-              <button class="ev" role="tab" aria-selected="false" data-ev-i="6"><span class="d"></span><span class="e">e320</span></button>
-              <button class="ev" role="tab" aria-selected="false" data-ev-i="7"><span class="d"></span><span class="e">e363</span></button>
-              <button class="ev win" role="tab" aria-selected="false" data-ev-i="8"><span class="d"></span><span class="e">e367</span></button>
-              <span class="cut" aria-hidden="true"></span>
-            </div>
-            <div class="tl-note" id="tl-note" role="tabpanel"></div>
-          </div>
-          <div class="legend" style="margin-top:12px"><span><i class="m1" style="border-radius:50%;width:9px;height:9px"></i>held</span><span><i class="red" style="border-radius:50%;width:9px;height:9px"></i>missed</span><span><i class="m1" style="width:8px;height:8px;transform:rotate(45deg)"></i>reset</span></div>
-        </div>
-      </div>
-      <hr class="rule" style="margin-block:32px">
-      <div class="proofs" aria-label="The six impossibility proofs">
-        <div class="pr" style="font-family:var(--mono);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2)"><span>Game</span><span>The proof, and the rule that was never exercised · Table 7</span></div>
-        <div class="pr"><span class="g">dc22</span><span class="c">Level-6 switch unreachable, remaining blocks isolated.</span><span class="u"><i class="led on"></i><span>All 74 prior inert probes had been taken in one world state. One coordinate had been inert and then live earlier, which made “refuses to act” conditional. The gate was geometric arming and the blocks were connected.</span></span></div>
-        <div class="pr"><span class="g">s5i5</span><span class="c">Level 7 provably unwinnable.</span><span class="u"><i class="led on"></i><span>The rotation rule had been exercised only in the occupied failure mode. The off-board case clips instead of refusing, which frees the arm and also breaks level 8's length cap.</span></span></div>
-        <div class="pr"><span class="g">sk48</span><span class="c">Level 3 unsolvable by an 8.2M-state search.</span><span class="u"><i class="led on"></i><span>The search assumed one ungraded companion rule, re-hooking bottom-only, that fit all 103 recorded transitions. Re-hooking is positional, and an action written off as a no-op was SELECT.</span></span></div>
-        <div class="pr"><span class="g">wa30</span><span class="c">Throughput ceiling, hostiles effectively unkillable.</span><span class="u"><i class="led on"></i><span>All three hostile rules were false. Movement is one orthogonal cell per action, an 812-observation displacement histogram shows zero diagonal moves, and the ceiling was a treadmill that vanished with the hostiles.</span></span></div>
-        <div class="pr"><span class="g">bp35 · L8</span><span class="c">Switch unreachable.</span><span class="u"><i class="led on"></i><span>The switch sat above the drifted map.</span></span></div>
-        <div class="pr"><span class="g">bp35 · L9</span><span class="c">No switches remain, map certified pixel-complete.</span><span class="u"><i class="led on"></i><span>The frame itself. “Rendered” had stood in for “exists”. Nine switches sat above the map, visible only from inside the dead-end shaft. The deepest of the six: the unexercised premise was the observation frame.</span></span></div>
-      </div>
-    </div>
-
-    <!-- E3 -->
-    <div class="ev-pane rv" id="ev-e3" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>E3: carryover of the agent's own record, under forced demotion.</h3>
-          <p>A run exports its notes with the lines marked verified, a digest of its graded outcomes, its hazard tags, up to twenty verifier programs with their statistics, and its formal model. A later run imports that artifact as foreign: every verified line lands as assumed, every verifier as a candidate that earns standing only by being named in a prediction and graded again, the model with no rights.</p>
-          <p>Two games, one import run each, from the game's own gated seed-1 run. <b>ft09 is a null cell</b>: the import run read the prior notes, named none of the twenty imported verifiers, admitted 74 of its own and finished in exactly the source run's count. <b>tr87 is one large effect</b>: 119 actions against 324 and 216 cold, with 129 fresh verifiers and none of the imported ones used.</p>
-          <p>In both runs the FOREIGN discipline held as designed. What transferred on tr87 was the prose understanding in the notes, re-earned through fresh predictions and fresh code. Two cells, direction only.</p>
-        </div>
-        <div class="chart" id="ch-e3">
-          <div class="ct"><span class="t">Paid actions: import run against the two cold gated runs</span><span class="u">Table 6</span></div>
-          <div id="e3-svg"></div>
-          <div class="legend"><span><i class="red"></i>import run</span><span><i class="m1"></i>cold gated · seed 1 (source of the import)</span><span><i class="m2"></i>cold gated · seed 2</span></div>
-          <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-e3"></table></div></details>
-        </div>
-      </div>
-    </div>
-
-    <!-- worlds -->
-    <div class="ev-pane rv" id="ev-worlds" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>Factorio: a world with no grid at all.</h3>
-          <p>The Factorio Learning Environment is a build-and-optimize world. The adapter registers two actions, <code>RUN</code>, a Python program against the environment's API, and <code>WAIT</code>, which advances the world an exact number of ticks. Here the agent's code is the action, and the adapter screens every program with an AST allowlist before it runs; a refused program still spends and is journaled as a policy refusal.</p>
-          <p>Three lab-play throughput tasks under a cap of 64 paid actions: <b>iron plate, iron gear wheel and electronic circuit, won in 5, 9 and 9 paid actions at $1.99, $4.87 and $4.44</b>, every journal clean under both checkers, zero programs refused. The three agents declared 7, 7 and 15 states, all but one a dotted path into the observation, and every paid action carried state outcomes beside its verifiers.</p>
-          <dl class="kv">
-            <dt>October replay</dt><dd>iron plate in 5 ($2.64), circuit in 15 ($6.69), both inside their August bands</dd>
-            <dt>Fail-closed claim</dt><dd>by construction, untested by incident</dd>
-          </dl>
-        </div>
-        <div class="chart" id="ch-fac">
-          <div class="ct"><span class="t">Paid actions to the win, cap 64</span><span class="u">three tasks · August run</span></div>
-          <div id="fac-svg"></div>
-        </div>
-      </div>
-      <hr class="rule" style="margin-block:32px">
-      <div class="ev-grid">
-        <div class="read">
-          <h3>OOLONG: when the gradable thing is not the thing that matters.</h3>
-          <p>OOLONG asks questions whose answers require aggregating an entire corpus. The adapter keeps the corpus out of the observation, so the model's context never holds it. <code>BANK_FACT</code> commits a fact with a span the adapter checks verbatim against the corpus; <code>SUBMIT</code> answers the current question and is coverage-gated by a census of banked facts. Correctness is sealed and scored only at the end.</p>
-          <p>Three things are robust in one corpus per rung: <b>the raw model walls past 128K</b>, the three harnesses land in one band well above it, and <b>the gated path is the most expensive at 1M</b>. The 1M rung does not discriminate: the per-question score vectors of the three harness arms are identical there, so the tie says nothing about the harnesses.</p>
-          <p>E5 changed only the actuator shape and cut the 1M cost to $43.39 from $48.76. The per-action discipline is bounded by a seven-minute paid phase; what remains is the offline strategy the <span class="sym">Assay</span> framing led the agent to choose, hand-classifying all 20,321 reviews through the model.</p>
-        </div>
-        <div class="stack">
-          <div class="chart" id="ch-oo">
-            <div class="ct"><span class="t">Accuracy over the length ladder</span><span class="u">Table 9 · one corpus per rung</span></div>
-            <div id="oo-svg"></div>
-            <div class="legend"><span><i class="ln red"></i><span class="sym">Assay</span>&nbsp;de-hinted (fair arm)</span><span><i class="ln m1"></i>Claude Code, no hint</span><span><i class="ln m2"></i>Prime Agent</span><span><i class="m3" style="border-radius:50%;width:9px;height:9px"></i>raw Opus 5, corpus in context</span></div>
-          </div>
-          <div class="chart" id="ch-oo-cost">
-            <div class="ct"><span class="t">Cost of the completing run, USD</span><span class="u">per rung</span></div>
-            <div id="oo-cost-svg"></div>
-            <div class="legend"><span><i class="red"></i><span class="sym">Assay</span>&nbsp;de-hinted</span><span><i class="tex"></i><span class="sym">Assay</span>&nbsp;batched actuator (E5, 1M only)</span><span><i class="m1"></i>Claude Code</span><span><i class="m3"></i>raw Opus 5</span></div>
-            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-oo"></table></div></details>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- cost -->
-    <div class="ev-pane rv" id="ev-cost" role="tabpanel" hidden>
-      <div class="cost" aria-label="Cost of the runs">
-        <div class="c"><span class="v">$283.68</span><span class="l">eleven metered campaign runs</span><span class="s">$11.61 to $53.89 per run, median near $22. The other fourteen ran on a subscription without a per-run meter; the full-set figure is an extrapolation of roughly $550 to $650.</span></div>
-        <div class="c"><span class="v">≈ 37 h</span><span class="l">agent wall-clock, 20 of 25 games</span><span class="s">32 to 330 minutes per game where measured.</span></div>
-        <div class="c"><span class="v">$537.06</span><span class="l">E1, E2 and E3 at list price</span><span class="s">1,466 minutes of agent time across the 24 runs, billed to a subscription until its weekly limit and as paid usage after it.</span></div>
-        <div class="c"><span class="v">$2.40</span><span class="l">OOLONG at 4M, de-hinted</span><span class="s">Against $48.76 at 1M. Each rung uses a different source corpus, so the table reads across a rung and not down a column.</span></div>
-      </div>
-      <div class="ev-grid" style="margin-top:32px">
-        <div class="read">
-          <h3>ft09, fifteen wins at a cap of 200.</h3>
-          <p>The campaign ran each game once; the experiments gave the first repeated cells on this kernel line. ft09 has been won fifteen times: nine under the gated protocol, twice with the instrument removed, once on the October regression run and three times on release 1.2.0, under three successive versions of the manual, with the first level cleared at the fourth action in every E1, E1b and E3 run.</p>
-          <p>The spread on a single game under one protocol is wide enough that every single-run comparison in the paper, including every comparison against another system, is direction only.</p>
-          <dl class="kv">
-            <dt>Coerced outcomes</dt><dd>1 of 29,138 graded, across 49 runs</dd>
-            <dt>Mis-reference refusals</dt><dd>4, in four runs</dd>
-            <dt>Vacuous verifier hashes</dt><dd>153, in 28 of 49 runs</dd>
-            <dt>Ungated events</dt><dd>0 in all 49 runs</dd>
-            <dt>Model replays</dt><dd>3, all in cn04; none promoted, no plan executed</dd>
-          </dl>
-        </div>
-        <div class="chart" id="ch-ft09">
-          <div class="ct"><span class="t">ft09 · paid actions to the win, in the order played</span><span class="u">Figure 8 · dashed line at 80</span></div>
-          <div id="ft09-svg"></div>
-          <div class="legend"><span><i class="red" style="border-radius:50%;width:9px;height:9px"></i>with the prediction (gated)</span><span><i class="m1" style="width:9px;height:9px"></i>the gate lifted (ungated)</span><span><i class="m3" style="border-radius:50%;width:9px;height:9px;background:transparent;border:2px solid var(--mark-1)"></i>the instrument removed (E1b)</span></div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
 
 </main>
 
@@ -1313,6 +1100,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; lette
         <p class="eyebrow"><span class="num">Artifacts</span><span>The record itself</span></p>
         <div class="links2">
           <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><span>github.com/arjmandi/assay</span><span>code · spec · checker · 66 journals</span></a>
+          <a href="https://arjmandi.github.io/assay/benchmarks/"><span>Benchmarks</span><span>ARC-AGI-3 · Factorio · OOLONG · Claude 5.5</span></a>
           <a href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32" target="_blank" rel="noopener"><span>arcprize.org · scorecard 702ccd4f</span><span>server-scored set</span></a>
           <a href="https://arxiv.org/abs/2608.04066" target="_blank" rel="noopener"><span>arXiv:2608.04066 · ARG</span><span>the previous system</span></a>
           <a href="https://arxiv.org/abs/2603.17683" target="_blank" rel="noopener"><span>arXiv:2603.17683 · Sensi</span><span>the first</span></a>
@@ -1576,109 +1364,6 @@ function dotStrip(w, o){
 }
 
 function tableHTML(id, head, rows, hiIdx){ const t = $(id); if (!t) return; t.innerHTML = '<thead><tr>'+head.map(h=>'<th>'+esc(h)+'</th>').join('')+'</tr></thead><tbody>'+rows.map((r,i)=>'<tr'+(i===hiIdx?' class="hi"':'')+'>'+r.map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('')+'</tbody>'; }
-
-/* ---------- 07 · rank list ---------- */
-(function(){
-  const rows = [
-    {n:'VISTA', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'—', a:'7,302'},
-    {n:'Tycho', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'183/183', a:'6,641'},
-    {n:'arc-skill', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'183/183', a:'7,645'},
-    {n:'Retrodict', bb:'gpt-5.6-sol · uncapped', r:99.86, g:'25/25', l:'183/183', a:'7,703'},
-    {n:'ASSAY (campaign)', bb:'Opus 5 · hard caps, gated', r:96.54, g:'24/25', l:'177/183', a:'8,157', hi:true},
-    {n:'Prime Agent (median)', bb:'Opus 5 · uncapped', r:95.24, g:'24/25', l:'178/183', a:'11,245'},
-    {n:'PRO-LONG', bb:'Fable 5 · uncapped', r:94.71, g:'19/25', l:'—', a:'11,156'},
-    {n:'NOOA', bb:'gpt-5.6-sol · 2 h fleet cap', r:85.1, g:'—', l:'170/183', a:'—'},
-  ];
-  const el = $('#ranklist');
-  el.innerHTML = rows.map(r => '<div class="r'+(r.hi?' hi':'')+'" data-tip="'+esc(r.n+' · RHAE <b>'+r.r.toFixed(2)+'</b> · games '+r.g+' · levels '+r.l+' · actions '+r.a)+'"><span class="n">'+esc(r.n)+'<small>'+esc(r.bb)+'</small></span><span class="tr"><i data-w="'+r.r+'"></i></span><span class="v">'+r.r.toFixed(2)+'</span></div>').join('');
-  bindTips(el);
-  const fills = $$('.tr i', el);
-  const go = () => { fills.forEach((f,i) => { if (A && motionOK) A({targets:f, width:[0, f.dataset.w+'%'], duration:900, delay:i*60, easing:'easeOutCubic'}); else f.style.width = f.dataset.w+'%'; }); };
-  const io = new IntersectionObserver(es => { if (es.some(e=>e.isIntersecting)){ io.disconnect(); go(); } }, {threshold:.3}); io.observe(el);
-  tableHTML('#tbl-rank', ['System','Backbone · regime','RHAE','Games','Levels','Actions'], rows.map(r=>[esc(r.n), esc(r.bb), r.r.toFixed(2), r.g, r.l, r.a]), 4);
-})();
-
-/* ---------- 07 · charts ---------- */
-mountChart('#e1-svg', w => groupedBars(w, {yMax:500, step:100, h:280, aria:'E1 paid actions to the win by game, arm and seed',
-  groups:[
-    {label:'ft09', sub:'cap 200 · prior 75 to 152', band:[75,152], bars:[{v:80,cls:'red',name:'gated s1'},{v:75,cls:'red',name:'gated s2'},{v:80,cls:'m1',name:'ungated s1'},{v:80,cls:'m1',name:'ungated s2'},{v:80,cls:'tex',name:'removed s1'},{v:80,cls:'tex',name:'removed s2'}]},
-    {label:'tr87', sub:'cap 1500 · prior 162', ref:162, bars:[{v:324,cls:'red',name:'gated s1'},{v:216,cls:'red',name:'gated s2'},{v:282,cls:'m1',name:'ungated s1'},{v:185,cls:'m1',name:'ungated s2'},{v:449,cls:'tex',name:'removed s1'},{v:156,cls:'tex',name:'removed s2'}]},
-    {label:'cn04', sub:'cap 1500 · prior 223', ref:223, bars:[{v:222,cls:'red',name:'gated s1'},{v:275,cls:'red',name:'gated s2'},{v:201,cls:'m1',name:'ungated s1'},{v:300,cls:'m1',name:'ungated s2'},{v:212,cls:'tex',name:'removed s1'},{v:220,cls:'tex',name:'removed s2'}]},
-  ]}));
-tableHTML('#tbl-e1', ['Game (cap)','gated s1','gated s2','ungated s1','ungated s2','removed s1','removed s2','prior gated runs'], [['ft09 (200)','80','75','80','80','80','80','75 to 152 (four)'],['tr87 (1500)','324','216','282','185','449','156','162 (one)'],['cn04 (1500)','222','275','201','300','212','220','223 (one)'],['sum per arm','1,192','','1,128','','1,197','','']]);
-mountChart('#e1b-svg', w => stackedH(w, [
-  {label:'ungated', segs:[{v:836,cls:'red',name:'explicit change'},{v:171,cls:'m1',name:'verifier'},{v:359,cls:'m2',name:'state outcome'},{v:39,cls:'m3',name:'other'}]},
-  {label:'gated', segs:[{v:28,cls:'red',name:'explicit change'},{v:1054,cls:'m1',name:'verifier'},{v:368,cls:'m2',name:'state outcome'},{v:41,cls:'m3',name:'other'}]},
-], {aria:'Graded outcomes by kind for the ungated and gated arms'}));
-mountChart('#e2-svg', w => groupedBars(w, {yMax:450, step:100, h:280, aria:'E2 paid actions after the cut per state and arm',
-  groups:[
-    {label:'s5i5', sub:'cut e273', bars:[{v:91,cls:'m1',name:'control'},{v:106,cls:'red',name:'module'},{v:94,cls:'m3',name:'historical, hinted'}]},
-    {label:'wa30', sub:'cut e990', bars:[{v:317,cls:'m1',name:'control'},{v:190,cls:'red',name:'module'},{v:181,cls:'m3',name:'historical, hinted'}]},
-    {label:'sk48', sub:'cut e111', bars:[{v:370,cls:'m1',name:'control'},{v:351,cls:'red',name:'module'},{v:293,cls:'m3',name:'historical, hinted'}]},
-    {label:'dc22', sub:'cut e634', bars:[{v:160,cls:'m1',name:'control'},{v:177,cls:'red',name:'module'},{v:408,cls:'m3',name:'historical, no hint'}]},
-    {label:'bp35', sub:'cut e368', bars:[{v:350,cls:'m1',name:'control'},{v:129,cls:'red',name:'module'},{v:229,cls:'m3',name:'historical, two sessions (116 + 113)'}]},
-  ]}));
-tableHTML('#tbl-e2', ['State','cut','control','module','module firings','ctrl sessions','module sessions','historical hinted session'], [['s5i5','e273','91','106','1','1','1','94'],['wa30','e990','317','190','1','1','1','181'],['sk48','e111','370','351','15','1','2','293'],['dc22','e634','160','177','9','2','1','408 (no hint)'],['bp35','e368','350','129','0','3','1','116 and 113 (two hints)'],['sum','','1,288','953','26','','','']]);
-mountChart('#e3-svg', w => groupedBars(w, {yMax:350, step:50, h:260, labelAll:true, aria:'E3 import run against cold gated runs',
-  groups:[
-    {label:'ft09 · to win', bars:[{v:80,cls:'red',name:'import'},{v:80,cls:'m1',name:'cold s1'},{v:75,cls:'m2',name:'cold s2'}]},
-    {label:'tr87 · to win', bars:[{v:119,cls:'red',name:'import'},{v:324,cls:'m1',name:'cold s1'},{v:216,cls:'m2',name:'cold s2'}]},
-    {label:'ft09 · first level', bars:[{v:4,cls:'red',name:'import'},{v:4,cls:'m1',name:'cold s1'},{v:4,cls:'m2',name:'cold s2'}]},
-    {label:'tr87 · first level', bars:[{v:14,cls:'red',name:'import'},{v:28,cls:'m1',name:'cold s1'},{v:27,cls:'m2',name:'cold s2'}]},
-  ]}));
-tableHTML('#tbl-e3', ['Game','Measure','import','cold gated s1','cold gated s2'], [['ft09','actions to win','80','80','75'],['ft09','actions to first level','4','4','4'],['tr87','actions to win','119','324','216'],['tr87','actions to first level','14','28','27']]);
-mountChart('#fac-svg', w => {
-  const rows = [{l:'iron plate', v:5, c:'$1.99', st:7},{l:'iron gear wheel', v:9, c:'$4.87', st:7},{l:'electronic circuit', v:9, c:'$4.44', st:15}];
-  const lab = 130, bh = 22, H = rows.length*40+36, pw = w-lab-60, x = v => lab + (v/64)*pw;
-  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="Factorio paid actions against the cap of 64">';
-  s += '<g class="grid">'; [0,16,32,48,64].forEach(t => { s += '<line x1="'+x(t)+'" x2="'+x(t)+'" y1="4" y2="'+(H-28)+'"/><text x="'+x(t)+'" y="'+(H-12)+'" text-anchor="middle">'+t+'</text>'; }); s += '</g>';
-  rows.forEach((r,i)=>{ const y = 8+i*40; s += '<text class="cat" x="'+(lab-10)+'" y="'+(y+bh/2+4)+'" text-anchor="end">'+r.l+'</text><rect class="bar red" x="'+lab+'" y="'+y+'" width="'+(x(r.v)-lab)+'" height="'+bh+'" rx="0" style="transform-origin:'+lab+'px '+(y+bh)+'px" data-tip="'+esc(r.l+' · <b>'+r.v+'</b> paid actions · '+r.c+' · '+r.st+' states declared')+'"/><text class="v" x="'+(x(r.v)+8)+'" y="'+(y+bh/2+4)+'">'+r.v+' · '+r.c+'</text>'; });
-  s += '<text x="'+x(64)+'" y="'+(H-28)+'" text-anchor="end" style="font-size:9.5px">cap 64 paid actions</text>';
-  return s + '</svg>';
-});
-mountChart('#oo-svg', w => lineChart(w, {cats:['128K','1M','4M'], yMin:0.4, yMax:1.0, step:0.1, h:250, aria:'OOLONG accuracy over the length ladder',
-  series:[{name:'Prime Agent', cls:'m2', vals:[0.859,0.740,0.850]},{name:'Claude Code, no hint', cls:'m1', vals:[0.818,0.740,1.000]},{name:'Assay de-hinted', cls:'red', vals:[0.764,0.740,1.000]}],
-  points:[{i:0, v:0.447, cls:'m3', name:'raw Opus 5, corpus in context'}]}));
-mountChart('#oo-cost-svg', w => groupedBars(w, {yMax:50, step:10, h:220, fmtY:t=>'$'+t, aria:'OOLONG cost of the completing run per rung',
-  groups:[
-    {label:'128K', bars:[{v:12.64,dec:2,cls:'red',name:'Assay de-hinted',lab:'12.64'},{v:null},{v:4.11,dec:2,cls:'m1',name:'Claude Code'},{v:1.11,dec:2,cls:'m3',name:'raw Opus 5'}]},
-    {label:'1M', bars:[{v:48.76,dec:2,cls:'red',name:'Assay de-hinted',lab:'48.76'},{v:43.39,dec:2,cls:'tex',name:'Assay batched actuator (E5)'},{v:8.20,dec:2,cls:'m1',name:'Claude Code'},{v:null}]},
-    {label:'4M', bars:[{v:2.40,dec:2,cls:'red',name:'Assay de-hinted',lab:'2.40'},{v:null},{v:0.89,dec:2,cls:'m1',name:'Claude Code'},{v:null}]},
-  ]}));
-tableHTML('#tbl-oo', ['System','acc 128K','acc 1M','acc 4M','cost 128K','cost 1M','cost 4M'], [['raw Opus 5, corpus in context','0.447','—','—','$1.11 / 2 min','—','—'],['Assay de-hinted (fair arm)','0.764','0.740','1.000','$12.64 / 33','$48.76 / 114','$2.40 / 8'],['Assay de-hinted, batched (E5)','—','0.740','—','—','$43.39 / 76','—'],['Claude Code, no hint','0.818','0.740','1.000','$4.11 / 16','$8.20 / 30','$0.89 / 4'],['Prime Agent','0.859','0.740','0.850','— / 10','— / 5','— / 2'],['Assay hinted (reference)','0.870','0.701','1.000','$10.10','$5.16','$2.37']], 1);
-mountChart('#ft09-svg', w => dotStrip(w, {yMin:60, yMax:160, step:20, ref:80, aria:'ft09 fifteen wins in the order played',
-  items:[{label:'pre 1',v:75,t:'g',kind:'gated'},{label:'pre 2',v:81,t:'g',kind:'gated'},{label:'pre 3',v:82,t:'g',kind:'gated'},{label:'pre 4',v:152,t:'g',kind:'gated'},{label:'E1 g s1',v:80,t:'g',kind:'gated'},{label:'E1 g s2',v:75,t:'g',kind:'gated'},{label:'E1 u s1',v:80,t:'u',kind:'ungated'},{label:'E1 u s2',v:80,t:'u',kind:'ungated'},{label:'E1b s1',v:80,t:'b',kind:'instrument removed'},{label:'E1b s2',v:80,t:'b',kind:'instrument removed'},{label:'E3',v:80,t:'g',kind:'gated, with import'},{label:'Oct',v:80,t:'g',kind:'gated, October build'},{label:'1.2.0',v:80,t:'g',kind:'gated, release 1.2.0'},{label:'1.2.0 b',v:75,t:'g',kind:'gated, 1.2.0 after the rename of channels to states'},{label:'1.2.0 c',v:80,t:'g',kind:'gated, 1.2.0 after the rename of claims to outcomes'}]}));
-
-/* ---------- 07 · evidence tabs ---------- */
-(function(){
-  const tabs = $$('.ev-tabs [role=tab]'), panes = $$('.ev-pane');
-  function show(k){
-    tabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.ev === k)));
-    panes.forEach(p => { p.hidden = p.id !== 'ev-' + k; });
-    chartRegistry.forEach(o => { if (o.el.closest('#ev-'+k)) draw(o); });
-  }
-  tabs.forEach(t => t.addEventListener('click', ()=>show(t.dataset.ev)));
-  const h = location.hash.replace('#',''); if (['e1','e2','e3','worlds','cost'].includes(h)) show(h);
-})();
-
-/* ---------- 07 · s5i5 timeline ---------- */
-(function(){
-  const E = [
-    {e:'e272', s:'session 2', g:'held', pred:'verify:checks/l7p40.py', body:'The agent clicks the socket under a verifier outcome that held: <q>c tip lands on socket (16,25). Socket (7,22) is still empty (arm a capped at L=3), so I expect the board to just show socket 2 filled and the level NOT to advance.</q>'},
-    {e:'e273', s:'session 2', g:'reset · the proof', pred:'(a reset carries a note and no prediction)', body:'The reset note is the proof: <q>level 7 is in a proven dead end: arm 8 is irreversibly rotated RIGHT (its only other CCW target, UP, is off-board) which caps arm a at L=3 so socket (7,22) can never be refilled.</q> The session ended by its own judgment with budget remaining.'},
-    {e:'e274', s:'session 3 · first paid action', g:'missed', pred:'verify:checks/s2_p1_arm8_left.py', body:'A probe of a region the proof had never visited. The agent predicted that a different arm of the rotate glyph was a separate directional button. The verifier\'s actual value read <q>want 88888888 got 55555555</q>.'},
-    {e:'e275', s:'session 3', g:'missed', pred:'verify:checks/s2_p2_c_rot.py', body:'A probe for a hidden rotate control, which missed as well: <q>want 33 got cc</q>. Each miss is written with its actual value and is the first thing the receipt shows.'},
-    {e:'e279', s:'session 3 · the decisive probe', g:'missed', pred:'verify:checks/s2_p3_8left.py', body:'In the agent\'s words: <q>THE decisive probe. The unwinnability argument rests on one rule: from RIGHT, arm 8\'s next CCW target UP is off-board, so the click refuses and arm 8 can never reach LEFT. That rule was NEVER exercised.</q> It predicted the off-board target would be skipped. The outcome missed: <q>9 rows differ, first row 0 cols [12, 13, 14]: want 555 got 888</q>. The world had done a third thing: the rotation was accepted and the arm was clipped to the board.'},
-    {e:'e280–e319', s:'session 3', g:'held', pred:'forty exact-board verifier steps', body:'With the clip rule in hand, forty verifier steps followed, each predicting the exact board and each held.'},
-    {e:'e320', s:'session 3', g:'held', pred:'level+1', body:'<q>Arm a goes L=4 to L=5 … arm 8 parked UP at L=3 clears rows 15-17.</q> Level 7 completes. A gamble outcome, bucketed apart from the world-model outcomes so a reader can separate predictions about progress from predictions about mechanics.'},
-    {e:'e363', s:'session 3 · level 8', g:'held', pred:'verify:checks/s8_desync10.py', body:'The same clip rule carried level 8. The agent wrote: <q>a transform blocked by an OBJECT or a WALL is refused, but one that runs off the BOARD EDGE is accepted with the segment CLIPPED to fit.</q>'},
-    {e:'e367', s:'session 3', g:'held · win', pred:'win', body:'<q>state WIN.</q> Session 3\'s meters closed at 86 outcomes held and 8 missed, and the agent\'s report noted that every one of the eight misses was a deliberate probe of an unexercised rule. In E2, both fresh sessions resumed from the archived e273 state probed the same untested off-board rotation within five actions, at the same event, e278.'},
-  ];
-  const tabs = $$('#s5i5 [role=tab]'), note = $('#tl-note');
-  function show(i){ tabs.forEach((t,j)=>t.setAttribute('aria-selected', String(i===j))); const d = E[i]; note.innerHTML = '<div class="h"><b>'+d.e+'</b><span>'+esc(d.s)+'</span><span class="'+(/missed/.test(d.g)?'miss':'')+'">'+esc(d.g)+'</span></div><div class="pred"><span class="k">predict:</span> '+esc(d.pred)+'</div><p>'+d.body+'</p>'; if (A && motionOK) A({targets:note.children, opacity:[0,1], translateY:[4,0], duration:300, delay:A.stagger(40), easing:'easeOutQuad'}); }
-  tabs.forEach(t => t.addEventListener('click', ()=>show(parseInt(t.dataset.evI,10))));
-  show(4);
-})();
 
 /* ---------- footer · copy citation ---------- */
 (function(){
