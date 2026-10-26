@@ -96,6 +96,9 @@ class FrameKind:
     def coverage_telemetry(self, events: Sequence[Event], paid_indices: Sequence[int]) -> dict[str, Any]:
         return coverage.coverage_telemetry(events, paid_indices)
 
+    def coverage_objects(self, events: Sequence[Event], paid_indices: Sequence[int]) -> str | None:
+        return coverage.coverage_objects(events, paid_indices)
+
     # -- the command line -----------------------------------------------------------
 
     def export_history(self, run: Run, destination: Path) -> Path:

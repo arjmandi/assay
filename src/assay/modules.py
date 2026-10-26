@@ -477,6 +477,14 @@ def _gap_phrase(events: Sequence[Event], ledger: Mapping[str, Any]) -> str:
         phrase = extra(events, ledger["paid_indices"])
         if phrase:
             parts.append(phrase)
+    if not parts and len(ledger["advertised"]) <= 1:
+        # One advertised action: every action is "tried" from the first
+        # status, so the action ledger says nothing about coverage.
+        return (
+            "unexercised: one action is advertised, so the action ledger cannot judge "
+            "coverage; enumerate the objects and states the conclusion rests on and "
+            "probe the ones the record never touched."
+        )
     if not parts:
         return (
             "coverage looks saturated: every available action has been productive. "
@@ -546,15 +554,32 @@ class _CoverageAudit:
         if pending is None:
             if ledger["paid_on_unit"] < 3:
                 return None
-            note = (
-                f" STALL: the last {COVERAGE_STALL_WINDOW} actions changed nothing. "
-                f"{_gap_phrase(events, ledger)}"
-                if ledger["stalled"]
-                else ""
-            )
+            if ledger["stalled"]:
+                note = (
+                    f" STALL: the last {COVERAGE_STALL_WINDOW} actions changed nothing. "
+                    f"{_gap_phrase(events, ledger)}"
+                )
+            elif notes_verdicts(_notes_text(view.paths)):
+                # At a stop (a verdict in the notes) the regions and objects
+                # the record never touched belong on the status line.
+                note = f" AT A STOP: {_gap_phrase(events, ledger)}"
+            else:
+                note = ""
+            head = f"coverage {_unit(view)} {ledger['unit'] + 1}: "
+            if len(ledger["advertised"]) <= 1:
+                kind = kind_for(events[-1])
+                extra = getattr(kind, "coverage_objects", None) if kind is not None else None
+                objects = extra(events, ledger["paid_indices"]) if callable(extra) else None
+                return (
+                    head
+                    + f"one action is advertised ({', '.join(ledger['advertised']) or 'none'}), "
+                    "so untried and no-op-only say nothing here"
+                    + (f"; {objects}" if objects else "")
+                    + f".{note}"
+                )
             return (
-                f"coverage {_unit(view)} {ledger['unit'] + 1}: "
-                f"untried [{', '.join(ledger['untried']) or 'none'}], "
+                head
+                + f"untried [{', '.join(ledger['untried']) or 'none'}], "
                 f"no-op-only [{', '.join(ledger['dead']) or 'none'}].{note}"
             )
         if pending.get("kind") == "reset" and ledger["stalled"]:
