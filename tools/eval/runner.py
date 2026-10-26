@@ -12,7 +12,11 @@ Per job, one session is:
    the journal, or answers RESUMED when its daemon is still up);
 2. the player's session, a subprocess with the run directory as its working
    directory, the rendered prompt on stdin and in the `{prompt}` argument, and
-   `ASSAY` naming the launcher the start used.
+   `ASSAY` naming the launcher the start used. When the job file sets
+   `stop_gate`, the Stop gate (`hooks/stop_gate.py`) is merged into the run
+   directory's `.claude/settings.json` first, its launch counts and demand
+   written to `STATE/gates/JOB.json`, and `ASSAY_STOP_GATE` names that file
+   to the player; the gate's decisions go into the session's ledger record.
 
 A session that ends without WIN while the paid actions are below the budget
 is relaunched (another `start`, another session) up to `max_sessions`; a
@@ -46,6 +50,7 @@ from pathlib import Path
 from typing import IO, Any
 
 from . import EvalError
+from .gate import gate_command, install_stop_gate, load_gate
 from .jobs import Design, Job, check_budget, missing_inputs, registry_variant, variant_name
 from .render import render_file
 from .results import outcome_of, player_report, read_run, row_for, write_rows
@@ -159,6 +164,46 @@ class Runner:
     def lock_path(self) -> Path:
         return self.state / "runner.lock"
 
+    def gate_state(self, job: Job) -> Path:
+        return self.state / "gates" / f"{job.id}.json"
+
+    def settings_path(self, job: Job) -> Path:
+        return self.run_dir(job) / ".claude" / "settings.json"
+
+    def arm_gate(self, job: Job, session: int, env: dict[str, str]) -> None:
+        """Before a session under a gated design: the gate's Stop entry in the
+        run directory's settings, the launch counts and the demand in the
+        gate's state file, and the variable that names it to the player."""
+        demand = self.design.stop_gate
+        if demand is None:
+            return
+        gate = load_gate()
+        view = gate.load_view(self.run_dir(job))
+        launch = {
+            "session": session, "at": now(), "demand": demand,
+            "activity": len(view.activity) if view else 0,
+            "declarations": gate.count_declarations(view, demand) if view else 0,
+            "paid": view.paid if view else 0,
+        }
+        path = self.gate_state(job)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps({
+            "version": gate.STATE_VERSION, "launch": launch,
+            "blocks": 0, "paid_at_last_block": None, "decisions": [],
+        }, indent=2) + "\n")
+        install_stop_gate(self.settings_path(job), gate_command(self.run_dir(job)))
+        env[gate.STATE_VARIABLE] = str(path)
+
+    def gate_decisions(self, job: Job) -> list[Any] | None:
+        if self.design.stop_gate is None:
+            return None
+        try:
+            value = json.loads(self.gate_state(job).read_text())
+        except (OSError, ValueError):
+            return None
+        decisions = value.get("decisions") if isinstance(value, dict) else None
+        return decisions if isinstance(decisions, list) else None
+
     # ---- the pieces of one session --------------------------------------------
     def environment(self) -> dict[str, str]:
         return {**os.environ, "ASSAY_ANCHOR_DIR": str(self.anchors), "ASSAY": self.launcher_text}
@@ -231,6 +276,11 @@ class Runner:
             f"ASSAY_ANCHOR_DIR={shlex.quote(str(self.anchors))} "
             + shlex.join(self.start_command(job))
         )
+        if self.design.stop_gate is not None:
+            lines.append(
+                f"install the Stop gate (demand {self.design.stop_gate}) in {self.settings_path(job)}; "
+                f"its state {self.gate_state(job)}"
+            )
         lines.append(
             f"(cd {shlex.quote(str(self.run_dir(job)))} && ASSAY={shlex.quote(self.launcher_text)} "
             f"{self.player_command_text(job, session)} < {shlex.quote(str(self.prompt_path(job, session)))})"
@@ -419,7 +469,9 @@ class Runner:
                 f"`assay start` exited {started.returncode}: "
                 + (reason[-1] if reason else "no output")
             )
-        # The player's session, in the run directory, with the daemon up.
+        # The Stop gate, when the design asks for it, then the player's
+        # session, in the run directory, with the daemon up.
+        self.arm_gate(job, session, env)
         out = self.session_file(job, session, "player.out").open("wb")
         err = self.session_file(job, session, "player.err").open("wb")
         prompt_handle = prompt_file.open("rb")
@@ -493,6 +545,9 @@ class Runner:
             "report": report, "stdout_tail": stdout[-4000:] if report is None else None,
             "stderr_tail": stderr[-4000:], "journal_at_exit": record["journal"],
         }
+        decisions = self.gate_decisions(job)
+        if decisions is not None:
+            session_record["gate"] = decisions
         ledger = self.ledger(job)
         ledger.append(session_record)
         self.ledger_path(job).parent.mkdir(parents=True, exist_ok=True)

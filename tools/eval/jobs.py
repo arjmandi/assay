@@ -27,6 +27,11 @@ The keys:
     seeds           integers; a seed is a fresh run directory, nothing else
                     (the kernel's own `--seed` is passed only when a world
                     sets `pass_seed`)
+    stop_gate       optional: `line` or `coverage` installs the Stop gate
+                    (hooks/stop_gate.py) in every run directory before each
+                    session, with that demand (`coverage`: a stop with budget
+                    left needs the STOP, RULES, UNTESTED, NEXT PROBE block);
+                    absent or false, no gate (the designs before it)
 
 One job per (seed, world, arm), in that nesting, which is the queue order the
 protocols fixed: every arm of a world at one seed before the next world, and
@@ -126,6 +131,7 @@ class Design:
     arms: tuple[Arm, ...]
     seeds: tuple[int, ...]
     jobs: tuple[Job, ...]
+    stop_gate: str | None = None
 
     def job(self, job_id: str) -> Job:
         for job in self.jobs:
@@ -290,6 +296,11 @@ def load_design(path: Path) -> Design:
     for label, items in (("world ids", [w.id for w in worlds]), ("arm names", [a.name for a in arms]), ("seeds", list(seeds))):
         if len(items) != len(set(items)):
             raise EvalError(f"duplicate {label} in {path.name}")
+    stop_gate = raw.get("stop_gate")
+    if stop_gate is False:
+        stop_gate = None
+    if stop_gate is not None and stop_gate not in ("line", "coverage"):
+        raise EvalError(f"stop_gate must be \"line\", \"coverage\" or false, got {stop_gate!r}")
     max_hours = raw.get("max_hours", 4)
     if isinstance(max_hours, bool) or not isinstance(max_hours, (int, float)) or max_hours <= 0:
         raise EvalError(f"max_hours must be a positive number, got {max_hours!r}")
@@ -318,6 +329,7 @@ def load_design(path: Path) -> Design:
         arms=arms,
         seeds=seeds,
         jobs=jobs,
+        stop_gate=stop_gate,
     )
 
 

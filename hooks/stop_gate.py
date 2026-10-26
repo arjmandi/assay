@@ -17,6 +17,15 @@ gate asks the run's own files instead. The player may stop when:
   `.assay/NOTES.md` that was not there when the session was launched. In
   this version the declaration lives in the notes and is not journaled.
 
+Under the `coverage` demand (the launch record's `demand`, set by a runner
+that wants it) a bare `STOP:` line is not enough: a stop with budget left is
+a conclusion, and it carries the coverage audit. The declaration is a block
+in the notes, a `STOP:` line followed by `RULES:` (the rules the conclusion
+rests on, citing at least one event id of this run, `e12`), `UNTESTED:` (what
+the record never exercised in the regime the conclusion needs) and `NEXT
+PROBE:` (the cheapest probe not bought, and why). An incomplete block is
+named in the reason.
+
 Otherwise the stop is blocked, and the reason says what to do next. After
 three blocks with no paid action between them the stop is allowed, so that a
 player that cannot go on is not held in a loop; the session runner then
@@ -61,6 +70,13 @@ STATE_VERSION = 1
 MAX_BLOCKS = 3
 KEPT_DECISIONS = 50
 DECLARATION = "STOP:"
+# What a stop declaration must hold: `line`, a `STOP:` line with a reason;
+# `coverage`, the block below, the coverage audit a stop with budget left owes.
+DEMANDS = ("line", "coverage")
+COVERAGE_FIELDS = ("RULES:", "UNTESTED:", "NEXT PROBE:")
+# How far below its `STOP:` line a block's fields may sit.
+COVERAGE_SPAN = 12
+EVENT_ID = re.compile(r"\be0*(\d+)\b")
 # The refusals only the owner answers, with the owner's command for each.
 OWNER_CODES = {"APPROVAL_REQUIRED": "approve", "REHEARSAL_REQUIRED": "waive"}
 # The activity records that answer them.
@@ -87,6 +103,7 @@ class RunView:
     usd_cap: float | None
     activity: tuple[Mapping[str, Any], ...]
     notes: str
+    last_event: int = 0
 
 
 # --- reading ---------------------------------------------------------------------
@@ -168,6 +185,7 @@ def load_view(run_dir: Path) -> RunView | None:
         usd_cap=_amount(budget.get("usd")),
         activity=tuple(activity),
         notes=notes,
+        last_event=_count(events[-1].get("id")) or len(events) - 1,
     )
 
 
@@ -221,6 +239,54 @@ def declarations(notes: str) -> list[str]:
     return found
 
 
+@dataclasses.dataclass(frozen=True)
+class CoverageBlock:
+    """One `STOP:` block of the notes under the `coverage` demand: its reason
+    and what it still lacks (empty when complete)."""
+
+    reason: str
+    missing: tuple[str, ...]
+
+
+def coverage_blocks(notes: str, last_event: int) -> list[CoverageBlock]:
+    """Every `STOP:` block in the notes, read as the coverage audit a stop
+    owes: the fields within `COVERAGE_SPAN` lines below the `STOP:` line (up to
+    the next `STOP:` line), each needing text, and `RULES:` citing at least
+    one event id of this run (`e0` to the last event)."""
+    lines = notes.splitlines()
+    blocks: list[CoverageBlock] = []
+    for index, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped.startswith(DECLARATION):
+            continue
+        reason = stripped[len(DECLARATION):].strip()
+        found: dict[str, str] = {}
+        for following in lines[index + 1:index + 1 + COVERAGE_SPAN]:
+            text = following.strip().lstrip("-* ").strip()
+            if text.startswith(DECLARATION):
+                break
+            for field in COVERAGE_FIELDS:
+                if text.upper().startswith(field) and field not in found:
+                    found[field] = text[len(field):].strip()
+        missing = [] if reason else ["a reason after STOP:"]
+        for field in COVERAGE_FIELDS:
+            if not found.get(field):
+                missing.append(field[:-1])
+        rules = found.get("RULES:", "")
+        if rules and not any(int(match) <= last_event for match in EVENT_ID.findall(rules)):
+            missing.append(f"an event id of this run in RULES (e0 to e{last_event})")
+        blocks.append(CoverageBlock(reason=reason, missing=tuple(missing)))
+    return blocks
+
+
+def count_declarations(view: RunView, demand: str = "line") -> int:
+    """The declarations that count under the demand: every `STOP:` line with
+    a reason, or every complete coverage block."""
+    if demand == "coverage":
+        return sum(1 for block in coverage_blocks(view.notes, view.last_event) if not block.missing)
+    return len(declarations(view.notes))
+
+
 def owner_text(item: Mapping[str, str]) -> str:
     action = item.get("action") or "an action"
     return f"{item.get('code')} for {action} (the owner runs `assay {item.get('owner')}`)"
@@ -241,6 +307,32 @@ def block_reason(view: RunView) -> str:
     )
 
 
+def coverage_reason(view: RunView, incomplete: CoverageBlock | None) -> str:
+    if view.cap is None:
+        left = "no action cap is registered"
+    else:
+        left = f"{max(0, view.cap - view.paid)} of {view.cap} paid actions are left"
+    lacking = (
+        f" Your newest STOP block lacks: {', '.join(incomplete.missing)}."
+        if incomplete is not None
+        else ""
+    )
+    return (
+        "ASSAY stop gate: the run is not finished. WIN is not reached, "
+        f"{left}, and no owner action is pending. A stop with budget left is a "
+        "conclusion, and it carries the coverage audit. Continue from "
+        '`"$ASSAY" status` and .assay/NOTES.md; if your notes or the audit name '
+        "an untested rule, object or probe, buy the cheapest one before you stop."
+        f"{lacking} To stop anyway, add this block to .assay/NOTES.md, then stop:\n"
+        "STOP: <the conclusion, in one line>\n"
+        "RULES: <each rule the conclusion rests on, with the graded event ids that "
+        "exercised it, e.g. e41, e57>\n"
+        "UNTESTED: <every rule or object the record never exercised in the regime "
+        "the conclusion needs>\n"
+        "NEXT PROBE: <the cheapest probe you have not bought, and why you will not buy it>"
+    )
+
+
 def decide(view: RunView, state: dict[str, Any], session_id: str | None) -> tuple[bool, str]:
     """Allow the stop or block it, with the reason. `state` is the gate's
     state file, updated in place: the session it holds and its blocks."""
@@ -257,9 +349,18 @@ def decide(view: RunView, state: dict[str, Any], session_id: str | None) -> tupl
     pending = pending_owner_actions(view.activity, _count(launch.get("activity")) or 0)
     if pending:
         return True, "the owner must act: " + "; ".join(owner_text(item) for item in pending)
-    said = declarations(view.notes)
-    if len(said) > (_count(launch.get("declarations")) or 0):
-        return True, f"the player declared a stop: {said[-1]}"
+    demand = launch.get("demand") if launch.get("demand") in DEMANDS else "line"
+    incomplete: CoverageBlock | None = None
+    if demand == "coverage":
+        found = coverage_blocks(view.notes, view.last_event)
+        complete = [block for block in found if not block.missing]
+        if len(complete) > (_count(launch.get("declarations")) or 0):
+            return True, f"the player declared a stop with its coverage audit: {complete[-1].reason}"
+        incomplete = next((block for block in reversed(found) if block.missing), None)
+    else:
+        said = declarations(view.notes)
+        if len(said) > (_count(launch.get("declarations")) or 0):
+            return True, f"the player declared a stop: {said[-1]}"
     blocks = _count(state.get("blocks")) or 0
     last = _count(state.get("paid_at_last_block"))
     if last is None or view.paid > last:
@@ -270,6 +371,8 @@ def decide(view: RunView, state: dict[str, Any], session_id: str | None) -> tupl
         return True, f"released after {MAX_BLOCKS} blocks with no paid action between them"
     state["blocks"] = blocks + 1
     state["paid_at_last_block"] = view.paid
+    if demand == "coverage":
+        return False, coverage_reason(view, incomplete)
     return False, block_reason(view)
 
 

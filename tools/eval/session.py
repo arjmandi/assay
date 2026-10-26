@@ -68,7 +68,6 @@ import argparse
 import dataclasses
 import datetime as dt
 import fcntl
-import importlib.util
 import json
 import os
 import re
@@ -78,16 +77,12 @@ import subprocess
 import sys
 import time
 from pathlib import Path
-from types import ModuleType
 from typing import IO, Any
 
 from . import EvalError
+from .gate import gate_command, install_stop_gate, load_gate
 from .results import player_report, session_tokens
 from .runner import DEFAULT_LAUNCHER, KILL_GRACE_SECONDS, REPO, looks_rate_limited, now
-
-GATE_SCRIPT = REPO / "hooks" / "stop_gate.py"
-# The gate's entry in the settings, by its command text.
-GATE_ENTRY = re.compile(r"stop_gate\.py'? --run-dir ")
 # The kernel's PreToolUse entry and the policy file it names.
 POLICY_ENTRY = re.compile(r"pre_tool_use\.py'? --policy ")
 PROMPT_NAME = "PLAYER.md"
@@ -152,21 +147,6 @@ HOSTS: dict[str, Host] = {
         model=("--model", "{model}"),
     ),
 }
-
-
-def load_gate() -> ModuleType:
-    """The Stop gate's module, loaded by path: the runner applies its rules."""
-    name = "assay_stop_gate"
-    loaded = sys.modules.get(name)
-    if loaded is not None:
-        return loaded
-    spec = importlib.util.spec_from_file_location(name, GATE_SCRIPT)
-    if spec is None or spec.loader is None:
-        raise EvalError(f"the Stop gate {GATE_SCRIPT} cannot be loaded")
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
 
 
 def _read_json(path: Path) -> Any:
@@ -462,37 +442,12 @@ class SessionRunner:
 
     # ---- the Stop gate ---------------------------------------------------------------
     def gate_command(self) -> str:
-        return shlex.join([sys.executable, str(GATE_SCRIPT), "--run-dir", str(self.run_dir)])
+        return gate_command(self.run_dir)
 
     def install_gate(self) -> None:
-        """Merge the gate's Stop entry into the run directory's settings:
-        every other key and entry kept, an earlier gate entry replaced, no
-        write through a symlink."""
-        for candidate in (self.settings_path.parent, self.settings_path):
-            if candidate.is_symlink():
-                raise EvalError(f"{candidate} is a symlink, and the gate writes through none")
-        settings = _read_json(self.settings_path) if self.settings_path.exists() else {}
-        if not isinstance(settings, dict):
-            raise EvalError(f"{self.settings_path} does not hold a JSON object; fix it by hand")
-        hooks = settings.get("hooks", {})
-        stop = hooks.get("Stop", []) if isinstance(hooks, dict) else None
-        if not isinstance(stop, list):
-            raise EvalError(f"{self.settings_path}: `hooks` or `hooks.Stop` has the wrong type; fix it by hand")
-        kept = []
-        for entry in stop:
-            items = entry.get("hooks") if isinstance(entry, dict) else None
-            if not isinstance(items, list):
-                kept.append(entry)
-                continue
-            mine = [
-                item for item in items
-                if isinstance(item, dict) and isinstance(item.get("command"), str) and GATE_ENTRY.search(item["command"])
-            ]
-            rest = [item for item in items if item not in mine]
-            if rest:
-                kept.append({**entry, "hooks": rest})
-        ours = {"hooks": [{"type": "command", "command": self.gate_command(), "timeout": 60}]}
-        _write_json(self.settings_path, {**settings, "hooks": {**hooks, "Stop": [*kept, ours]}})
+        """Merge the gate's Stop entry into the run directory's settings
+        (`gate.install_stop_gate`)."""
+        install_stop_gate(self.settings_path, self.gate_command())
 
     def write_launch(self, session: int, view: Any) -> dict[str, int]:
         """The counts at the session's launch, for the gate and the ledger."""
