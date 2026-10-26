@@ -24,7 +24,8 @@ in the notes, a `STOP:` line followed by `RULES:` (the rules the conclusion
 rests on, citing at least one event id of this run, `e12`), `UNTESTED:` (what
 the record never exercised in the regime the conclusion needs) and `NEXT
 PROBE:` (the cheapest probe not bought, and why). An incomplete block is
-named in the reason.
+named in the reason. A cited event must be a paid one (e1 or later): e0 is
+the start, which exercises no rule.
 
 Otherwise the stop is blocked, and the reason says what to do next. After
 three blocks with no paid action between them the stop is allowed, so that a
@@ -252,7 +253,7 @@ def coverage_blocks(notes: str, last_event: int) -> list[CoverageBlock]:
     """Every `STOP:` block in the notes, read as the coverage audit a stop
     owes: the fields within `COVERAGE_SPAN` lines below the `STOP:` line (up to
     the next `STOP:` line), each needing text, and `RULES:` citing at least
-    one event id of this run (`e0` to the last event)."""
+    one paid event of this run (`e1` to the last event; `e0` is the start)."""
     lines = notes.splitlines()
     blocks: list[CoverageBlock] = []
     for index, line in enumerate(lines):
@@ -273,8 +274,12 @@ def coverage_blocks(notes: str, last_event: int) -> list[CoverageBlock]:
             if not found.get(field):
                 missing.append(field[:-1])
         rules = found.get("RULES:", "")
-        if rules and not any(int(match) <= last_event for match in EVENT_ID.findall(rules)):
-            missing.append(f"an event id of this run in RULES (e0 to e{last_event})")
+        if rules and not any(1 <= int(match) <= last_event for match in EVENT_ID.findall(rules)):
+            missing.append(
+                f"a paid event of this run in RULES (e1 to e{last_event})"
+                if last_event >= 1
+                else "a paid event in RULES (none is journaled yet: probe before you conclude)"
+            )
         blocks.append(CoverageBlock(reason=reason, missing=tuple(missing)))
     return blocks
 

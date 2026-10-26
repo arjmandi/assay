@@ -59,7 +59,12 @@ def test_coverage_blocks_name_what_each_block_lacks():
     later = gate.coverage_blocks(
         "STOP: x\n- rules: y (e99)\n- Untested: z\n- next probe: w\n", last_event=2
     )
-    assert later[0].missing == ("an event id of this run in RULES (e0 to e2)",)
+    assert later[0].missing == ("a paid event of this run in RULES (e1 to e2)",)
+    # The start (e0) exercises no rule, so citing it is not evidence.
+    start_only = gate.coverage_blocks("STOP: x\nRULES: nothing yet (e0)\nUNTESTED: y\nNEXT PROBE: z\n", last_event=2)
+    assert start_only[0].missing == ("a paid event of this run in RULES (e1 to e2)",)
+    unplayed = gate.coverage_blocks("STOP: x\nRULES: nothing yet (e0)\nUNTESTED: y\nNEXT PROBE: z\n", last_event=0)
+    assert unplayed[0].missing == ("a paid event in RULES (none is journaled yet: probe before you conclude)",)
     # A second STOP line starts a new block.
     two = gate.coverage_blocks("STOP: a\nSTOP: b\n" + COMPLETE.split("\n", 1)[1], last_event=2)
     assert [block.reason for block in two] == ["a", "b"] and two[1].missing == ()

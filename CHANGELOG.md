@@ -3,6 +3,48 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## sonnet-haiku-5-5-experiment (2026-10-26, a tag on its own branch, not a release)
+
+The changes the Haiku layer diagnosis of the 2026-10-25 Haiku and Sonnet 5.5
+sweep recommended, built on 1.5.1 for one experiment and kept off `main`.
+`bench/arcagi/jobs/sonnet-haiku-5-5.json` is the run.
+
+### Added
+
+- The Stop gate's `coverage` demand: a stop with budget left is allowed by a
+  new STOP block with RULES (an event id of the run), UNTESTED and NEXT PROBE,
+  not by a bare STOP line. The batch runner installs the gate when the job
+  file sets `stop_gate` (`line` or `coverage`) and keeps its decisions in the
+  ledger; `tools/eval/gate.py` holds what both runners share.
+- `conclusion_gate`, a built-in module: the coverage-audit demand on a reset
+  that did not follow GAME_OVER and on a verdict the notes' Plan gained since
+  the last audit, and the RESUME CHECK at status.
+- `gamble_streak`, a built-in module: after three missed milestone gambles on
+  a unit, a gamble names its win-rule hypothesis (`win_rule`).
+- The coverage ledger's object part for frame worlds: board objects no point
+  action touched, on the status line of a one-action unit and in the gap
+  phrase; regions and objects on the status line at a stop.
+- Registry keys `frame_forms` (`admit` lets a frame world parse `cell`,
+  `move`, `vanish` and `region`) and `state_cap`; `assay state retire NAME`
+  and the `state_retire` tool.
+- The frame-world `assay python` names the manual documents: `observations`,
+  `key_delta`, `delta_lines`.
+
+### Changed
+
+- The player prompt `e1_player.md` no longer licenses a stop on judging the
+  game unfinishable.
+- The first line of an act receipt ends with the settled diff.
+- `region` grades a local change: something changes inside the box.
+- `wall_spend` speaks at 25, 50, 100, 200, 400 and 800 paid actions on a unit
+  and no longer says "stop manual probing"; `miss_streak` counts world-model
+  misses apart from gambles.
+- CONSTITUTION.md: four world-agnostic sentences under "Before you conclude",
+  the two new gates under "Gates you may hit", a frame-world `assay python`
+  example.
+- The ARC adapter refuses a non-RESET action in GAME_OVER before it reaches
+  the game, which otherwise stranded the daemon.
+
 ## 1.5.1 (2026-10-22)
 
 ### Changed

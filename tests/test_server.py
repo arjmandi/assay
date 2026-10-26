@@ -38,7 +38,7 @@ ACTIONS = [
     {"name": "NOOP", "params": {}},
 ]
 TOOL_NAMES = [
-    "status", "view", "act", "commit", "reset", "python", "state_declare", "state_list",
+    "status", "view", "act", "commit", "reset", "python", "state_declare", "state_retire", "state_list",
     "model_init", "model_replay", "model_solve", "module_list", "goal_propose", "goal_list", "audit",
 ]
 OWNER_OPERATIONS = {"install_module", "approve", "waive", "goal_ratify"}
