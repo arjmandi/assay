@@ -178,12 +178,24 @@ class ArcSession:
     ) -> Any:
         from arcengine import GameAction
 
+        # In GAME_OVER the local engine answers any action but RESET with no
+        # frames and then no observation at all, which strands the daemon; the
+        # action is refused before it reaches the game, so nothing is journaled.
+        if action != "RESET" and self._game_over():
+            raise AssayError(
+                f"GAME_OVER | the game takes only RESET now; {action} was not sent to it",
+                hint="run `assay reset` to restart the current level",
+            )
         observed = self.environment.step(
             GameAction.from_name(action), data=data, reasoning=reasoning
         )
         if observed is None:
             self._missing_observation()
         return observed
+
+    def _game_over(self) -> bool:
+        state = getattr(self.environment.observation_space, "state", None)
+        return str(getattr(state, "value", state)) == "GAME_OVER"
 
     def _missing_observation(self) -> None:
         if self.remote:
