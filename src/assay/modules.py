@@ -59,9 +59,13 @@ Built-ins (the standing nudge table plus the first structural module):
                   the distinguished carryover class.
 - conclusion_gate: the coverage audit's demand keyed on the record rather
                   than on a declaration word: a reset that did not follow
-                  GAME_OVER, a verdict the notes gained since the last audit,
-                  and at status a verdict no paid action has tested since the
-                  notes were written (the resume check).
+                  GAME_OVER, a verdict the notes gained since the last audit
+                  (a `STOP:` line by the Stop gate's rule, or a Plan or
+                  heading verdict), credited only while owed; and at status
+                  the newest verdict, by its text, with no paid action since
+                  it appeared (the resume check).
+- game_over_retry: a non-reset action after one was already refused inside
+                  GAME_OVER owes a reason; only a reset continues the unit.
 - coverage_audit: the coverage-audit protocol as standing machinery: which
                   available actions were never tried or never productive on
                   this progress unit, a stall, a halt on re-issuing the move
@@ -76,7 +80,6 @@ Built-ins (the standing nudge table plus the first structural module):
 from __future__ import annotations
 
 import dataclasses
-import datetime as dt
 import hashlib
 import json
 import re
@@ -175,7 +178,11 @@ class _WallSpend:
     MODE = "advise"
 
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
-        level_actions = level_action_count(view.events)
+        # A batch consults once per step against the same journal: the
+        # steps before this one count, or a batch that crosses a threshold
+        # passes it silently (202 of 448 crossings on 2026-10-26).
+        step = (pending or {}).get("step")
+        level_actions = level_action_count(view.events) + (step if isinstance(step, int) else 0)
         if level_actions in WALL_SPEND_THRESHOLDS:
             return (
                 f"{level_actions} paid actions on this {_unit(view)}; check the model "
@@ -744,14 +751,40 @@ class _CoverageAudit:
 # The coverage audit's conclusion gate keys on a declaration word, and a
 # player that concludes in prose never says one. This module keys the same
 # demand on the record instead: a reset of a progress unit that did not end
-# in GAME_OVER, and a verdict the notes gained (a Plan line or a heading that
-# says parked, blocked, dead end, stop or impossible) since the last audit.
-# At status it also checks the resume: a verdict in the notes with no paid
-# action since the notes were written.
+# in GAME_OVER, and a verdict the notes gained since the last audit: a
+# `STOP:` line anywhere (read by the operator's Stop gate's own rule, so the
+# module and the gate agree on what a declaration is), or a Plan line or a
+# heading that says parked, blocked, dead end, stop or impossible and is not a
+# numbered step, a disclaimer or a placeholder. At status it also checks the
+# resume: the newest verdict, by its text, with no paid action since it
+# appeared.
 
 VERDICT = re.compile(
     r"\b(parked|parking|blocked|dead[ -]?end|stop|stopped|stopping|unsolvable|impossible|"
     r"unreachable|unfinishable|unwinnable|give up|gave up|abandon|abandoned)\b",
+    re.IGNORECASE,
+)
+# Lines the verdict words appear in without being a verdict (2026-10-26:
+# "Stop predicting change blindly", "Blocked moves: ACTION1 e124", "no stop
+# verdict", "If a dead end...", "1. probe the bar", "Earlier STOP withdrawn").
+NOT_A_VERDICT = re.compile(
+    r"^(?:\d+\s*[.)]|step\s+\d+\b)"
+    r"|\b(?:no|not|never)\s+(?:\w+\s+){0,2}"
+    r"(?:stop|stopped|stopping|park|parked|verdict|dead[ -]?end|blocked|impossible|unsolvable)\b"
+    r"|\b(?:don't|do not|without|unless|if|avoid|before)\b[^.;]{0,30}"
+    r"\b(?:stop|stopped|stopping|park|parked|verdict|dead[ -]?end|blocked|impossible|unsolvable)\b"
+    r"|\bstop\s+\w+ing\b"
+    r"|\bblocked\s+(?:by|moves?|cells?|paths?|walls?|steps?)\b|\b(?:moves?|steps?|paths?)\s+(?:is\s+|are\s+)?blocked\b"
+    r"|\b(?:withdrawn|retracted|cancelled|canceled|superseded)\b",
+    re.IGNORECASE,
+)
+# A heading that only labels the STOP block below it ("## STOP", "## Stop block").
+STOP_LABEL = re.compile(r"^#+\s*stop(?:\s+blocks?)?\s*:?\s*$", re.IGNORECASE)
+# The operator's Stop gate's rule for a `STOP:` line (hooks/stop_gate.py
+# `stop_reason`): the same placeholder pattern, kept equal by a test.
+STOP_DECLARATION = "STOP:"
+STOP_PLACEHOLDER = re.compile(
+    r"^(?:none|n/?a|-+|\(.*|not\s+(?:stopped|applicable|yet)\b.*|no\s+stop\b.*)\.?$",
     re.IGNORECASE,
 )
 UNTESTED = re.compile(
@@ -759,6 +792,7 @@ UNTESTED = re.compile(
     re.IGNORECASE,
 )
 AUDITED = "conclusion_audited"
+PROBED = "verdict_probed"
 AUDIT_FIELD = "coverage_audit"
 AUDIT_WHY = (
     "name the rules it rests on with the graded event ids that exercised each, "
@@ -774,21 +808,58 @@ def _notes_text(paths: RunPaths) -> str:
         return ""
 
 
+def stop_reason(line: str) -> str | None:
+    """The reason of a `STOP:` line by the Stop gate's rule: the text after
+    `STOP:`, empty for a bare one, None for any other line and for a
+    placeholder."""
+    stripped = line.strip()
+    if not stripped.startswith(STOP_DECLARATION):
+        return None
+    reason = stripped[len(STOP_DECLARATION):].strip()
+    return None if STOP_PLACEHOLDER.match(reason) else reason
+
+
+def stop_lines(text: str) -> list[str]:
+    """The notes' stop declarations, as the Stop gate counts them."""
+    return [reason for reason in map(stop_reason, text.splitlines()) if reason]
+
+
 def notes_verdicts(text: str) -> list[str]:
-    """The verdict lines of the notes: Plan-section lines and headings that
-    say parked, blocked, dead end, stop or impossible."""
+    """The verdict lines of the notes, in order: every `STOP:` line the Stop
+    gate counts (under any heading), and the Plan-section lines and headings
+    that say parked, blocked, dead end, stop or impossible, without the
+    numbered steps, disclaimers, placeholders and the STOP block's own label."""
     found: list[str] = []
     in_plan = False
     for line in text.splitlines():
         stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith(STOP_DECLARATION):
+            reason = stop_reason(stripped)
+            if reason:
+                found.append(f"{STOP_DECLARATION} {reason}")
+            continue
         if stripped.startswith("#"):
             in_plan = stripped.lstrip("#").strip().lower().startswith("plan")
-            if VERDICT.search(stripped):
+            if VERDICT.search(stripped) and not STOP_LABEL.match(stripped) and not NOT_A_VERDICT.search(
+                stripped.lstrip("#").strip()
+            ):
                 found.append(stripped)
             continue
-        if in_plan and stripped and VERDICT.search(stripped):
+        body = stripped.lstrip("-* ").strip()
+        if in_plan and VERDICT.search(body) and not NOT_A_VERDICT.search(body):
             found.append(stripped)
     return found
+
+
+def newest_verdict(text: str) -> str | None:
+    """The verdict the resume check keys on: the newest `STOP:` line when
+    the notes hold one, else the newest verdict line."""
+    verdicts = notes_verdicts(text)
+    stops = [verdict for verdict in verdicts if verdict.startswith(STOP_DECLARATION)]
+    found = stops or verdicts
+    return found[-1] if found else None
 
 
 def notes_untested(text: str, limit: int = 3) -> list[str]:
@@ -801,24 +872,36 @@ def _fingerprint(verdicts: Sequence[str]) -> str:
     return hashlib.sha256("\n".join(verdicts).encode("utf-8")).hexdigest()[:16]
 
 
-def _last_audited(paths: RunPaths) -> str | None:
-    """The fingerprint of the notes' verdicts at the last audit, from the
-    module's own activity records (read from the end)."""
+def _records(paths: RunPaths, kind: str) -> list[dict[str, Any]]:
+    """The activity records of one kind, oldest first; lines without the
+    kind's name are skipped unparsed."""
     try:
         lines = paths.activity.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError:
-        return None
-    for line in reversed(lines):
-        if AUDITED not in line:
+        return []
+    found: list[dict[str, Any]] = []
+    for line in lines:
+        if kind not in line:
             continue
         try:
             record = json.loads(line)
         except ValueError:
             continue
-        if isinstance(record, dict) and record.get("kind") == AUDITED:
-            value = record.get("fingerprint")
-            return str(value) if value is not None else None
-    return None
+        if isinstance(record, dict) and record.get("kind") == kind:
+            found.append(record)
+    return found
+
+
+def _last_audited(paths: RunPaths) -> str | None:
+    """The fingerprint of the notes' verdicts at the last audit, from the
+    module's own activity records."""
+    records = _records(paths, AUDITED)
+    value = records[-1].get("fingerprint") if records else None
+    return str(value) if value is not None else None
+
+
+def _verdict_key(verdict: str | None) -> str | None:
+    return None if verdict is None else _fingerprint([" ".join(verdict.split())])
 
 
 def _audited_now(pending: Mapping[str, Any] | None) -> bool:
@@ -857,11 +940,20 @@ class _ConclusionGate:
             return None
         return verdicts[-1]
 
+    def _demanded(self, view: ModuleView, pending: Mapping[str, Any] | None) -> bool:
+        """Would this action owe an audit, with or without one declared?"""
+        return self._reset_without_game_over(view, pending) or self._new_verdict(view, pending) is not None
+
     def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
         if pending is None:
             return self._resume_check(view)
         if _audited_now(pending):
-            return None
+            if self._demanded(view, pending):
+                return None
+            return (
+                f"no audit demanded: this {AUDIT_FIELD} text is not recorded (an audit counts when a "
+                "reset that did not follow GAME_OVER, or a verdict new to the notes, asks for one)"
+            )
         unit = _unit(view)
         if self._reset_without_game_over(view, pending):
             return (
@@ -878,20 +970,17 @@ class _ConclusionGate:
         return None
 
     def _resume_check(self, view: ModuleView) -> str | None:
-        """A verdict in the notes and no paid action since they were written:
-        the start of a session that inherited it, or a session about to end."""
+        """The newest verdict, by its text, with no paid action since it
+        appeared: the start of a session that inherited it, or a session
+        about to end. Keyed on the verdict's text rather than the notes'
+        time, so an edit elsewhere in the notes does not re-arm it."""
         text = _notes_text(view.paths)
-        verdicts = notes_verdicts(text)
+        verdict = newest_verdict(text)
         paid = [event for event in view.events if event.counts_action]
-        if not verdicts or not paid:
+        key = _verdict_key(verdict)
+        if verdict is None or key is None or not paid:
             return None
-        try:
-            written = view.paths.notes.stat().st_mtime
-        except OSError:
-            return None
-        last = paid[-1]
-        stamp = _epoch(last.timestamp)
-        if stamp is None or written <= stamp:
+        if any(record.get("key") == key for record in _records(view.paths, PROBED)):
             return None
         untested = notes_untested(text)
         named = (
@@ -900,8 +989,8 @@ class _ConclusionGate:
             else "the notes name nothing untested: list what the verdict never exercised"
         )
         return (
-            f"RESUME CHECK: the verdict in NOTES.md ({_shorten(verdicts[-1])!r}) has had 0 graded "
-            f"probes since e{last.id}; {named}. Treat it as Assumed and buy the cheapest probe "
+            f"RESUME CHECK: the verdict in NOTES.md ({_shorten(verdict)!r}) has had 0 graded "
+            f"probes since e{paid[-1].id}; {named}. Treat it as Assumed and buy the cheapest probe "
             "before you build on it or stop on it."
         )
 
@@ -918,13 +1007,24 @@ class _ConclusionGate:
         return None
 
     def observe(self, view: ModuleView, event: Event) -> None:
+        text = _notes_text(view.paths)
+        if event.counts_action:
+            key = _verdict_key(newest_verdict(text))
+            if key is not None and not any(record.get("key") == key for record in _records(view.paths, PROBED)):
+                view.record(PROBED, key=key, event=int(event.id))
         if not str(event.declares.get(AUDIT_FIELD, "")).strip():
             return
-        view.record(
-            AUDITED,
-            event=int(event.id),
-            fingerprint=_fingerprint(notes_verdicts(_notes_text(view.paths))),
-        )
+        # An audit counts only while one was owed: a reset that did not
+        # follow GAME_OVER, or verdicts the last audit did not cover. A
+        # volunteered text, or the copy a batch carries onto every step, is
+        # not recorded.
+        events = view.events
+        prior = events[-2] if len(events) > 1 and events[-1].id == event.id else (events[-1] if events else None)
+        reset_owed = str(event.action).upper() == "RESET" and prior is not None and str(prior.state) != "GAME_OVER"
+        fingerprint = _fingerprint(notes_verdicts(text))
+        verdict_owed = bool(notes_verdicts(text)) and fingerprint != _last_audited(view.paths)
+        if reset_owed or verdict_owed:
+            view.record(AUDITED, event=int(event.id), fingerprint=fingerprint)
 
     def telemetry(self, view: ModuleView) -> dict[str, Any]:
         verdicts = notes_verdicts(_notes_text(view.paths))
@@ -934,13 +1034,64 @@ class _ConclusionGate:
         }
 
 
-def _epoch(stamp: str | None) -> float | None:
-    if not stamp:
-        return None
-    try:
-        return dt.datetime.fromisoformat(stamp).timestamp()
-    except ValueError:
-        return None
+# --- a non-reset action inside GAME_OVER -----------------------------------------
+#
+# After GAME_OVER the world takes only a reset; an action it refuses there
+# is not a probe. On 2026-10-26 one run issued 34 of them in a row.
+
+
+def refused_in_game_over(view: ModuleView) -> int:
+    """The act and commit commands refused since the last event, when that
+    event ended the unit in GAME_OVER."""
+    if not view.events or str(view.events[-1].state) != "GAME_OVER":
+        return 0
+    last = int(view.events[-1].id)
+    return sum(
+        1
+        for record in _records(view.paths, "command_end")
+        if record.get("command") in ("act", "commit") and record.get("status") == "ERROR" and record.get("event") == last
+    )
+
+
+class _GameOverRetry:
+    NAME = "game_over_retry"
+    CONSTITUTION = (
+        "After GAME_OVER only a reset continues the progress unit. An action the world "
+        "refuses there buys nothing and tests nothing: reset, and say what the reset tests."
+    )
+    MODE = "advise"
+
+    def _held(self, view: ModuleView, pending: Mapping[str, Any] | None) -> int | None:
+        if not pending or pending.get("kind") not in ("act", "commit"):
+            return None
+        refused = refused_in_game_over(view)
+        return refused if refused >= 1 else None
+
+    def trigger(self, view: ModuleView, pending: Mapping[str, Any] | None) -> str | None:
+        refused = self._held(view, pending)
+        if refused is None:
+            return None
+        return (
+            f"the {_unit(view)} ended in GAME_OVER at e{view.events[-1].id} and {refused} non-reset "
+            "action(s) were refused since: only `assay reset` continues it"
+        )
+
+    def demand(
+        self, view: ModuleView, pending: Mapping[str, Any] | None
+    ) -> dict[str, str] | None:
+        refused = self._held(view, pending)
+        if refused is None:
+            return None
+        return {
+            "game_over": (
+                f"the {_unit(view)} ended in GAME_OVER at e{view.events[-1].id} and {refused} non-reset "
+                "action(s) were refused since; only `assay reset` continues it. Say why this "
+                "action is not a reset"
+            )
+        }
+
+    def telemetry(self, view: ModuleView) -> dict[str, Any]:
+        return {"refused_in_game_over": refused_in_game_over(view)}
 
 
 BUILTINS: tuple[Module, ...] = (
@@ -953,6 +1104,7 @@ BUILTINS: tuple[Module, ...] = (
     _CoverageAudit(),
     _ConclusionGate(),
     _GambleStreak(),
+    _GameOverRetry(),
 )
 
 

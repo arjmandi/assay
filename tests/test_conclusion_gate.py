@@ -102,15 +102,27 @@ def test_a_new_verdict_in_the_notes_owes_the_audit_once(tmp_path):
 def test_the_resume_check_fires_while_no_paid_action_follows_the_verdict(tmp_path):
     module = _module()
     paths = _paths(tmp_path / "run", NOTES + "- STOP here: level blocked, the lamp is untested\n")
-    events = _events()
-    # The notes were written after the last paid action (2026-01-01).
-    line = module.trigger(_view(paths, events), None)
+    view = _view(paths, _events())
+    # No paid action has been taken while this verdict stood.
+    line = module.trigger(view, None)
     assert line.startswith("RESUME CHECK: the verdict in NOTES.md ('- STOP here: level blocked, the lamp is untested')")
     assert "has had 0 graded probes since e2" in line
     assert "the notes name these untested: STOP here: level blocked, the lamp is untested" in line
-    # Notes older than the last paid action: the verdict was probed since.
-    os.utime(paths.notes, (1_000_000_000, 1_000_000_000))
-    assert module.trigger(_view(paths, events), None) is None
+    # A paid action while the verdict stands probes it, and an edit
+    # elsewhere in the notes does not re-arm the check (the notes' time is
+    # not the key: 2026-10-26, su15 cleared it fourteen times).
+    module.observe(view, event_of(id=3))
+    assert module.trigger(view, None) is None
+    os.utime(paths.notes, None)
+    paths.notes.write_text(paths.notes.read_text().replace("## Verified (cite event ids)\n", "## Verified (cite event ids)\n- INC adds (e1)\n"))
+    assert module.trigger(view, None) is None
+    # A new STOP line is a new verdict, and the check is back until a paid
+    # action follows it.
+    paths.notes.write_text(paths.notes.read_text() + "STOP: the lamp cannot be lit\n")
+    line = module.trigger(view, None)
+    assert line.startswith("RESUME CHECK: the verdict in NOTES.md ('STOP: the lamp cannot be lit')")
+    module.observe(view, event_of(id=4))
+    assert module.trigger(view, None) is None
 
 
 def test_block_mode_refuses_a_bare_reset_end_to_end(tmp_path):

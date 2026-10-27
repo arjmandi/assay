@@ -205,7 +205,7 @@ def _enforce_registry_gates(
     _notes_hard_stop(run)
     advisories: list[str] = []
     declares = dict(declares or {})
-    for (name, params), outcomes in zip(actions, outcomes_per_action):
+    for step, ((name, params), outcomes) in enumerate(zip(actions, outcomes_per_action)):
         spec = action_spec(registry, name) or {}
         if spec.get("destructive"):
             if in_batch:
@@ -244,6 +244,9 @@ def _enforce_registry_gates(
             "params": params,
             "outcomes": list(outcomes),
             "declares": declares,
+            # The step's place in a batch: the modules consult every step
+            # against the same journal.
+            "step": step,
         }
         advisories.extend(consult_modules(run, pending))
     # De-duplicate module lines a long batch would repeat.
