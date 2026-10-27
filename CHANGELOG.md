@@ -3,6 +3,22 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## sonnet-haiku-5-5-baseline (2026-10-27, a tag on the same branch, not a release)
+
+The Claude Code baseline the experiment lacked: the same ARC-AGI-3 public
+games played by `claude -p` with no ASSAY.
+
+### Added
+
+- `bench/arcagi/baseline/`: `game_server.py` holds one game through the same
+  `ArcSession` wrapper as the ASSAY runs and journals every counted action
+  outside the player's directory in the fields `rhae.py` reads (`.arc/`);
+  `play.py` is the player's only access (status, look, act, reset, history);
+  `run_baseline.py` runs models x games under the ASSAY rounds' budgets (1500
+  actions, $15 and 4 hours a session, the same pinned tools) with up to five
+  sessions a game and a usage-limit pause; `baseline_player.md` is the
+  prompt, the ASSAY player prompt without the harness.
+
 ## sonnet-haiku-5-5-experiment-2 (2026-10-27, a tag on the same branch, not a release)
 
 The changes the second Haiku layer diagnosis (the two Haiku 5.5 runs on the
