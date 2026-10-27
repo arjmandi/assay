@@ -55,3 +55,22 @@ WIN is the world's: a goal you give at attach becomes the goal the player is
 told, and the run still ends when the game reports every level completed.
 The published ft09 run won 6 of 6 levels in 82 paid actions
 (`evidence/arcagi/journal-ft09.jsonl.gz`).
+
+## Reading the grid offline
+
+The observation is a 64x64 grid of colors, and `assay python` loads it as
+such: `grid` is the current settled grid and `previous` the one before (numpy
+arrays), `settled` and `observations` are the list of every event's settled
+grid, and a `key_delta` key is a cell `(x, y)`, x the column and y the row.
+`connected_components`, `frame_delta`, `crop`, `show`, `delta_lines`, `np` and
+`json` are loaded too:
+
+```bash
+"$ASSAY" python 'key_delta(transitions[-1]["before"], transitions[-1]["after"])["changed"][:10]'
+"$ASSAY" python 'print("\n".join(delta_lines(previous, grid)))'
+```
+
+With `frame_forms: admit` in the registry, a prediction may also use the
+frame forms `cell`, `move`, `vanish` and `region`; they grade one transition,
+beside the extractor states that read a value you predict again and again.
+`"$ASSAY" act --help` lists both at its end.

@@ -168,7 +168,7 @@ said `ch ents = 18`: that counter-fact is the point. Status shows every
 state's current reading in its STATES block, and a receipt shows which
 path states changed.
 
-Frame worlds (grid observations) declare extractor states instead:
+Frame worlds (grid observations) declare extractor states as well:
 `--file extractor.py` with `def extract(obs) -> value` over `obs["frames"]`.
 
 Free text that is not an outcome is kept as commentary; if nothing gradable
@@ -268,14 +268,21 @@ Model plans halt on the first divergence, like any batch.
   when a declaration tags an impossibility or absence (see below).
 - The **conclusion gate** module asks for `--declare coverage_audit=...` on a
   reset that did not follow GAME_OVER, and on the first paid action after
-  your Plan gains a verdict (parked, blocked, dead end, stop, impossible). At
-  status it prints a RESUME CHECK when the notes hold a verdict that no paid
-  action has tested since they were written.
+  your notes gain a verdict (a `STOP:` line, or a Plan line or heading that
+  says parked, blocked, dead end, stop, impossible). An audit nobody asked
+  for is not recorded. At status it prints a RESUME CHECK when the newest
+  verdict has had no paid action since it appeared.
+- The **game over** module asks for `--declare game_over=...` when a non-reset
+  action follows one the world already refused after GAME_OVER: only a reset
+  continues the progress unit.
 - If the operator installed the **Stop gate**, ending your session with budget
   left is held until `.assay/NOTES.md` carries a block of four lines:
   `STOP:` (the conclusion), `RULES:` (each rule it rests on, with event ids),
   `UNTESTED:` (what the record never exercised in the regime it needs) and
-  `NEXT PROBE:` (the cheapest probe not bought, and why).
+  `NEXT PROBE:` (the cheapest probe not bought, and why). The block must be new
+  this session (a block the notes already held does not count; append one, or
+  rewrite one in your own words) and its RULES must cite an event of this
+  session. The gate's message states its rule and counts its blocks.
 
 ## Before you conclude
 
@@ -346,17 +353,8 @@ object, an observation is a dict and a `key_delta` key is a dotted path:
 "$ASSAY" python '[t["action"] for t in transitions if t["before"] != t["after"]]'
 ```
 
-In a world whose observation is a grid of colors, an observation is the
-settled grid (a numpy array, also named `settled`; `grid` is the current one)
-and a `key_delta` key is a cell `(x, y)`, x the column and y the row; the
-grid helpers (`connected_components`, `frame_delta`, `crop`, `show`) are
-loaded too:
-
-```bash
-"$ASSAY" python 'key_delta(transitions[-1]["before"], transitions[-1]["after"])["changed"][:10]'
-"$ASSAY" python '[(t["event"], t["action"], len(key_delta(t["before"], t["after"])["changed"])) for t in transitions[-8:]]'
-"$ASSAY" python 'print("\n".join(delta_lines(previous, grid)))'
-```
+An observation kind may load names of its own; its section at the end of
+`"$ASSAY" act --help` lists them, and a NameError lists every name defined.
 
 Thinking is free; probing is paid. Before spending an action to answer a
 question, check whether the journal already answers it.

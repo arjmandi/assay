@@ -168,23 +168,35 @@ def declare_state(
         spec = {"form": "extractor", "hash": digest, "source": str(file)}
     existing = declared.get(name)
     retired = bool(existing and existing.get("retired"))
-    if existing is not None and {key: value for key, value in existing.items() if key != "retired"} != spec:
+    if existing is not None and _referent(existing) != spec:
         raise AssayError(
             f"state {name!r} is already declared with a different extractor; "
             "declare a new name instead of silently redefining a referent",
             code="STATE_REDEFINED",
         )
+    # The cap counts the active states declared on the current progress
+    # unit: a state an earlier unit declared stays readable and does not
+    # crowd this unit's (every 2026-10-26 refusal retired an earlier unit's).
+    unit = run.events[-1].levels_completed if run.events else 0
     cap = state_cap(run.registry)
-    active = sum(1 for item in declared.values() if not (isinstance(item, dict) and item.get("retired")))
+    active = sum(
+        1
+        for item in declared.values()
+        if isinstance(item, dict) and not item.get("retired") and item.get("unit", unit) == unit
+    )
     if (existing is None or retired) and active >= cap:
         raise AssayError(
-            f"at most {cap} declared states at a time in this run",
+            f"at most {cap} declared states at a time on one progress unit",
             code="STATE_CAP",
             hint=(
-                "retire a state you no longer predict against (`assay state retire NAME`), "
-                "or the registry's state_cap sets the limit"
+                "states declared on earlier units do not count; retire a state of this unit you no "
+                "longer predict against (`assay state retire NAME`), or the registry's state_cap "
+                "sets the limit"
             ),
         )
+    # Declaring an active state again changes nothing, its unit included.
+    kept = existing.get("unit") if existing is not None and not retired else None
+    spec = {**spec, "unit": kept if isinstance(kept, int) else unit}
     declared[name] = spec
     atomic_json(declarations_path(paths), declared)
     append_jsonl(
@@ -192,6 +204,12 @@ def declare_state(
         {"kind": "channel_declared", "channel": name, **spec},
     )
     return spec
+
+
+def _referent(spec: Mapping[str, Any]) -> dict[str, Any]:
+    """What a declaration refers to: its spec without the bookkeeping (the
+    retired flag and the unit it was declared on)."""
+    return {key: value for key, value in spec.items() if key not in ("retired", "unit")}
 
 
 def retire_state(run: Run, name: str) -> dict[str, Any]:

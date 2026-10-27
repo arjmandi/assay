@@ -44,6 +44,16 @@ FRAME WORLDS ONLY (grid observations) | x=column y=row | admitted when the regis
   region X0:X1,Y0:Y1   something changes inside this half-open box (changes outside are not graded)
 Example:
   --predict "cell 12,5=0; region 10:14,3:8"
+These forms grade one transition; declare extractor states as well
+(`assay state declare NAME --file extractor.py`, `def extract(obs)` over obs["frames"])
+for a value you predict again and again.
+assay python in a frame world: `grid` is the current settled grid and `previous` the one
+before (numpy arrays); `settled` and `observations` are the list of every event's settled
+grid; a key_delta key is a cell (x, y), x the column and y the row; connected_components,
+frame_delta, crop, show, delta_lines, np and json are loaded:
+  "$ASSAY" python 'key_delta(transitions[-1]["before"], transitions[-1]["after"])["changed"][:10]'
+  "$ASSAY" python '[(t["event"], t["action"], len(key_delta(t["before"], t["after"])["changed"])) for t in transitions[-8:]]'
+  "$ASSAY" python 'print("\\n".join(delta_lines(previous, grid)))'
 """
 
 

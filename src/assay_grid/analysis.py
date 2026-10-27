@@ -9,6 +9,7 @@ a cell `(x, y)`, x the column and y the row."""
 
 from __future__ import annotations
 
+import json
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
@@ -140,6 +141,7 @@ def namespace(events: Sequence[Event]) -> dict[str, Any]:
     ]
     return {
         "np": np,
+        "json": json,
         "grid": settled[-1],
         "previous": settled[-2] if len(settled) > 1 else None,
         "settled": settled,

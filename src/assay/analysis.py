@@ -156,7 +156,12 @@ def run_python(run: Run, source: str) -> Any:
         exec(compile(tree, "<assay-python>", "exec"), scope, scope)  # noqa: S102 - deliberate local analysis console
         return None
     except (Exception, SystemExit) as error:
+        names = (
+            "; the names defined here: " + ", ".join(sorted(key for key in scope if not key.startswith("_")))
+            if isinstance(error, NameError)
+            else ""
+        )
         raise AssayError(
-            f"analysis failed: {type(error).__name__}: {error}",
+            f"analysis failed: {type(error).__name__}: {error}{names}",
             code="PYTHON_FAILED",
         ) from error
