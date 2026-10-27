@@ -3,6 +3,60 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## sonnet-haiku-5-5-experiment-2 (2026-10-27, a tag on the same branch, not a release)
+
+The changes the second Haiku layer diagnosis (the two Haiku 5.5 runs on the
+first tag, default effort and xhigh) recommended, on the experiment branch
+and kept off `main`. `bench/arcagi/jobs/sonnet-haiku-5-5-r2.json` is the run.
+
+### Changed
+
+- The Stop gate accepts a STOP block that is new by content (its digest
+  differs from every block the notes held at the launch) and whose RULES cite
+  an event of this session; a first stop with more than half the cap left is
+  held once unless its NEXT PROBE cites a bought event or a cost above what
+  is left. Its message states the rule and counts the blocks. Release after
+  three blocks in the session whatever was bought between them (a new block
+  restarts the count, twelve in all), or after fifty paid actions bought
+  under the hold. Placeholder `STOP:` lines (`none`, `n/a`, a parenthesis,
+  `not stopped`) declare nothing. Both runners write the launch snapshot
+  (`launch_snapshot`: last event, block digests, complete blocks).
+- The player prompt: "Play to WIN. The cap is a limit, not a target", and
+  the gate's rule in its words.
+- `conclusion_gate` reads `STOP:` lines anywhere by the gate's rule, leaves
+  numbered steps, disclaimers, placeholders and the block's own heading out
+  of its verdicts, records an audit only while one is owed (and says "no
+  audit demanded" otherwise), and keys the RESUME CHECK on the newest
+  verdict's text instead of the notes' time.
+- `wall_spend` counts the steps before its own in a batch.
+- The state cap counts the active states declared on the current progress
+  unit.
+- The grid pack's object ledger leaves out components on the frame's edge
+  and on HUD rows (rows that change on nearly every paid action).
+- CONSTITUTION.md: the frame-world `assay python` paragraph moves to the grid
+  section of `act --help` and the arc-agi-3 pack's README, corrected (`grid`
+  is the current settled grid, `settled` the list); frame worlds declare
+  extractor states "as well", not "instead"; the gate bullets state the
+  rules.
+
+### Added
+
+- `game_over_retry`, a built-in module: a non-reset action after one the
+  world already refused in GAME_OVER owes `--declare game_over=...`.
+- The grid pack's regime ledger: for each click target the colors it was
+  clicked in and the color under the mover, for each non-move action the
+  color under the mover and the move before it; at a stop the pairs the unit
+  showed and never exercised, color matches first.
+- `json` in the frame world's `assay python`; a NameError lists the names
+  defined.
+
+### Not done
+
+- `budget.usd` per session: the gate reads the run's reported spend, nothing
+  in the batch runner reports a session's spend, Claude Code's Stop hook
+  carries no cost, and the transcript writes it once, at the end. The
+  release after fifty paid actions under a hold stands in for it.
+
 ## sonnet-haiku-5-5-experiment (2026-10-26, a tag on its own branch, not a release)
 
 The changes the Haiku layer diagnosis of the 2026-10-25 Haiku and Sonnet 5.5

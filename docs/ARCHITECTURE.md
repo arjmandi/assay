@@ -509,6 +509,23 @@ world parse its own outcome forms; `region` grades a local change) and
 `state_cap` (the number of declared states active at a time; `assay state
 retire` frees a place).
 
+The tag's second round (the diagnosis of 2026-10-27) changes three of them
+and adds one. `conclusion_gate` reads a `STOP:` line anywhere in the notes
+by the Stop gate's own rule (`hooks/stop_gate.py` `stop_reason`, kept equal
+by a test), leaves numbered steps, disclaimers and placeholders out of the
+verdict lines, records `conclusion_audited` only while an audit is owed (a
+volunteered text, or a batch's copy on its later steps, is not recorded),
+and keys the resume check on the newest verdict's text with a
+`verdict_probed` record per verdict, instead of the notes' time.
+`wall_spend` counts the steps before its own in a batch (the pending
+action's `step`). `game_over_retry` (advise by default) demands
+`game_over` when a non-reset action follows one the world already refused
+after GAME_OVER. `state_cap` counts the active states declared on the
+current progress unit; each declaration records its `unit`. The grid pack's
+coverage adds a regime ledger (what a click or a non-move action was tried
+with: the target's color, the color under the mover, the move before it)
+and leaves frame-edge components and HUD rows out of its object ledger.
+
 External modules: `modules: ["path.py"]` in the registry, copied into
 `.assay/modules/` at start (`modules.pin_external_modules`), loaded by
 `modules._load_external` from the manifest the run holds. 1.2.0 pins them by

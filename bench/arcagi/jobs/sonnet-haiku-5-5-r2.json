@@ -1,0 +1,224 @@
+{
+ "name": "shx2",
+ "description": "The second round of the sonnet-haiku-5-5 experiment (2026-10-27): Haiku 5.5 at --effort medium on all 25 ARC-AGI-3 public games, with the changes of both Haiku layer diagnoses (2026-10-26 and 2026-10-27, in the owner's archive). Against the first round's job (sonnet-haiku-5-5.json, effort left at its default, which is medium) it differs in: the Stop gate's acceptance rule (new by content, RULES citing this session, a first stop held once), its release rule (three blocks per session whatever was bought, or fifty paid actions under a hold) and its message; the prompt's 'Play to WIN. The cap is a limit, not a target'; conclusion_gate's verdicts, audit credit and resume check; wall_spend inside a batch; game_over_retry in block mode; the state cap per unit; the grid pack's regime ledger and its object ledger without edge and HUD components; the frame-world python names. Kept: registry_1500 (budget 1500), the tag's CONSTITUTION.md, 3 sessions of 4 hours, $15 per session, --thinking-display summarized, --tools pinned. All 25 players at once.",
+ "adapter": "../adapter.py:factory",
+ "concurrency": 25,
+ "max_sessions": 3,
+ "max_hours": 4,
+ "stop_gate": "coverage",
+ "player": {
+  "model": "claude-haiku-5-5",
+  "command": [
+   "claude",
+   "--model",
+   "{model}",
+   "-p",
+   "{prompt}",
+   "--output-format",
+   "json",
+   "--effort",
+   "medium",
+   "--thinking-display",
+   "summarized",
+   "--max-budget-usd",
+   "15",
+   "--strict-mcp-config",
+   "--permission-mode",
+   "acceptEdits",
+   "--tools",
+   "Bash",
+   "Read",
+   "Glob",
+   "Grep",
+   "Write",
+   "Edit",
+   "--allowedTools",
+   "Bash",
+   "Read",
+   "Glob",
+   "Grep",
+   "Write(./**)",
+   "Edit(./**)",
+   "MultiEdit(./**)",
+   "--disallowedTools",
+   "WebFetch",
+   "WebSearch",
+   "Agent",
+   "Task",
+   "NotebookEdit",
+   "TodoWrite",
+   "KillShell"
+  ]
+ },
+ "worlds": [
+  {
+   "id": "ar25",
+   "levels": 8,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "bp35",
+   "levels": 9,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "cd82",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "cn04",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "dc22",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "ft09",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "g50t",
+   "levels": 7,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "ka59",
+   "levels": 7,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "lf52",
+   "levels": 10,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "lp85",
+   "levels": 8,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "ls20",
+   "levels": 7,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "m0r0",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "r11l",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "re86",
+   "levels": 8,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "s5i5",
+   "levels": 8,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "sb26",
+   "levels": 8,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "sc25",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "sk48",
+   "levels": 8,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "sp80",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "su15",
+   "levels": 9,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "tn36",
+   "levels": 7,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "tr87",
+   "levels": 6,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "tu93",
+   "levels": 9,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "vc33",
+   "levels": 7,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  },
+  {
+   "id": "wa30",
+   "levels": 9,
+   "budget": 1500,
+   "registry": "../registry_1500.json"
+  }
+ ],
+ "arms": [
+  {
+   "name": "haiku55",
+   "description": "gated, Haiku 5.5 at --effort medium, both rounds of diagnosis changes on",
+   "prompt": "../../../tools/eval/prompts/e1_player.md",
+   "constitution": "../../../CONSTITUTION.md",
+   "registry_overlay": {
+    "frame_forms": "admit",
+    "module_modes": {
+     "conclusion_gate": "block",
+     "gamble_streak": "block",
+     "game_over_retry": "block"
+    }
+   }
+  }
+ ],
+ "seeds": [
+  1
+ ]
+}
