@@ -147,6 +147,8 @@ def test_the_runner_arms_the_gate_before_a_session(tmp_path, capsys):
     record = json.loads((state / "gates" / f"{job.id}.json").read_text())
     assert record["launch"]["demand"] == "coverage" and record["launch"]["declarations"] == 1
     assert record["launch"]["paid"] == 2 and env[gate.STATE_VARIABLE] == str(state / "gates" / f"{job.id}.json")
+    assert record["launch"]["last_event"] == 2 and record["launch"]["complete"] == 1
+    assert record["launch"]["digests"] == [gate.coverage_blocks(COMPLETE, 2)[0].digest]
     settings = json.loads((run_dir / ".claude" / "settings.json").read_text())
     command = settings["hooks"]["Stop"][-1]["hooks"][0]["command"]
     assert "stop_gate.py" in command and f"--run-dir {run_dir}" in command
@@ -155,3 +157,71 @@ def test_the_runner_arms_the_gate_before_a_session(tmp_path, capsys):
     settings = json.loads((run_dir / ".claude" / "settings.json").read_text())
     assert len(settings["hooks"]["Stop"]) == 1
     assert queue.gate_decisions(job) == []
+
+
+def _block(reason: str, rules: str, probe: str = "INC amount=3, not bought") -> str:
+    return f"STOP: {reason}\nRULES: {rules}\nUNTESTED: amounts above 2\nNEXT PROBE: {probe}\n"
+
+
+def _launch(run: Path) -> dict:
+    return gate.launch_snapshot(gate.load_view(run), "coverage")
+
+
+def test_a_block_counts_when_it_is_new_by_content_and_cites_this_session(tmp_path):
+    # Session 2 launches with session 1's block on file (last event e2).
+    inherited = _block("the lamp cannot be lit", "INC adds (e1, e2)")
+    launch = _launch(_run(tmp_path / "launch", paid=2, notes=inherited))
+    assert launch["digests"] and launch["complete"] == 1 and launch["last_event"] == 2
+    # The inherited block, unchanged, is not a new conclusion; the message
+    # states the rule and counts the blocks.
+    state = gate.fresh_state(launch)
+    allow, why = gate.decide(gate.load_view(_run(tmp_path / "same", paid=4, notes=inherited)), state, "s2")
+    assert allow is False
+    assert ("The gate accepts a STOP block that is new by content (the notes held 1 complete block at this "
+            "session's launch; append a new one, or rewrite one in your own words) and whose RULES cite an "
+            "event of this session (after e2). Blocks this session: 1 of 3.") in why
+    assert "Your newest STOP block lacks: newness (the notes held this block at the launch)." in why
+    # Rewritten in place but citing only the earlier session's events: not yet.
+    edited = _block("the lamp cannot be lit at all", "INC adds (e1, e2)")
+    allow, why = gate.decide(gate.load_view(_run(tmp_path / "edited", paid=4, notes=edited)), state, "s2")
+    assert allow is False and "lacks: an event of this session in RULES (after e2)" in why
+    # The same edit citing an event of this session stands.
+    cited = _block("the lamp cannot be lit at all", "INC adds (e1, e2, e4)")
+    assert gate.decide(gate.load_view(_run(tmp_path / "cited", paid=4, notes=cited)), state, "s2") == (
+        True, "the player declared a stop with its coverage audit: the lamp cannot be lit at all")
+
+
+def test_a_first_stop_with_most_of_the_cap_left_is_held_once(tmp_path):
+    launch = _launch(_run(tmp_path / "launch", paid=0))
+    assert launch["complete"] == 0
+    early = _run(tmp_path / "early", paid=2, notes=_block("the lamp cannot be lit", "INC adds (e1, e2)"))
+    state = gate.fresh_state(launch)
+    allow, why = gate.decide(gate.load_view(early), state, "s1")
+    assert allow is False and why.startswith("ASSAY stop gate: this is the run's first conclusion and 8 of 10")
+    # Once per session: the second attempt stands.
+    assert gate.decide(gate.load_view(early), state, "s1")[0] is True
+    # A NEXT PROBE that cites a bought event, or a cost above what is left, stands at once.
+    bought = _run(tmp_path / "bought", paid=2, notes=_block("x", "INC adds (e1)", "INC amount=2 at e2 changed nothing"))
+    assert gate.decide(gate.load_view(bought), gate.fresh_state(launch), "s1")[0] is True
+    costly = _run(tmp_path / "costly", paid=2, notes=_block("x", "INC adds (e1)", "a sweep of 40 actions"))
+    assert gate.decide(gate.load_view(costly), gate.fresh_state(launch), "s1")[0] is True
+    # With half the cap or less left there is no first-stop hold.
+    late = _run(tmp_path / "late", paid=6, notes=_block("x", "INC adds (e1)"))
+    assert gate.decide(gate.load_view(late), gate.fresh_state(launch), "s1")[0] is True
+
+
+def test_a_new_block_restarts_the_count_up_to_the_session_s_ceiling(tmp_path):
+    launch = _launch(_run(tmp_path / "launch", paid=2, notes=_block("held", "INC adds (e1)")))
+    state = gate.fresh_state(launch)
+    for index in range(gate.SESSION_BLOCKS):
+        # Each attempt adds a block that cites no event of this session.
+        notes = _block("held", "INC adds (e1)") + "".join(_block(f"try {n}", "INC adds (e1)") for n in range(index))
+        allow, _ = gate.decide(gate.load_view(_run(tmp_path / f"t{index}", paid=2, notes=notes)), state, "s2")
+        assert allow is False, index
+    allow, why = gate.decide(gate.load_view(_run(tmp_path / "last", paid=2, notes=notes)), state, "s2")
+    assert (allow, why) == (True, f"released after {gate.SESSION_BLOCKS} blocks in this session in all")
+
+
+def test_placeholder_stop_lines_declare_nothing():
+    assert gate.coverage_blocks("STOP: none.\nRULES: e1\nUNTESTED: x\nNEXT PROBE: y\n", 2) == []
+    assert gate.declarations("STOP: (not applicable)\nSTOP: not stopped; play continues\nSTOP: n/a\n") == []

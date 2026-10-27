@@ -179,18 +179,10 @@ class Runner:
             return
         gate = load_gate()
         view = gate.load_view(self.run_dir(job))
-        launch = {
-            "session": session, "at": now(), "demand": demand,
-            "activity": len(view.activity) if view else 0,
-            "declarations": gate.count_declarations(view, demand) if view else 0,
-            "paid": view.paid if view else 0,
-        }
+        launch = {"session": session, "at": now(), **gate.launch_snapshot(view, demand)}
         path = self.gate_state(job)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps({
-            "version": gate.STATE_VERSION, "launch": launch,
-            "blocks": 0, "paid_at_last_block": None, "decisions": [],
-        }, indent=2) + "\n")
+        path.write_text(json.dumps(gate.fresh_state(launch), indent=2) + "\n")
         install_stop_gate(self.settings_path(job), gate_command(self.run_dir(job)))
         env[gate.STATE_VARIABLE] = str(path)
 

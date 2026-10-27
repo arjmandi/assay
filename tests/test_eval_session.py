@@ -2,8 +2,8 @@
 
 The gate's rules (hooks/stop_gate.py) on fixture run directories: WIN, the
 cap, the dollar cap, a pending owner action and a fresh declaration allow
-the stop; anything else blocks it, until three blocks with no paid action
-between them. As a hook process it is inert without ASSAY_STOP_GATE. The
+the stop; anything else blocks it, until three blocks in the session or
+fifty paid actions bought under the hold. As a hook process it is inert without ASSAY_STOP_GATE. The
 runner's pieces: the host templates, the player's environment without the
 world's secrets, the gate merged into the settings beside the kernel's
 hooks, the operator's note. End to end, the fake player against the counter
@@ -144,14 +144,20 @@ def test_the_gate_allows_only_for_a_reason_and_releases_after_three_blocks(tmp_p
         "judge the goal unreachable with what is left, or you need something only the owner can give, "
         "add one line to .assay/NOTES.md that begins with `STOP:` and says why, then stop."
     )
-    assert state["blocks"] == 3 and state["paid_at_last_block"] == 2
+    assert state["blocks"] == 3 and state["hold_paid"] == 2
     (allow, why), state = decide(run, state)
-    assert allow and why == "released after 3 blocks with no paid action between them"
-    # A paid action between blocks starts the count again, and so does another session.
-    state = {"blocks": 3, "paid_at_last_block": 1, "session_id": "s1"}
-    assert decide(run, state)[0][0] is False and state["blocks"] == 1
-    state = {"blocks": 3, "paid_at_last_block": 2, "session_id": "s1"}
+    assert allow and why == "released after 3 blocks in this session"
+    # A paid action between blocks no longer starts the count again (a held
+    # player bought probes to reset it, 2026-10-26); another session does.
+    later = _fixture_run(tmp_path / "b2", paid=3)
+    state = {"blocks": 3, "hold_paid": 2, "session_id": "s1"}
+    assert decide(later, state)[0] == (True, "released after 3 blocks in this session")
+    state = {"blocks": 3, "hold_paid": 2, "session_id": "s1"}
     assert decide(run, state, "s2")[0][0] is False and state["blocks"] == 1
+    # Fifty paid actions bought under a hold release it.
+    bought = _fixture_run(tmp_path / "h", paid=60, budget={"actions": 100})
+    state = {"blocks": 1, "hold_paid": 10, "session_id": "s1"}
+    assert decide(bought, state)[0] == (True, "released after 50 paid actions bought under the hold")
     uncapped = _fixture_run(tmp_path / "n", paid=2, budget={})
     assert "no action cap is registered" in decide(uncapped)[0][1]
 

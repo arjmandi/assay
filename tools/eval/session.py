@@ -451,15 +451,9 @@ class SessionRunner:
 
     def write_launch(self, session: int, view: Any) -> dict[str, int]:
         """The counts at the session's launch, for the gate and the ledger."""
-        counts = {
-            "activity": len(view.activity) if view else 0,
-            "declarations": len(self.gate.declarations(view.notes)) if view else 0,
-            "paid": view.paid if view else 0,
-        }
-        _write_json(self.gate_state, {
-            "version": self.gate.STATE_VERSION, "launch": {"session": session, "at": now(), **counts},
-            "blocks": 0, "paid_at_last_block": None, "decisions": [],
-        })
+        snapshot = self.gate.launch_snapshot(view, "line")
+        counts = {key: snapshot[key] for key in ("activity", "declarations", "paid")}
+        _write_json(self.gate_state, self.gate.fresh_state({"session": session, "at": now(), **snapshot}))
         return counts
 
     # ---- the ledger and the status ----------------------------------------------------
