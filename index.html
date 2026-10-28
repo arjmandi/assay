@@ -318,7 +318,7 @@ mark.claim{background:var(--held-soft); border-bottom:2px solid var(--held); col
 
 /* diagrams scroll sideways on narrow screens instead of shrinking their type */
 .dscroll{overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin}
-@media (max-width: 720px){ .dscroll > svg{min-width:560px} .dscroll > svg.loop-svg{min-width:500px} .dscroll::after{content:'scroll sideways →'; display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); padding-top:6px} .panel.dark .dscroll::after{color:var(--panel-ink-2)} .stepper .dscroll::after{color:var(--panel-ink-2)} }
+@media (max-width: 720px){ .dscroll > svg{min-width:560px} .dscroll > svg.loop-svg{min-width:500px} .dscroll::after{content:'scroll sideways'; display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); padding-top:6px} .panel.dark .dscroll::after{color:var(--panel-ink-2)} .stepper .dscroll::after{color:var(--panel-ink-2)} }
 
 /* ---------- reveal (visible at rest; animates only when motion is allowed) ---------- */
 .rv{opacity:1}
@@ -867,7 +867,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
       <div class="minw">
         <p class="hero-meta rv"><i aria-hidden="true"></i><b>Preprint · 2026</b> · Release 1.5.1 · Apache 2.0</p>
         <h1 class="rv"><span class="sym">Assay</span>: a reasoning harness that grounds a test‑time world model <span class="thin">by prediction</span></h1>
-        <p class="byline rv"><b>M. Arjmandi</b></p>
+        <p class="byline rv"><b>M. Arjmandi</b> · Independent researcher</p>
         <div class="cta rv">
           <a class="btn red" href="https://doi.org/10.5281/zenodo.22145966" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 13 13 3M6 3h7v7"/></svg></a>
           <a class="btn" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Code</a>
@@ -1086,7 +1086,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
             <p class="eyebrow"><span class="num">Observation</span></p>
             <pre class="obs-json" id="g-obs" aria-live="polite"></pre>
             <div class="game-kd">
-              <div><span class="tiny">Key delta</span><div class="kd" id="g-delta">— (no paid action yet)</div></div>
+              <div><span class="tiny">Key delta</span><div class="kd" id="g-delta">no paid action yet</div></div>
               <div><span class="tiny">Actions</span><div class="budget"><div class="bar"><i id="g-budget-bar"></i></div><span class="num-tab" id="g-budget">0 / 12</span></div></div>
             </div>
           </div>
@@ -1153,7 +1153,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
           <div class="jh"><p class="eyebrow"><span class="num">Assay</span><span>Journal (World Model)</span></p><span class="head mono" hidden>head <b id="g-head">…</b></span></div>
           <div class="jscroll">
             <table class="journal" id="g-journal">
-              <thead><tr><th>id</th><th>action</th><th>predict → grade</th><th>head</th></tr></thead>
+              <thead><tr><th>id</th><th>action</th><th>predict · grade</th><th>head</th></tr></thead>
               <tbody id="g-journal-body"><tr class="empty"><td colspan="4">No events yet.</td></tr></tbody>
             </table>
           </div>
@@ -1163,7 +1163,7 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
           <div class="gm">
             <div class="m"><span class="v"><b id="g-m-wm">0</b><small id="g-m-wm-t">/ 0</small></span><span class="split" aria-hidden="true"><i class="h" id="g-m-wm-held"></i><i class="x" id="g-m-wm-miss"></i></span><span class="l">world-model held</span></div>
             <div class="m"><span class="v"><b id="g-m-gb">0</b><small id="g-m-gb-t">/ 0</small></span><span class="l">gambles held</span></div>
-            <div class="m"><span class="v"><b id="g-m-sp">—</b></span><span class="l">specificity <i>σ</i></span></div>
+            <div class="m"><span class="v"><b id="g-m-sp">·</b></span><span class="l">specificity <i>σ</i></span></div>
             <div class="m"><span class="v"><b id="g-m-ug">0</b></span><span class="l">ungated events</span></div>
           </div>
           <div class="audit" id="g-audit-out" hidden></div>
@@ -1589,11 +1589,11 @@ const changed = (b, a) => keys.filter(k => b[k] !== a[k]);
 /* ---- the grader: code over the pair (o, o′), never a model ---- */
 function grade(pred, b, a){
   const ch = changed(b, a);
-  const deltaStr = ch.length ? ch.map(k => k+' '+b[k]+' → '+a[k]).join(', ') : 'no observed change';
+  const deltaStr = ch.length ? ch.map(k => k+' '+b[k]+' to '+a[k]).join(', ') : 'no observed change';
   switch (pred){
     case 'noop': return {ok: ch.length === 0, actual: deltaStr, bucket:'world_model'};
     case 'change': return {ok: ch.length > 0, actual: deltaStr, bucket:'world_model'};
-    case 'ch dial delta +1': return {ok: a.dial - b.dial === 1, actual: 'dial '+b.dial+' → '+a.dial+' (delta '+(a.dial-b.dial>0?'+':'')+(a.dial-b.dial)+')', bucket:'world_model'};
+    case 'ch dial delta +1': return {ok: a.dial - b.dial === 1, actual: 'dial '+b.dial+' to '+a.dial+' (delta '+(a.dial-b.dial>0?'+':'')+(a.dial-b.dial)+')', bucket:'world_model'};
     case 'ch lamp = on': return {ok: a.lamp === 'on', actual: 'lamp '+a.lamp, bucket:'world_model'};
     case 'ch lamp = off': return {ok: a.lamp === 'off', actual: 'lamp '+a.lamp, bucket:'world_model'};
     case 'ch drawer = open': return {ok: a.drawer === 'open', actual: 'drawer '+a.drawer, bucket:'world_model'};
@@ -1621,7 +1621,7 @@ const selPred = () => predBtns.find(b => b.getAttribute('aria-checked') === 'tru
 function renderObs(){
   const ch = prev ? changed(prev, obs) : [];
   el.obs.innerHTML = '{ ' + keys.map(k => '<span class="k">"'+k+'"</span>: <span class="'+(ch.includes(k)?'chg':'')+'">'+(typeof obs[k]==='number'? obs[k] : '"'+obs[k]+'"')+'</span>').join(', ') + ' }';
-  el.delta.innerHTML = lastDelta == null ? '— (no paid action yet)' : (lastDelta.length ? lastDelta.map(k => '<b>'+k+'</b>: '+prev[k]+' → '+obs[k]).join(' · ') : '<span class="dim">no key changed</span>');
+  el.delta.innerHTML = lastDelta == null ? 'no paid action yet' : (lastDelta.length ? lastDelta.map(k => '<b>'+k+'</b>: '+prev[k]+' to '+obs[k]).join(' · ') : '<span class="dim">no key changed</span>');
   el.budget.textContent = spent + ' / ' + BUDGET;
   el.budgetBar.style.width = (spent / BUDGET * 100) + '%';
   el.budgetBar.classList.toggle('hot', spent >= BUDGET - 2);
@@ -1642,14 +1642,14 @@ function renderMeters(){
   const wmHeld = wm.filter(e => e.predict_ok).length;
   el.wmHeld.style.width = (wm.length ? wmHeld / wm.length * 100 : 0) + '%'; el.wmMiss.style.width = (wm.length ? (wm.length - wmHeld) / wm.length * 100 : 0) + '%';
   el.mGb.textContent = gb.filter(e => e.predict_ok).length; el.mGbT.textContent = '/ ' + gb.length;
-  el.mSp.textContent = graded.length ? (1 - graded.filter(e => e.predict === 'change').length / graded.length).toFixed(2) : '—';
+  el.mSp.textContent = graded.length ? (1 - graded.filter(e => e.predict === 'change').length / graded.length).toFixed(2) : '·';
   el.mUg.textContent = ungated;
   el.head.textContent = head ? head.slice(0, 8) : '…';
 }
 function renderJournal(newRow){
   if (!events.length){ el.jbody.innerHTML = '<tr class="empty"><td colspan="4">No events yet. Pick an action, pick a prediction, act.</td></tr>'; return; }
   el.jbody.innerHTML = events.map((e, i) => {
-    const pg = e.predict ? '<span class="dim">'+esc(e.predict)+'</span> → <span class="'+(e.predict_ok?'held':'miss')+'">'+(e.predict_ok?'held':'missed')+'</span>' : '<span class="ug">no prediction · UNGATED</span>';
+    const pg = e.predict ? '<span class="dim">'+esc(e.predict)+'</span> · <span class="'+(e.predict_ok?'held':'miss')+'">'+(e.predict_ok?'held':'missed')+'</span>' : '<span class="ug">no prediction · UNGATED</span>';
     const cls = [newRow && i === events.length-1 ? 'new' : '', e.predict && e.predict_ok ? '' : 'miss'].filter(Boolean).join(' ');
     return '<tr'+(cls ? ' class="'+cls+'"' : '')+'><td class="id">e'+e.event+'</td><td>'+esc(e.action)+'</td><td class="pg">'+pg+'</td><td class="h" title="'+e.head+'">'+e.head.slice(0,8)+'</td></tr>';
   }).join('');
@@ -1674,7 +1674,7 @@ async function act(withPrediction){
   if (after.state === 'WIN') won = true;
   el.auditOut.hidden = true;
   if (p){
-    const kd = lastDelta.length ? lastDelta.map(k => k+': '+before[k]+' → '+after[k]).join(' · ') : 'no key changed';
+    const kd = lastDelta.length ? lastDelta.map(k => k+': '+before[k]+' to '+after[k]).join(' · ') : 'no key changed';
     receipt((g.ok ? '<span class="held">✓ '+esc(p)+'   HELD</span>' : '<span class="miss">✗ '+esc(p)+'   MISSED</span><br>  actual: '+esc(g.actual))+'<br><span class="dim">KEY DELTA  '+esc(kd)+'</span>'+(won ? '<br><span class="held">state WIN · the run is complete</span>' : ''), true, !g.ok);
   } else {
     receipt('<span class="ref">UNGATED</span> · the action was executed and journaled with no prediction, no verdict and no grade.<br><span class="dim">One ungated event makes the run invalid for scoring. Nothing you learned from it is in the record as a fact.</span>', true, true);
