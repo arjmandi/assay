@@ -115,6 +115,7 @@ body::before{ /* cast-metal grain */
 a{color:inherit; text-decoration:none}
 a:hover{color:var(--red-text)}
 :focus-visible{outline:2px solid var(--focus); outline-offset:3px}
+.panel.dark :focus-visible, .cmd :focus-visible, .datum :focus-visible, .stepper :focus-visible{outline-color:var(--panel-held)}
 button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer}
 code,kbd,pre{font-family:var(--mono)}
 svg{display:block; max-width:100%}
@@ -233,14 +234,25 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 #progress{position:fixed; top:env(safe-area-inset-top, 0px); left:0; height:3px; width:0; background:var(--red); z-index:60; pointer-events:none}
 
 /* ---------- hero ---------- */
-.hero{padding-block:clamp(56px, 7vw, 104px) clamp(20px, 2.5vw, 36px)}
-.hero-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:48px 48px; align-items:start}
+.hero{padding-block:clamp(56px, 7vw, 104px) 0}
+.hero-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:48px 48px; align-items:center}
 @media (max-width: 960px){ .hero-grid{grid-template-columns:1fr} }
-.hero h1 .thin{color:var(--ink-2)}
-.hero .meta{display:flex; flex-wrap:wrap; gap:10px 28px; font-family:var(--mono); font-size:12px; letter-spacing:.08em; color:var(--ink-2); margin-top:28px}
-.hero .meta b{font-weight:500; color:var(--ink)}
-.hero .abstract{margin-top:34px}
-.hero .cta{display:flex; flex-wrap:wrap; gap:10px; margin-top:34px}
+.hero h1 .thin{color:var(--held)}
+.hero-meta{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); line-height:1.6; margin-bottom:22px}
+.hero-meta b{font-weight:500; color:var(--ink)}
+.hero-meta i{display:inline-block; width:8px; height:8px; background:var(--held); margin-right:8px}
+.hero .byline{margin-top:22px; font-size:17px; color:var(--ink-2)}
+.hero .byline b{font-weight:500; color:var(--ink)}
+.hero .cta{display:flex; flex-wrap:wrap; gap:10px; margin-top:28px}
+.loop-fig{margin:0; display:flex; flex-direction:column; gap:12px; min-width:0}
+.figcap{font-size:14px; line-height:1.55; color:var(--ink-2); max-width:680px}
+.figcap b{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink); margin-right:4px}
+.abstract-row{display:grid; grid-template-columns:180px minmax(0,780px); gap:12px 56px; margin-top:clamp(48px, 6vw, 72px); padding-top:32px; border-top:1px solid var(--rule)}
+.abstract-row .ab-l{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; line-height:1.5; padding-top:6px}
+.abstract-row .lede{font-size:20px; line-height:1.6; max-width:780px}
+@media (max-width: 760px){ .abstract-row{grid-template-columns:minmax(0,1fr)} .abstract-row .lede{font-size:19px} }
+mark.claim{background:var(--held-soft); border-bottom:2px solid var(--held); color:var(--ink); padding:1px 3px}
+.headline{position:relative; z-index:1; margin-top:clamp(48px, 6vw, 72px); background:var(--bg-2); border-top:1px solid var(--rule); border-bottom:1px solid var(--rule); padding-block:clamp(32px, 4vw, 48px) clamp(36px, 4.5vw, 56px)}
 .hero .cta .btn{padding-inline:16px}
 .btn{
   display:inline-flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
@@ -253,15 +265,27 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .btn svg{width:14px; height:14px}
 .stat-strip{
   display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border:1px solid var(--rule); background:var(--bg-2);
-  margin-top:14px;
+  margin-top:28px;
 }
-.stat-title{margin-top:clamp(40px, 5vw, 64px)}
-.stat-strip .stat{padding:20px 22px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:6px; min-width:0}
+.stat-title{display:flex; flex-wrap:wrap; align-items:baseline; gap:6px 20px}
+.stat-title h2{font-size:32px; line-height:1.15}
+.stat-title .meta{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.07em; text-transform:uppercase; color:var(--ink-2)}
+.stat-title .more{margin-left:auto; display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; color:var(--held)}
+.stat-title .more:hover{color:var(--red-text)}
+.stat-title .more svg{width:13px; height:13px}
+.stat-strip .stat{padding:24px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:10px; min-width:0}
 .stat-strip .stat:last-child{border-right:0}
-.stat .v{font-family:var(--sans); font-weight:500; font-size:clamp(26px, 2.6vw, 36px); line-height:1; letter-spacing:-.02em; white-space:nowrap}
+.stat .v{font-family:var(--sans); font-weight:500; font-size:clamp(36px, 3.4vw, 48px); line-height:1; letter-spacing:-.02em; white-space:nowrap}
 .stat .v small{font-size:.5em; color:var(--ink-2); letter-spacing:0; margin-left:4px}
 .stat .l{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+.stat .v.held{color:var(--held)}
+.stat .c{font-size:14px; line-height:1.5; color:var(--ink-2)}
+.stat .meter{display:block; height:6px; background:var(--bg-4); overflow:hidden}
+.stat .meter i{display:block; height:100%; background:var(--ink)}
+.stat .clean{display:grid; grid-template-columns:repeat(25, minmax(0,1fr)); gap:3px; max-width:220px}
+.stat .clean i{display:block; height:8px; background:var(--held); border-radius:1px}
 @media (max-width: 760px){ .stat-strip{grid-template-columns:repeat(2, minmax(0,1fr))} .stat-strip .stat:nth-child(2n){border-right:0} .stat-strip .stat:nth-child(n+3){border-top:1px solid var(--rule)} }
+@media (max-width: 480px){ .stat-strip{grid-template-columns:minmax(0,1fr)} .stat-strip .stat{border-right:0} .stat-strip .stat + .stat{border-top:1px solid var(--rule)} }
 
 /* the loop instrument */
 .loop-panel{padding:14px 14px 14px}
@@ -324,18 +348,41 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .homes .verdict{grid-column:1 / -1; padding-top:18px; border-top:1px solid var(--rule); font-size:15px; color:var(--ink-2); display:flex; gap:12px; align-items:flex-start}
 .homes .verdict .led{margin-top:7px; flex-shrink:0}
 
-.lineage{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:0; border:1px solid var(--rule); margin-top:28px; background:var(--bg-2)}
+.prob-head{margin-bottom:clamp(28px, 3vw, 40px)}
+.prob-intro{display:grid; grid-template-columns:minmax(0,680px) minmax(0,260px); gap:16px 48px; align-items:end}
+@media (max-width: 860px){ .prob-intro{grid-template-columns:minmax(0,1fr)} }
+.prob-main{display:flex; flex-direction:column; gap:20px}
+.prob-main .lede{font-size:20px; line-height:1.6}
+.prob-main p{line-height:1.6}
+sup.fn{font-family:var(--mono); font-size:11px; font-weight:600; margin-left:1px}
+sup.fn a, .sidenote .fn{color:var(--held)}
+.sidenote{font-size:14px; line-height:1.5; color:var(--ink-2); border-top:1px solid var(--rule); padding-top:10px}
+.sidenote .fn{font-family:var(--mono); font-size:11px; font-weight:600; margin-right:2px}
+.sidenote a{color:var(--held); text-decoration:underline; text-underline-offset:2px}
+.modes{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:16px; max-width:988px}
+@media (max-width: 700px){ .modes{grid-template-columns:minmax(0,1fr)} }
+.mode{background:var(--bg-2); border:1px solid var(--rule); padding:22px 24px; display:flex; flex-direction:column; gap:10px; min-width:0}
+.mode .ml{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--miss)}
+.mode .mt{font-family:var(--display-italic); font-size:24px; line-height:1.2}
+.mode p:not(.ml){font-size:16px; line-height:1.6; color:var(--ink-2)}
+.pull{font-family:var(--display-italic); font-size:25px; line-height:1.45; color:var(--ink); max-width:760px; margin:32px 0 clamp(44px, 5vw, 64px); text-wrap:pretty}
+@media (max-width: 600px){ .pull{font-size:21px} }
+.lineage{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:32px 20px; margin-top:28px}
 @media (max-width: 860px){ .lineage{grid-template-columns:repeat(2, minmax(0,1fr))} }
-@media (max-width: 480px){ .lineage{grid-template-columns:1fr} }
-.lineage .sys{padding:20px 22px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:10px; min-width:0}
-.lineage .sys:last-child{border-right:0; background:var(--bg)}
-@media (max-width: 860px){ .lineage .sys:nth-child(2){border-right:0} .lineage .sys:nth-child(n+3){border-top:1px solid var(--rule)} }
-@media (max-width: 480px){ .lineage .sys{border-right:0; border-top:1px solid var(--rule)} .lineage .sys:first-child{border-top:0} }
+@media (max-width: 480px){ .lineage{grid-template-columns:minmax(0,1fr)} }
+.lineage .sys{position:relative; padding:24px 0 0; border-top:2px solid var(--rule); display:flex; flex-direction:column; gap:10px; min-width:0}
+.lineage .sys::before{content:""; position:absolute; left:0; top:-7px; width:12px; height:12px; border-radius:50%; background:var(--bg); border:2px solid var(--ink)}
+.lineage .sys:nth-child(3)::before{border-style:dashed}
+.lineage .sys:last-child{border-top-color:var(--held); background:var(--held-soft); padding:24px 18px 20px}
+.lineage .sys:last-child::before{background:var(--held); border-color:var(--held)}
+.lineage .sys:last-child .when{color:var(--held)}
+.lineage .sys:last-child .n{font-family:var(--display-italic); font-style:italic}
 .lineage .sys .n{font-family:var(--display); font-size:26px}
 .lineage .sys .when{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
-.lineage .sys p{font-size:14px; color:var(--ink-2); line-height:1.5}
-.lineage .sys .fail{font-size:14px; display:flex; gap:9px; align-items:flex-start}
-.lineage .sys .fail .led{margin-top:6px; flex-shrink:0}
+.lineage .sys p{font-size:15px; color:var(--ink-2); line-height:1.55}
+.lineage .sys .fail{display:flex; flex-direction:column; gap:8px; margin-top:4px}
+.lineage .sys .fail .fl{display:flex; align-items:center; gap:8px; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--miss)}
+.lineage .sys .fail.ok .fl{color:var(--held)}
 
 /* ---------- the loop stepper ---------- */
 .stepper{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); border:1px solid var(--panel-rule); background:var(--panel); color:var(--panel-ink)}
@@ -477,15 +524,26 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .layer-detail .eyebrow, .layer-detail .eyebrow .num{color:var(--held)}
 .layer-detail .kv{grid-template-columns:140px 1fr}
 @media (max-width: 480px){ .layer-detail .kv{grid-template-columns:1fr} }
-.layer-detail .diag{font-family:var(--mono); font-size:12.5px; color:var(--ink); padding:12px 14px; border:1px solid var(--rule-2); background:var(--bg)}
-.layer-detail .diag b{color:var(--red-text); font-weight:500}
-.datum{margin-top:24px; border:1px solid var(--rule); background:var(--panel); color:var(--panel-ink); padding:24px; display:grid; grid-template-columns:minmax(0,1fr) auto; gap:20px 40px; align-items:center}
+.layer-detail .diag{font-size:15.5px; line-height:1.55; color:var(--ink); padding:14px 18px; border:1px solid var(--miss-rule); background:var(--miss-soft)}
+.layer-detail .diag .dl{display:flex; align-items:center; gap:8px; margin-bottom:6px; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.08em; color:var(--miss-text)}
+.layer-detail .diag b{color:var(--miss-text); font-weight:600}
+.ld-nav{display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px}
+.ld-nav .btn{padding:10px 14px}
+.ld-nav .btn[aria-disabled="true"]{opacity:.4; cursor:default}
+.ld-nav .btn[aria-disabled="true"]:hover{background:var(--bg-2); color:var(--ink)}
+.datum{margin-top:24px; border:1px solid var(--rule); background:var(--panel); color:var(--panel-ink); padding:clamp(24px, 2.6vw, 36px); display:grid; grid-template-columns:minmax(0,1fr) minmax(240px,380px); gap:28px 56px; align-items:center}
 @media (max-width: 700px){ .datum{grid-template-columns:1fr} }
-.datum .nums{display:flex; gap:28px; flex-wrap:wrap}
-.datum .nums .x{display:flex; flex-direction:column; gap:4px}
-.datum .nums .x .v{font-size:30px; font-weight:500; letter-spacing:-.02em; line-height:1}
-.datum .nums .x .l{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--panel-ink-2)}
-.datum .nums .x .v.r{color:var(--panel-red)}
+.datum .nums{display:flex; flex-direction:column; gap:18px; margin:0; min-width:0}
+.datum .nums .x{display:flex; flex-direction:column; gap:8px}
+.datum .nums .x .xh{display:flex; justify-content:space-between; align-items:baseline; gap:12px}
+.datum .nums .x .v{font-size:32px; font-weight:500; letter-spacing:-.02em; line-height:1; color:#fff; font-variant-numeric:tabular-nums}
+.datum .nums .x .l{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--panel-ink)}
+.datum .nums .x .l.h{color:var(--panel-held)}
+.datum .nums .cb{display:block; height:10px; background:var(--panel-raised)}
+.datum .nums .cb i{display:block; height:100%; background:var(--panel-held)}
+.datum .nums .cb.dh i{background:var(--panel-ink-2)}
+.datum .nums .s{font-family:var(--mono); font-size:11.5px; letter-spacing:.06em; color:var(--panel-ink-2)}
+.datum .nums figcaption{font-size:13px; line-height:1.5; color:var(--panel-ink-2)}
 .datum p{font-size:14.5px; color:var(--panel-ink-2); line-height:1.55; max-width:60ch}
 .datum p b{color:var(--panel-ink); font-weight:500}
 
@@ -495,16 +553,20 @@ nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px;
 .arch-svg text{font-family:var(--mono); font-size:11.5px; fill:var(--ink); letter-spacing:.03em}
 .arch-svg text.lab{fill:var(--ink-2); font-size:10.5px}
 .arch-svg text.t{font-size:13px; font-weight:500}
-.arch-svg .box{fill:var(--bg-2); stroke:var(--rule); transition:stroke .2s, fill .2s}
+.arch-svg .box{fill:var(--bg-2); stroke:var(--mark-3); transition:stroke .2s, fill .2s}
 .arch-svg .box.k{fill:var(--bg-3)}
 .arch-svg .box.out{stroke-dasharray:3 3; fill:var(--bg)}
 .arch-svg .wire{fill:none; stroke:var(--ink-3); stroke-width:1}
 .arch-svg .wire.dash{stroke-dasharray:3 3}
-.arch-svg .zone{fill:none; stroke:var(--rule); stroke-dasharray:4 4}
+.arch-svg .zone{fill:none; stroke:var(--mark-3); stroke-dasharray:4 4}
 .arch-svg g.hit{cursor:pointer}
 .arch-svg g.hit:hover .box, .arch-svg g.hit.on .box{stroke:var(--held); stroke-width:1.5}
 .arch-svg g.hit.on .box{fill:var(--held-soft)}
-.arch-note{min-height:112px; border:1px solid var(--rule); background:var(--bg-2); padding:18px 20px; font-size:14.5px; line-height:1.55; color:var(--ink-2)}
+.arch-fig{margin:0; display:flex; flex-direction:column; gap:14px}
+.arch-note{min-height:112px; margin:24px -28px 0; border-top:1px solid var(--rule); background:var(--bg); padding:24px 28px 28px; display:grid; grid-template-columns:minmax(150px,240px) minmax(0,1fr); gap:6px 40px; align-items:start; font-size:16px; line-height:1.65; color:var(--ink)}
+@media (max-width: 760px){ .arch-note{grid-template-columns:minmax(0,1fr)} }
+.arch-note .an{font-family:var(--display-italic); font-size:26px; line-height:1.2; color:var(--held)}
+.arch-note .ad{max-width:860px}
 .arch-note b{color:var(--ink); font-weight:500}
 
 /* ---------- evidence ---------- */
@@ -761,12 +823,14 @@ footer .fgrid{display:grid; grid-template-columns:minmax(0,6fr) minmax(0,6fr); g
 footer .fgrid > *{min-width:0}
 @media (max-width: 860px){ footer .fgrid{grid-template-columns:1fr} }
 .cite{border:1px solid var(--rule); background:var(--bg-2); padding:18px 20px; font-family:var(--mono); font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; position:relative}
+.cite a{color:var(--held); text-decoration:underline; text-underline-offset:2px}
+.cmd.bib pre{font-size:12px; white-space:pre; overflow-wrap:normal; overflow-x:auto}
 .cite button{display:block; margin-top:12px; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; padding:7px 12px; border:1px solid var(--rule); color:var(--ink-2); background:var(--bg-2); min-height:32px}
 .cite button:hover{border-color:var(--ink); color:var(--ink)}
 footer .links2{display:flex; flex-direction:column; gap:10px; font-size:14px}
 footer .links2 a{display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--rule-2); font-family:var(--mono); font-size:12px; letter-spacing:.04em; min-width:0}
 footer .links2 a span:last-child{color:var(--ink-3); text-align:right; flex-shrink:1}
-footer .links2 a span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+footer .links2 a span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap; color:var(--held)}
 footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.08em; color:var(--ink-3); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px}
 .toast{position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom, 0px)); transform:translate(-50%, 20px); background:var(--panel); color:var(--panel-ink); font-family:var(--mono); font-size:12px; letter-spacing:.08em; padding:10px 16px; border:1px solid var(--panel-rule); opacity:0; transition:opacity .25s, transform .25s; z-index:80; pointer-events:none}
 .toast.show{opacity:1; transform:translate(-50%, 0)}
@@ -801,15 +865,20 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
   <div class="wrap">
     <div class="hero-grid">
       <div class="minw">
+        <p class="hero-meta rv"><i aria-hidden="true"></i><b>Preprint · 2026</b> · Release 1.5.1 · Apache 2.0</p>
         <h1 class="rv"><span class="sym">Assay</span>: a reasoning harness that grounds a test‑time world model <span class="thin">by prediction</span></h1>
-        <p class="lede abstract rv">An agent that works for hours in a world it does not know has to keep what it learns somewhere. <span class="sym">Assay</span> keeps it outside the model and outside the harness: the agent names the parts of the world it cares about, writes a prediction over them before every action, and the harness grades every outcome against the real behavior inside the world. A fact enters the world model only through a prediction that held.</p>
+        <p class="byline rv"><b>M. Arjmandi</b></p>
         <div class="cta rv">
-          <a class="btn red" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 13 13 3M6 3h7v7"/></svg></a>
+          <a class="btn red" href="https://doi.org/10.5281/zenodo.22145966" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M3 13 13 3M6 3h7v7"/></svg></a>
+          <a class="btn" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Code</a>
+          <a class="btn" href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32" target="_blank" rel="noopener">Scorecard</a>
+          <a class="btn" href="#cite">BibTeX</a>
           <a class="btn" href="#start">Get started</a>
           <a class="btn" href="https://arjmandi.github.io/assay/benchmarks/">Benchmarks</a>
         </div>
       </div>
-      <aside class="panel dark loop-panel rv" aria-label="The gated loop, animated">
+      <figure class="loop-fig rv">
+      <aside class="panel dark loop-panel" aria-label="The gated loop, animated">
         <div class="dscroll"><svg class="loop-svg" viewBox="0 0 560 380" role="img" aria-label="Diagram of the loop: the agent writes a prediction and an action, the gate admits the action only with a prediction, the world steps, the grader checks every outcome against the world's response, and every event enters the record, which the agent reads by address.">
           <defs>
             <marker id="ah" viewBox="0 0 8 8" refX="7" refY="4" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0.5 L8,4 L0,7.5 z" fill="#5B6E8C"/></marker>
@@ -879,14 +948,25 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
         <div class="loop-status" aria-live="polite"><span class="led on" id="loop-led"></span><span id="loop-status"><b>e279</b> · predict verify:checks/s2_p3_8left.py</span></div>
         <div class="loop-legend" aria-hidden="true"><span><span class="led on"></span>held</span><span><span class="led miss"></span>missed</span></div>
       </aside>
+      <figcaption class="figcap"><b>Fig. 1</b> The prediction loop. Every action carries a prediction; the grader returns a receipt, held or missed, and journals every event. A fact enters the world model only through a prediction that held.</figcaption>
+      </figure>
     </div>
 
-    <p class="eyebrow rv stat-title"><span class="num">Performance</span><span>ARC-AGI-3 · Public set · Backbone Opus 5</span></p>
-    <div class="stat-strip rv" role="list" aria-label="Performance on ARC-AGI-3, public set, backend model Opus 5">
-      <div class="stat" role="listitem"><span class="v" data-count="96.54" data-dec="2">96.54</span><span class="l">RHAE</span></div>
-      <div class="stat" role="listitem"><span class="v"><span data-count="24">24</span><small>/ 25</small></span><span class="l">games won · 177 of 183 levels</span></div>
-      <div class="stat" role="listitem"><span class="v" data-count="8157" data-sep="1">8,157</span><span class="l">Total number of actions</span></div>
-      <div class="stat" role="listitem"><span class="v" data-count="0">0</span><span class="l">ungated events · 25 of 25 journals CLEAN</span></div>
+    <div class="abstract-row rv">
+      <h2 class="ab-l">Abstract</h2>
+      <p class="lede abstract">An agent that works for hours in a world it does not know has to keep what it learns somewhere. <span class="sym">Assay</span> keeps it outside the model and outside the harness: the agent names the parts of the world it cares about, writes a prediction over them before every action, and the harness grades every outcome against the real behavior inside the world. <mark class="claim">A fact enters the world model only through a prediction that held.</mark></p>
+    </div>
+  </div>
+
+  <div class="headline">
+    <div class="wrap">
+      <div class="stat-title rv"><h2>Headline result</h2><span class="meta">ARC-AGI-3 public set · backbone Opus 5 · scorecard 702ccd4f</span><a class="more" href="https://arjmandi.github.io/assay/benchmarks/">Read the evidence <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M2 8h11M9 4l4 4-4 4"/></svg></a></div>
+      <div class="stat-strip rv" role="list" aria-label="Performance on ARC-AGI-3, public set, backend model Opus 5">
+        <div class="stat" role="listitem"><span class="l">RHAE</span><span class="v held" data-count="96.54" data-dec="2">96.54</span><span class="c">Server-scored replay of all 25 recorded runs, under hard caps.</span></div>
+        <div class="stat" role="listitem"><span class="l">Games won</span><span class="v"><span data-count="24">24</span><small>/ 25</small></span><span class="meter" aria-hidden="true"><i style="width:96.7%"></i></span><span class="c">177 of 183 levels.</span></div>
+        <div class="stat" role="listitem"><span class="l">Paid actions</span><span class="v" data-count="8157" data-sep="1">8,157</span><span class="c">Every one carried a graded prediction.</span></div>
+        <div class="stat" role="listitem"><span class="l">Ungated events</span><span class="v" data-count="0">0</span><span class="clean" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span><span class="c">25 of 25 journals clean under the public checker.</span></div>
+      </div>
     </div>
   </div>
 </section>
@@ -960,18 +1040,30 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
 <!-- ============ 02 PROBLEM ============ -->
 <section class="section" id="problem">
   <div class="wrap">
-    <div class="section-head">
+    <div class="section-head stacked prob-head">
       <p class="eyebrow rv"><span class="num">§ 02</span><span>The problem</span></p>
       <h2 class="rv">LLMs consume context, but context rots.</h2>
-      <p class="lede rv">The agent runs for hours, across sessions, with a budget of actions and a context window as its only working memory. What it learns has to be written somewhere, and the choice of where decides three things: what happens when the context fills, when the session ends, and when the agent is wrong. <span class="sym">Assay</span> is the fourth system in one research line. The first three documented their own failures, and the paper states them in the formal terms it later uses. <strong>Referent grounding</strong>: a rule written in prose names something the model cannot reliably locate in the observation again, so the rule can never be checked and silently degrades to a belief. <strong>Belief accounting</strong>: a theory that fits every observation made so far is treated as supported in regions no observation visited. Forgetting across a long context makes both chronic. The prose that stood in for the referent and the evidence that stood in for the support are the first things a long context loses.</p>
+      <div class="prob-intro">
+        <div class="prob-main">
+          <p class="lede rv">The agent runs for hours, across sessions, with a budget of actions and a context window as its only working memory. What it learns has to be written somewhere, and the choice of where decides three things: what happens when the context fills, when the session ends, and when the agent is wrong.</p>
+          <p class="rv"><span class="sym">Assay</span> is the fourth system in one research line.<sup class="fn"><a href="#fn-line">1</a></sup> The first three documented their own failures, and the paper states them in the formal terms it later uses.</p>
+        </div>
+        <aside class="sidenote rv" id="fn-line"><span class="fn">1</span> Sensi (<a href="https://arxiv.org/abs/2603.17683" target="_blank" rel="noopener">arXiv:2603.17683</a>) and ARG (<a href="https://arxiv.org/abs/2608.04066" target="_blank" rel="noopener">arXiv:2608.04066</a>) are published; arg-v2 is unpublished.</aside>
+      </div>
     </div>
+
+    <div class="modes rv">
+      <div class="mode"><p class="ml"><span class="led miss"></span>Failure mode 1</p><h3 class="mt">Referent grounding</h3><p>A rule written in prose names something the model cannot reliably locate in the observation again, so the rule can never be checked and silently degrades to a belief.</p></div>
+      <div class="mode"><p class="ml"><span class="led miss"></span>Failure mode 2</p><h3 class="mt">Belief accounting</h3><p>A theory that fits every observation made so far is treated as supported in regions no observation visited.</p></div>
+    </div>
+    <p class="pull rv">Forgetting across a long context makes both chronic. The prose that stood in for the referent and the evidence that stood in for the support are the first things a long context loses.</p>
 
     <div class="stack" style="gap:32px">
       <div class="lineage rv" style="margin-top:0" role="list" aria-label="The research line">
-        <div class="sys" role="listitem"><span class="when">March 2026</span><span class="n">Sensi</span><p>Perception separated from action, a hand-written curriculum, a language-model judge deciding what was learned.</p><p class="fail"><span class="led miss"></span><span>A wrong frame diff became a wrong fact; the judge scored it consistent. Ground truth never entered the pipeline.</span></p></div>
-        <div class="sys" role="listitem"><span class="when">August 2026</span><span class="n">ARG</span><p>A deterministic executive owned all belief. A rule was admitted only when a prediction registered before acting matched the observation by code.</p><p class="fail"><span class="led miss"></span><span>Zero level completions in 52 gated runs. Consistent-but-wrong theories pass when probes lack discriminating power; the closed vocabulary was a binding constraint.</span></p></div>
-        <div class="sys" role="listitem"><span class="when">August 2026 · unpublished</span><span class="n">arg-v2</span><p>Open vocabulary, Python in a sandbox, a registry and adapter seam, verifier code hash-committed before action.</p><p class="fail"><span class="led miss"></span><span>Over-generation: one run proposed 111 rules and left 105 untested. Forgetting between sessions. The referent problem, now instrumented and still unsolved.</span></p></div>
-        <div class="sys" role="listitem"><span class="when">This paper</span><span class="n">Assay</span><p>An outcome must name a registered state or a program, so every rule has a computed referent. The gate makes a graded outcome the only way a belief enters the record.</p><p class="fail"><span class="led ok"></span><span>The support of a rule becomes a query over the record rather than a recollection.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">March 2026</span><span class="n">Sensi</span><p>Perception separated from action, a hand-written curriculum, a language-model judge deciding what was learned.</p><p class="fail"><span class="fl"><span class="led miss"></span>What broke</span><span>A wrong frame diff became a wrong fact; the judge scored it consistent. Ground truth never entered the pipeline.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">August 2026</span><span class="n">ARG</span><p>A deterministic executive owned all belief. A rule was admitted only when a prediction registered before acting matched the observation by code.</p><p class="fail"><span class="fl"><span class="led miss"></span>What broke</span><span>Zero level completions in 52 gated runs. Consistent-but-wrong theories pass when probes lack discriminating power; the closed vocabulary was a binding constraint.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">August 2026 · unpublished</span><span class="n">arg-v2</span><p>Open vocabulary, Python in a sandbox, a registry and adapter seam, verifier code hash-committed before action.</p><p class="fail"><span class="fl"><span class="led miss"></span>What broke</span><span>Over-generation: one run proposed 111 rules and left 105 untested. Forgetting between sessions. The referent problem, now instrumented and still unsolved.</span></p></div>
+        <div class="sys" role="listitem"><span class="when">This paper</span><span class="n">Assay</span><p>An outcome must name a registered state or a program, so every rule has a computed referent. The gate makes a graded outcome the only way a belief enters the record.</p><p class="fail ok"><span class="fl"><span class="led on"></span>What changes</span><span>The support of a rule becomes a query over the record rather than a recollection.</span></p></div>
       </div>
     </div>
   </div>
@@ -1110,7 +1202,8 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
           <dt>Change it when</dt><dd id="ld-when"></dd>
           <dt>Lifetime</dt><dd id="ld-life"></dd>
         </dl>
-        <div class="diag"><span class="tiny" style="display:block;margin-bottom:6px">THE DIAGNOSTIC THAT POINTS HERE</span><span id="ld-diag"></span></div>
+        <div class="diag"><span class="dl"><span class="led miss"></span>THE DIAGNOSTIC THAT POINTS HERE</span><span id="ld-diag"></span></div>
+        <div class="ld-nav"><button type="button" class="btn" id="ld-prev"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg>More general</button><button type="button" class="btn" id="ld-next">More specific<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4"/></svg></button></div>
       </div>
     </div>
     <div class="datum rv">
@@ -1118,10 +1211,11 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
         <p class="eyebrow" style="margin-bottom:10px"><span class="num">§ 6.11</span><span>One sentence, moved between layers</span></p>
         <p>The OOLONG registry's goal text carried one strategy sentence: the corpus is a file in the run directory and should be read with the agent's own offline tools. Removing that sentence, and nothing else, produced the de-hinted arm. <b>At the 1M-token rung the two arms scored within one question of each other and their cost moved by close to an order of magnitude.</b> At 128K the sentence was worth 0.870 against 0.764, and without it the counting group of questions collapsed. A sentence at the registry layer changed cost and changed capability on one question class, with the kernel and the constitution untouched.</p>
       </div>
-      <div class="nums">
-        <div class="x"><span class="v">$5.16</span><span class="l">1M · hinted · 0.701</span></div>
-        <div class="x"><span class="v r">$48.76</span><span class="l">1M · de-hinted · 0.740</span></div>
-      </div>
+      <figure class="nums">
+        <div class="x"><div class="xh"><span class="l h">Hinted</span><span class="v">$5.16</span></div><span class="cb" aria-hidden="true"><i style="width:10.6%"></i></span><span class="s">1M tokens · score 0.701</span></div>
+        <div class="x"><div class="xh"><span class="l">De-hinted</span><span class="v">$48.76</span></div><span class="cb dh" aria-hidden="true"><i style="width:100%"></i></span><span class="s">1M tokens · score 0.740</span></div>
+        <figcaption>Cost of each arm at the 1M-token rung, same kernel and constitution.</figcaption>
+      </figure>
     </div>
   </div>
 </section>
@@ -1133,9 +1227,8 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
       <p class="eyebrow rv"><span class="num">§ 05</span><span>The harness</span></p>
       <h2 class="rv">Runtime design.</h2>
     </div>
-    <div class="stack" style="gap:24px">
-      <div class="panel rv" style="padding:22px 28px 28px">
-        <p class="eyebrow"><span class="num">Fig. 1</span></p>
+    <figure class="arch-fig rv">
+      <div class="panel" style="padding:22px 28px 0">
         <div class="dscroll"><svg class="arch-svg" id="arch" viewBox="0 0 910 520" style="margin-top:14px" role="img" aria-label="Architecture: the operator starts the run and holds the owner token; the agent drives the daemon; the daemon holds the run, gate and grader and writes the run directory; agent code runs in a sandbox; the adapter reaches the world; the independent checker and the anchor file sit outside the run.">
           <rect class="zone" x="12" y="112" width="668" height="236"/>
           <text class="lab" x="22" y="128">one user id for everything inside this line</text>
@@ -1156,12 +1249,10 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
           <g class="hit" data-arch="checker" tabindex="0" role="button" aria-label="Independent checker"><rect class="box out" x="360" y="462" width="330" height="48"/><text class="t" x="372" y="483">Independent checker</text><text class="lab" x="372" y="499">stdlib only · no harness import</text></g>
           <g class="hit" data-arch="anchor" tabindex="0" role="button" aria-label="Anchor file"><rect class="box out" x="710" y="462" width="180" height="48"/><text class="t" x="722" y="483">Anchor file</text><text class="lab" x="722" y="499">outside the run dir</text></g>
         </svg></div>
+        <div class="arch-note" id="arch-note"><p class="an">Daemon</p><p class="ad">Loads the run once, holds it in memory as typed records, executes every paid action behind the gate of Algorithm 1, and appends every event to the journal before the reply leaves the socket. It is the only process that spends and the only writer of the journal, the chain file, the spend log and the anchor file.</p></div>
       </div>
-      <div class="rv">
-        <div class="arch-note" id="arch-note"><b>Daemon.</b> Loads the run once, holds it in memory as typed records, executes every paid action behind the gate of Algorithm 1, and appends every event to the journal before the reply leaves the socket. It is the only process that spends and the only writer of the journal, the chain file, the spend log and the anchor file.</div>
-        
-      </div>
-    </div>
+      <figcaption class="figcap"><b>Fig. 2</b> Runtime design. Everything inside the dashed boundary runs under one user id; the checker and the anchor file sit outside it.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -1174,7 +1265,16 @@ footer .colophon{margin-top:40px; font-family:var(--mono); font-size:12px; font-
     <div class="fgrid">
       <div class="stack">
         <p class="eyebrow"><span class="num">Cite</span><span>Preprint</span></p>
-        <div class="cite" id="cite">Arjmandi, M. (2026). <span class="sym">Assay</span>: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint.<button type="button" id="copy-cite" aria-label="Copy citation">Copy</button></div>
+        <div class="cmd bib" id="cite"><div class="cmd-h"><span>BibTeX</span><button type="button" class="cp" aria-label="Copy BibTeX">Copy</button></div><pre>@misc{arjmandi2026assay,
+  author    = {Arjmandi, M.},
+  title     = {Assay: An Agent Harness That Grounds a Test-Time
+               World Model by Checked Prediction},
+  year      = {2026},
+  note      = {Preprint},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.23685371}
+}</pre></div>
+        <div class="cite" id="cite-text">Arjmandi, M. (2026). <span class="sym">Assay</span>: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint. Zenodo. <a href="https://doi.org/10.5281/zenodo.23685371" target="_blank" rel="noopener">https://doi.org/10.5281/zenodo.23685371</a><button type="button" id="copy-cite" aria-label="Copy citation">Copy</button></div>
         <p class="small" style="max-width:60ch">Release 1.2.0 is open source under Apache 2.0 and takes issues only, not pull requests. The journal specification, the checker and the evidence packs ship inside it under MIT, so a journal can be verified without a license to the harness.</p>
       </div>
       <div class="stack">
@@ -1270,7 +1370,7 @@ if (motionOK && 'IntersectionObserver' in window){
     {status:'<b>receipt</b> · <span class="miss">MISSED</span>, actual value first · e279 appended, chain extended', kind:'miss'},
     {status:'<b>agent</b> reads by address · fixes the notes before the next action', kind:'ok'},
   ];
-  if (!motionOK){ setStatus(steps[4].status, steps[4].kind); return; }
+  if (!motionOK){ setStatus(steps[4].status, steps[4].kind); $('#n-grader').classList.add('lit'); return; }
   // pace: a token travels SPEED viewBox units a second, and every step holds long enough to read its status line
   const SPEED = 70, MIN_HOP = 800;
   const tok = {main:$('#tok-main'), obs:$('#tok-obs'), rcpt:$('#tok-rcpt'), read:$('#tok-read')};
@@ -1342,14 +1442,19 @@ function bindTips(root){
     {i:'Layer 5', kind:'everything behind the API', n:'The model', by:'Not the harness.', when:'Not the harness.', life:'Chosen by the operator before the run, with the player command. The record holds nothing about the model beyond the player\'s own session report in the runner\'s ledger.', diag:'A <b>gamble miss rate that stays high</b> while the world model holds.',
      p:'Everything behind the API. The harness never sees a prompt, a temperature or a token, only a stream of commands; the more the model already knows a world, the less the layers above it need to say. Every run in the paper used one model, Claude Opus 5.'},
   ];
-  const tabs = $$('#layer-stack [role=tab]');
+  const tabs = $$('#layer-stack [role=tab]'), prev = $('#ld-prev'), next = $('#ld-next');
+  let cur = 0;
   function show(i){
+    cur = i;
     tabs.forEach((t,j)=>t.setAttribute('aria-selected', String(i===j)));
+    prev.setAttribute('aria-disabled', String(i === 0)); next.setAttribute('aria-disabled', String(i === L.length - 1));
     const d = L[i];
     $('#ld-i').textContent = d.i; $('#ld-kind').textContent = d.kind; $('#ld-n').textContent = d.n; $('#ld-p').textContent = d.p; $('#ld-by').textContent = d.by; $('#ld-when').textContent = d.when; $('#ld-life').textContent = d.life; $('#ld-diag').innerHTML = d.diag;
     if (A && motionOK) A({targets:'#layer-detail > *', opacity:[0,1], translateY:[6,0], delay:A.stagger(40), duration:360, easing:'easeOutQuad'});
   }
   tabs.forEach(t => t.addEventListener('click', ()=>show(parseInt(t.dataset.layer,10))));
+  prev.addEventListener('click', () => { if (cur > 0) show(cur - 1); });
+  next.addEventListener('click', () => { if (cur < L.length - 1) show(cur + 1); });
   show(0);
 })();
 
@@ -1366,7 +1471,7 @@ function bindTips(root){
     anchor:'<b>Anchor file.</b> Outside the run directory. The chain head is written here every 25 events and on WIN, and the sealing record is appended here when the daemon detects a difference between the disk and the copies it holds. A sealed anchor reads as "the journal ends exactly here" to the audit, and the detection survives the daemon\'s death.',
   };
   const note = $('#arch-note'), hits = $$('#arch g.hit');
-  function show(k){ hits.forEach(h => h.classList.toggle('on', h.dataset.arch === k)); note.innerHTML = N[k]; if (A && motionOK) A({targets:note, opacity:[0,1], duration:300, easing:'easeOutQuad'}); }
+  function show(k){ hits.forEach(h => h.classList.toggle('on', h.dataset.arch === k)); const m = /^<b>(.*?)\.<\/b>\s*([\s\S]*)$/.exec(N[k]); note.innerHTML = m ? '<p class="an">'+m[1]+'</p><p class="ad">'+m[2]+'</p>' : N[k]; if (A && motionOK) A({targets:note, opacity:[0,1], duration:300, easing:'easeOutQuad'}); }
   hits.forEach(h => { h.addEventListener('click', ()=>show(h.dataset.arch)); h.addEventListener('keydown', e => { if (e.key==='Enter'||e.key===' '){ e.preventDefault(); show(h.dataset.arch); } }); });
   show('daemon');
 })();
@@ -1449,11 +1554,11 @@ function tableHTML(id, head, rows, hiIdx){ const t = $(id); if (!t) return; t.in
 /* ---------- footer · copy citation ---------- */
 (function(){
   const b = $('#copy-cite'), toast = $('#toast');
-  const text = 'Arjmandi, M. (2026). ASSAY: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint. https://github.com/arjmandi/assay';
+  const text = 'Arjmandi, M. (2026). ASSAY: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint. Zenodo. https://doi.org/10.5281/zenodo.23685371';
   const say = m => { toast.textContent = m; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1800); };
   b.addEventListener('click', ()=>{
     const done = () => say('Citation copied');
-    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('#cite')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say('Select and copy the citation'); };
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('#cite-text')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say('Select and copy the citation'); };
     if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
   });
 })();
