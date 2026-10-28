@@ -4,7 +4,8 @@ under, so only the harness differs.
 
     python3 bench/arcagi/baseline/run_baseline.py --state DIR \\
         [--models claude-sonnet-5-5,claude-haiku-5-5] [--games all] [--effort medium] \\
-        [--sessions 5] [--concurrency 6] [--cap 1500] [--usd 15] [--hours 4]
+        [--sessions 5] [--concurrency 6] [--cap 1500] [--usd 15] [--hours 4] \\
+        [--stop-gate coverage] [--prompt FILE] [--prefix ccb]
 
 Per job (model x game): a game server (game_server.py) holds the game for the
 whole job; sessions launch in the job's run directory with ARC_PLAY_SOCKET set
@@ -12,7 +13,10 @@ and the player's tools pinned as in the ASSAY rounds (Bash, Read, Glob, Grep,
 Write, Edit; no web, no agents); a session that ends with the game unwon and
 actions left is followed by another, up to `--sessions`; a usage-limit
 signal pauses the queue and does not count as a session (the ASSAY runner's
-test). Run it from the repository root with the interpreter that has numpy;
+test). With `--stop-gate coverage` (the Claude Code + Stop gate control) each
+session is held by stop_gate_baseline.py, the ASSAY rounds' gate over the
+baseline's own journal and NOTES.md, armed before the session as the ASSAY
+runner arms it. Run it from the repository root with the interpreter that has numpy;
 the game servers run under ASSAY_PYTHON (the arc_agi environment). Launch it
 with every ANTHROPIC_* and CLAUDE* variable unset, so the players use the
 operator's claude.ai login.
@@ -42,6 +46,10 @@ REPO = HERE.parents[2]
 sys.path.insert(0, str(REPO))
 from tools.eval.runner import looks_rate_limited  # noqa: E402
 
+import shlex  # noqa: E402
+
+GATE_HOOK = Path(__file__).resolve().parent / "stop_gate_baseline.py"
+
 JOBS_FILE = REPO / "bench" / "arcagi" / "jobs" / "sonnet-haiku-5-5.json"
 PROMPT = HERE / "baseline_player.md"
 PLAY = HERE / "play.py"
@@ -61,9 +69,9 @@ def log(state: Path, line: str) -> None:
 
 
 class Job:
-    def __init__(self, model: str, game: str, levels: int, state: Path) -> None:
+    def __init__(self, model: str, game: str, levels: int, state: Path, prefix: str = "ccb") -> None:
         self.model, self.game, self.levels = model, game, levels
-        self.id = f"ccb-{game}-{SHORT.get(model, model)}"
+        self.id = f"{prefix}-{game}-{SHORT.get(model, model)}"
         self.run_dir = state / "runs" / self.id
         self.journal = state / "journals" / self.id
         self.ledger_path = state / "sessions" / f"{self.id}.json"
@@ -91,20 +99,22 @@ class Baseline:
     def __init__(self, args: argparse.Namespace) -> None:
         self.args = args
         self.state = Path(args.state).resolve()
-        for sub in ("runs", "journals", "sessions", "prompts"):
+        for sub in ("runs", "journals", "sessions", "prompts", "gates"):
             (self.state / sub).mkdir(parents=True, exist_ok=True)
         Path("/tmp/ccb").mkdir(exist_ok=True)
         design = json.loads(JOBS_FILE.read_text())
         levels = {world["id"]: int(world["levels"]) for world in design["worlds"]}
         games = sorted(levels) if args.games == "all" else args.games.split(",")
         # Models alternate in the queue, so both play at once, as in the 2026-10-25 sweep.
-        self.jobs = [Job(model, game, levels[game], self.state) for game in games for model in args.models.split(",")]
+        self.jobs = [Job(model, game, levels[game], self.state, args.prefix) for game in games for model in args.models.split(",")]
+        self.prompt_file = Path(args.prompt).resolve() if args.prompt else PROMPT
         self.python = os.environ.get("ASSAY_PYTHON", sys.executable)
         self.paused_until = 0.0
         (self.state / "design.json").write_text(json.dumps({
             "models": args.models.split(","), "games": games, "effort": args.effort, "sessions": args.sessions,
             "concurrency": args.concurrency, "cap": args.cap, "usd": args.usd, "hours": args.hours,
-            "prompt": str(PROMPT), "play": str(PLAY), "started": now(),
+            "prompt": str(self.prompt_file), "play": str(PLAY), "stop_gate": args.stop_gate, "prefix": args.prefix,
+            "started": now(),
         }, indent=1) + "\n")
 
     # ---- one job ----------------------------------------------------------------------------------
@@ -145,7 +155,7 @@ class Baseline:
             "game continues from where they left it. Read NOTES.md first if it exists."
         )
         play = f"python3 {PLAY}"
-        text = PROMPT.read_text()
+        text = self.prompt_file.read_text()
         for key, value in {"RUN_DIR": str(job.run_dir), "WORLD": job.game, "LEVELS": str(job.levels),
                            "PLAY": play, "BUDGET": str(self.args.cap), "SESSION_NOTE": note}.items():
             text = text.replace("{{" + key + "}}", value)
@@ -168,11 +178,45 @@ class Baseline:
         out = (self.state / "sessions" / f"{job.id}.s{session}.player.out").open("w")
         err = (self.state / "sessions" / f"{job.id}.s{session}.player.err").open("w")
         env = {**os.environ, "ARC_PLAY_SOCKET": str(job.socket)}
+        if self.args.stop_gate == "coverage":
+            self.arm_gate(job, session, env)
         process = subprocess.Popen(self.command(job, prompt), cwd=job.run_dir, stdout=out, stderr=err, env=env,
                                    start_new_session=True)
         log(self.state, f"LAUNCH | {job.id} | session {session} | pid {process.pid} | cwd {job.run_dir}")
         return {"process": process, "session": session, "started": now(), "t0": time.time(),
                 "paid_before": job.facts()["paid"], "out": out, "err": err}
+
+    def gate_state(self, job: Job) -> Path:
+        return self.state / "gates" / f"{job.id}.json"
+
+    def arm_gate(self, job: Job, session: int, env: dict[str, str]) -> None:
+        """Before a session of the control: the gate's state file with the
+        launch snapshot, the Stop hook in the run directory's settings, and
+        the variable that names the state file to the player."""
+        sys.path.insert(0, str(GATE_HOOK.parent))
+        import stop_gate_baseline as hook
+
+        gate = hook.load_gate()
+        view = hook.load_view(gate, job.run_dir, job.journal, self.args.cap)
+        launch = {"session": session, "at": now(), **gate.launch_snapshot(view, "coverage")}
+        self.gate_state(job).write_text(json.dumps(gate.fresh_state(launch), indent=2) + "\n")
+        command = shlex.join([sys.executable, str(GATE_HOOK), "--run-dir", str(job.run_dir),
+                              "--journal", str(job.journal), "--cap", str(self.args.cap)])
+        settings = job.run_dir / ".claude" / "settings.json"
+        settings.parent.mkdir(parents=True, exist_ok=True)
+        settings.write_text(json.dumps({"hooks": {"Stop": [{"hooks": [
+            {"type": "command", "command": command, "timeout": 60}]}]}}, indent=2) + "\n")
+        env[gate.STATE_VARIABLE] = str(self.gate_state(job))
+
+    def gate_decisions(self, job: Job) -> list[Any] | None:
+        if self.args.stop_gate != "coverage":
+            return None
+        try:
+            value = json.loads(self.gate_state(job).read_text())
+        except (OSError, ValueError):
+            return None
+        decisions = value.get("decisions") if isinstance(value, dict) else None
+        return decisions if isinstance(decisions, list) else None
 
     def finish(self, job: Job, info: dict[str, Any], timed_out: bool) -> str | None:
         """Record the session; the job's outcome when it is over, else None."""
@@ -196,6 +240,7 @@ class Baseline:
             "rate_limited": limited, "paid_before": info["paid_before"], "paid_after": facts["paid"],
             "state_after": facts["state"], "levels_after": facts["levels"],
             "report": report if isinstance(report, dict) else None,
+            "gate": self.gate_decisions(job),
         })
         job.ledger_path.write_text(json.dumps(ledger, indent=1) + "\n")
         if limited:
@@ -286,6 +331,9 @@ def main() -> None:
     parser.add_argument("--cap", type=int, default=1500)
     parser.add_argument("--usd", type=float, default=15.0)
     parser.add_argument("--hours", type=float, default=4.0)
+    parser.add_argument("--stop-gate", choices=("none", "coverage"), default="none")
+    parser.add_argument("--prompt", help="the player prompt template (default baseline_player.md)")
+    parser.add_argument("--prefix", default="ccb", help="the job ids' prefix")
     if shutil.which("claude") is None:
         raise SystemExit("claude is not on PATH")
     Baseline(parser.parse_args()).run()

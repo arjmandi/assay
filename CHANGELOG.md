@@ -3,6 +3,21 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## sonnet-haiku-5-5-baseline-gate (2026-10-28, a tag on the same branch, not a release)
+
+The Claude Code + Stop gate control the pre-submission review asked for: the
+operator layer of the ASSAY rounds with no ASSAY under it.
+
+### Added
+
+- `bench/arcagi/baseline/stop_gate_baseline.py`: the gate of
+  `hooks/stop_gate.py` (loaded by path, the same rules) over the baseline's
+  journal and NOTES.md, its message pointed at `play.py` and `NOTES.md`.
+- `run_baseline.py --stop-gate coverage --prompt FILE --prefix NAME`: the
+  gate armed before each session as the ASSAY runner arms it, its decisions
+  in the session ledger; `baseline_player_gate.md`, the baseline prompt with
+  the fix-2 budget sentence and the gate's rule.
+
 ## sonnet-haiku-5-5-baseline (2026-10-27, a tag on the same branch, not a release)
 
 The Claude Code baseline the experiment lacked: the same ARC-AGI-3 public
