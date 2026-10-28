@@ -4,427 +4,479 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>ASSAY Benchmarks</title>
-<meta name="description" content="ASSAY benchmarks: ARC-AGI-3, Factorio and OOLONG, with the Opus 5 campaign and the Sonnet and Haiku 5.5 runs.">
+<meta name="description" content="ASSAY benchmarks: the ASSAY paper on ARC-AGI-3, Factorio and OOLONG with Claude Opus 5, and the RSI paper on ARC-AGI-3 with Claude Haiku 5.5.">
 <meta property="og:type" content="website">
 <meta property="og:title" content="ASSAY Benchmarks">
-<meta property="og:description" content="ASSAY benchmarks: ARC-AGI-3, Factorio and OOLONG, with the Opus 5 campaign and the Sonnet and Haiku 5.5 runs.">
+<meta property="og:description" content="ASSAY benchmarks: the ASSAY paper on ARC-AGI-3, Factorio and OOLONG with Claude Opus 5, and the RSI paper on ARC-AGI-3 with Claude Haiku 5.5.">
 <meta property="og:url" content="https://arjmandi.github.io/assay/benchmarks/">
 <link rel="canonical" href="https://arjmandi.github.io/assay/benchmarks/">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' fill='%23E6E8EA' stroke='%2317191B' stroke-width='2'/%3E%3Ccircle cx='11' cy='11' r='3.5' fill='%231A56B3'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 22'%3E%3Crect x='1' y='1' width='20' height='20' fill='%23FAF8F4' stroke='%2315171A' stroke-width='2'/%3E%3Ccircle cx='11' cy='11' r='3.5' fill='%231F57C3'/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=IBM+Plex+Sans:ital,wght@0,300;0,400;0,500;1,300;1,400&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Libre+Caslon+Display&family=Libre+Caslon+Text:ital@0;1&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
 <style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style>
 </head>
 <body>
 <style>
-/* Layout concept: a machined instrument datasheet. One 12-column rail, hairline rules,
-   registration marks at panel corners, one blue signal colour for the gate and the misses. */
+/* Layout concept: paper and ink. Warm paper ground, white cards for the record, deep navy
+   instruments for diagrams and code; blue means held, the selection and the primary action,
+   orange means missed, a refusal or a failure. Tokens: design-handoff/tokens.css, verbatim. */
 :root{
-  /* one look, by choice: industrial gray everywhere, graphite for the instruments, never black */
-  --bg:#E6E8EA;        /* cast aluminium ground, near white */
-  --bg-2:#EEF0F1;      /* raised panel */
-  --bg-3:#D7DADC;      /* recessed well */
-  --bg-4:#C6C9CC;      /* deeper well, chart tracks */
-  --ink:#17191B;
-  --ink-2:#4A4F52;
-  --ink-3:#6E7478;
-  --rule:#B8BCBF;
-  --rule-2:#D2D5D7;
-  --red:#1A56B3;       /* signal: marks, LEDs, the gate (token name kept; value is the accent) */
-  --red-text:#174A96;  /* signal on text */
-  --red-soft:rgba(26,86,179,.14);
-  --panel:#3A3E42;     /* graphite instrument (RAL 7024 family) */
-  --panel-raised:#484C51;
-  --panel-well:#2E3236;
-  --panel-ink:#E8E9EA;
-  --panel-ink-2:#B4B8BC;
-  --panel-rule:#565B60;
-  --panel-red:#7FB0F5;
-  --mark-1:#2E3134;    /* chart: primary gray mark */
-  --mark-2:#6E7378;    /* chart: secondary gray mark */
-  --mark-3:#969B9F;    /* chart: tertiary / reference */
-  --grid:#CDD0D3;
-  --focus:#1A56B3;
-  --noise-o:.07;
+  /* ground and surfaces: warm paper, white raised panels */
+  --bg:#FAF8F4;        /* page ground (was #E6E8EA) */
+  --bg-2:#FFFFFF;      /* raised panel, cards (was #EEF0F1) */
+  --bg-3:#F3F1EC;      /* recessed well, kernel boxes in figures (was #D7DADC) */
+  --bg-4:#ECE8E1;      /* chart tracks, meter tracks (was #C6C9CC) */
+
+  /* ink */
+  --ink:#15171A;       /* (was #17191B) */
+  --ink-2:#3F454B;     /* secondary text (was #4A4F52) */
+  --ink-3:#5F666D;     /* tertiary text, numbers in nav (was #6E7478, failed AA) */
+  --rule:#E2DED6;      /* hairlines and panel borders (was #B8BCBF) */
+  --rule-2:#EFECE6;    /* row separators (was #D2D5D7) */
+
+  /* accent = held (names kept for compatibility) */
+  --red:#1F57C3;       /* accent: primary action, selection, held (was #1A56B3) */
+  --red-text:#1A4BA8;  /* accent on text and hover fills (was #174A96) */
+  --red-soft:rgba(31,87,195,.10);
+
+  /* instruments: deep navy instead of graphite */
+  --panel:#101826;     /* (was #3A3E42) */
+  --panel-raised:#1A2436; /* (was #484C51) */
+  --panel-well:#0C1320;   /* code wells, journal well (was #2E3236) */
+  --panel-ink:#E6EBF2;    /* (was #E8E9EA) */
+  --panel-ink-2:#9FB0C6;  /* (was #B4B8BC) */
+  --panel-rule:#33445F;   /* (was #565B60) */
+  --panel-red:#7FB2FF;    /* accent on dark = held on dark (was #7FB0F5) */
+
+  /* chart marks */
+  --mark-1:#2B3036;
+  --mark-2:#5F666D;
+  --mark-3:#A3A8AD;
+  --grid:#ECE8E1;
+  --focus:#1F57C3;
+
+  /* the cast-metal grain belonged to the old concept; off for reading */
+  --noise-o:0;
+
+  /* NEW: semantic signal colors */
+  --held:var(--red);
+  --held-soft:var(--red-soft);
+  --miss:#A84B0C;
+  --miss-text:#8A3E0A;
+  --miss-soft:#FBEFE4;
+  --miss-rule:#EBC9AC;
+  --panel-held:var(--panel-red);
+  --panel-held-soft:rgba(127,178,255,.15);
+  --panel-miss:#FFA661;
+  --panel-miss-soft:rgba(255,166,97,.16);
+
+  /* type: unchanged families; the italic "Assay" gets a real italic face */
   --display:"Libre Caslon Display", "Libre Caslon Text", Georgia, "Times New Roman", serif;
+  --display-italic:"Libre Caslon Text", Georgia, "Times New Roman", serif;
   --sans:"IBM Plex Sans", "Helvetica Neue", Arial, sans-serif;
   --mono:"IBM Plex Mono", "SFMono-Regular", Menlo, Consolas, monospace;
+
+  /* layout: unchanged */
   --gutter:clamp(16px, 4vw, 56px);
   --maxw:1280px;
   --ease:cubic-bezier(.2,.7,.2,1);
   color-scheme:light;
 }
+/* this page's own names, all derived from the tokens above */
+:root{
+  --paper:var(--bg); --card:var(--bg-2); --well:var(--bg-3); --track:var(--bg-4);
+  --body:#2B3036;          /* running text: 13.6:1 on --bg */
+  --on-ink:#FFFFFF; --on-ink-2:#BFC5CC;
+  --rule-strong:#CFCAC0; --rule-soft:var(--rule-2);
+  --accent:var(--held); --accent-ink:var(--red-text); --accent-soft:#EEF3FC; --accent-line:#C9D6EA;
+  --warn:var(--miss);
+  --night:var(--panel); --night-2:var(--panel-raised); --night-rule:var(--panel-rule); --night-div:#263450;
+  --night-ink:var(--panel-ink); --night-ink-2:var(--panel-ink-2); --night-line:#5B6E8C;
+  --night-accent:var(--panel-held); --night-warn:var(--panel-miss);
+  --serif:var(--display-italic);
+}
 
 *,*::before,*::after{box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 @media (prefers-reduced-motion: reduce){ html{scroll-behavior:auto} }
-body{
-  margin:0; background:var(--bg); color:var(--ink);
-  font-family:var(--sans); font-weight:300; font-size:17px; line-height:1.55;
-  -webkit-font-smoothing:antialiased; overflow-x:hidden; position:relative;
-}
-body::before{ /* cast-metal grain */
-  content:""; position:fixed; inset:0; z-index:0; pointer-events:none; opacity:var(--noise-o);
-  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='220' height='220'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 .9 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size:220px 220px;
-}
-a{color:inherit; text-decoration:none}
-a:hover{color:var(--red-text)}
+body{margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans); font-weight:400; font-size:17px; line-height:1.6; -webkit-font-smoothing:antialiased; overflow-x:hidden}
+body::before{content:""; position:fixed; inset:0 0 auto; height:env(safe-area-inset-top, 0px); z-index:60; background:var(--paper)}
+a{color:var(--accent)}
+a:hover{color:var(--accent-ink)}
 :focus-visible{outline:2px solid var(--focus); outline-offset:3px}
 button{font:inherit; color:inherit; background:none; border:0; padding:0; cursor:pointer}
 code,kbd,pre{font-family:var(--mono)}
+code{font-size:.88em}
 svg{display:block; max-width:100%}
 img{max-width:100%}
-::selection{background:var(--red); color:#fff}
+::selection{background:var(--accent); color:var(--on-ink)}
 
 /* ---------- type ---------- */
-h1,h2,h3,h4{font-family:var(--display); font-weight:400; margin:0; text-wrap:balance; letter-spacing:-.005em}
-h1{font-size:clamp(28px, 4.34vw, 60px); line-height:1.06}
-h2{font-size:clamp(34px, 4.2vw, 56px); line-height:1.06}
-h3{font-size:clamp(24px, 2.4vw, 30px); line-height:1.18}
-h4{font-family:var(--sans); font-weight:500; font-size:15px; letter-spacing:.01em}
+h1,h2,h3,h4{font-family:var(--display); font-weight:400; margin:0; text-wrap:balance; letter-spacing:-.01em; color:var(--ink)}
+h1{font-size:clamp(36px, 5vw, 58px); line-height:1.06}
+h2{font-size:clamp(30px, 3.9vw, 46px); line-height:1.08}
+h3{font-size:clamp(23px, 2.2vw, 28px); line-height:1.2}
+h4{font-family:var(--mono); font-weight:500; font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink)}
 p{margin:0}
-.lede{font-size:clamp(19px, 1.6vw, 22px); line-height:1.45; font-weight:300; color:var(--ink); max-width:62ch}
-.prose{max-width:66ch; display:flex; flex-direction:column; gap:1em}
-.prose p{color:var(--ink)}
-.prose strong{font-weight:500}
-em{font-style:italic}
-.mono{font-family:var(--mono)}
-.eyebrow{
-  font-family:var(--mono); font-size:11px; letter-spacing:.14em; text-transform:uppercase; color:var(--ink-2);
-  display:flex; align-items:center; gap:12px; font-weight:400;
-}
-.eyebrow .num{color:var(--red-text); white-space:nowrap}
-.eyebrow::after{content:""; flex:1; height:1px; background:var(--rule); max-width:120px}
-.small{font-size:14px; color:var(--ink-2); line-height:1.5}
-.tiny{font-family:var(--mono); font-size:11.5px; letter-spacing:.04em; color:var(--ink-2); line-height:1.5}
+.lede{font-size:clamp(18px, 1.5vw, 20px); line-height:1.6; color:var(--body); max-width:64ch; text-wrap:pretty}
+.sym{font-family:var(--serif); font-style:italic}
+.eyebrow{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); display:flex; flex-wrap:wrap; gap:4px 12px; align-items:baseline; margin:0}
+.eyebrow .num{color:var(--accent)}
+.eyebrow span + span{color:var(--ink-2); font-weight:500}
+.small{font-size:14px; color:var(--ink-2); line-height:1.55}
+.tiny{font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-2); line-height:1.55}
 .num-tab{font-variant-numeric:tabular-nums}
-.sym{font-family:var(--display); font-style:italic}
 sub,sup{font-size:.7em; line-height:0}
 
 /* ---------- frame ---------- */
-.wrap{position:relative; z-index:1; width:100%; max-width:var(--maxw); margin:0 auto; padding-inline:var(--gutter)}
-.section{padding-block:clamp(20px, 2.5vw, 36px) clamp(36px, 4vw, 56px); border-top:0; position:relative}
-.section:first-of-type{border-top:0}
-.section-head{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:28px 56px; align-items:start; margin-bottom:clamp(40px, 5vw, 72px)}
-.section-head .eyebrow{grid-column:1 / -1}
-@media (max-width: 860px){ .section-head{grid-template-columns:1fr} }
-.section-head.stacked{grid-template-columns:1fr; gap:18px; align-items:start}
-.section-head.stacked .lede{max-width:70ch}
+.wrap{width:100%; max-width:var(--maxw); margin:0 auto; padding-left:max(var(--gutter), env(safe-area-inset-left, 0px)); padding-right:max(var(--gutter), env(safe-area-inset-right, 0px))}
 .grid{display:grid; gap:24px}
 .g2{grid-template-columns:repeat(2, minmax(0,1fr))}
 .g3{grid-template-columns:repeat(3, minmax(0,1fr))}
-.g4{grid-template-columns:repeat(4, minmax(0,1fr))}
-.g5-7{grid-template-columns:minmax(0,5fr) minmax(0,7fr)}
-.g7-5{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
-.g4-8{grid-template-columns:minmax(0,4fr) minmax(0,8fr)}
-@media (max-width: 960px){ .g3{grid-template-columns:1fr} .g4{grid-template-columns:repeat(2, minmax(0,1fr))} .g5-7,.g7-5,.g4-8{grid-template-columns:1fr} }
-@media (max-width: 600px){ .g2,.g3,.g4{grid-template-columns:1fr} }
-.stack{display:flex; flex-direction:column; gap:16px}
-.row{display:flex; flex-wrap:wrap; gap:12px; align-items:center}
-.minw{min-width:0}
-.grid > *, .hero-grid > *, .stack > *, .layers > *, .grammar > *, .ev-grid > *, .homes > *, .stepper > *{min-width:0}
-
-/* panel: raised machined plate with registration marks */
-.panel{position:relative; background:var(--bg-2); border:1px solid var(--rule); padding:28px}
-.panel::before,.panel::after{
-  content:""; position:absolute; width:9px; height:9px; pointer-events:none;
-  background:
-    linear-gradient(var(--ink-3),var(--ink-3)) center/9px 1px no-repeat,
-    linear-gradient(var(--ink-3),var(--ink-3)) center/1px 9px no-repeat;
-  opacity:.75;
-}
-.panel::before{top:-5px; left:-5px}
-.panel::after{bottom:-5px; right:-5px}
-.panel.flush{padding:0}
-.panel.dark{background:var(--panel); color:var(--panel-ink); border-color:var(--panel-rule)}
-.panel.dark .eyebrow,.panel.dark .small,.panel.dark .tiny{color:var(--panel-ink-2)}
-.panel.dark .eyebrow::after{background:var(--panel-rule)}
-.panel.dark .eyebrow .num{color:var(--panel-red)}
-.panel.dark a:hover{color:var(--panel-red)}
-.panel.well{background:var(--bg-3)}
-.inset{border:1px solid var(--rule-2); background:var(--bg); padding:16px 18px}
-.panel.dark .inset{border-color:var(--panel-rule); background:var(--panel-well)}
-.led{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ink-3); box-shadow:inset 0 0 0 1px rgba(0,0,0,.25); vertical-align:middle}
-.led.on{background:var(--red); box-shadow:0 0 0 3px var(--red-soft), inset 0 0 0 1px rgba(0,0,0,.2)}
-.led.ok{background:var(--ink)}
-.panel.dark .led.ok{background:var(--panel-ink)}
+@media (max-width: 960px){ .g3{grid-template-columns:1fr} }
+@media (max-width: 760px){ .g2{grid-template-columns:1fr} }
+.stack{display:flex; flex-direction:column; gap:20px}
+.row{display:flex; flex-wrap:wrap; gap:10px; align-items:center}
+.grid > *, .stack > *, .ev-grid > *, .studies > *{min-width:0}
 hr.rule{border:0; border-top:1px solid var(--rule); margin:0}
-.kv{display:grid; grid-template-columns:auto 1fr; gap:8px 20px; font-size:14px}
-.kv dt{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); padding-top:3px}
-.kv dd{margin:0}
+.rv{opacity:1}
 
 /* ---------- top bar ---------- */
-.topbar{
-  position:sticky; top:env(safe-area-inset-top, 0px); z-index:50;
-  background:color-mix(in srgb, var(--bg) 86%, transparent);
-  backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
-  border-bottom:1px solid var(--rule);
-}
-.topbar .wrap{display:flex; align-items:center; justify-content:space-between; gap:14px; height:56px}
-.brand{display:flex; align-items:center; gap:14px; font-family:var(--mono); font-size:12px; letter-spacing:.22em; text-transform:uppercase; color:var(--ink)}
-.brand .mark{width:22px; height:22px; position:relative}
-.brand .mark::before{content:""; position:absolute; inset:0; border:1px solid var(--ink)}
-.brand .mark::after{content:""; position:absolute; width:6px; height:6px; left:50%; top:50%; transform:translate(-50%,-50%); background:var(--red); border-radius:50%}
-.brand .ver{color:var(--ink-3); letter-spacing:.1em; text-transform:none; white-space:nowrap}
-nav.sections{display:flex; gap:4px; overflow-x:auto; scrollbar-width:none; min-width:0}
-nav.sections::-webkit-scrollbar{display:none}
-nav.sections a{
-  font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2);
-  padding:8px 7px; white-space:nowrap; position:relative;
-}
-nav.sections a .n{color:var(--ink-3); margin-right:4px}
-nav.sections a.active{color:var(--ink)}
-nav.sections a.active::after{content:""; position:absolute; left:7px; right:7px; bottom:2px; height:1px; background:var(--red)}
-.topbar .links{display:flex; gap:6px; flex-shrink:0}
-.topbar .links a{display:inline-flex; align-items:center; gap:7px; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; padding:7px 11px; border:1px solid var(--rule); color:var(--ink)}
-.topbar .links a:hover{border-color:var(--ink)}
-@media (max-width: 1180px){ .brand .ver{display:none} }
-@media (max-width: 1060px){ nav.sections{display:none} }
-@media (max-width: 520px){ .topbar .links a span{display:none} .brand .ver{display:none} }
-#progress{position:fixed; top:env(safe-area-inset-top, 0px); left:0; height:2px; width:0; background:var(--red); z-index:60; pointer-events:none}
+.topbar{position:sticky; top:env(safe-area-inset-top, 0px); z-index:50; background:color-mix(in srgb, var(--bg) 92%, transparent); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); border-bottom:1px solid var(--rule)}
+#progress{position:fixed; top:env(safe-area-inset-top, 0px); left:0; height:3px; width:0; background:var(--red); z-index:60; pointer-events:none}
+.topbar .wrap{display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px 28px; padding-block:14px}
+.brand{display:flex; align-items:center; gap:10px; text-decoration:none; color:var(--ink)}
+.brand:hover{color:var(--ink)}
+.brand .mark{width:18px; height:18px; border:1.5px solid var(--ink); display:flex; align-items:center; justify-content:center}
+.brand .mark::after{content:""; width:6px; height:6px; border-radius:50%; background:var(--accent)}
+.brand .word{font-family:var(--mono); font-size:13px; font-weight:600; letter-spacing:.16em}
+.brand .ver{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-3); padding-left:10px; border-left:1px solid var(--rule-strong)}
+.topnav{display:flex; flex-wrap:wrap; gap:6px 20px; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase}
+.topnav a{color:var(--ink-2); text-decoration:none; padding:4px 0; border-bottom:2px solid transparent}
+.topnav a:hover{color:var(--ink)}
+.topnav a[aria-current="true"]{color:var(--ink); border-bottom-color:var(--accent)}
+.topnav a .n{color:var(--ink-3); margin-right:5px}
+.links{display:flex; gap:8px}
+.links a{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; text-decoration:none; color:var(--ink); border:1px solid var(--rule-strong); border-radius:4px; padding:7px 12px; background:var(--card); min-height:34px; display:inline-flex; align-items:center}
+.links a:hover{border-color:var(--ink); color:var(--ink)}
+@media (max-width: 1080px){ .topnav{display:none} }
 
-/* ---------- hero ---------- */
-.hero{padding-block:clamp(56px, 7vw, 104px) clamp(20px, 2.5vw, 36px)}
-.hero-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:48px 48px; align-items:start}
-@media (max-width: 960px){ .hero-grid{grid-template-columns:1fr} }
-.hero h1 .thin{color:var(--ink-2)}
-.hero .meta{display:flex; flex-wrap:wrap; gap:10px 28px; font-family:var(--mono); font-size:12px; letter-spacing:.08em; color:var(--ink-2); margin-top:28px}
-.hero .meta b{font-weight:500; color:var(--ink)}
-.hero .abstract{margin-top:34px}
-.hero .cta{display:flex; flex-wrap:wrap; gap:12px; margin-top:34px}
-.btn{
-  display:inline-flex; align-items:center; gap:10px; font-family:var(--mono); font-size:12px; letter-spacing:.12em; text-transform:uppercase;
-  padding:14px 20px; border:1px solid var(--ink); color:var(--ink); transition:background .25s var(--ease), color .25s var(--ease);
-  min-height:44px;
-}
-.btn:hover{background:var(--ink); color:var(--bg)}
-.btn.red{border-color:var(--red); color:var(--red-text)}
-.btn.red:hover{background:var(--red); color:#fff}
-.btn svg{width:14px; height:14px}
-.stat-strip{
-  display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border:1px solid var(--rule); background:var(--bg-2);
-  margin-top:14px;
-}
-.stat-title{margin-top:clamp(40px, 5vw, 64px)}
-.stat-strip .stat{padding:20px 22px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:6px; min-width:0}
+/* ---------- buttons and stats ---------- */
+.actions{display:flex; flex-wrap:wrap; gap:10px}
+.btn{display:inline-flex; align-items:center; gap:8px; font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.07em; text-transform:uppercase; text-decoration:none; color:var(--ink); background:var(--bg-2); border:1px solid var(--ink); border-radius:4px; padding:12px 16px; min-height:44px}
+.btn:hover{background:var(--ink); color:var(--bg-2)}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:var(--on-ink)}
+.btn.primary:hover{background:var(--accent-ink); border-color:var(--accent-ink); color:var(--on-ink)}
+.btn.pending, .btn.pending:hover{background:transparent; border-style:dashed; border-color:var(--rule-strong); color:var(--ink-3); cursor:default}
+.btn svg{width:12px; height:12px}
+.stat-strip{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); border:1px solid var(--rule); border-radius:6px; background:var(--card); overflow:hidden}
+.stat-strip .stat{padding:18px 20px; border-right:1px solid var(--rule); display:flex; flex-direction:column; gap:6px; min-width:0}
 .stat-strip .stat:last-child{border-right:0}
-.stat .v{font-family:var(--sans); font-weight:300; font-size:clamp(26px, 2.6vw, 36px); line-height:1; letter-spacing:-.02em; white-space:nowrap}
-.stat .v small{font-size:.5em; color:var(--ink-2); letter-spacing:0; margin-left:4px}
-.stat .l{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
-@media (max-width: 760px){ .stat-strip{grid-template-columns:repeat(2, minmax(0,1fr))} .stat-strip .stat:nth-child(2n){border-right:0} .stat-strip .stat:nth-child(n+3){border-top:1px solid var(--rule)} }
+.stat .v{font-size:clamp(26px, 2.6vw, 36px); font-weight:500; line-height:1; letter-spacing:-.02em; font-variant-numeric:tabular-nums; color:var(--ink)}
+.stat .v small{font-size:.5em; color:var(--ink-3); letter-spacing:0; margin-left:4px}
+.stat .l{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.04em; text-transform:uppercase; color:var(--ink-2); line-height:1.45}
+@media (max-width: 860px){ .stat-strip{grid-template-columns:repeat(2, minmax(0,1fr))} .stat-strip .stat:nth-child(2n){border-right:0} .stat-strip .stat:nth-child(n+3){border-top:1px solid var(--rule)} }
 
-/* the loop instrument */
-.loop-panel{padding:14px 14px 14px}
-.loop-panel .eyebrow{margin-bottom:12px}
-.loop-svg{width:100%; height:auto}
-.loop-svg .node rect{fill:#F2F3F4; stroke:var(--panel-rule); stroke-width:1; transition:stroke .3s}
-.loop-svg .node.lit rect{stroke:var(--panel-red); stroke-width:1.5}
-.loop-svg .node.harness rect{fill:var(--panel-raised)}
-.loop-svg text{font-family:var(--mono); font-size:10.5px; fill:var(--panel-ink); letter-spacing:.04em}
-.loop-svg .node.harness text{fill:var(--panel-ink)}
-.loop-svg .node:not(.harness) text{fill:#17191B}
-.loop-svg text.lab{fill:var(--panel-ink-2); font-size:9.5px}
-.loop-svg .wire{fill:none; stroke:var(--panel-ink-2); stroke-width:1; opacity:.6; transition:stroke .3s, opacity .3s}
-.loop-svg .wire.hot{stroke:var(--panel-red); opacity:1; stroke-width:1.25}
-.loop-svg .token{fill:var(--panel-red)}
-.loop-svg .token.ok{fill:var(--panel-ink)}
-.loop-svg .frame{fill:none; stroke:var(--panel-rule); stroke-dasharray:3 3}
-.loop-svg .gate-bar{stroke:var(--panel-red); stroke-width:2}
-.loop-legend{display:flex; flex-wrap:wrap; gap:8px 18px; margin-top:12px; font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--panel-ink-2)}
-.loop-legend span{display:inline-flex; align-items:center; gap:7px}
-.loop-caption{margin-top:14px; font-size:13.5px; color:var(--panel-ink-2); line-height:1.5}
-.loop-status{display:flex; gap:14px; align-items:center; margin-top:14px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--panel-ink-2); min-height:18px}
-.loop-status b{color:var(--panel-ink); font-weight:500}
+/* ---------- hero and the study selector ---------- */
+.hero{padding-block:clamp(48px, 6vw, 80px) 8px}
+.hero .wrap{display:flex; flex-direction:column; gap:22px}
+.studies{display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; margin-top:18px}
+@media (max-width: 900px){ .studies{grid-template-columns:1fr} }
+.study{display:flex; flex-direction:column; gap:10px; text-align:left; padding:22px 22px 18px; border:1px solid var(--rule-strong); border-radius:6px; background:var(--card); color:var(--ink)}
+html.ready .study{transition:border-color .2s var(--ease), background .2s var(--ease)}
+.study:hover{border-color:var(--ink)}
+.study .src{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--accent)}
+.study .t{font-family:var(--display); font-size:clamp(22px, 2vw, 26px); line-height:1.15; text-wrap:balance}
+.study .d{font-size:15px; line-height:1.5; color:var(--ink-2)}
+.study .k{margin-top:auto; padding-top:12px; border-top:1px solid var(--rule-soft); display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; font-family:var(--mono); font-size:11.5px; letter-spacing:.03em; color:var(--ink-2)}
+.study .k b{font-family:var(--sans); font-weight:500; font-size:24px; letter-spacing:-.02em; color:var(--ink); font-variant-numeric:tabular-nums}
+.study[aria-selected="true"]{background:var(--ink); border-color:var(--ink); color:var(--on-ink)}
+.study[aria-selected="true"] .src{color:var(--night-accent)}
+.study[aria-selected="true"] .t{color:var(--on-ink)}
+.study[aria-selected="true"] .d, .study[aria-selected="true"] .k{color:var(--on-ink-2)}
+.study[aria-selected="true"] .k{border-top-color:rgba(255,255,255,.16)}
+.study[aria-selected="true"] .k b{color:var(--on-ink)}
 
-/* diagrams scroll sideways on narrow screens instead of shrinking their type */
-.dscroll{overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:thin}
-@media (max-width: 720px){ .dscroll > svg{min-width:560px} .dscroll > svg.loop-svg{min-width:500px} .dscroll::after{content:'scroll sideways →'; display:block; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-3); padding-top:6px} .panel.dark .dscroll::after{color:var(--panel-ink-2)} .stepper .dscroll::after{color:var(--panel-ink-2)} }
+/* ---------- a study ---------- */
+.study-panel{padding-block:40px 24px}
+.study-panel[hidden]{display:none}
+.study-head{display:grid; grid-template-columns:minmax(0,7fr) minmax(0,5fr); gap:20px 56px; align-items:end; padding-top:32px; border-top:1px solid var(--rule)}
+.study-head .eyebrow{grid-column:1 / -1}
+.study-head .side{display:flex; flex-direction:column; gap:18px}
+@media (max-width: 960px){ .study-head{grid-template-columns:1fr} }
+.study-panel .stat-strip{margin-top:28px}
 
-/* ---------- reveal (visible at rest; animates only when motion is allowed) ---------- */
-.rv{opacity:1}
-@media (prefers-reduced-motion: no-preference){
-  .rv.pre{opacity:0; transform:translateY(14px)}
-}
-
-/* ---------- evidence ---------- */
-.ev-tabs{display:flex; gap:0; border:1px solid var(--rule); background:var(--bg-2); overflow-x:auto; scrollbar-width:none}
-.ev-tabs::-webkit-scrollbar{display:none}
-.ev-tabs button{flex:1 0 auto; padding:14px 18px; font-family:var(--mono); font-size:11px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2); border-right:1px solid var(--rule); min-height:48px; white-space:nowrap}
-.ev-tabs button:last-child{border-right:0}
-.ev-tabs button[aria-selected="true"]{background:var(--panel); color:var(--panel-ink)}
-.ev-pane{border:1px solid var(--rule); border-top:0; background:var(--bg-2); padding:28px}
+/* ---------- tabs inside a study ---------- */
+.ev-tabs{display:flex; flex-wrap:wrap; gap:8px; margin-top:32px}
+.ev-tabs button{font-family:var(--mono); font-size:12px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; padding:11px 16px; border-radius:4px; border:1px solid var(--rule-strong); background:var(--card); color:var(--ink); min-height:44px; white-space:nowrap}
+.ev-tabs button:hover{border-color:var(--ink)}
+.ev-tabs button[aria-selected="true"]{background:var(--ink); border-color:var(--ink); color:var(--on-ink)}
+.ev-pane{margin-top:14px; background:var(--card); border:1px solid var(--rule); border-radius:6px; padding:clamp(20px, 3vw, 36px)}
 .ev-pane[hidden]{display:none}
-.ev-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:28px 40px; align-items:start}
-@media (max-width: 960px){ .ev-grid{grid-template-columns:1fr} }
-.ev-grid .read{display:flex; flex-direction:column; gap:14px}
-.ev-grid .read h3{font-size:26px}
-.ev-grid .read p{font-size:15px; line-height:1.55; color:var(--ink-2)}
-.ev-grid .read p b{color:var(--ink); font-weight:500}
-.ev-grid .read .kv{margin-top:6px}
+.ev-grid{display:grid; grid-template-columns:minmax(0,5fr) minmax(0,7fr); gap:32px 48px; align-items:start}
+.ev-grid.even{grid-template-columns:repeat(2, minmax(0,1fr))}
+.ev-grid.wide-left{grid-template-columns:minmax(0,7fr) minmax(0,5fr)}
+@media (max-width: 960px){ .ev-grid, .ev-grid.even, .ev-grid.wide-left{grid-template-columns:1fr} }
+.read{display:flex; flex-direction:column; gap:14px}
+.read p{font-size:16px; line-height:1.62; color:var(--body); text-wrap:pretty}
+.read p b{color:var(--ink); font-weight:600}
+.kv{margin:6px 0 0; display:grid; grid-template-columns:minmax(110px, 150px) minmax(0,1fr); border-top:1px solid var(--rule); font-size:15px}
+.kv dt{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); padding:12px 12px 12px 0; border-bottom:1px solid var(--rule-soft)}
+.kv dd{margin:0; padding:10px 0; border-bottom:1px solid var(--rule-soft); color:var(--body)}
+.kv dt.warn{color:var(--miss)}
+.sub-h{display:flex; flex-direction:column; gap:10px; margin-bottom:18px}
+
+/* ---------- charts ---------- */
 .chart{min-width:0}
-.chart .ct{display:flex; justify-content:space-between; align-items:baseline; gap:12px; flex-wrap:wrap; margin-bottom:10px}
-.chart .ct .t{font-size:14px; font-weight:400}
-.chart .ct .u{font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
+.chart .ct{display:flex; justify-content:space-between; align-items:baseline; gap:6px 16px; flex-wrap:wrap; margin-bottom:12px}
+.chart .ct .t{font-size:15px; font-weight:600; color:var(--ink)}
+.chart .ct .u{font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-3)}
 .chart svg{width:100%; height:auto; overflow:visible}
-.chart text{font-family:var(--mono); font-size:10.5px; fill:var(--ink-2); letter-spacing:.03em}
+.chart text{font-family:var(--mono); font-size:10.5px; fill:var(--ink-3); letter-spacing:.02em}
 .chart text.v{fill:var(--ink); font-size:10.5px}
 .chart text.cat{fill:var(--ink); font-size:11px}
 .chart .grid line{stroke:var(--grid); stroke-width:1}
-.chart .axis{stroke:var(--rule); stroke-width:1}
-.chart .bar{transition:opacity .2s}
-.chart .bar.m1{fill:var(--mark-1)} .chart .bar.m2{fill:var(--mark-2)} .chart .bar.m3{fill:var(--mark-3)} .chart .bar.red{fill:var(--red)}
+.chart .axis{stroke:var(--rule-strong); stroke-width:1}
+.chart .bar.m1{fill:var(--mark-1)} .chart .bar.m2{fill:var(--mark-2)} .chart .bar.m3{fill:var(--mark-3)} .chart .bar.red{fill:var(--accent)}
 .chart .bar.tex{fill:url(#hatch)}
+.chart .bar.warn{fill:var(--warn)}
 .chart .ln{fill:none; stroke-width:2; stroke-linejoin:round; stroke-linecap:round}
-.chart .ln.red{stroke:var(--red)} .chart .ln.m1{stroke:var(--mark-1)} .chart .ln.m2{stroke:var(--mark-2)} .chart .ln.m3{stroke:var(--mark-3)}
-.chart .pt{stroke:var(--bg-2); stroke-width:2}
-.chart .pt.red{fill:var(--red)} .chart .pt.m1{fill:var(--mark-1)} .chart .pt.m2{fill:var(--mark-2)} .chart .pt.m3{fill:var(--mark-3)}
+.chart .ln.red{stroke:var(--accent)} .chart .ln.m1{stroke:var(--mark-1)} .chart .ln.m2{stroke:var(--mark-2)} .chart .ln.m3{stroke:var(--mark-3)}
+.chart .pt{stroke:var(--card); stroke-width:2}
+.chart .pt.red{fill:var(--accent)} .chart .pt.m1{fill:var(--mark-1)} .chart .pt.m2{fill:var(--mark-2)} .chart .pt.m3{fill:var(--mark-3)}
 .chart .band{fill:var(--red-soft)}
-.legend{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:11px; letter-spacing:.06em; color:var(--ink-2); margin-top:10px}
+.chart .hline{stroke:var(--ink-2); stroke-width:1.25; stroke-dasharray:5 4}
+.chart text.hl{fill:var(--ink-2); font-size:10.5px}
+.chart text.halo{paint-order:stroke; stroke:var(--card); stroke-width:4px; stroke-linejoin:round}
+.legend{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:12px; letter-spacing:.03em; color:var(--ink-2); margin-top:12px}
 .legend span{display:inline-flex; align-items:center; gap:7px}
-.legend i{display:inline-block; width:12px; height:8px}
-.legend i.m1{background:var(--mark-1)} .legend i.m2{background:var(--mark-2)} .legend i.m3{background:var(--mark-3)} .legend i.red{background:var(--red)}
-.legend i.tex{background:repeating-linear-gradient(45deg, var(--mark-3) 0 1.5px, transparent 1.5px 4px); border:1px solid var(--mark-3)}
-.legend i.ln{height:2px; width:14px}
-.tt{position:fixed; z-index:70; pointer-events:none; background:var(--panel); color:var(--panel-ink); font-family:var(--mono); font-size:11.5px; padding:8px 10px; border:1px solid var(--panel-rule); opacity:0; transform:translate(-50%, calc(-100% - 10px)); transition:opacity .12s; white-space:nowrap; letter-spacing:.03em}
+.legend i{display:inline-block; width:12px; height:9px; border-radius:2px}
+.legend i.m1{background:var(--mark-1)} .legend i.m2{background:var(--mark-2)} .legend i.m3{background:var(--mark-3)} .legend i.red{background:var(--accent)} .legend i.warn{background:var(--warn)}
+.legend i.tex{background:repeating-linear-gradient(45deg, var(--mark-2) 0 1.5px, transparent 1.5px 4px); border:1px solid var(--mark-2)}
+.legend i.ln{height:0; width:16px; border-radius:0; border-top:2px dashed var(--ink-2)}
+.tt{position:fixed; z-index:70; pointer-events:none; background:var(--night); color:var(--night-ink); font-family:var(--mono); font-size:11.5px; padding:8px 10px; border:1px solid var(--night-rule); border-radius:4px; opacity:0; transform:translate(-50%, calc(-100% - 10px)); transition:opacity .12s; white-space:nowrap; letter-spacing:.02em}
 .tt.show{opacity:1}
-.tt b{color:var(--panel-red); font-weight:500}
+.tt b{color:var(--night-accent); font-weight:600}
 details.tbl{margin-top:12px}
-details.tbl summary{font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); cursor:pointer; padding:6px 0}
-details.tbl .sc{overflow-x:auto}
-table.data{border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums}
-table.data th{font-weight:400; text-align:right; font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2); padding:8px 10px; border-bottom:1px solid var(--rule)}
-table.data td{padding:7px 10px; border-bottom:1px solid var(--rule-2); text-align:right; white-space:nowrap}
+details.tbl summary{font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2); cursor:pointer; padding:8px 0; min-height:32px}
+.sc{overflow-x:auto; -webkit-overflow-scrolling:touch}
+table.data{border-collapse:collapse; width:100%; font-family:var(--mono); font-size:12px; font-variant-numeric:tabular-nums; color:var(--ink)}
+table.data th{font-weight:600; text-align:right; font-size:10.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); padding:9px 10px; border-bottom:1px solid var(--rule-strong); vertical-align:bottom}
+table.data td{padding:8px 10px; border-bottom:1px solid var(--rule-soft); text-align:right; white-space:nowrap}
 table.data th:first-child, table.data td:first-child{text-align:left}
-table.data tr.hi td{color:var(--red-text)}
+table.data tr.hi td{color:var(--accent); font-weight:600}
+table.data tr.sum td{border-top:1px solid var(--rule-strong); font-weight:600}
+table.data td.wrap{white-space:normal; min-width:150px}
+table.data th.l, table.data td.l{text-align:left}
+.chart table.facts td{white-space:normal}
+.chart table.facts td:last-child{text-align:right; color:var(--ink)}
+
+/* rank list (campaign) */
 .ranklist{display:flex; flex-direction:column; gap:10px}
 .ranklist .r{display:grid; grid-template-columns:190px 1fr 56px; gap:12px; align-items:center; font-size:13px}
 @media (max-width: 480px){ .ranklist .r{grid-template-columns:120px 1fr 50px} }
-.ranklist .r .n{font-family:var(--mono); font-size:12px; letter-spacing:.02em; min-width:0}
-.ranklist .r .n small{color:var(--ink-3); display:block; font-size:10px; letter-spacing:.06em; white-space:normal}
-.ranklist .r .tr{height:14px; background:var(--bg-4); position:relative; overflow:hidden}
-.ranklist .r .tr i{position:absolute; left:0; top:0; bottom:0; width:0; background:var(--mark-2); transform-origin:left}
-.ranklist .r.hi .tr i{background:var(--red)}
+.ranklist .r .n{font-family:var(--mono); font-size:12px; min-width:0}
+.ranklist .r .n small{color:var(--ink-3); display:block; font-size:10px; letter-spacing:.04em; white-space:normal}
+.ranklist .r .tr{height:12px; background:var(--track); border-radius:2px; position:relative; overflow:hidden}
+.ranklist .r .tr i{position:absolute; left:0; top:0; bottom:0; width:0; background:var(--mark-2)}
+.ranklist .r.hi .tr i{background:var(--accent)}
 .ranklist .r .v{font-family:var(--mono); font-size:12.5px; text-align:right; font-variant-numeric:tabular-nums}
-.ranklist .r.hi .v{color:var(--red-text)}
-.ranklist .r.hi .n{color:var(--ink); font-weight:500}
+.ranklist .r.hi .v, .ranklist .r.hi .n{color:var(--accent); font-weight:600}
 
 /* E2 timeline */
 .timeline{position:relative; margin-top:8px}
 .timeline .track{display:grid; grid-template-columns:repeat(9, minmax(0,1fr)); gap:4px; align-items:end; position:relative}
-.timeline .track::before{content:""; position:absolute; left:0; right:0; bottom:22px; height:1px; background:var(--rule)}
-.timeline .ev{display:flex; flex-direction:column; align-items:center; gap:8px; padding-bottom:0; position:relative; min-height:60px; justify-content:flex-end}
-.timeline .ev .d{width:12px; height:12px; border-radius:50%; background:var(--mark-1); border:2px solid var(--bg-2); box-shadow:0 0 0 1px var(--rule); transition:transform .2s}
-.timeline .ev.miss .d{background:var(--red)}
+.timeline .track::before{content:""; position:absolute; left:0; right:0; bottom:22px; height:1px; background:var(--rule-strong)}
+.timeline .ev{display:flex; flex-direction:column; align-items:center; gap:8px; position:relative; min-height:60px; justify-content:flex-end}
+.timeline .ev .d{width:12px; height:12px; border-radius:50%; background:var(--mark-1); border:2px solid var(--card); box-shadow:0 0 0 1px var(--rule-strong); transition:transform .2s}
+.timeline .ev.miss .d{background:var(--miss)}
 .timeline .ev.reset .d{border-radius:0; transform:rotate(45deg); width:10px; height:10px}
-.timeline .ev.win .d{background:var(--ink); width:14px; height:14px}
-.timeline .ev .e{font-family:var(--mono); font-size:10.5px; letter-spacing:.06em; color:var(--ink-2); height:22px; display:flex; align-items:flex-end}
+.timeline .ev.win .d{background:var(--accent); width:14px; height:14px}
+.timeline .ev .e{font-family:var(--mono); font-size:10.5px; color:var(--ink-2); height:22px; display:flex; align-items:flex-end}
 .timeline .ev[aria-selected="true"] .d{transform:scale(1.35)}
 .timeline .ev.reset[aria-selected="true"] .d{transform:rotate(45deg) scale(1.35)}
-.timeline .ev[aria-selected="true"] .e{color:var(--ink); font-weight:500}
-.timeline .cut{position:absolute; top:-6px; bottom:16px; width:1px; border-left:1px dashed var(--red); left:calc(2 / 9 * 100% + 2px)}
-.timeline .cut::after{content:"cut · fresh session"; position:absolute; top:-16px; left:6px; font-family:var(--mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--red-text); white-space:nowrap}
-.tl-note{margin-top:18px; border:1px solid var(--rule); background:var(--bg); padding:18px 20px; min-height:150px; display:flex; flex-direction:column; gap:8px}
-.tl-note .h{display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; font-family:var(--mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase; color:var(--ink-2)}
-.tl-note .h b{color:var(--ink); font-weight:500}
-.tl-note .h .miss{color:var(--red-text)}
+.timeline .ev[aria-selected="true"] .e{color:var(--ink); font-weight:600}
+.timeline .cut{position:absolute; top:-6px; bottom:16px; width:1px; border-left:1px dashed var(--accent); left:calc(2 / 9 * 100% + 2px)}
+.timeline .cut::after{content:"cut · fresh session"; position:absolute; top:-16px; left:6px; font-family:var(--mono); font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); white-space:nowrap}
+.tl-note{margin-top:18px; border:1px solid var(--rule); border-radius:6px; background:var(--well); padding:18px 20px; min-height:150px; display:flex; flex-direction:column; gap:8px}
+.tl-note .h{display:flex; gap:14px; align-items:baseline; flex-wrap:wrap; font-family:var(--mono); font-size:11px; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+.tl-note .h b{color:var(--ink); font-weight:600}
+.tl-note .h .miss{color:var(--miss-text)}
 .tl-note .pred{font-family:var(--mono); font-size:12.5px; color:var(--ink)}
-.tl-note .pred .k{color:var(--red-text)}
-.tl-note p{font-size:14px; color:var(--ink-2); line-height:1.5}
+.tl-note .pred .k{color:var(--accent)}
+.tl-note p{font-size:14px; color:var(--body); line-height:1.55}
 .tl-note p q{font-style:italic; color:var(--ink)}
 @media (max-width: 600px){ .timeline .ev .e{font-size:9px} .timeline .cut::after{display:none} }
 
-.proofs{border:1px solid var(--rule); background:var(--bg-2)}
-.proofs .pr{display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px 18px; padding:14px 18px; border-bottom:1px solid var(--rule-2); font-size:14px}
+.proofs{border:1px solid var(--rule); border-radius:6px; background:var(--card); overflow:hidden}
+.proofs .pr{display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px 18px; padding:14px 18px; border-bottom:1px solid var(--rule-soft); font-size:14px}
 .proofs .pr:last-child{border-bottom:0}
-.proofs .pr .g{font-family:var(--mono); font-size:12px; letter-spacing:.04em; color:var(--ink-2); padding-top:3px}
+.proofs .pr .g{font-family:var(--mono); font-size:12px; color:var(--ink-2); padding-top:3px}
 .proofs .pr .c{color:var(--ink)}
-.proofs .pr .u{grid-column:2; font-size:13px; color:var(--ink-2); display:flex; gap:9px}
-.proofs .pr .u .led{margin-top:6px; flex-shrink:0; width:6px; height:6px}
+.proofs .pr .u{grid-column:2; font-size:13.5px; color:var(--body); display:flex; gap:9px}
+.led{display:inline-block; width:8px; height:8px; border-radius:50%; background:var(--ink-3); vertical-align:middle}
+.led.on{background:var(--accent)}
+.proofs .pr .u .led{margin-top:7px; flex-shrink:0; width:6px; height:6px}
 
-/* cost */
-.cost{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+/* tiles */
+.cost{display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:6px; overflow:hidden}
 @media (max-width: 860px){ .cost{grid-template-columns:repeat(2, minmax(0,1fr))} }
-.cost .c{background:var(--bg-2); padding:18px 20px; display:flex; flex-direction:column; gap:6px; min-width:0}
-.cost .c .v{font-size:26px; font-weight:300; letter-spacing:-.02em; line-height:1.1}
-.cost .c .l{font-family:var(--mono); font-size:10.5px; letter-spacing:.12em; text-transform:uppercase; color:var(--ink-2)}
-.cost .c .s{font-size:13px; color:var(--ink-2); line-height:1.45}
-
-/* limits */
-.limits{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule)}
+@media (max-width: 480px){ .cost{grid-template-columns:1fr} }
+.cost .c{background:var(--card); padding:18px 20px; display:flex; flex-direction:column; gap:6px; min-width:0}
+.cost .c .v{font-size:26px; letter-spacing:-.02em; line-height:1.1; font-variant-numeric:tabular-nums}
+.cost .c .l{font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.08em; text-transform:uppercase; color:var(--ink-2)}
+.cost .c .s{font-size:13.5px; color:var(--body); line-height:1.5}
+.limits{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:6px; overflow:hidden}
 @media (max-width: 760px){ .limits{grid-template-columns:1fr} }
-.limits .l{background:var(--bg-2); padding:24px; display:flex; flex-direction:column; gap:8px}
-.limits .l .n{font-family:var(--display); font-size:22px}
-.limits .l p{font-size:14.5px; color:var(--ink-2); line-height:1.55}
+.limits .l{background:var(--card); padding:22px; display:flex; flex-direction:column; gap:8px}
+.limits .l .n{font-family:var(--display); font-size:21px; line-height:1.25}
+.limits .l p{font-size:14.5px; color:var(--body); line-height:1.58}
+ol.chg{margin:0; padding-left:1.4em; display:flex; flex-direction:column; gap:9px; font-size:14.5px; line-height:1.55; color:var(--body)}
+ol.chg b{color:var(--ink); font-weight:600}
+ol.chg .lay{font-family:var(--mono); font-size:11px; color:var(--ink-3); margin-left:6px; white-space:nowrap}
 
+/* night panels: diagrams and code */
+.night{background:var(--night); color:var(--night-ink); border-radius:6px; padding:clamp(16px, 2.4vw, 24px)}
+.night .cap{font-family:var(--mono); font-size:10.5px; font-weight:600; letter-spacing:.1em; text-transform:uppercase; color:var(--night-ink-2); margin-bottom:12px}
+.loop-svg text{font-family:var(--mono)}
+.loop-svg .bx{fill:var(--night-2); stroke:var(--night-rule); stroke-width:1}
+.loop-svg .bx.hot{stroke:var(--night-accent); stroke-width:1.5}
+.loop-svg .bx.pin{fill:#14223A; stroke:var(--night-accent); stroke-dasharray:4 3}
+.loop-svg .t1{fill:var(--night-ink); font-size:11.5px; font-weight:600; letter-spacing:.06em}
+.loop-svg .t2{fill:var(--night-ink-2); font-size:10.5px}
+.loop-svg .t3{fill:var(--night-accent); font-size:10.5px}
+.loop-svg .wire{fill:none; stroke:var(--night-line); stroke-width:1.25}
+.loop-svg .head{fill:var(--night-line)}
+.loop-svg .dot{fill:var(--night-accent)}
+pre.code{margin:0; background:var(--night); color:var(--night-ink); border-radius:6px; padding:14px 16px; font-size:12.5px; line-height:1.65; overflow-x:auto; white-space:pre}
+pre.code .k{color:var(--night-accent)}
+pre.code .w{color:var(--night-warn)}
+.dscroll{overflow-x:auto; -webkit-overflow-scrolling:touch}
+@media (max-width: 720px){ .dscroll > svg{min-width:560px} }
+
+/* the per-game matrix */
+table.mx{border-collapse:separate; border-spacing:3px; font-family:var(--mono); font-size:11.5px; font-variant-numeric:tabular-nums; min-width:640px; width:100%}
+table.mx th{font-weight:600; font-size:10px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink-2); padding:4px 2px 6px; text-align:center; vertical-align:bottom; line-height:1.3}
+table.mx th.g{text-align:left}
+table.mx tbody th{text-transform:none; letter-spacing:0; font-size:11.5px; color:var(--ink); padding:0 8px 0 0; vertical-align:middle; white-space:nowrap}
+table.mx td{height:30px; text-align:center; border-radius:3px; color:var(--ink); padding:0 4px; white-space:nowrap}
+table.mx td.g{text-align:left; color:var(--ink); font-weight:600; padding-left:0}
+table.mx td.w{background:var(--accent); color:var(--on-ink); font-weight:600}
+table.mx td.na{background:transparent; border:1px dashed var(--rule-strong); color:var(--ink-3)}
+table.mx td.pin{border:1.5px solid var(--ink); font-weight:600}
+table.mx td.pin.w{border-color:var(--accent-ink)}
+table.mx th.sep, table.mx td.sep{border-left:1px solid var(--rule-strong)}
+.mx-key{display:flex; flex-wrap:wrap; gap:8px 18px; font-family:var(--mono); font-size:12px; color:var(--ink-2); margin-top:12px}
+.mx-key span{display:inline-flex; align-items:center; gap:7px}
+.mx-key i{display:inline-block; width:18px; height:12px; border-radius:2px}
+
+/* worlds */
+table.conf{border-collapse:collapse; width:100%; font-size:14px; min-width:640px}
+table.conf th{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); text-align:left; padding:10px 12px; border-bottom:1px solid var(--rule-strong)}
+table.conf td{padding:10px 12px; border-bottom:1px solid var(--rule-soft); vertical-align:top; color:var(--body); line-height:1.5}
+table.conf td:first-child{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--ink-2); width:22%}
+.note{border-left:2px solid var(--accent); padding:4px 0 4px 16px; font-size:15px; color:var(--body); line-height:1.6}
 
 /* footer */
-footer{border-top:0; padding-block:24px 64px; position:relative; z-index:1}
-footer .fgrid{display:grid; grid-template-columns:minmax(0,6fr) minmax(0,6fr); gap:40px}
+footer{border-top:1px solid var(--rule); margin-top:40px}
+footer .wrap{padding-block:40px 56px; display:flex; flex-direction:column; gap:36px}
+footer .fgrid{display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:40px 56px}
 footer .fgrid > *{min-width:0}
 @media (max-width: 860px){ footer .fgrid{grid-template-columns:1fr} }
-.cite{border:1px solid var(--rule); background:var(--bg-2); padding:18px 20px; font-family:var(--mono); font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; position:relative}
-.cite button{display:block; margin-top:12px; font-family:var(--mono); font-size:10.5px; letter-spacing:.1em; text-transform:uppercase; padding:7px 12px; border:1px solid var(--rule); color:var(--ink-2); background:var(--bg-2); min-height:32px}
-.cite button:hover{border-color:var(--ink); color:var(--ink)}
-footer .links2{display:flex; flex-direction:column; gap:10px; font-size:14px}
-footer .links2 a{display:flex; justify-content:space-between; gap:12px; padding:10px 0; border-bottom:1px solid var(--rule-2); font-family:var(--mono); font-size:12px; letter-spacing:.04em; min-width:0}
-footer .links2 a span:last-child{color:var(--ink-3); text-align:right; flex-shrink:1}
-footer .links2 a span:first-child{overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
-footer .colophon{margin-top:40px; font-family:var(--mono); font-size:11px; letter-spacing:.08em; color:var(--ink-3); display:flex; justify-content:space-between; flex-wrap:wrap; gap:10px}
-.toast{position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom, 0px)); transform:translate(-50%, 20px); background:var(--panel); color:var(--panel-ink); font-family:var(--mono); font-size:12px; letter-spacing:.08em; padding:10px 16px; border:1px solid var(--panel-rule); opacity:0; transition:opacity .25s, transform .25s; z-index:80; pointer-events:none}
+.cites{display:flex; flex-direction:column; gap:12px}
+.cite{background:var(--night); color:var(--night-ink); border-radius:6px; overflow:hidden}
+.cite .bar{display:flex; align-items:center; justify-content:space-between; gap:12px; padding:9px 14px; border-bottom:1px solid var(--night-div); font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.08em; color:var(--night-ink-2)}
+.cite .bar button{font-family:var(--mono); font-size:11px; font-weight:600; letter-spacing:.08em; padding:6px 10px; border-radius:3px; border:1px solid var(--night-rule); color:var(--night-ink); min-height:32px}
+.cite .bar button:hover{border-color:var(--night-accent)}
+.cite p{padding:14px 16px; font-family:var(--mono); font-size:12.5px; line-height:1.6; white-space:pre-wrap; word-break:break-word}
+.links2{display:flex; flex-direction:column; border-top:1px solid var(--rule)}
+.links2 a{display:flex; flex-wrap:wrap; align-items:baseline; justify-content:space-between; gap:4px 16px; padding:14px 0; border-bottom:1px solid var(--rule); text-decoration:none; color:var(--ink)}
+.links2 a span:first-child{font-family:var(--mono); font-size:13.5px; font-weight:600; color:var(--accent)}
+.links2 a span:last-child{font-size:14.5px; color:var(--ink-2)}
+.links2 a:hover span:first-child{color:var(--accent-ink)}
+.colophon{display:flex; flex-wrap:wrap; justify-content:space-between; gap:8px 24px; font-family:var(--mono); font-size:12px; font-weight:500; letter-spacing:.06em; color:var(--ink-2)}
+.toast{position:fixed; left:50%; bottom:calc(24px + env(safe-area-inset-bottom, 0px)); transform:translate(-50%, 20px); background:var(--night); color:var(--night-ink); font-family:var(--mono); font-size:12px; letter-spacing:.06em; padding:10px 16px; border-radius:4px; opacity:0; transition:opacity .25s, transform .25s; z-index:80; pointer-events:none}
 .toast.show{opacity:1; transform:translate(-50%, 0)}
 .sr{position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap}
 
-/* ---------- benchmarks page ---------- */
-.hero-b{padding-block:clamp(48px, 6vw, 88px) clamp(12px, 2vw, 24px)}
-.hero-b .lede{margin-top:22px}
-.pair .row{display:grid}
-.chart table.facts td{white-space:normal}
-.chart table.facts td:last-child{text-align:right; color:var(--ink)}
-.changes{display:flex; flex-direction:column; gap:14px}
-ol.chg{margin:0; padding-left:1.4em; display:flex; flex-direction:column; gap:10px; max-width:80ch; font-size:15px; line-height:1.55; color:var(--ink-2)}
-ol.chg b{color:var(--ink); font-weight:500}
-.world-head{margin-bottom:22px}
+/* captions and citations */
+.fig{font-family:var(--mono); font-weight:600; letter-spacing:.06em; color:var(--ink); margin-right:6px; white-space:nowrap}
+figcaption.cap2{font-size:14px; line-height:1.55; color:var(--ink-2); margin-top:12px}
+.cite pre{margin:0; padding:14px 16px; font-family:var(--mono); font-size:12.5px; line-height:1.6; overflow-x:auto; white-space:pre; color:var(--night-ink)}
+.cite pre .k{color:var(--night-accent)}
+.cite .plain{padding:0 16px 14px; font-family:var(--sans); font-size:13.5px; line-height:1.55; color:var(--night-ink-2)}
 </style>
 
 <div id="progress" aria-hidden="true"></div>
 <header class="topbar">
   <div class="wrap">
-    <a class="brand" href="https://arjmandi.github.io/assay/" aria-label="ASSAY, the site"><span class="mark" aria-hidden="true"></span><span>Assay</span><span class="ver">Benchmarks</span></a>
-    <nav class="sections" aria-label="Sections">
-      <a href="#arc"><span class="n">01</span>ARC-AGI-3 · Opus 5</a>
-      <a href="#worlds"><span class="n">02</span>Factorio · OOLONG</a>
-      <a href="#claude55"><span class="n">03</span>Claude 5.5</a>
+    <a class="brand" href="https://arjmandi.github.io/assay/" aria-label="ASSAY, the site"><span class="mark" aria-hidden="true"></span><span class="word">ASSAY</span><span class="ver">Benchmarks</span></a>
+    <nav class="topnav" aria-label="Studies">
+      <a href="#arc" data-study-link="arc"><span class="n">01</span>ARC-AGI-3 · Opus 5</a>
+      <a href="#worlds" data-study-link="worlds"><span class="n">02</span>Factorio · OOLONG</a>
+      <a href="#rsi" data-study-link="rsi"><span class="n">03</span>RSI · Haiku 5.5</a>
     </nav>
     <div class="links">
-      <a href="https://arjmandi.github.io/assay/"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 7.5 8 3l5.5 4.5V13h-4V9.5h-3V13h-4z"/></svg><span>Site</span></a>
-      <a href="https://arjmandi.github.io/assay/docs/"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 3h4A1.5 1.5 0 0 1 8 4.5V13a1.5 1.5 0 0 0-1.5-1.5h-4zM13.5 3h-4A1.5 1.5 0 0 0 8 4.5V13a1.5 1.5 0 0 1 1.5-1.5h4z"/></svg><span>Docs</span></a>
-      <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="4" cy="3" r="1.6"/><circle cx="4" cy="13" r="1.6"/><circle cx="12" cy="5" r="1.6"/><path d="M4 4.6v6.8M12 6.6c0 2.6-2.2 3.2-4.6 3.6C5.9 10.5 4.6 11 4 11.4"/></svg><span>Code</span></a>
+      <a href="https://arjmandi.github.io/assay/">Site</a>
+      <a href="https://arjmandi.github.io/assay/docs/">Docs</a>
+      <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Code</a>
     </div>
   </div>
 </header>
+
 <main id="top">
-<section class="hero hero-b">
+<section class="hero" aria-labelledby="h-bench">
   <div class="wrap">
-    <p class="eyebrow rv"><span class="num">Benchmarks</span><span>The record under every number</span></p>
-    <h1 class="rv">One kernel, benchmarked in three worlds.</h1>
-    <p class="lede rv">ARC-AGI-3, the Factorio Learning Environment and OOLONG, played by agents under the same kernel: every paid action carried a graded prediction, and every journal is published or archived with the chain head that verifies it. The paper's runs used Claude Opus 5. Later runs on the same games used Claude Sonnet 5.5 and Claude Haiku 5.5.</p>
-    <div class="stat-strip rv" role="list" aria-label="Headline results">
-      <div class="stat" role="listitem"><span class="v">96.54</span><span class="l">Opus 5 campaign · RHAE · 24 / 25</span></div>
-      <div class="stat" role="listitem"><span class="v">25<small>/ 25</small></span><span class="l">Sonnet 5.5 · RHAE 95.12 · 183 / 183 levels</span></div>
-      <div class="stat" role="listitem"><span class="v">8<small>/ 25</small></span><span class="l">Haiku 5.5 with the fixes · RHAE 48.52 · default effort</span></div>
-      <div class="stat" role="listitem"><span class="v">66</span><span class="l">published journals · 0 failed</span></div>
+    <p class="eyebrow"><span>§ Benchmarks</span><span>Two papers · three worlds</span></p>
+    <h1 id="h-bench">One harness, benchmarked in three worlds.</h1>
+    <p class="lede">The <span class="sym">Assay</span> paper ran Claude Opus 5 on ARC-AGI-3, the Factorio Learning Environment and OOLONG under one kernel, with a graded prediction on every paid action. The RSI paper then ran Claude Haiku 5.5 on ARC-AGI-3 in a loop that rewrote the harness twice from Haiku's own record. Every number below names the run that produced it.</p>
+    <div class="studies" role="tablist" aria-label="Studies">
+      <button class="study" role="tab" id="tab-arc" aria-controls="arc" aria-selected="true" data-study="arc">
+        <span class="src">The <span class="sym">Assay</span> paper · Opus 5</span>
+        <span class="t">ARC-AGI-3: the campaign and three experiments</span>
+        <span class="d">25 games under hard caps, then the gate lifted, five wrong proofs resumed, and a run's record carried over.</span>
+        <span class="k"><b>96.54</b> RHAE · 24 of 25 games · server-scored</span>
+      </button>
+      <button class="study" role="tab" id="tab-worlds" aria-controls="worlds" aria-selected="false" data-study="worlds">
+        <span class="src">The <span class="sym">Assay</span> paper · Opus 5</span>
+        <span class="t">Factorio and OOLONG: two worlds with no grid</span>
+        <span class="d">The same kernel through the registry and adapter: code as the action, and a corpus the model never holds.</span>
+        <span class="k"><b>3 of 3</b> Factorio tasks · OOLONG to 4M tokens</span>
+      </button>
+      <button class="study" role="tab" id="tab-rsi" aria-controls="rsi" aria-selected="false" data-study="rsi">
+        <span class="src">The RSI paper · Haiku 5.5</span>
+        <span class="t">Recursive self-improvement on ARC-AGI-3</span>
+        <span class="d">An analyst model read every Haiku run, the harness was changed where it broke, and the loop ran again.</span>
+        <span class="k"><b>78.95</b> RHAE · 17 of 25 · pinned record</span>
+      </button>
     </div>
   </div>
 </section>
 
-<!-- ============ 01 ARC-AGI-3, OPUS 5 ============ -->
-<section class="section" id="arc">
+<!-- ============ STUDY 01 · ARC-AGI-3, OPUS 5 ============ -->
+<section class="study-panel" id="arc" role="tabpanel" aria-labelledby="tab-arc">
   <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow rv"><span class="num">§ 01</span><span>ARC-AGI-3 · the paper's runs · Opus 5</span></p>
-      <h2 class="rv">25 games, then three experiments on the same kernel.</h2>
+    <div class="study-head">
+      <p class="eyebrow"><span>Study 01</span><span>The <span class="sym">Assay</span> paper · ARC-AGI-3 · Claude Opus 5</span></p>
+      <div class="stack">
+        <h2>25 games, then three experiments on the same kernel.</h2>
+        <p class="lede">The campaign played each of the 25 public games once under hard caps, with a graded prediction on every paid action. Three experiments then asked what carried the result: the gate, the record, and the record carried into a new run.</p>
+      </div>
+      <div class="side">
+        <div class="actions">
+          <a class="btn primary" href="https://doi.org/10.5281/zenodo.22145966" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9 9 3M4 3h5v5"/></svg></a>
+          <a class="btn" href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32" target="_blank" rel="noopener">Scorecard 702ccd4f</a>
+          <a class="btn" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Code and journals</a>
+        </div>
+        <p class="small">Preprint on Zenodo, DOI 10.5281/zenodo.23685371.</p>
+      </div>
+    </div>
+    <div class="stat-strip" role="list" aria-label="Campaign results">
+      <div class="stat" role="listitem"><span class="v">96.54</span><span class="l">RHAE, server-scored</span></div>
+      <div class="stat" role="listitem"><span class="v">24<small>/ 25</small></span><span class="l">games · 177 of 183 levels</span></div>
+      <div class="stat" role="listitem"><span class="v">8,157</span><span class="l">paid actions, each with a graded prediction</span></div>
+      <div class="stat" role="listitem"><span class="v">66</span><span class="l">published journals · 0 failed the checker</span></div>
     </div>
     <div class="ev-tabs rv" role="tablist" aria-label="ARC-AGI-3 with Opus 5">
 <button role="tab" aria-selected="true" data-group="opus" data-ev="campaign">Campaign · ARC-AGI-3</button>
@@ -444,13 +496,13 @@ ol.chg b{color:var(--ink); font-weight:500}
             <dt>Probes</dt><dd>656 single discovery actions · 8.0%</dd>
             <dt>Batch steps</dt><dd>7,501, inside verified predictions</dd>
             <dt>Per level</dt><dd>46.1 actions</dd>
-            <dt>Open failure</dt><dd><code>lf52</code>, 4 of 10 levels in three runs</dd>
+            <dt class="warn">Open failure</dt><dd><code>lf52</code>, 4 of 10 levels in three runs</dd>
           </dl>
         </div>
         <div class="chart" id="ch-rank">
           <div class="ct"><span class="t">Published results on the ARC-AGI-3 public set, by RHAE</span><span class="u">Table 4 · 25 game instances</span></div>
           <div class="ranklist" id="ranklist"></div>
-          <p class="tiny" style="margin-top:12px">RHAE saturates near 100 at this level: 23 of 25 games score 100.00 for the campaign; bp35 scores 95.27 for running over baseline on three late levels; lf52 scores 18.18 for ending at 4 of 10. Comparators ran uncapped and with different starting information. Directional context only.</p>
+          <p class="tiny" style="margin-top:12px"><span class="fig">TABLE 4</span>RHAE saturates near 100 at this level: 23 of 25 games score 100.00 for the campaign; bp35 scores 95.27 for running over baseline on three late levels; lf52 scores 18.18 for ending at 4 of 10. Comparators ran uncapped and with different starting information. Directional context only.</p>
           <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-rank"></table></div></details>
         </div>
       </div>
@@ -523,7 +575,7 @@ ol.chg b{color:var(--ink); font-weight:500}
             </div>
             <div class="tl-note" id="tl-note" role="tabpanel"></div>
           </div>
-          <div class="legend" style="margin-top:12px"><span><i class="m1" style="border-radius:50%;width:9px;height:9px"></i>held</span><span><i class="red" style="border-radius:50%;width:9px;height:9px"></i>missed</span><span><i class="m1" style="width:8px;height:8px;transform:rotate(45deg)"></i>reset</span></div>
+          <div class="legend" style="margin-top:12px"><span><i class="m1" style="border-radius:50%;width:9px;height:9px"></i>held</span><span><i class="warn" style="border-radius:50%;width:9px;height:9px"></i>missed</span><span><i class="m1" style="width:8px;height:8px;transform:rotate(45deg)"></i>reset</span></div>
         </div>
       </div>
       <hr class="rule" style="margin-block:32px">
@@ -583,220 +635,523 @@ ol.chg b{color:var(--ink); font-weight:500}
   </div>
 </section>
 
-<!-- ============ 02 FACTORIO AND OOLONG ============ -->
-<section class="section" id="worlds">
+<!-- ============ STUDY 02 · FACTORIO AND OOLONG ============ -->
+<section class="study-panel" id="worlds" role="tabpanel" aria-labelledby="tab-worlds" hidden>
   <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow rv"><span class="num">§ 02</span><span>Factorio · OOLONG</span></p>
-      <h2 class="rv">Two worlds with no grid.</h2>
+    <div class="study-head">
+      <p class="eyebrow"><span>Study 02</span><span>The <span class="sym">Assay</span> paper · Factorio and OOLONG · Claude Opus 5</span></p>
+      <div class="stack">
+        <h2>The same kernel in two worlds with no grid.</h2>
+        <p class="lede">Generality is only checkable across worlds. The kernel, the constitution and the protocol of the ARC-AGI-3 campaign were attached to a build-and-optimize world and to a long-corpus question set, through the registry and the adapter alone. Each is a small bounded sweep, not a scored benchmark, and each is reported with its cost.</p>
+      </div>
+      <div class="side">
+        <div class="actions">
+          <a class="btn primary" href="https://doi.org/10.5281/zenodo.22145966" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9 9 3M4 3h5v5"/></svg></a>
+          <a class="btn" href="https://github.com/arjmandi/assay" target="_blank" rel="noopener">Code and journals</a>
+        </div>
+        <p class="small">Factorio: FLE 0.4.3 in Docker, one session per task. OOLONG: the benchmark's own scorer, vendored unchanged.</p>
+      </div>
     </div>
-    <div class="ev-pane rv" style="border-top:1px solid var(--rule)">
+    <div class="stat-strip" role="list" aria-label="Factorio and OOLONG results">
+      <div class="stat" role="listitem"><span class="v">3<small>/ 3</small></span><span class="l">Factorio tasks won · 5, 9 and 9 paid actions</span></div>
+      <div class="stat" role="listitem"><span class="v">0</span><span class="l">programs refused by the screen in the wins</span></div>
+      <div class="stat" role="listitem"><span class="v">1.000</span><span class="l">OOLONG accuracy at 4M tokens · $2.40</span></div>
+      <div class="stat" role="listitem"><span class="v">0.447</span><span class="l">raw Opus 5 at 128K · walls past it</span></div>
+    </div>
+
+    <div class="ev-tabs" role="tablist" aria-label="Factorio and OOLONG">
+      <button role="tab" aria-selected="true" data-group="worlds" data-ev="factorio">Factorio</button>
+      <button role="tab" aria-selected="false" data-group="worlds" data-ev="oolong">OOLONG</button>
+      <button role="tab" aria-selected="false" data-group="worlds" data-ev="seam">One seam, three worlds</button>
+    </div>
+
+    <div class="ev-pane" id="ev-factorio" role="tabpanel">
       <div class="ev-grid">
         <div class="read">
-          <h3>Factorio: a world with no grid at all.</h3>
-          <p>The Factorio Learning Environment is a build-and-optimize world. The adapter registers two actions, <code>RUN</code>, a Python program against the environment's API, and <code>WAIT</code>, which advances the world an exact number of ticks. Here the agent's code is the action, and the adapter screens every program with an AST allowlist before it runs; a refused program still spends and is journaled as a policy refusal.</p>
-          <p>Three lab-play throughput tasks under a cap of 64 paid actions: <b>iron plate, iron gear wheel and electronic circuit, won in 5, 9 and 9 paid actions at $1.99, $4.87 and $4.44</b>, every journal clean under both checkers, zero programs refused. The three agents declared 7, 7 and 15 states, all but one a dotted path into the observation, and every paid action carried state outcomes beside its verifiers.</p>
+          <h3>Factorio: the agent's code is the action.</h3>
+          <p>The Factorio Learning Environment is a build-and-optimize world. The adapter registers two actions: <code>RUN</code>, whose one parameter is a Python program run against the environment's API, and <code>WAIT</code>, which advances the world by an exact number of ticks.</p>
+          <p>Before a program runs, the adapter screens it with an abstract-syntax allowlist, denied names and attributes, and a ban on identifiers that start with an underscore. A refused program still spends the action and is journaled as a policy refusal, so the agent sees the refusal as an observation. The win predicate also requires a real producing entity, so a forged production statistic cannot score a win. This is world policy, and it lives in the adapter.</p>
+          <p>Three lab-play throughput tasks ran under a cap of 64 paid actions. <b>All three were won: iron plate in 5 paid actions for $1.99, iron gear wheel in 9 for $4.87, electronic circuit in 9 for $4.44.</b> Every journal was clean under both checkers, and the screen refused no program.</p>
           <dl class="kv">
-            <dt>October replay</dt><dd>iron plate in 5 ($2.64), circuit in 15 ($6.69), both inside their August bands</dd>
-            <dt>Fail-closed claim</dt><dd>by construction, untested by incident</dd>
+            <dt>States</dt><dd>7, 7 and 15 declared; all but one a dotted path into the observation</dd>
+            <dt>Phase cost</dt><dd>$32.11 metered, with a run lost to a broker fault and a 38-action circuit run before an adapter routing fault was fixed</dd>
+            <dt>Replay</dt><dd>October build, 2026-10-07: iron plate in 5 ($2.64), circuit in 15 ($6.69), both inside bands fixed before launch at twice the August counts</dd>
+            <dt>Fail-closed</dt><dd>by construction, untested by incident: 12 escape programs refused and 6 legitimate programs passed in a refusal test</dd>
           </dl>
         </div>
-        <div class="chart" id="ch-fac">
-          <div class="ct"><span class="t">Paid actions to the win, cap 64</span><span class="u">three tasks · August run</span></div>
-          <div id="fac-svg"></div>
+        <div class="stack">
+          <div class="chart" id="ch-fac">
+            <div class="ct"><span class="t">Paid actions to the win</span><span class="u">cap 64 · August build</span></div>
+            <div id="fac-svg"></div>
+          </div>
+          <div class="stack" style="gap:10px">
+            <h4>Predictions on a world with no grid</h4>
+            <p class="small">The iron-plate run's fourth action was a <code>WAIT</code>, predicted as</p>
+            <pre class="code"><span class="k">verify</span>:checks/window_ok.py; <span class="k">ch</span> tick = 3960; <span class="k">ch</span> windows delta &gt;= 1;
+<span class="k">ch</span> automated crosses 16 from below; <span class="k">ch</span> producer = True; change</pre>
+            <p class="small">and its fifth and last as</p>
+            <pre class="code"><span class="w">win</span>; level+1; <span class="k">verify</span>:checks/window_ok.py; <span class="k">ch</span> tick = 7560; <span class="k">ch</span> windows = 2;
+<span class="k">ch</span> automated delta &gt;= 60; <span class="k">ch</span> producer = True</pre>
+            <p class="small">The circuit run's last action:</p>
+            <pre class="code"><span class="w">win</span>; level+1; <span class="k">ch</span> gtick delta = 3600; <span class="k">ch</span> nwin delta = 1; <span class="k">ch</span> lastrate = 20 ± 5</pre>
+            <p class="small">A rule like “one measurement window has passed and automated output crossed the quota” is not a sentence in the notes. It is a crossing outcome on a named state that the kernel computes from the world's response, and when it holds it becomes a fact with its actual value.</p>
+          </div>
         </div>
       </div>
       <hr class="rule" style="margin-block:32px">
+      <div class="ev-grid">
+        <div class="read">
+          <h3>Why the screen is in the adapter.</h3>
+          <p>A rule in a prompt competes with the task for the model's attention, and under enough pressure a prohibition can lose outright. In a published incident, an agent told not to cheat on this environment reached its admin console and spawned resources into its own factories.</p>
+          <p>Here the refusal is code that runs before the program does. No agent attempted that reach in these runs, so the fail-closed property rests on construction, on the refusal test and on one scripted probe in a smoke run, not on an incident. The broker and the adapter were both patched during the phase for faults the agent could not see, so the kernel was unchanged in its agent-facing behaviour rather than byte for byte.</p>
+          <p>In the October replay, the circuit run's six extra actions went to a residual the August run had already recorded (a pole route that stops short of wire reach), to an inserter placed one tile off, and to a boiler that ran out of fuel. With one run per task, the replay says the October build reproduces the August behaviour on this world, and nothing finer.</p>
+        </div>
+        <div class="chart">
+          <div class="ct"><span class="t">The Factorio record</span><span class="u">Claude Opus 5 through Claude Code · cap 64</span></div>
+          <div class="sc"><table class="data"><thead><tr><th>Task · build</th><th>Result</th><th>Paid actions</th><th>Cost</th><th>Wall</th><th>Audit</th></tr></thead><tbody>
+            <tr><td>iron plate · August</td><td>win</td><td>5</td><td>$1.99</td><td>≈ 9 min</td><td>clean</td></tr>
+            <tr><td>iron gear wheel · August</td><td>win</td><td>9</td><td>$4.87</td><td>·</td><td>clean</td></tr>
+            <tr><td>electronic circuit · August</td><td>win</td><td>9</td><td>$4.44</td><td>≈ 17 min</td><td>clean</td></tr>
+            <tr class="hi"><td>iron plate · October</td><td>win</td><td>5</td><td>$2.64</td><td>8 min 35 s</td><td>clean</td></tr>
+            <tr class="hi"><td>electronic circuit · October</td><td>win</td><td>15</td><td>$6.69</td><td>22 min 51 s</td><td>clean</td></tr>
+          </tbody></table></div>
+          <p class="tiny" style="margin-top:10px">Costs are Claude Code's list-price figures. Every October action carried state outcomes, and the producer check of the win predicate held at both wins.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="ev-pane" id="ev-oolong" role="tabpanel" hidden>
       <div class="ev-grid">
         <div class="read">
           <h3>OOLONG: when the gradable thing is not the thing that matters.</h3>
-          <p>OOLONG asks questions whose answers require aggregating an entire corpus. The adapter keeps the corpus out of the observation, so the model's context never holds it. <code>BANK_FACT</code> commits a fact with a span the adapter checks verbatim against the corpus; <code>SUBMIT</code> answers the current question and is coverage-gated by a census of banked facts. Correctness is sealed and scored only at the end.</p>
-          <p>Three things are robust in one corpus per rung: <b>the raw model walls past 128K</b>, the three harnesses land in one band well above it, and <b>the gated path is the most expensive at 1M</b>. The 1M rung does not discriminate: the per-question score vectors of the three harness arms are identical there, so the tie says nothing about the harnesses.</p>
-          <p>E5 changed only the actuator shape and cut the 1M cost to $43.39 from $48.76. The per-action discipline is bounded by a seven-minute paid phase; what remains is the offline strategy the <span class="sym">Assay</span> framing led the agent to choose, hand-classifying all 20,321 reviews through the model.</p>
+          <p>OOLONG asks questions whose answers need the whole corpus: counting, cross-referencing and timeline comparison over every record. The adapter writes the corpus to a file in the run directory and keeps it out of the observation, so the model's context never holds it.</p>
+          <p><code>BANK_FACT</code> commits a fact with a span that the adapter checks verbatim against the corpus; a span that is not there is refused and journaled. <code>SUBMIT</code> answers the current question with cited spans and is coverage-gated by a census of banked facts. Answers are sealed and scored only at the end, by the benchmark's own scorer, so correctness never enters the journal during the run.</p>
+          <p>Four arms ran on Claude Opus 5 over the same corpora, questions and scorer. <b>The raw model walls past 128K</b>, since the larger corpora exceed its context window. <b>The three harnesses land in one band</b>, well above it, at every length. And <b>on a fair footing <span class="sym">Assay</span> does not lead on accuracy and is the most expensive harness</b>: weakest of the three at 128K, where its counting questions collapsed without the hint; tied at 0.740 at 1M for $48.76 and 114 minutes against Claude Code's $8.20 and 30; tied at the top at 4M for $2.40.</p>
         </div>
         <div class="stack">
           <div class="chart" id="ch-oo">
-            <div class="ct"><span class="t">Accuracy over the length ladder</span><span class="u">Table 9 · one corpus per rung</span></div>
+            <div class="ct"><span class="t">Accuracy over the length ladder</span><span class="u">one corpus per rung · 25 questions</span></div>
             <div id="oo-svg"></div>
-            <div class="legend"><span><i class="ln red"></i><span class="sym">Assay</span>&nbsp;de-hinted (fair arm)</span><span><i class="ln m1"></i>Claude Code, no hint</span><span><i class="ln m2"></i>Prime Agent</span><span><i class="m3" style="border-radius:50%;width:9px;height:9px"></i>raw Opus 5, corpus in context</span></div>
+            <div class="legend"><span><i class="ln" style="border-top:2px solid var(--accent)"></i><span class="sym">Assay</span>, de-hinted (fair arm)</span><span><i class="ln" style="border-top:2px solid var(--mark-1)"></i>Claude Code, no hint</span><span><i class="ln" style="border-top:2px solid var(--mark-2)"></i>Prime Agent</span><span><i class="m3" style="border-radius:50%;width:9px;height:9px"></i>raw Opus 5, corpus in context</span></div>
           </div>
           <div class="chart" id="ch-oo-cost">
-            <div class="ct"><span class="t">Cost of the completing run, USD</span><span class="u">per rung</span></div>
+            <div class="ct"><span class="t">Cost of the completing run, US dollars</span><span class="u">per rung</span></div>
             <div id="oo-cost-svg"></div>
-            <div class="legend"><span><i class="red"></i><span class="sym">Assay</span>&nbsp;de-hinted</span><span><i class="tex"></i><span class="sym">Assay</span>&nbsp;batched actuator (E5, 1M only)</span><span><i class="m1"></i>Claude Code</span><span><i class="m3"></i>raw Opus 5</span></div>
+            <div class="legend"><span><i class="red"></i><span class="sym">Assay</span>, de-hinted</span><span><i class="tex"></i><span class="sym">Assay</span>, batched actuator (E5, 1M only)</span><span><i class="m1"></i>Claude Code</span><span><i class="m3"></i>raw Opus 5</span></div>
             <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-oo"></table></div></details>
+            <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 9</span>OOLONG length ladder, one corpus per rung, all arms on Claude Opus 5 over the same corpora, questions and scorer. The raw model's corpus exceeds its context window past 128K.</p>
           </div>
         </div>
       </div>
-    
+      <hr class="rule" style="margin-block:32px">
+      <div class="ev-grid even">
+        <div class="read">
+          <h3>The 1M rung does not discriminate.</h3>
+          <p>At 1M the per-question score vectors of the three harness arms are identical: the same four counting questions score zero for every arm, and 19 of 25 answers are byte-identical across arms. The tie says nothing about the harnesses and everything about the corpus and its questions.</p>
+          <p>Each rung also draws on a different source corpus, so the table reads across a rung, not down a column. What the sweep supports is narrower: accuracy holds across lengths where the raw model cannot run at all, the verification layer (span-checked facts, coverage gating, sealed scoring, a hash-chained journal) exists in only one arm, and the gated path as built costs several times what a plain harness costs at 1M.</p>
+        </div>
+        <div class="read">
+          <h3>E5: where the cost sits.</h3>
+          <p>E5 kept the kernel and its discipline and changed only the actuator: several spans per <code>BANK_FACT</code> and a plain-text <code>SUBMIT</code>, with cost bands fixed before launch. The run answered all 25 questions at the same 0.740 with the same per-question vector, in 50 paid actions with every prediction held and no refusal, for <b>$43.39 and 76 minutes</b> against $48.76 and 114.</p>
+          <p>The journal's timestamps place the cost. The first paid action came 68 minutes after the start, and all fifty took seven and a half minutes. In both <span class="sym">Assay</span> runs the offline phase, where the kernel imposes nothing, went to classifying all 20,321 reviews through the model; the Claude Code agent hand-labelled 2,655 and trained a bag-of-words classifier for the rest. The actuator shape is ruled out; the strategy chosen under the <span class="sym">Assay</span> framing remains, and one run per arm cannot attribute it.</p>
+        </div>
+      </div>
       <hr class="rule" style="margin-block:32px">
       <div class="ev-grid">
         <div class="read">
-          <h3>The records behind the two worlds.</h3>
-          <p>Every Factorio run ran one session on Claude Opus 5 through Claude Code under a cap of 64 paid actions, against FLE 0.4.3 in Docker; every OOLONG arm answered the same 25 questions per rung. Costs are Claude Code's list-price figures.</p>
-        </div>
-        <div class="stack">
-          <div class="chart">
-            <div class="ct"><span class="t">Factorio lab tasks</span><span class="u">August build and release 1.1.0</span></div>
-            <div class="sc"><table class="data"><thead><tr><th>Task · build</th><th>Result</th><th>Paid actions</th><th>Cost</th><th>Wall</th><th>Audit</th></tr></thead><tbody>
-              <tr><td>iron plate · August</td><td>win</td><td>5</td><td>$1.99</td><td>≈ 9 min</td><td>clean</td></tr>
-              <tr><td>iron gear wheel · August</td><td>win</td><td>9</td><td>$4.87</td><td>·</td><td>clean</td></tr>
-              <tr><td>electronic circuit · August</td><td>win</td><td>9</td><td>$4.44</td><td>≈ 17 min</td><td>clean</td></tr>
-              <tr class="hi"><td>iron plate · 1.1.0</td><td>win</td><td>5</td><td>$2.64</td><td>8 min 35 s</td><td>clean</td></tr>
-              <tr class="hi"><td>electronic circuit · 1.1.0</td><td>win</td><td>15</td><td>$6.69</td><td>22 min 51 s</td><td>clean</td></tr>
-            </tbody></table></div>
-          </div>
-          <div class="chart">
-            <div class="ct"><span class="t">OOLONG at 1M, by arm</span><span class="u">E5 · 25 questions</span></div>
-            <div class="sc"><table class="data"><thead><tr><th>Arm</th><th>Accuracy</th><th>Exact</th><th>Cost</th><th>Wall</th></tr></thead><tbody>
-              <tr class="hi"><td>Assay de-hinted, batched actuator (E5)</td><td>0.740</td><td>17/25</td><td>$43.39</td><td>76 min</td></tr>
-              <tr><td>Assay de-hinted, single actuator</td><td>0.740</td><td>17/25</td><td>$48.76</td><td>114 min</td></tr>
-              <tr><td>Claude Code, no hint</td><td>0.740</td><td>17/25</td><td>$8.20</td><td>30 min</td></tr>
-              <tr><td>Prime Agent</td><td>0.740</td><td>17/25</td><td>·</td><td>5 min</td></tr>
-            </tbody></table></div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</section>
-
-
-<!-- ============ 03 CLAUDE 5.5 ============ -->
-<section class="section" id="claude55">
-  <div class="wrap">
-    <div class="section-head">
-      <p class="eyebrow rv"><span class="num">§ 03</span><span>Claude 5.5 · ARC-AGI-3</span></p>
-      <h2 class="rv">Sonnet and Haiku 5.5 on the same 25 games.</h2>
-      <p class="lede rv">In October 2026 the kernel, the manual and the caps of the campaign ran Claude Sonnet 5.5 and Claude Haiku 5.5 on the 25 public games. Both then ran at the highest effort on the games each found hardest. The harness was then changed where Haiku broke, and Haiku ran again.</p>
-    </div>
-
-    <div class="ev-tabs rv" role="tablist" aria-label="Claude 5.5 runs">
-      <button role="tab" aria-selected="true" data-group="c55" data-ev="first">Default effort · 25 games</button>
-      <button role="tab" aria-selected="false" data-group="c55" data-ev="xhigh">xhigh · 20 runs</button>
-      <button role="tab" aria-selected="false" data-group="c55" data-ev="stops">Why Haiku stops</button>
-      <button role="tab" aria-selected="false" data-group="c55" data-ev="fixes">Haiku with the fixes · default effort</button>
-    </div>
-
-    <div class="ev-pane rv" id="ev-first" role="tabpanel">
-      <div class="ev-grid">
-        <div class="read">
-          <h3>Sonnet won every game. Haiku won five and stopped on the rest.</h3>
-          <p>Both models ran at their default effort under the campaign's registry, with a cap of 1,500 paid actions, the gated manual and the E1 prompt, and up to three sessions of four hours per game. Sonnet cleared <b>183 of 183 levels, RHAE 95.12</b>. The Opus 5 campaign scored 96.54 on 177 levels. Sonnet won lf52, the campaign's one open failure, 10 of 10 in 933 actions, and dc22 in 707 against the campaign's 1,042.</p>
-          <p>Haiku won 5 games and cleared <b>93 of 183 levels, RHAE 39.89</b>. Every loss ended the same way: Haiku judged a level unsolvable and stopped, with most of its 1,500 actions unspent.</p>
-          <dl class="kv">
-            <dt>Sonnet 5.5</dt><dd>25 of 25 · $95 at list price · 11.2 player-hours</dd>
-            <dt>Haiku 5.5</dt><dd>5 of 25 · $54 at list price · 15.8 player-hours</dd>
-            <dt>Scoring</dt><dd>the benchmark's RHAE over the local journals, not a server scorecard</dd>
-            <dt>Incidents</dt><dd>an action in GAME_OVER stranded the ARC adapter on two Sonnet runs, fixed mid-sweep; a host restart killed six sessions, which were not counted</dd>
-          </dl>
+          <h3>One sentence, moved between layers.</h3>
+          <p>The OOLONG registry's goal text carried one strategy sentence: the corpus is a file in the run directory and should be read with the agent's own offline tools. Removing that sentence, and nothing else, made the de-hinted arm.</p>
+          <p>At 1M the two arms scored within one question of each other, 0.701 hinted against 0.740 de-hinted, and <b>their cost moved from $5.16 to $48.76</b>. At 128K the sentence was worth 0.870 against 0.764, and without it the counting questions collapsed. A sentence at the registry layer changed cost by close to an order of magnitude and capability on one class of question, with the kernel and the constitution untouched.</p>
         </div>
         <div class="chart">
-          <div class="ct"><span class="t">RHAE by game, default effort</span><span class="u">25 games · default effort · 2026-10-25</span></div>
-          <div id="first-svg"></div>
-          <div class="legend"><span><i class="m1"></i>Sonnet 5.5</span><span><i class="red"></i>Haiku 5.5</span><span><i class="ln" style="border-top:1px dashed var(--ink-3)"></i>Opus 5 campaign</span></div>
-          <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-first"></table></div></details>
+          <div class="ct"><span class="t">OOLONG at 1M, by arm</span><span class="u">25 questions</span></div>
+          <div class="sc"><table class="data"><thead><tr><th>Arm</th><th>Accuracy</th><th>Exact</th><th>Cost</th><th>Wall</th></tr></thead><tbody>
+            <tr class="hi"><td><span class="sym">Assay</span> de-hinted, batched actuator (E5)</td><td>0.740</td><td>17/25</td><td>$43.39</td><td>76 min</td></tr>
+            <tr><td><span class="sym">Assay</span> de-hinted, single actuator</td><td>0.740</td><td>17/25</td><td>$48.76</td><td>114 min</td></tr>
+            <tr><td><span class="sym">Assay</span> hinted (reference)</td><td>0.701</td><td>16/25</td><td>$5.16</td><td>·</td></tr>
+            <tr><td>Claude Code, no hint</td><td>0.740</td><td>17/25</td><td>$8.20</td><td>30 min</td></tr>
+            <tr><td>Prime Agent</td><td>0.740</td><td>17/25</td><td>·</td><td>5 min</td></tr>
+          </tbody></table></div>
+          <p class="tiny" style="margin-top:10px">Prime Agent's command line does not itemize cost. The hinted row is a reference, not the fair comparison.</p>
         </div>
       </div>
     </div>
 
-    <div class="ev-pane rv" id="ev-xhigh" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>More thinking won four of Haiku's ten nearest losses.</h3>
-          <p>Each model then ran at the highest effort, xhigh, on ten games, with the API's thinking summaries kept in every transcript: Sonnet on its ten lowest-RHAE games, Haiku on the ten losses where it had got furthest. Everything else was held.</p>
-          <p>Sonnet won all ten again, and its mean RHAE on them rose from 88.7 to <b>98.8</b> on 40% fewer actions (4,455 to 2,651). Haiku won <b>four games it had lost</b>: lp85, ls20, cn04 and r11l. Its mean RHAE on the ten rose from 45.1 to 59.2. Three games stayed where they were and two did worse. Every Haiku loss at xhigh still ended by its own judgment.</p>
-          <dl class="kv">
-            <dt>Thinking kept</dt><dd>Haiku 4,724 summaries (9.3M characters) · Sonnet 2,698 (3.7M)</dd>
-            <dt>Cost</dt><dd>Sonnet $62 · Haiku $44, at list price</dd>
-            <dt>Reading</dt><dd>one run per cell: every per-game change is direction only</dd>
-          </dl>
-        </div>
-        <div class="stack">
-          <div class="chart">
-            <div class="ct"><span class="t">Sonnet 5.5 · RHAE, default effort and xhigh</span><span class="u">its ten lowest-RHAE games</span></div>
-            <div id="xs-svg"></div>
-          </div>
-          <div class="chart">
-            <div class="ct"><span class="t">Haiku 5.5 · RHAE, default effort and xhigh</span><span class="u">its ten nearest losses</span></div>
-            <div id="xh-svg"></div>
-            <div class="legend"><span><i class="m3"></i>default effort</span><span><i class="red"></i>xhigh</span></div>
-            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-xhigh"></table></div></details>
-          </div>
-        </div>
+    <div class="ev-pane" id="ev-seam" role="tabpanel" hidden>
+      <div class="sub-h">
+        <h3>One kernel, three worlds, through the registry and the adapter.</h3>
+        <p class="lede" style="font-size:16px">Each world binds to the kernel in the same two places: a registry that names the actions, budget and goal, and an adapter that turns actions into the world's calls and the world's response into an observation. Everything world-specific sits there.</p>
       </div>
-    </div>
-
-    <div class="ev-pane rv" id="ev-stops" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>Haiku breaks in one place: it stops.</h3>
-          <p>All 26 Haiku losses, at both efforts, ended by Haiku's own judgment with most of the budget unspent. All 26 conclusions were wrong: Sonnet cleared every one of those levels under the same manual, modules and registry, 12 of the 20 default-effort stop levels in 55 actions or fewer. In 21 of the 26, Haiku's own notes named the probe that would have tested the conclusion, and Haiku did not buy it.</p>
-          <p>Read through the five layers, the origin is the model, and the locus is the addressable states: facts never reached the regime a conclusion needed, while every meter stayed green. The levers sit above. The player prompt licensed the stop. The batch runner installed no stop gate. The conclusion gate fired on a declaration word that Haiku, concluding in prose, never wrote.</p>
-          <p class="small">From the owner's diagnosis of 2026-10-26: 121 agents read the journals, notes, receipts, session reports and thinking summaries, and a skeptic checked every attribution. 21 of 36 cross-cutting findings were refuted and are left out.</p>
-        </div>
-        <div class="stack">
-          <div class="chart">
-            <div class="ct"><span class="t">The stop, counted</span><span class="u">26 losses · both efforts</span></div>
-            <div class="sc"><table class="data facts"><tr><td>Haiku losses that ended by its own judgment, with budget left</td><td>26 of 26</td></tr><tr><td>Counted Haiku sessions that ended by judgment</td><td>86 of 95</td></tr><tr><td>Sonnet runs that ended by its own judgment</td><td>0 of 35</td></tr><tr><td>Terminal conclusions that were impossibility proofs</td><td>14 of 26, all wrong by Sonnet's record</td></tr><tr><td>Terminal stops whose notes named the untested probe and left it unbought</td><td>21 of 26</td></tr><tr><td>Terminal stops where the conclusion gate fired</td><td>1 of 26</td></tr></table></div>
-          </div>
-          <div class="chart">
-            <div class="ct"><span class="t">Where each default-effort loss stopped, and what Sonnet needed there</span><span class="u">20 losses</span></div>
-            <div class="sc"><table class="data"><thead><tr><th>Game</th><th>Stop</th><th>Actions on it</th><th>Budget left</th><th>xhigh</th><th>Sonnet there</th></tr></thead><tbody><tr><td>bp35</td><td>L1 of 9</td><td>132</td><td>1,368</td><td>·</td><td>21</td></tr><tr><td>cn04</td><td>L5 of 6</td><td>149</td><td>1,190</td><td>won</td><td>55</td></tr><tr><td>dc22</td><td>L1 of 6</td><td>175</td><td>1,325</td><td>·</td><td>36</td></tr><tr><td>g50t</td><td>L2 of 7</td><td>82</td><td>1,337</td><td>·</td><td>32</td></tr><tr><td>ka59</td><td>L6 of 7</td><td>80</td><td>1,173</td><td>5/7</td><td>209</td></tr><tr><td>lf52</td><td>L2 of 10</td><td>43</td><td>1,432</td><td>·</td><td>85</td></tr><tr><td>lp85</td><td>L7 of 8</td><td>96</td><td>1,287</td><td>won</td><td>9</td></tr><tr><td>ls20</td><td>L7 of 7</td><td>12</td><td>884</td><td>won</td><td>286</td></tr><tr><td>r11l</td><td>L5 of 6</td><td>25</td><td>1,403</td><td>won</td><td>26</td></tr><tr><td>re86</td><td>L6 of 8</td><td>194</td><td>726</td><td>6/8</td><td>101</td></tr><tr><td>s5i5</td><td>L6 of 8</td><td>74</td><td>1,164</td><td>2/8</td><td>27</td></tr><tr><td>sb26</td><td>L5 of 8</td><td>30</td><td>1,228</td><td>4/8</td><td>17</td></tr><tr><td>sc25</td><td>L3 of 6</td><td>31</td><td>1,335</td><td>·</td><td>35</td></tr><tr><td>sk48</td><td>L2 of 8</td><td>30</td><td>1,336</td><td>·</td><td>120</td></tr><tr><td>sp80</td><td>L2 of 6</td><td>53</td><td>1,384</td><td>·</td><td>54</td></tr><tr><td>su15</td><td>L5 of 9</td><td>1</td><td>1,368</td><td>4/9</td><td>51</td></tr><tr><td>tn36</td><td>L5 of 7</td><td>234</td><td>1,147</td><td>3/7</td><td>23</td></tr><tr><td>tr87</td><td>L2 of 6</td><td>155</td><td>1,289</td><td>·</td><td>30</td></tr><tr><td>vc33</td><td>L4 of 7</td><td>30</td><td>1,344</td><td>·</td><td>41</td></tr><tr><td>wa30</td><td>L2 of 9</td><td>71</td><td>1,378</td><td>·</td><td>162</td></tr></tbody></table></div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <div class="ev-pane rv" id="ev-fixes" role="tabpanel" hidden>
-      <div class="ev-grid">
-        <div class="read">
-          <h3>With the fixes, Haiku won 8 games at default effort, up from 5.</h3>
-          <p>The harness was changed where the diagnosis said Haiku broke, and Haiku 5.5 ran the 25 games again at its default effort under the same caps. Against its default-effort run of 2026-10-25 it won <b>8 games against 5</b>, cleared <b>110 of 183 levels against 93</b>, and scored a set RHAE of <b>48.52 against 39.89</b>. Four losses turned into wins: lp85, ls20, r11l and sb26.</p><p>The gates did what they were built for. No relaunched session quit without playing, against 6 before; the Stop gate held 32 of 61 sessions at least once; and the resume check fired at the start of 33 of 36 relaunched sessions. They also exposed two failure modes. Haiku wrote its coverage audit and did not always buy the probe it named. And on four games it spent the whole budget of 1,500 actions, three of them on an early level in under half an hour, with predictions that held and a board that never advanced: m0r0, won before, ended at 0 of 6.</p>
-          <dl class="kv"><dt>Cost</dt><dd>$102 against $54, at list price</dd><dt>Player time</dt><dd>22.5 h against 15.8 h</dd><dt>Paid actions</dt><dd>15,985 against 6,404</dd><dt>Per game</dt><dd>4 now won · 4 wins kept · 9 further · 4 the same · 4 worse</dd><dt>Reading</dt><dd>one run per cell, every change at once: direction only</dd></dl>
-        </div>
-        <div class="stack">
-          <div class="chart">
-            <div class="ct"><span class="t">Haiku 5.5, default effort: RHAE by game before the fixes (2026-10-25) and with them (2026-10-26)</span><span class="u">25 games · one run per cell</span></div>
-            <div id="exp-svg"></div>
-            <div class="legend"><span><i class="m3"></i>default effort, before the fixes · 2026-10-25</span><span><i class="red"></i>default effort, with the fixes · 2026-10-26</span><span><i class="ln" style="border-top:1px dashed var(--ink-3)"></i>Sonnet 5.5, default effort · 2026-10-25</span></div>
-            <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-exp"></table></div></details>
-          </div>
-        </div>
+      <div class="sc">
+        <table class="conf">
+          <thead><tr><th>Component</th><th>ARC-AGI-3</th><th>Factorio</th><th>OOLONG</th></tr></thead>
+          <tbody>
+            <tr><td>Registry actions</td><td><code>ACTION1..7</code>, one with x, y in 0..63</td><td><code>RUN program</code>, <code>WAIT ticks</code></td><td><code>BANK_FACT</code>, <code>SUBMIT</code></td></tr>
+            <tr><td>Budget</td><td>200, 500 or 1,500</td><td>64 or 128</td><td>40 or 200</td></tr>
+            <tr><td>Goal text</td><td>absent (host default)</td><td>present</td><td>present, with the strategy sentence</td></tr>
+            <tr><td>Observation</td><td>frames, 64 × 64</td><td>dict: tick, inventory, entities, production, windows, refusals</td><td>dict: corpus path, current question, census, last result</td></tr>
+            <tr><td>Refusals</td><td>not needed</td><td>policy refusal in stderr, plus a counter</td><td>last result refused, plus a counter</td></tr>
+            <tr><td>World policy</td><td>none</td><td>AST screen and a sealed instance</td><td>verbatim span check, census gate</td></tr>
+            <tr><td>Modules</td><td>unused in the 25 (E2 loaded one)</td><td>unused</td><td>unused</td></tr>
+            <tr><td>Carryover import</td><td>unused in the 25 (E3 imported)</td><td>unused</td><td>unused</td></tr>
+          </tbody>
+        </table>
       </div>
       <hr class="rule" style="margin-block:32px">
-      <div class="changes">
-        <p class="eyebrow"><span class="num">Tag</span><span>sonnet-haiku-5-5-experiment · what changed</span></p>
-        <ol class="chg"><li><b>Operator.</b> The player prompt no longer licenses a stop. The batch runner installs the Stop gate: a stop with budget left needs a STOP block with RULES citing paid events, UNTESTED and NEXT PROBE.</li><li><b>Conclusion gate.</b> A new module, in block mode: the coverage audit on a reset that did not follow GAME_OVER and when the notes gain a verdict, and a resume check at status.</li><li><b>Gamble streak.</b> A new module, in block mode: after three missed level gambles, a gamble names its win-rule hypothesis.</li><li><b>Coverage ledger.</b> Board objects never clicked; no "untried [none]" or "saturated" on a one-action level; regions and objects on the status line at a stop.</li><li><b>Manual.</b> Four world-agnostic sentences: a stop is a conclusion, the gap list is a debt, a Verified line states its regime, an inherited verdict is Assumed.</li><li><b>Instruments.</b> The settled diff on the first line of each receipt; the frame-world Python names; frame outcome forms admitted by the registry; the state cap a registry field with a retire operation; a guard for actions sent in GAME_OVER.</li></ol>
+      <div class="ev-grid even">
+        <div class="read">
+          <h3>Verifiable and non-verifiable work.</h3>
+          <p>The gate needs a world that answers. On a grid or a tick counter the answer is immediate and crisp, and the discipline is cheap: on ARC-AGI-3, 8% of paid actions were single probes. On OOLONG the world is a corpus and correctness is sealed until the end, so the harness can grade evidence integrity during the run (a span is verbatim, a question has a banked fact) and cannot grade the answer.</p>
+          <p>The OOLONG cost table is what the gated path costs when the gradable thing is not the thing that matters. For tasks whose success cannot be checked in code at all, the design offers the record and the instruments, not the gate.</p>
+        </div>
+        <div class="read">
+          <h3>What these two sweeps do not show.</h3>
+          <p><b>Factorio</b> is three tasks with no control arm, and its fail-closed claim is untested by incident.</p>
+          <p><b>OOLONG</b> is one corpus per rung with a different source per rung, and its 1M rung does not discriminate between harnesses.</p>
+          <p>Both are reported to show the kernel attaching unchanged to worlds unlike ARC-AGI-3, with the cost in full, not to rank harnesses on them.</p>
+        </div>
       </div>
     </div>
   </div>
 </section>
 
+<!-- ============ STUDY 03 · RSI, HAIKU 5.5 ============ -->
+<section class="study-panel" id="rsi" role="tabpanel" aria-labelledby="tab-rsi" hidden>
+  <div class="wrap">
+    <div class="study-head">
+      <p class="eyebrow"><span>Study 03</span><span>The RSI paper · ARC-AGI-3 · Claude Haiku 5.5 · 2026-10-25 to 10-28</span></p>
+      <div class="stack">
+        <h2>Recursive self-improvement for ARC-AGI-3: hill-climbing to 78.95 RHAE with Haiku 5.5.</h2>
+        <p class="lede">A strong analyst model read every Haiku run through the harness's layers and recommended code changes where each loss pointed. The author adopted every recommendation, tagged a new version, and ran again. Because ARC-AGI-3 verifies a win, each won game stays pinned to the version that won it, and the newest version attacks the rest.</p>
+      </div>
+      <div class="side">
+        <div class="actions" id="rsi-paper">
+          <a class="btn primary" href="https://zenodo.org/records/23737706" target="_blank" rel="noopener">Read the paper <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M3 9 9 3M4 3h5v5"/></svg></a>
+          <a class="btn" href="https://github.com/arjmandi/assay/tree/experiment/sonnet-haiku-5-5" target="_blank" rel="noopener">The experiment branch</a>
+        </div>
+        <p class="small">Scores are computed locally over several attempts on the public games. They are not comparable to ARC Prize's single-attempt verified results.</p>
+      </div>
+    </div>
+    <div class="stat-strip" role="list" aria-label="RSI results">
+      <div class="stat" role="listitem"><span class="v">78.95</span><span class="l">pinned record · 17 of 25 games · 160 of 183 levels</span></div>
+      <div class="stat" role="listitem"><span class="v">17<small>/ 25</small></span><span class="l">the newest version alone · RHAE 76.26 · medium + xhigh</span></div>
+      <div class="stat" role="listitem"><span class="v">12<small>/ 25</small></span><span class="l">fix 2 at medium · up from 5 · RHAE 60.24, up from 39.89 · p = 0.016</span></div>
+      <div class="stat" role="listitem"><span class="v">5<small>/ 25</small></span><span class="l">Claude Code alone · RHAE 37.18 · medium</span></div>
+    </div>
+
+    <div class="ev-tabs" role="tablist" aria-label="The RSI paper">
+      <button role="tab" aria-selected="true" data-group="rsi" data-ev="loop">The loop</button>
+      <button role="tab" aria-selected="false" data-group="rsi" data-ev="results">Results</button>
+      <button role="tab" aria-selected="false" data-group="rsi" data-ev="games">Every game</button>
+      <button role="tab" aria-selected="false" data-group="rsi" data-ev="stops">Why Haiku stopped</button>
+      <button role="tab" aria-selected="false" data-group="rsi" data-ev="controls">Baseline and controls</button>
+      <button role="tab" aria-selected="false" data-group="rsi" data-ev="limits">Cost and limits</button>
+    </div>
+
+    <div class="ev-pane" id="ev-loop" role="tabpanel">
+      <div class="ev-grid">
+        <div class="read">
+          <h3>Each version runs, explores its losses, and is read by an analyst.</h3>
+          <p>ARC-AGI-3 verifies a win: the engine reports it, and the journal's chain head fixes the action sequence that produced it. So a won game is pinned to the version that won it, and a pin moves only to a later win with a higher RHAE. Every game not yet won goes to the newest version, first at medium effort, then at xhigh on the games it lost.</p>
+          <p>Between versions, Claude Fable 5.1 ran an analysis of about 120 agents over every journal, note, receipt and thinking trace. Each lost game got a case study, six lenses read across all runs, and skeptics tried to refute every finding. They refuted 21 of 36 lens findings the first time and 17 of 36 the second.</p>
+          <p><b>The loop is human-in-the-loop.</b> The author adopted every recommendation without selection, approved the patches a coding agent wrote, chose the ten games pass 2 explored, and made three operator changes no analysis recommended: a guard for actions sent in GAME_OVER, a pinned tool list, and an explicit effort flag.</p>
+          <dl class="kv">
+            <dt>Versions</dt><dd><span class="sym">Assay</span> 1.5.1, then fix 1 and fix 2, tagged off the main branch</dd>
+            <dt>Passes</dt><dd>six harness passes and one Claude Code baseline, 2026-10-25 to 10-27</dd>
+            <dt>Budget</dt><dd>1,500 paid actions a game, up to 3 sessions of 4 hours, $15 a session, one run per game</dd>
+            <dt>Player</dt><dd>Claude Code, headless, on Haiku 5.5; medium is Claude Code's default effort</dd>
+          </dl>
+        </div>
+        <div class="stack">
+          <figure class="night" style="margin:0">
+            <div class="cap">The loop as run</div>
+            <div class="dscroll">
+              <svg class="loop-svg" viewBox="0 0 660 320" role="img" aria-label="The loop: run the newest version at medium effort, explore its losses at xhigh, both feed verified wins to a pin store, an analysis reads every record, every change is applied and tagged as the next version.">
+                <rect class="bx" x="16" y="24" width="180" height="74" rx="4"/>
+                <text class="t1" x="30" y="50">RUN · MEDIUM</text><text class="t2" x="30" y="69">the newest version</text><text class="t2" x="30" y="85">every game not yet won</text>
+                <rect class="bx" x="236" y="24" width="180" height="74" rx="4"/>
+                <text class="t1" x="250" y="50">EXPLORE · XHIGH</text><text class="t2" x="250" y="69">the same version</text><text class="t2" x="250" y="85">on the games it lost</text>
+                <rect class="bx hot" x="456" y="24" width="188" height="74" rx="4"/>
+                <text class="t1" x="470" y="50">ANALYSIS</text><text class="t2" x="470" y="69">Fable 5.1 · ~120 agents</text><text class="t2" x="470" y="85">reads every record</text>
+                <rect class="bx" x="456" y="166" width="188" height="74" rx="4"/>
+                <text class="t1" x="470" y="192">APPLY EVERY CHANGE</text><text class="t2" x="470" y="211">at the layer named</text><text class="t2" x="470" y="227">tests green, new tag</text>
+                <rect class="bx pin" x="16" y="166" width="400" height="74" rx="4"/>
+                <text class="t1" x="30" y="192">PIN STORE</text><text class="t2" x="30" y="211">a won game: the version of its best verified win</text><text class="t2" x="30" y="227">unwon and new games: the newest version</text>
+                <path class="wire" d="M196 61 H228"/><path class="head" d="M236 61 l-8 -4 v8 z"/>
+                <path class="wire" d="M416 61 H448"/><path class="head" d="M456 61 l-8 -4 v8 z"/>
+                <path class="wire" d="M550 98 V158"/><path class="head" d="M550 166 l-4 -8 h8 z"/>
+                <path class="wire" d="M106 98 V158"/><path class="head" d="M106 166 l-4 -8 h8 z"/>
+                <text class="t3" x="114" y="136">verified wins</text>
+                <path class="wire" d="M326 98 V158"/><path class="head" d="M326 166 l-4 -8 h8 z"/>
+                <text class="t3" x="334" y="136">verified wins</text>
+                <path class="wire" d="M550 240 V284 H6 V61 H8"/><path class="head" d="M16 61 l-8 -4 v8 z"/>
+                <text class="t3" x="178" y="304">next version: 1.5.1, then fix 1, then fix 2</text>
+                <circle class="dot" cx="550" cy="284" r="3"/>
+              </svg>
+            </div>
+          </figure>
+          <p class="small" style="margin-top:-8px"><span class="fig">FIG. 2</span>The loop as run (Algorithm 1). Every medium pass played all 25 games, pinned or not, so later versions also replayed earlier wins. Three pairs of passes and two analyses ran.</p>
+          <div class="chart">
+            <div class="ct"><span class="t">The seven passes</span><span class="u">Haiku 5.5 unless named</span></div>
+            <div class="sc"><table class="data"><thead><tr><th>Pass</th><th class="l">Harness</th><th class="l">Effort</th><th class="l">Games</th><th>Date</th></tr></thead><tbody>
+              <tr><td>baseline</td><td class="l wrap">Claude Code, no <span class="sym">Assay</span>, up to 5 sessions</td><td class="l">medium</td><td class="l wrap">25</td><td>2026-10-27</td></tr>
+              <tr><td>1</td><td class="l wrap"><span class="sym">Assay</span> 1.5.1 (Haiku and Sonnet)</td><td class="l">medium</td><td class="l wrap">25</td><td>2026-10-25</td></tr>
+              <tr><td>2</td><td class="l wrap"><span class="sym">Assay</span> 1.5.1</td><td class="l">xhigh</td><td class="l wrap">10 nearest misses</td><td>2026-10-25</td></tr>
+              <tr><td>analysis 1</td><td class="l wrap">Fable 5.1 reads passes 1 and 2</td><td class="l"></td><td class="l wrap"></td><td>2026-10-26</td></tr>
+              <tr><td>3</td><td class="l wrap">fix 1</td><td class="l">medium</td><td class="l wrap">25</td><td>2026-10-26</td></tr>
+              <tr><td>4</td><td class="l wrap">fix 1</td><td class="l">xhigh</td><td class="l wrap">its 17 losses</td><td>2026-10-26</td></tr>
+              <tr><td>analysis 2</td><td class="l wrap">Fable 5.1 reads passes 3 and 4</td><td class="l"></td><td class="l wrap"></td><td>2026-10-27</td></tr>
+              <tr><td>5</td><td class="l wrap">fix 2</td><td class="l">medium</td><td class="l wrap">25</td><td>2026-10-27</td></tr>
+              <tr><td>6</td><td class="l wrap">fix 2</td><td class="l">xhigh</td><td class="l wrap">its 13 losses</td><td>2026-10-27</td></tr>
+            </tbody></table></div>
+            <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 3</span>The baseline ran last, as a reference outside the loop. Every medium pass played all 25 games, pinned or not, so later versions also replayed earlier wins.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="ev-pane" id="ev-results" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>The newest version won every game an earlier version had won.</h3>
+          <p>Scored the way each version was run, one medium pass over all 25 games and one xhigh pass over its losses with the better attempt counting per game, the three versions won <b>9, 15 and 17 games</b>. The 17 that fix 2 won are exactly the games any pass won. Pinning each to the version that won it adds 2.69 RHAE and two levels, for the pinned record of <b>78.95</b>.</p>
+          <p>That is one run per game. Five of fix 2's 17 came from its xhigh pass, four of them games no version has won at medium effort. 1.5.1's xhigh pass explored only 10 of its 20 losses, so its row understates the unmodified harness.</p>
+          <p>With one attempt each at the same medium effort, the versions got better: 5, 8 and 12 wins, RHAE 39.89, 48.52 and 60.24. <b>The two rounds together added 20.4 RHAE</b> (95% interval 10.3 to 31.1) and gained seven wins while losing none, exact McNemar p = 0.016.</p>
+        </div>
+        <div class="stack">
+          <div class="chart">
+            <div class="ct"><span class="t">Set RHAE by version</span><span class="u">25 games · one run per game and pass</span></div>
+            <div id="ver-svg"></div>
+            <div class="legend"><span><i class="m3"></i>medium pass alone</span><span><i class="m1"></i>the version alone, medium + xhigh</span><span><i class="red"></i>pinned record after the version</span><span><i class="ln"></i>Claude Code alone, medium</span></div>
+            <p class="tiny" style="margin-top:10px"><span class="fig">FIG. 3</span>Each version alone counts the better of its two attempts per game. 1.5.1's xhigh pass explored only 10 of its 20 losses. Fix 2 alone wins the same 17 games as the pinned record.</p>
+          </div>
+        </div>
+      </div>
+      <hr class="rule" style="margin-block:32px">
+      <div class="ev-grid wide-left">
+        <div class="chart">
+          <div class="ct"><span class="t">The pinned record after each pass</span><span class="u">pins move only to a higher-RHAE win</span></div>
+          <div class="sc"><table class="data"><thead><tr><th>Pass</th><th class="l">Version, effort</th><th>Played</th><th>Wins</th><th>Levels</th><th>RHAE</th><th class="l">New pins</th></tr></thead><tbody>
+            <tr><td>1</td><td class="l">1.5.1, medium</td><td>25</td><td>5</td><td>93</td><td>39.89</td><td class="l wrap">ar25 cd82 ft09 m0r0 tu93</td></tr>
+            <tr><td>2</td><td class="l">1.5.1, xhigh</td><td>10</td><td>9</td><td>101</td><td>47.41</td><td class="l wrap">cn04 lp85 ls20 r11l</td></tr>
+            <tr><td>3</td><td class="l">fix 1, medium</td><td>25</td><td>10</td><td>123</td><td>57.74</td><td class="l wrap">sb26</td></tr>
+            <tr><td>4</td><td class="l">fix 1, xhigh</td><td>17</td><td>15</td><td>150</td><td>71.85</td><td class="l wrap">g50t re86 s5i5 sc25 tr87</td></tr>
+            <tr><td>5</td><td class="l">fix 2, medium</td><td>25</td><td>15</td><td>154</td><td>74.51</td><td class="l wrap">none</td></tr>
+            <tr class="hi"><td>6</td><td class="l">fix 2, xhigh</td><td>13</td><td>17</td><td>160</td><td>78.95</td><td class="l wrap">sk48 vc33</td></tr>
+          </tbody></table></div>
+          <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 4</span>Of the xhigh pins of passes 2 and 4, a later version's medium pass also won lp85, ls20 and r11l (fix 1) and cn04, re86, sc25 and tr87 (fix 2): exploration at xhigh fed the next version.</p>
+        </div>
+        <div class="chart">
+          <div class="ct"><span class="t">The rule changes the record little</span><span class="u">17 of 25 under every rule</span></div>
+          <div class="sc"><table class="data"><thead><tr><th>Rule</th><th>Levels</th><th>RHAE</th></tr></thead><tbody>
+            <tr class="hi"><td class="wrap">a pin moves to a later, higher-RHAE win; unwon games keep their best verified levels</td><td>160</td><td>78.95</td></tr>
+            <tr><td class="wrap">pin the first winning version; unwon games keep their best</td><td>160</td><td>77.90</td></tr>
+            <tr><td class="wrap">pin the first winning version; unwon games scored by the newest</td><td>158</td><td>77.10</td></tr>
+            <tr><td class="wrap">the newest version alone, its two attempts</td><td>158</td><td>76.26</td></tr>
+          </tbody></table></div>
+          <p class="tiny" style="margin-top:10px">The gap to the first-win rule is three re-pinned wins: s5i5 from 72.76 to 93.50, g50t from 72.33 to 75.65, ft09 from 97.98 to 100.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="ev-pane" id="ev-games" role="tabpanel" hidden>
+      <div class="sub-h">
+        <h3>25 games, seven runs each.</h3>
+        <p class="small" style="max-width:80ch">Each cell is one run: a filled cell is a win, a tinted cell shows the levels completed, a dashed cell was not played in that pass. The last column is the pinned record with its RHAE. Sonnet 5.5 won all 25 on the unmodified harness at medium effort.</p>
+      </div>
+      <div class="sc"><table class="mx" id="mx"></table></div>
+      <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 5</span>Every game in every pass, Haiku 5.5. Hover or tap a cell for its RHAE.</p>
+      <div class="mx-key"><span><i style="background:var(--accent)"></i>won</span><span><i style="background:color-mix(in srgb, var(--accent) 30%, var(--card))"></i>levels completed, darker is further</span><span><i style="border:1px dashed var(--rule-strong)"></i>not played</span><span><i style="border:1.5px solid var(--ink)"></i>pinned record</span></div>
+      <p class="small" style="margin-top:14px">Never won in six passes: bp35, dc22, ka59, lf52, sp80, su15, tn36, wa30. Their losses on fix 2 have one shape: an audited stop, accepted by the gate, whose audit names rules that were tested and misses the one that mattered.</p>
+    </div>
+
+    <div class="ev-pane" id="ev-stops" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>Haiku did not run out of budget. It stopped.</h3>
+          <p>On the unmodified harness, <b>all 26 Haiku losses ended by Haiku's own judgment</b>, with most of the budget unspent, and all 26 conclusions were wrong: Sonnet cleared every one of those levels, 14 of the 20 medium stop levels in 55 actions or fewer. Fourteen were impossibility proofs consistent with every graded transition and wrong on a rule never exercised. Twenty-one stops named the untested probe in their own notes and left it unbought.</p>
+          <p>Haiku's model fit every transition it tested and was wrong in regimes it never tested. On the levels it stopped on, its predictions were too vague for the harness's meter to see the error: on tn36's fifth level, 205 of 234 predictions were a bare <code>change</code>, none of 224 world-model outcomes missed, and all 19 gambles missed.</p>
+          <p><b>Analysis 1</b> found the levers above the model: the player prompt licensed the stop, the batch runner never installed the shipped Stop gate, and the conclusion gate keyed on a word Haiku never wrote. Fix 1 moved the stop one session later.</p>
+          <p><b>Analysis 2</b> found the exits fix 1 had opened. The gate's count rule never held a first session (21 of 25 first-session stops accepted at medium), held sessions edited the old STOP block in place and looped, and the new sentence “Play until WIN or the cap” made the cap the exit: 10 of 11 cap runs were blocked first and then spent 7,758 actions. Fix 2 closed those exits.</p>
+        </div>
+        <div class="stack">
+          <div class="chart">
+            <div class="ct"><span class="t">How the runs ended</span><span class="u">medium effort · 25 games each</span></div>
+            <div id="end-svg"></div>
+            <div class="legend"><span><i class="red"></i>won</span><span><i class="m3"></i>sessions used up, budget left</span><span><i class="warn"></i>action cap reached</span></div>
+            <p class="tiny" style="margin-top:10px"><span class="fig">FIG. 4</span>Every loss under Claude Code alone and the standard harness was a stop with most of the budget unspent; fix 1 turned four into cap endings; fix 2 removed them.</p>
+          </div>
+          <div class="chart">
+            <div class="ct"><span class="t">What each change moved</span><span class="u">the metric each change targeted · medium effort</span></div>
+            <div class="sc"><table class="data"><thead><tr><th>Metric</th><th>1.5.1</th><th>fix 1</th><th>fix 2</th></tr></thead><tbody>
+              <tr><td>runs ending at the action cap</td><td>0</td><td>4</td><td>0</td></tr>
+              <tr><td>stop attempts blocked by the gate</td><td>·</td><td>329</td><td>23</td></tr>
+              <tr><td>sessions ended by the gate's release</td><td>·</td><td>22</td><td>0</td></tr>
+              <tr><td>first stops held once</td><td>·</td><td>0</td><td>15</td></tr>
+              <tr><td>sessions ended by an accepted audit</td><td>·</td><td>27</td><td>49</td></tr>
+              <tr><td>sessions with no paid action</td><td>6 of 70</td><td>0 of 61</td><td>0 of 61</td></tr>
+              <tr><td>conclusion audits recorded</td><td>0</td><td>4,454</td><td>258</td></tr>
+              <tr><td>python NameErrors (runs)</td><td>116 (25)</td><td>5 (5)</td><td>2 (2)</td></tr>
+              <tr class="sum"><td>games won</td><td>5</td><td>8</td><td>12</td></tr>
+              <tr><td>paid actions</td><td>6,404</td><td>15,985</td><td>12,028</td></tr>
+            </tbody></table></div>
+            <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 6</span>Each change and the metric it targeted, one run per game. A dot means the mechanism did not exist in that version.</p>
+          </div>
+        </div>
+      </div>
+      <hr class="rule" style="margin-block:32px">
+      <div class="ev-grid even">
+        <div class="stack">
+          <h4>Fix 1 · tag sonnet-haiku-5-5-experiment</h4>
+          <ol class="chg">
+            <li><b>The stop licence left the player prompt.</b><span class="lay">layer 0</span></li>
+            <li><b>The batch runner installs the Stop gate</b>, which asks a stop with budget left for a coverage audit.<span class="lay">layer 0</span></li>
+            <li><b>A conclusion gate keyed on the record</b>, with a resume check at the first status.<span class="lay">layer 2</span></li>
+            <li><b>A coverage ledger</b> of board objects never touched.<span class="lay">layers 2, 3</span></li>
+            <li><b>Four manual sentences</b>: a stop is a conclusion, the gap list is a debt, a Verified line states its regime, an inherited verdict is Assumed.<span class="lay">layer 1</span></li>
+            <li><b>Instruments</b>: the frame-world python names, the settled diff on the receipt's first line, frame outcome forms, a retirable state cap.<span class="lay">layer 3</span></li>
+            <li><b>Quieter advisories</b>: wall_spend at thresholds, a miss streak by bucket, a gamble streak.<span class="lay">layer 2</span></li>
+          </ol>
+        </div>
+        <div class="stack">
+          <h4>Fix 2 · tag sonnet-haiku-5-5-experiment-2</h4>
+          <ol class="chg">
+            <li><b>The gate accepts a STOP block new by content</b> whose rules cite an event of this session, holds a first stop once, and states its rule in its message.<span class="lay">layer 0</span></li>
+            <li><b>Release after three blocks per session</b> or fifty paid actions under a hold.<span class="lay">layer 0</span></li>
+            <li><b>“Play to WIN. The cap is a limit, not a target.”</b><span class="lay">layer 0</span></li>
+            <li><b>The conclusion gate</b> reads STOP lines by the gate's rule, credits audits only while one is owed, and keys the resume check on the verdict's text.<span class="lay">layer 2</span></li>
+            <li><b>A regime ledger</b>, and an object ledger without frame-edge and HUD components.<span class="lay">layer 3</span></li>
+            <li><b>The python help moved to the pack</b>, corrected, and a NameError lists the names.<span class="lay">layers 1, 3</span></li>
+            <li><b>wall_spend counts batch steps</b>, the state cap counts the current level, and a module asks for a reason after a refused action in GAME_OVER.<span class="lay">layers 2, 3</span></li>
+          </ol>
+        </div>
+      </div>
+      <details class="tbl" style="margin-top:24px"><summary>Where each pass-1 loss stopped, and what Sonnet needed there</summary>
+        <div class="grid g2" style="margin-top:12px">
+          <div class="chart">            <div class="ct"><span class="t">The stop, counted</span><span class="u">26 losses · both efforts</span></div>
+            <div class="sc"><table class="data facts"><tr><td>Haiku losses that ended by its own judgment, with budget left</td><td>26 of 26</td></tr><tr><td>Counted Haiku sessions that ended by judgment</td><td>86 of 95</td></tr><tr><td>Sonnet runs that ended by its own judgment</td><td>0 of 35</td></tr><tr><td>Terminal conclusions that were impossibility proofs</td><td>14 of 26, all wrong by Sonnet's record</td></tr><tr><td>Terminal stops whose notes named the untested probe and left it unbought</td><td>21 of 26</td></tr><tr><td>Terminal stops where the conclusion gate fired</td><td>1 of 26</td></tr></table></div></div>
+          <div class="chart">            <div class="ct"><span class="t">Where each loss stopped, and what Sonnet needed there</span><span class="u">pass 1 · 1.5.1 · medium · 20 losses</span></div>
+            <div class="sc"><table class="data"><thead><tr><th>Game</th><th>Stop</th><th>Actions on it</th><th>Budget left</th><th>pass 2, xhigh</th><th>Sonnet there</th></tr></thead><tbody><tr><td>bp35</td><td>L1 of 9</td><td>132</td><td>1,368</td><td>·</td><td>21</td></tr><tr><td>cn04</td><td>L5 of 6</td><td>149</td><td>1,190</td><td>won</td><td>55</td></tr><tr><td>dc22</td><td>L1 of 6</td><td>175</td><td>1,325</td><td>·</td><td>36</td></tr><tr><td>g50t</td><td>L2 of 7</td><td>82</td><td>1,337</td><td>·</td><td>32</td></tr><tr><td>ka59</td><td>L6 of 7</td><td>80</td><td>1,173</td><td>5/7</td><td>209</td></tr><tr><td>lf52</td><td>L2 of 10</td><td>43</td><td>1,432</td><td>·</td><td>85</td></tr><tr><td>lp85</td><td>L7 of 8</td><td>96</td><td>1,287</td><td>won</td><td>9</td></tr><tr><td>ls20</td><td>L7 of 7</td><td>12</td><td>884</td><td>won</td><td>286</td></tr><tr><td>r11l</td><td>L5 of 6</td><td>25</td><td>1,403</td><td>won</td><td>26</td></tr><tr><td>re86</td><td>L6 of 8</td><td>194</td><td>726</td><td>6/8</td><td>101</td></tr><tr><td>s5i5</td><td>L6 of 8</td><td>74</td><td>1,164</td><td>2/8</td><td>27</td></tr><tr><td>sb26</td><td>L5 of 8</td><td>30</td><td>1,228</td><td>4/8</td><td>17</td></tr><tr><td>sc25</td><td>L3 of 6</td><td>31</td><td>1,335</td><td>·</td><td>35</td></tr><tr><td>sk48</td><td>L2 of 8</td><td>30</td><td>1,336</td><td>·</td><td>120</td></tr><tr><td>sp80</td><td>L2 of 6</td><td>53</td><td>1,384</td><td>·</td><td>54</td></tr><tr><td>su15</td><td>L5 of 9</td><td>1</td><td>1,368</td><td>4/9</td><td>51</td></tr><tr><td>tn36</td><td>L5 of 7</td><td>234</td><td>1,147</td><td>3/7</td><td>23</td></tr><tr><td>tr87</td><td>L2 of 6</td><td>155</td><td>1,289</td><td>·</td><td>30</td></tr><tr><td>vc33</td><td>L4 of 7</td><td>30</td><td>1,344</td><td>·</td><td>41</td></tr><tr><td>wa30</td><td>L2 of 9</td><td>71</td><td>1,378</td><td>·</td><td>162</td></tr></tbody></table></div></div>
+        </div>
+      </details>
+    </div>
+
+    <div class="ev-pane" id="ev-controls" role="tabpanel" hidden>
+      <div class="ev-grid">
+        <div class="read">
+          <h3>Against Claude Code alone, and against chance.</h3>
+          <p>The baseline played the 25 games with Claude Code and no harness, through a thin game command, under the same budgets except that a game could use five sessions against the harness passes' three. For Sonnet the unmodified harness is worth 3 games and 11 RHAE points. <b>For Haiku it made no measurable difference</b>: 5 wins either way, +2.7 RHAE (interval −8.9 to +14.6). The gain is the harness as the analyses changed it.</p>
+          <p>Nor is the gain just not stopping. The baseline relaunched up to five sessions a game and spent 14,849 actions, more than fix 2's 12,028, yet completed 97 levels and 5 games against fix 2's 128 and 12.</p>
+          <p>A random agent under the same engine, rules and 1,500 actions scored 0.68 RHAE with uniform clicks and 0.83 clicking only non-background cells, over five seeds each, with no win and 2 to 7 of 183 levels.</p>
+          <p>Under the same version, the evidence is partial: a repeat of fix 2 at medium, stopped after ten games, won four of the five earlier wins among them again and lost cn04 at 5 of 6 levels. Five wins are too few for a re-win rate.</p>
+        </div>
+        <div class="stack">
+          <div class="chart">
+            <div class="ct"><span class="t">The baseline against the harness</span><span class="u">medium effort · 25 games</span></div>
+            <div class="sc"><table class="data"><thead><tr><th></th><th>Claude Code alone</th><th><span class="sym">Assay</span> 1.5.1</th><th>fix 2</th></tr></thead><tbody>
+              <tr><td>Sonnet 5.5, won</td><td>22 of 25</td><td>25 of 25</td><td>not run</td></tr>
+              <tr><td>Sonnet 5.5, RHAE</td><td>84.32</td><td>95.12</td><td></td></tr>
+              <tr><td>Haiku 5.5, won</td><td>5 of 25</td><td>5 of 25</td><td>12 of 25</td></tr>
+              <tr><td>Haiku 5.5, levels</td><td>97 of 183</td><td>93 of 183</td><td>128 of 183</td></tr>
+              <tr class="hi"><td>Haiku 5.5, RHAE</td><td>37.18</td><td>39.89</td><td>60.24</td></tr>
+              <tr><td>Haiku 5.5, cost · time</td><td>$35.02 · 15.1 h</td><td>$53.74 · 15.8 h</td><td>$84.85 · 20.3 h</td></tr>
+              <tr><td>date</td><td>2026-10-27</td><td>2026-10-25</td><td>2026-10-27</td></tr>
+            </tbody></table></div>
+            <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 7</span>Claude Code alone could use five sessions a game against the harness passes' three.</p>
+          </div>
+          <div class="chart">
+            <div class="ct"><span class="t">Paired over the 25 games</span><span class="u">bootstrap 20,000 · exact McNemar</span></div>
+            <div class="sc"><table class="data"><thead><tr><th>Comparison</th><th>Δ RHAE</th><th>95% interval</th><th>Wins +/−</th><th>p</th></tr></thead><tbody>
+              <tr><td>1.5.1 vs Claude Code alone</td><td>+2.7</td><td>−8.9 to +14.6</td><td>2 / 2</td><td>1.00</td></tr>
+              <tr><td>fix 1 vs 1.5.1</td><td>+8.6</td><td>−4.5 to +20.4</td><td>4 / 1</td><td>0.38</td></tr>
+              <tr><td>fix 2 vs fix 1</td><td>+11.7</td><td>+0.5 to +23.7</td><td>5 / 1</td><td>0.22</td></tr>
+              <tr class="hi"><td>fix 2 vs 1.5.1</td><td>+20.4</td><td>+10.3 to +31.1</td><td>7 / 0</td><td>0.016</td></tr>
+              <tr><td>fix 2 vs Claude Code alone</td><td>+23.1</td><td>+14.0 to +32.5</td><td>7 / 0</td><td>0.016</td></tr>
+              <tr class="sum"><td>fix 2 vs fix 1, two attempts each</td><td>+7.7</td><td>+0.6 to +16.2</td><td>2 / 0</td><td>0.50</td></tr>
+            </tbody></table></div>
+            <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 8</span>The first five rows compare single medium passes. The last compares two versions given the same two attempts per game, medium then xhigh on the losses: suggestive, one draw.</p>
+          </div>
+        </div>
+      </div>
+      <hr class="rule" style="margin-block:32px">
+      <p class="note">None of these numbers is a leaderboard score. They are computed locally with the harness's scoring script on the 25 public games, from runs with up to three sessions a game, notes carried between sessions and a 1,500-action budget, and the per-version scores and the pinned record combine attempts. ARC Prize's verified results for these models are single attempts under the foundation's own harnesses: Sonnet 5.5 at 0.4% and 4.9%, Haiku 5.5 at 0.5% and 2.8%.</p>
+    </div>
+
+    <div class="ev-pane" id="ev-limits" role="tabpanel" hidden>
+      <div class="cost" aria-label="Cost of the loop">
+        <div class="c"><span class="v">$562.15</span><span class="l">the six harness passes</span><span class="s">119.3 player hours, list price of runs made on a subscription.</span></div>
+        <div class="c"><span class="v">≈ $7,800</span><span class="l">the two analyses</span><span class="s">About 1.3 billion tokens each; 38 and 14.5 times the passes they read, because the analyst is the more expensive model.</span></div>
+        <div class="c"><span class="v">$10.69</span><span class="l">a win, fix 2 alone</span><span class="s">$181.67 for its two passes and 17 wins, against $7.00 a win for Claude Code alone.</span></div>
+        <div class="c"><span class="v">≈ $490</span><span class="l">a win, with the analyses</span><span class="s">A design cost, spent once and amortized over every later run of the harness.</span></div>
+      </div>
+      <div class="ev-grid" style="margin-top:32px">
+        <div class="chart">
+          <div class="ct"><span class="t">Cost per won game</span><span class="u">Haiku 5.5 · list price</span></div>
+          <div class="sc"><table class="data"><thead><tr><th>Configuration</th><th>Wins</th><th>Dollars</th><th>Hours</th><th>A win</th></tr></thead><tbody>
+            <tr><td>Claude Code alone, medium</td><td>5</td><td>35.02</td><td>15.1</td><td>7.00</td></tr>
+            <tr><td>1.5.1 alone (xhigh on 10 of 20)</td><td>9</td><td>97.24</td><td>26.8</td><td>10.80</td></tr>
+            <tr><td>fix 1 alone</td><td>15</td><td>283.24</td><td>51.9</td><td>18.88</td></tr>
+            <tr class="hi"><td>fix 2 alone</td><td>17</td><td>181.67</td><td>40.6</td><td>10.69</td></tr>
+            <tr><td>pinned record, six passes</td><td>17</td><td>562.15</td><td>119.3</td><td>33.07</td></tr>
+            <tr><td>with the two analyses</td><td>17</td><td>≈ 8,360</td><td></td><td>≈ 490</td></tr>
+          </tbody></table></div>
+          <p class="tiny" style="margin-top:10px"><span class="fig">TABLE 9</span>“Alone” is a version's medium pass on all 25 games plus its xhigh pass on the games that pass lost.</p>
+        </div>
+        <div class="limits">
+          <div class="l"><span class="n">Designed on the games it was scored on</span><p>The analyses read the 25 public games the next pass played, with Sonnet's solved records as the account of each game's mechanics. No change names a game, and each is marked world-agnostic or grid-specific; transfer to unseen games is untested.</p></div>
+          <div class="l"><span class="n">One run per cell</span><p>Run-to-run variance is not measured. m0r0 was won, lost at the cap, and won again across versions. The intervals cover the sampling of games only.</p></div>
+          <div class="l"><span class="n">Pins assume a re-win</span><p>Across versions, 11 of 13 medium wins were won again, and every lost win came back at xhigh. Under one version only a partial repeat exists, four of five.</p></div>
+          <div class="l"><span class="n">No ablation, a human in the loop</span><p>Each round shipped its changes together, so no change's share is measured. The author adopted the changes, chose pass 2's games and made three operator changes.</p></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 </main>
+
 <footer>
   <div class="wrap">
     <div class="fgrid">
-      <div class="stack">
-        <p class="eyebrow"><span class="num">Cite</span><span>Preprint</span></p>
-        <div class="cite" id="cite">Arjmandi, M. (2026). <span class="sym">Assay</span>: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint.<button type="button" id="copy-cite" aria-label="Copy citation">Copy</button></div>
+      <div class="cites">
+        <p class="eyebrow"><span>Cite</span><span>The two papers</span></p>
+        <div class="cite"><div class="bar"><span>BIBTEX · THE ASSAY PAPER</span><button type="button" data-copy="cite">Copy</button></div><pre id="cite"><span class="k">@misc</span>{arjmandi2026assay,
+  author    = {Arjmandi, M.},
+  title     = {Assay: An Agent Harness That Grounds a Test-Time
+               World Model by Checked Prediction},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.23685371},
+  note      = {Preprint}
+}</pre><p class="plain">Arjmandi, M. (2026). <span class="sym">Assay</span>: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Zenodo. https://doi.org/10.5281/zenodo.23685371</p></div>
+        <div class="cite"><div class="bar"><span>BIBTEX · THE RSI PAPER</span><button type="button" data-copy="cite-rsi">Copy</button></div><pre id="cite-rsi"><span class="k">@misc</span>{arjmandi2026rsi,
+  author    = {Arjmandi, M.},
+  title     = {Recursive Self-Improvement for ARC-AGI-3: Hill-Climbing
+               to 78.95 RHAE with Haiku 5.5 and Assay},
+  year      = {2026},
+  publisher = {Zenodo},
+  doi       = {10.5281/zenodo.23737706},
+  note      = {Preprint}
+}</pre><p class="plain">Arjmandi, M. (2026). Recursive Self-Improvement for ARC-AGI-3: Hill-Climbing to 78.95 RHAE with Haiku 5.5 and <span class="sym">Assay</span>. Zenodo. https://doi.org/10.5281/zenodo.23737706</p></div>
         <p class="small" style="max-width:60ch">Release 1.2.0 is open source under Apache 2.0 and takes issues only, not pull requests. The journal specification, the checker and the evidence packs ship inside it under MIT, so a journal can be verified without a license to the harness.</p>
       </div>
       <div class="stack">
-        <p class="eyebrow"><span class="num">Artifacts</span><span>The record itself</span></p>
+        <p class="eyebrow"><span>Artifacts</span><span>The record itself</span></p>
         <div class="links2">
-          <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><span>github.com/arjmandi/assay</span><span>code · spec · checker · 66 journals</span></a>
-          <a href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32" target="_blank" rel="noopener"><span>arcprize.org · scorecard 702ccd4f</span><span>server-scored set</span></a>
-          <a href="https://arxiv.org/abs/2608.04066" target="_blank" rel="noopener"><span>arXiv:2608.04066 · ARG</span><span>the previous system</span></a>
-          <a href="https://arxiv.org/abs/2603.17683" target="_blank" rel="noopener"><span>arXiv:2603.17683 · Sensi</span><span>the first</span></a>
+          <a href="https://doi.org/10.5281/zenodo.22145966" target="_blank" rel="noopener"><span>zenodo.org · the <span class="sym">Assay</span> paper ↗</span><span>preprint, latest version</span></a>
+          <a href="https://zenodo.org/records/23737706" target="_blank" rel="noopener"><span>zenodo.org · the RSI paper ↗</span><span>preprint, 2026-10-28</span></a>
+          <a href="https://github.com/arjmandi/assay" target="_blank" rel="noopener"><span>github.com/arjmandi/assay ↗</span><span>code · spec · checker · 66 journals</span></a>
+          <a href="https://arcprize.org/scorecards/702ccd4f-df1f-4118-bc8b-d79d3f4a1a32" target="_blank" rel="noopener"><span>arcprize.org · scorecard 702ccd4f ↗</span><span>the server-scored campaign</span></a>
+          <a href="https://arxiv.org/abs/2608.04066" target="_blank" rel="noopener"><span>arXiv:2608.04066 · ARG ↗</span><span>the previous system</span></a>
+          <a href="https://arxiv.org/abs/2603.17683" target="_blank" rel="noopener"><span>arXiv:2603.17683 · Sensi ↗</span><span>the first</span></a>
         </div>
       </div>
     </div>
-    <div class="colophon"><span>ASSAY · a reasoning harness</span></div>
+    <div class="colophon"><span>ASSAY · a general reasoning harness</span><span>Apache 2.0</span></div>
   </div>
 </footer>
 <div class="tt" id="tt" role="tooltip"></div>
 <div class="toast" id="toast" role="status"></div>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/animejs/3.2.2/anime.min.js"></script>
 <script>
 (function(){
@@ -814,38 +1169,6 @@ const fmt = (n, dec=0) => n.toLocaleString('en-US', {minimumFractionDigits:dec, 
   d.innerHTML = '<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs><pattern id="hatch" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--bg-2)"/><line x1="0" y1="0" x2="0" y2="5" stroke="var(--mark-2)" stroke-width="1.6"/></pattern></defs></svg>';
   document.body.insertBefore(d.firstChild, document.body.firstChild);
 })();
-
-/* ---------- progress + active nav ---------- */
-const prog = $('#progress');
-function onScroll(){
-  const h = document.documentElement;
-  const max = h.scrollHeight - h.clientHeight;
-  prog.style.width = (max > 0 ? (h.scrollTop / max) * 100 : 0) + '%';
-}
-addEventListener('scroll', onScroll, {passive:true}); onScroll();
-const navLinks = $$('nav.sections a');
-const secObs = new IntersectionObserver(es => {
-  es.forEach(e => { if (e.isIntersecting){ navLinks.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + e.target.id)); } });
-}, {rootMargin:'-40% 0px -55% 0px'});
-$$('main section[id]').forEach(s => secObs.observe(s));
-
-/* ---------- reveal: only elements below the fold are hidden, and only when motion is allowed ---------- */
-if (motionOK && 'IntersectionObserver' in window){
-  const vh = innerHeight;
-  const els = $$('.rv').filter(el => el.getBoundingClientRect().top > vh * 0.9);
-  els.forEach(el => el.classList.add('pre'));
-  const ro = new IntersectionObserver(es => {
-    es.forEach(e => {
-      if (!e.isIntersecting) return;
-      const el = e.target; ro.unobserve(el);
-      if (e.boundingClientRect.top < 0){ el.classList.remove('pre'); return; }
-      if (A){ A({targets: el, opacity:[0,1], translateY:[14,0], duration:700, easing:'cubicBezier(.2,.7,.2,1)', complete(){ el.classList.remove('pre'); el.style.transform=''; el.style.opacity=''; }}); }
-      else el.classList.remove('pre');
-    });
-  }, {rootMargin:'0px 0px 120px 0px', threshold:0.02});
-  els.forEach(el => ro.observe(el));
-}
-
 
 /* ---------- tooltip ---------- */
 const tt = $('#tt');
@@ -936,14 +1259,14 @@ function tableHTML(id, head, rows, hiIdx){ const t = $(id); if (!t) return; t.in
 /* ---------- 07 · rank list ---------- */
 (function(){
   const rows = [
-    {n:'VISTA', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'—', a:'7,302'},
+    {n:'VISTA', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'·', a:'7,302'},
     {n:'Tycho', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'183/183', a:'6,641'},
     {n:'arc-skill', bb:'Opus 5 · uncapped', r:100.00, g:'25/25', l:'183/183', a:'7,645'},
     {n:'Retrodict', bb:'gpt-5.6-sol · uncapped', r:99.86, g:'25/25', l:'183/183', a:'7,703'},
     {n:'ASSAY (campaign)', bb:'Opus 5 · hard caps, gated', r:96.54, g:'24/25', l:'177/183', a:'8,157', hi:true},
     {n:'Prime Agent (median)', bb:'Opus 5 · uncapped', r:95.24, g:'24/25', l:'178/183', a:'11,245'},
-    {n:'PRO-LONG', bb:'Fable 5 · uncapped', r:94.71, g:'19/25', l:'—', a:'11,156'},
-    {n:'NOOA', bb:'gpt-5.6-sol · 2 h fleet cap', r:85.1, g:'—', l:'170/183', a:'—'},
+    {n:'PRO-LONG', bb:'Fable 5 · uncapped', r:94.71, g:'19/25', l:'·', a:'11,156'},
+    {n:'NOOA', bb:'gpt-5.6-sol · 2 h fleet cap', r:85.1, g:'·', l:'170/183', a:'·'},
   ];
   const el = $('#ranklist');
   el.innerHTML = rows.map(r => '<div class="r'+(r.hi?' hi':'')+'" data-tip="'+esc(r.n+' · RHAE <b>'+r.r.toFixed(2)+'</b> · games '+r.g+' · levels '+r.l+' · actions '+r.a)+'"><span class="n">'+esc(r.n)+'<small>'+esc(r.bb)+'</small></span><span class="tr"><i data-w="'+r.r+'"></i></span><span class="v">'+r.r.toFixed(2)+'</span></div>').join('');
@@ -989,7 +1312,7 @@ mountChart('#fac-svg', w => {
   let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="Factorio paid actions against the cap of 64">';
   s += '<g class="grid">'; [0,16,32,48,64].forEach(t => { s += '<line x1="'+x(t)+'" x2="'+x(t)+'" y1="4" y2="'+(H-28)+'"/><text x="'+x(t)+'" y="'+(H-12)+'" text-anchor="middle">'+t+'</text>'; }); s += '</g>';
   rows.forEach((r,i)=>{ const y = 8+i*40; s += '<text class="cat" x="'+(lab-10)+'" y="'+(y+bh/2+4)+'" text-anchor="end">'+r.l+'</text><rect class="bar red" x="'+lab+'" y="'+y+'" width="'+(x(r.v)-lab)+'" height="'+bh+'" rx="0" style="transform-origin:'+lab+'px '+(y+bh)+'px" data-tip="'+esc(r.l+' · <b>'+r.v+'</b> paid actions · '+r.c+' · '+r.st+' states declared')+'"/><text class="v" x="'+(x(r.v)+8)+'" y="'+(y+bh/2+4)+'">'+r.v+' · '+r.c+'</text>'; });
-  s += '<text x="'+x(64)+'" y="'+(H-28)+'" text-anchor="end" style="font-size:9.5px">cap 64 paid actions</text>';
+  s += '<text x="'+x(64)+'" y="'+(H-28)+'" text-anchor="end" class="halo" style="font-size:9.5px">cap 64 paid actions</text>';
   return s + '</svg>';
 });
 mountChart('#oo-svg', w => lineChart(w, {cats:['128K','1M','4M'], yMin:0.4, yMax:1.0, step:0.1, h:250, aria:'OOLONG accuracy over the length ladder',
@@ -1001,69 +1324,10 @@ mountChart('#oo-cost-svg', w => groupedBars(w, {yMax:50, step:10, h:220, fmtY:t=
     {label:'1M', bars:[{v:48.76,dec:2,cls:'red',name:'Assay de-hinted',lab:'48.76'},{v:43.39,dec:2,cls:'tex',name:'Assay batched actuator (E5)'},{v:8.20,dec:2,cls:'m1',name:'Claude Code'},{v:null}]},
     {label:'4M', bars:[{v:2.40,dec:2,cls:'red',name:'Assay de-hinted',lab:'2.40'},{v:null},{v:0.89,dec:2,cls:'m1',name:'Claude Code'},{v:null}]},
   ]}));
-tableHTML('#tbl-oo', ['System','acc 128K','acc 1M','acc 4M','cost 128K','cost 1M','cost 4M'], [['raw Opus 5, corpus in context','0.447','—','—','$1.11 / 2 min','—','—'],['Assay de-hinted (fair arm)','0.764','0.740','1.000','$12.64 / 33','$48.76 / 114','$2.40 / 8'],['Assay de-hinted, batched (E5)','—','0.740','—','—','$43.39 / 76','—'],['Claude Code, no hint','0.818','0.740','1.000','$4.11 / 16','$8.20 / 30','$0.89 / 4'],['Prime Agent','0.859','0.740','0.850','— / 10','— / 5','— / 2'],['Assay hinted (reference)','0.870','0.701','1.000','$10.10','$5.16','$2.37']], 1);
+tableHTML('#tbl-oo', ['System','acc 128K','acc 1M','acc 4M','cost 128K','cost 1M','cost 4M'], [['raw Opus 5, corpus in context','0.447','·','·','$1.11 / 2 min','·','·'],['Assay de-hinted (fair arm)','0.764','0.740','1.000','$12.64 / 33','$48.76 / 114','$2.40 / 8'],['Assay de-hinted, batched (E5)','·','0.740','·','·','$43.39 / 76','·'],['Claude Code, no hint','0.818','0.740','1.000','$4.11 / 16','$8.20 / 30','$0.89 / 4'],['Prime Agent','0.859','0.740','0.850','· / 10','· / 5','· / 2'],['Assay hinted (reference)','0.870','0.701','1.000','$10.10','$5.16','$2.37']], 1);
 mountChart('#ft09-svg', w => dotStrip(w, {yMin:60, yMax:160, step:20, ref:80, aria:'ft09 fifteen wins in the order played',
   items:[{label:'pre 1',v:75,t:'g',kind:'gated'},{label:'pre 2',v:81,t:'g',kind:'gated'},{label:'pre 3',v:82,t:'g',kind:'gated'},{label:'pre 4',v:152,t:'g',kind:'gated'},{label:'E1 g s1',v:80,t:'g',kind:'gated'},{label:'E1 g s2',v:75,t:'g',kind:'gated'},{label:'E1 u s1',v:80,t:'u',kind:'ungated'},{label:'E1 u s2',v:80,t:'u',kind:'ungated'},{label:'E1b s1',v:80,t:'b',kind:'instrument removed'},{label:'E1b s2',v:80,t:'b',kind:'instrument removed'},{label:'E3',v:80,t:'g',kind:'gated, with import'},{label:'Oct',v:80,t:'g',kind:'gated, October build'},{label:'1.2.0',v:80,t:'g',kind:'gated, release 1.2.0'},{label:'1.2.0 b',v:75,t:'g',kind:'gated, 1.2.0 after the rename of channels to states'},{label:'1.2.0 c',v:80,t:'g',kind:'gated, 1.2.0 after the rename of claims to outcomes'}]}));
 
-
-/* ---------- benchmarks · paired horizontal bars ---------- */
-function pairRows(w, o){
-  const lab = 54, rh = o.rh || 26, bh = o.bh || 7, gap = 2, mT = 16, mB = 26, pw = w - lab - 44;
-  const H = mT + o.rows.length * rh + mB, x = v => lab + (v / o.max) * pw;
-  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="'+esc(o.aria||'')+'">';
-  s += '<g class="grid">'; o.ticks.forEach(t => { s += '<line x1="'+x(t)+'" x2="'+x(t)+'" y1="'+(mT-6)+'" y2="'+(H-mB)+'"/><text x="'+x(t)+'" y="'+(H-8)+'" text-anchor="middle">'+t+'</text>'; }); s += '</g>';
-  o.rows.forEach((r, i) => {
-    const y0 = mT + i * rh, n = r.bars.length, top = y0 + (rh - (n*bh + (n-1)*gap)) / 2;
-    s += '<text class="cat" x="'+(lab-10)+'" y="'+(y0 + rh/2 + 4)+'" text-anchor="end">'+esc(r.label)+'</text>';
-    r.bars.forEach((b, j) => {
-      const y = top + j * (bh + gap), bw = Math.max(1.5, x(b.v) - lab);
-      s += '<rect class="bar '+b.cls+'" x="'+lab+'" y="'+y+'" width="'+bw+'" height="'+bh+'" style="transform-origin:'+lab+'px '+(y+bh)+'px" data-tip="'+esc(b.tip)+'"/>';
-      if (b.lab != null) s += '<text class="v" x="'+(lab + bw + 5)+'" y="'+(y + bh - 0.5)+'" style="font-size:9.5px">'+esc(b.lab)+'</text>';
-    });
-    if (r.ref != null){ s += '<line x1="'+x(r.ref)+'" x2="'+x(r.ref)+'" y1="'+(y0+3)+'" y2="'+(y0+rh-3)+'" stroke="var(--ink-2)" stroke-dasharray="2 2" stroke-width="1.5"/>'; }
-  });
-  return s + '</svg>';
-}
-const C55 = {first:[{"g": "ar25", "L": 8, "s": {"r": 100.0, "a": 309, "w": true, "l": 8}, "h": {"r": 100.0, "a": 370, "w": true, "l": 8}, "o": {"a": 264, "w": true, "l": 8, "r": 100.0}}, {"g": "bp35", "L": 9, "s": {"r": 93.1, "a": 585, "w": true, "l": 9}, "h": {"r": 0.0, "a": 132, "w": false, "l": 0}, "o": {"a": 597, "w": true, "l": 9, "r": 95.27}}, {"g": "cd82", "L": 6, "s": {"r": 94.4, "a": 145, "w": true, "l": 6}, "h": {"r": 92.3, "a": 204, "w": true, "l": 6}, "o": {"a": 88, "w": true, "l": 6, "r": 100.0}}, {"g": "cn04", "L": 6, "s": {"r": 100.0, "a": 243, "w": true, "l": 6}, "h": {"r": 47.6, "a": 310, "w": false, "l": 4}, "o": {"a": 223, "w": true, "l": 6, "r": 100.0}}, {"g": "dc22", "L": 6, "s": {"r": 100.0, "a": 707, "w": true, "l": 6}, "h": {"r": 0.0, "a": 175, "w": false, "l": 0}, "o": {"a": 1042, "w": true, "l": 6, "r": 100.0}}, {"g": "ft09", "L": 6, "s": {"r": 100.0, "a": 135, "w": true, "l": 6}, "h": {"r": 98.0, "a": 169, "w": true, "l": 6}, "o": {"a": 82, "w": true, "l": 6, "r": 100.0}}, {"g": "g50t", "L": 7, "s": {"r": 100.0, "a": 501, "w": true, "l": 7}, "h": {"r": 3.6, "a": 163, "w": false, "l": 1}, "o": {"a": 378, "w": true, "l": 7, "r": 100.0}}, {"g": "ka59", "L": 7, "s": {"r": 78.7, "a": 603, "w": true, "l": 7}, "h": {"r": 53.6, "a": 327, "w": false, "l": 5}, "o": {"a": 344, "w": true, "l": 7, "r": 100.0}}, {"g": "lf52", "L": 10, "s": {"r": 100.0, "a": 933, "w": true, "l": 10}, "h": {"r": 1.8, "a": 68, "w": false, "l": 1}, "o": {"a": 364, "w": false, "l": 4, "r": 18.18}}, {"g": "lp85", "L": 8, "s": {"r": 100.0, "a": 113, "w": true, "l": 8}, "h": {"r": 58.3, "a": 213, "w": false, "l": 6}, "o": {"a": 104, "w": true, "l": 8, "r": 100.0}}, {"g": "ls20", "L": 7, "s": {"r": 76.3, "a": 844, "w": true, "l": 7}, "h": {"r": 75.0, "a": 616, "w": false, "l": 6}, "o": {"a": 438, "w": true, "l": 7, "r": 100.0}}, {"g": "m0r0", "L": 6, "s": {"r": 100.0, "a": 325, "w": true, "l": 6}, "h": {"r": 100.0, "a": 471, "w": true, "l": 6}, "o": {"a": 218, "w": true, "l": 6, "r": 100.0}}, {"g": "r11l", "L": 6, "s": {"r": 85.9, "a": 227, "w": true, "l": 6}, "h": {"r": 47.6, "a": 97, "w": false, "l": 4}, "o": {"a": 94, "w": true, "l": 6, "r": 100.0}}, {"g": "re86", "L": 8, "s": {"r": 100.0, "a": 856, "w": true, "l": 8}, "h": {"r": 41.7, "a": 774, "w": false, "l": 5}, "o": {"a": 573, "w": true, "l": 8, "r": 100.0}}, {"g": "s5i5", "L": 8, "s": {"r": 100.0, "a": 403, "w": true, "l": 8}, "h": {"r": 41.7, "a": 336, "w": false, "l": 5}, "o": {"a": 367, "w": true, "l": 8, "r": 100.0}}, {"g": "sb26", "L": 8, "s": {"r": 100.0, "a": 156, "w": true, "l": 8}, "h": {"r": 27.8, "a": 272, "w": false, "l": 4}, "o": {"a": 128, "w": true, "l": 8, "r": 100.0}}, {"g": "sc25", "L": 6, "s": {"r": 95.6, "a": 341, "w": true, "l": 6}, "h": {"r": 14.3, "a": 165, "w": false, "l": 2}, "o": {"a": 192, "w": true, "l": 6, "r": 100.0}}, {"g": "sk48", "L": 8, "s": {"r": 95.8, "a": 923, "w": true, "l": 8}, "h": {"r": 2.8, "a": 164, "w": false, "l": 1}, "o": {"a": 404, "w": true, "l": 8, "r": 100.0}}, {"g": "sp80", "L": 6, "s": {"r": 90.6, "a": 665, "w": true, "l": 6}, "h": {"r": 4.8, "a": 116, "w": false, "l": 1}, "o": {"a": 153, "w": true, "l": 6, "r": 100.0}}, {"g": "su15", "L": 9, "s": {"r": 94.3, "a": 215, "w": true, "l": 9}, "h": {"r": 22.2, "a": 132, "w": false, "l": 4}, "o": {"a": 150, "w": true, "l": 9, "r": 100.0}}, {"g": "tn36", "L": 7, "s": {"r": 87.7, "a": 452, "w": true, "l": 7}, "h": {"r": 35.7, "a": 353, "w": false, "l": 4}, "o": {"a": 188, "w": true, "l": 7, "r": 100.0}}, {"g": "tr87", "L": 6, "s": {"r": 95.5, "a": 411, "w": true, "l": 6}, "h": {"r": 4.8, "a": 211, "w": false, "l": 1}, "o": {"a": 162, "w": true, "l": 6, "r": 100.0}}, {"g": "tu93", "L": 9, "s": {"r": 90.0, "a": 308, "w": true, "l": 9}, "h": {"r": 100.0, "a": 288, "w": true, "l": 9}, "o": {"a": 250, "w": true, "l": 9, "r": 100.0}}, {"g": "vc33", "L": 7, "s": {"r": 100.0, "a": 225, "w": true, "l": 7}, "h": {"r": 21.4, "a": 156, "w": false, "l": 3}, "o": {"a": 183, "w": true, "l": 7, "r": 100.0}}, {"g": "wa30", "L": 9, "s": {"r": 100.0, "a": 1268, "w": true, "l": 9}, "h": {"r": 2.2, "a": 122, "w": false, "l": 1}, "o": {"a": 1171, "w": true, "l": 9, "r": 100.0}}], xhigh:{"sonnet55": [{"g": "ls20", "med": {"r": 76.3, "a": 844, "w": true, "l": 7}, "x": {"r": 100.0, "a": 440, "w": true, "l": 7}, "usd": 6.49}, {"g": "ka59", "med": {"r": 78.7, "a": 603, "w": true, "l": 7}, "x": {"r": 100.0, "a": 397, "w": true, "l": 7}, "usd": 6.53}, {"g": "r11l", "med": {"r": 85.9, "a": 227, "w": true, "l": 6}, "x": {"r": 100.0, "a": 80, "w": true, "l": 6}, "usd": 2.81}, {"g": "tn36", "med": {"r": 87.7, "a": 452, "w": true, "l": 7}, "x": {"r": 100.0, "a": 186, "w": true, "l": 7}, "usd": 2.93}, {"g": "tu93", "med": {"r": 90.0, "a": 308, "w": true, "l": 9}, "x": {"r": 100.0, "a": 232, "w": true, "l": 9}, "usd": 4.29}, {"g": "sp80", "med": {"r": 90.6, "a": 665, "w": true, "l": 6}, "x": {"r": 88.4, "a": 364, "w": true, "l": 6}, "usd": 7.84}, {"g": "bp35", "med": {"r": 93.1, "a": 585, "w": true, "l": 9}, "x": {"r": 100.0, "a": 481, "w": true, "l": 9}, "usd": 18.56}, {"g": "su15", "med": {"r": 94.3, "a": 215, "w": true, "l": 9}, "x": {"r": 100.0, "a": 118, "w": true, "l": 9}, "usd": 7.38}, {"g": "cd82", "med": {"r": 94.4, "a": 145, "w": true, "l": 6}, "x": {"r": 100.0, "a": 108, "w": true, "l": 6}, "usd": 1.93}, {"g": "tr87", "med": {"r": 95.5, "a": 411, "w": true, "l": 6}, "x": {"r": 100.0, "a": 245, "w": true, "l": 6}, "usd": 3.45}], "haiku55": [{"g": "ls20", "med": {"r": 75.0, "a": 616, "w": false, "l": 6}, "x": {"r": 100.0, "a": 668, "w": true, "l": 7}, "usd": 7.02}, {"g": "lp85", "med": {"r": 58.3, "a": 213, "w": false, "l": 6}, "x": {"r": 100.0, "a": 101, "w": true, "l": 8}, "usd": 3.29}, {"g": "ka59", "med": {"r": 53.6, "a": 327, "w": false, "l": 5}, "x": {"r": 53.6, "a": 266, "w": false, "l": 5}, "usd": 4.34}, {"g": "cn04", "med": {"r": 47.6, "a": 310, "w": false, "l": 4}, "x": {"r": 100.0, "a": 236, "w": true, "l": 6}, "usd": 2.73}, {"g": "r11l", "med": {"r": 47.6, "a": 97, "w": false, "l": 4}, "x": {"r": 100.0, "a": 120, "w": true, "l": 6}, "usd": 4.11}, {"g": "re86", "med": {"r": 41.7, "a": 774, "w": false, "l": 5}, "x": {"r": 58.3, "a": 458, "w": false, "l": 6}, "usd": 4.68}, {"g": "s5i5", "med": {"r": 41.7, "a": 336, "w": false, "l": 5}, "x": {"r": 8.3, "a": 191, "w": false, "l": 2}, "usd": 4.16}, {"g": "tn36", "med": {"r": 35.7, "a": 353, "w": false, "l": 4}, "x": {"r": 21.4, "a": 176, "w": false, "l": 3}, "usd": 2.82}, {"g": "sb26", "med": {"r": 27.8, "a": 272, "w": false, "l": 4}, "x": {"r": 27.8, "a": 424, "w": false, "l": 4}, "usd": 4.14}, {"g": "su15", "med": {"r": 22.2, "a": 132, "w": false, "l": 4}, "x": {"r": 22.2, "a": 196, "w": false, "l": 4}, "usd": 6.21}]}, exp:[{"g": "ar25", "L": 8, "before": {"r": 100.0, "l": 8, "w": true, "a": 370}, "after": {"r": 100.0, "l": 8, "w": true, "a": 463}, "s": 100.0}, {"g": "bp35", "L": 9, "before": {"r": 0.0, "l": 0, "w": false, "a": 132}, "after": {"r": 2.22, "l": 1, "w": false, "a": 377}, "s": 93.11}, {"g": "cd82", "L": 6, "before": {"r": 92.34, "l": 6, "w": true, "a": 204}, "after": {"r": 84.94, "l": 6, "w": true, "a": 166}, "s": 94.36}, {"g": "cn04", "L": 6, "before": {"r": 47.62, "l": 4, "w": false, "a": 310}, "after": {"r": 71.43, "l": 5, "w": false, "a": 831}, "s": 100.0}, {"g": "dc22", "L": 6, "before": {"r": 0.0, "l": 0, "w": false, "a": 175}, "after": {"r": 14.29, "l": 2, "w": false, "a": 388}, "s": 100.0}, {"g": "ft09", "L": 6, "before": {"r": 97.98, "l": 6, "w": true, "a": 169}, "after": {"r": 100.0, "l": 6, "w": true, "a": 146}, "s": 100.0}, {"g": "g50t", "L": 7, "before": {"r": 3.57, "l": 1, "w": false, "a": 163}, "after": {"r": 0.0, "l": 0, "w": false, "a": 1500}, "s": 100.0}, {"g": "ka59", "L": 7, "before": {"r": 53.57, "l": 5, "w": false, "a": 327}, "after": {"r": 53.57, "l": 5, "w": false, "a": 882}, "s": 78.74}, {"g": "lf52", "L": 10, "before": {"r": 1.82, "l": 1, "w": false, "a": 68}, "after": {"r": 18.18, "l": 4, "w": false, "a": 403}, "s": 100.0}, {"g": "lp85", "L": 8, "before": {"r": 58.33, "l": 6, "w": false, "a": 213}, "after": {"r": 92.97, "l": 8, "w": true, "a": 272}, "s": 100.0}, {"g": "ls20", "L": 7, "before": {"r": 75.0, "l": 6, "w": false, "a": 616}, "after": {"r": 86.57, "l": 7, "w": true, "a": 818}, "s": 76.29}, {"g": "m0r0", "L": 6, "before": {"r": 100.0, "l": 6, "w": true, "a": 471}, "after": {"r": 0.0, "l": 0, "w": false, "a": 1500}, "s": 100.0}, {"g": "r11l", "L": 6, "before": {"r": 47.62, "l": 4, "w": false, "a": 97}, "after": {"r": 93.45, "l": 6, "w": true, "a": 231}, "s": 85.93}, {"g": "re86", "L": 8, "before": {"r": 41.67, "l": 5, "w": false, "a": 774}, "after": {"r": 41.67, "l": 5, "w": false, "a": 869}, "s": 100.0}, {"g": "s5i5", "L": 8, "before": {"r": 41.67, "l": 5, "w": false, "a": 336}, "after": {"r": 58.33, "l": 6, "w": false, "a": 467}, "s": 100.0}, {"g": "sb26", "L": 8, "before": {"r": 27.78, "l": 4, "w": false, "a": 272}, "after": {"r": 91.23, "l": 8, "w": true, "a": 259}, "s": 100.0}, {"g": "sc25", "L": 6, "before": {"r": 14.29, "l": 2, "w": false, "a": 165}, "after": {"r": 47.62, "l": 4, "w": false, "a": 833}, "s": 95.61}, {"g": "sk48", "L": 8, "before": {"r": 2.78, "l": 1, "w": false, "a": 164}, "after": {"r": 41.67, "l": 5, "w": false, "a": 789}, "s": 95.76}, {"g": "sp80", "L": 6, "before": {"r": 4.76, "l": 1, "w": false, "a": 116}, "after": {"r": 4.76, "l": 1, "w": false, "a": 327}, "s": 90.62}, {"g": "su15", "L": 9, "before": {"r": 22.22, "l": 4, "w": false, "a": 132}, "after": {"r": 13.33, "l": 3, "w": false, "a": 409}, "s": 94.29}, {"g": "tn36", "L": 7, "before": {"r": 35.71, "l": 4, "w": false, "a": 353}, "after": {"r": 3.57, "l": 1, "w": false, "a": 1500}, "s": 87.65}, {"g": "tr87", "L": 6, "before": {"r": 4.76, "l": 1, "w": false, "a": 211}, "after": {"r": 71.43, "l": 5, "w": false, "a": 1500}, "s": 95.54}, {"g": "tu93", "L": 9, "before": {"r": 100.0, "l": 9, "w": true, "a": 288}, "after": {"r": 93.77, "l": 9, "w": true, "a": 350}, "s": 90.04}, {"g": "vc33", "L": 7, "before": {"r": 21.43, "l": 3, "w": false, "a": 156}, "after": {"r": 21.43, "l": 3, "w": false, "a": 235}, "s": 100.0}, {"g": "wa30", "L": 9, "before": {"r": 2.22, "l": 1, "w": false, "a": 122}, "after": {"r": 6.67, "l": 2, "w": false, "a": 470}, "s": 100.0}]};
-const lvlTxt = c => c.w ? 'won' : c.l + ' levels';
-mountChart('#first-svg', w => pairRows(w, {max:100, ticks:[0,25,50,75,100], rh:28, aria:'RHAE by game for Sonnet and Haiku 5.5, with the Opus 5 campaign as a reference',
-  rows: C55.first.map(r => ({label:r.g, ref:r.o.r, bars:[
-    {v:r.s.r, cls:'m1', lab:r.s.r.toFixed(1), tip:r.g+' · Sonnet 5.5 · RHAE <b>'+r.s.r.toFixed(1)+'</b> · '+lvlTxt(r.s)+' · '+r.s.a+' actions'},
-    {v:r.h.r, cls:'red', lab:r.h.r.toFixed(1), tip:r.g+' · Haiku 5.5 · RHAE <b>'+r.h.r.toFixed(1)+'</b> · '+(r.h.w?'won':r.h.l+' of '+r.L+' levels')+' · '+r.h.a+' actions'}]}))}));
-tableHTML('#tbl-first', ['Game','Levels','Sonnet RHAE','Sonnet actions','Haiku RHAE','Haiku levels','Haiku actions','Opus 5 actions'],
-  C55.first.map(r => [r.g, r.L, r.s.r.toFixed(1), r.s.a, r.h.r.toFixed(1), r.h.l+'/'+r.L, r.h.a, r.o.w ? r.o.a : r.o.l+'/'+r.L+' · '+r.o.a]));
-['sonnet55','haiku55'].forEach((m, k) => {
-  mountChart(k ? '#xh-svg' : '#xs-svg', w => pairRows(w, {max:100, ticks:[0,25,50,75,100], rh:30, aria:'RHAE at default effort and at xhigh',
-    rows: C55.xhigh[m].map(r => ({label:r.g, bars:[
-      {v:r.med.r, cls:'m3', lab:r.med.r.toFixed(1), tip:r.g+' · default effort · RHAE <b>'+r.med.r.toFixed(1)+'</b> · '+lvlTxt(r.med)+' · '+r.med.a+' actions'},
-      {v:r.x.r, cls:'red', lab:r.x.r.toFixed(1), tip:r.g+' · xhigh · RHAE <b>'+r.x.r.toFixed(1)+'</b> · '+lvlTxt(r.x)+' · '+r.x.a+' actions · $'+r.usd.toFixed(2)}]}))}));
-});
-tableHTML('#tbl-xhigh', ['Model','Game','Default RHAE','Default result','xhigh RHAE','xhigh result','xhigh cost'],
-  ['sonnet55','haiku55'].flatMap(m => C55.xhigh[m].map(r => [m === 'sonnet55' ? 'Sonnet' : 'Haiku', r.g, r.med.r.toFixed(1), lvlTxt(r.med)+' · '+r.med.a, r.x.r.toFixed(1), lvlTxt(r.x)+' · '+r.x.a, '$'+r.usd.toFixed(2)])));
-if (C55.exp){
-  mountChart('#exp-svg', w => pairRows(w, {max:100, ticks:[0,25,50,75,100], rh:28, aria:'Haiku 5.5 RHAE by game before and after the fixes',
-    rows: C55.exp.map(r => ({label:r.g, ref:r.s, bars:[
-      {v:r.before.r, cls:'m3', lab:r.before.r.toFixed(1), tip:r.g+' · default effort, before the fixes · RHAE <b>'+r.before.r.toFixed(1)+'</b> · '+lvlTxt(r.before)+' · '+r.before.a+' actions'},
-      {v:r.after.r, cls:'red', lab:r.after.r.toFixed(1), tip:r.g+' · default effort, with the fixes · RHAE <b>'+r.after.r.toFixed(1)+'</b> · '+lvlTxt(r.after)+' · '+r.after.a+' actions'}]}))}));
-  tableHTML('#tbl-exp', ['Game','Before fixes RHAE (default, 10-25)','Before fixes result','With fixes RHAE (default, 10-26)','With fixes result','Sonnet RHAE (default, 10-25)'],
-    C55.exp.map(r => [r.g, r.before.r.toFixed(1), lvlTxt(r.before)+' · '+r.before.a, r.after.r.toFixed(1), lvlTxt(r.after)+' · '+r.after.a, r.s.toFixed(1)]));
-}
-
-/* ---------- benchmarks · tabs, one group per section ---------- */
-(function(){
-  const groups = {};
-  $$('.ev-tabs [role=tab]').forEach(t => { const g = t.dataset.group || 'opus'; (groups[g] = groups[g] || []).push(t); });
-  function show(g, k){
-    groups[g].forEach(t => {
-      const on = t.dataset.ev === k; t.setAttribute('aria-selected', String(on));
-      const p = $('#ev-' + t.dataset.ev); if (p) p.hidden = !on;
-    });
-    chartRegistry.forEach(o => { if (o.el.closest('#ev-'+k)) draw(o); });
-  }
-  Object.entries(groups).forEach(([g, ts]) => ts.forEach(t => t.addEventListener('click', () => show(g, t.dataset.ev))));
-  const h = location.hash.replace('#','');
-  Object.entries(groups).forEach(([g, ts]) => { const t = ts.find(x => x.dataset.ev === h); if (t){ show(g, h); setTimeout(() => t.closest('section').scrollIntoView(), 0); } });
-})();
 /* ---------- 07 · s5i5 timeline ---------- */
 (function(){
   const E = [
@@ -1083,17 +1347,149 @@ if (C55.exp){
   show(4);
 })();
 
-/* ---------- footer · copy citation ---------- */
-(function(){
-  const b = $('#copy-cite'), toast = $('#toast');
-  const text = 'Arjmandi, M. (2026). ASSAY: An Agent Harness That Grounds a Test-Time World Model by Checked Prediction. Preprint. https://github.com/arjmandi/assay';
-  const say = m => { toast.textContent = m; toast.classList.add('show'); setTimeout(()=>toast.classList.remove('show'), 1800); };
-  b.addEventListener('click', ()=>{
-    const done = () => say('Citation copied');
-    const fallback = () => { const r = document.createRange(); r.selectNodeContents($('#cite')); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say('Select and copy the citation'); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+const RSI = [{"g":"ar25","L":8,"c":[[0,4,27.78],[1,8,100.0],null,[1,8,100.0],null,[1,8,100.0],null],"p":[1,8,100.0,"std-medium"],"s":100.0},{"g":"bp35","L":9,"c":[[0,1,2.22],[0,0,0.0],null,[0,1,2.22],[0,5,33.33],[0,3,13.33],[0,3,13.33]],"p":[0,5,33.33,"fix1-xhigh"],"s":93.1},{"g":"cd82","L":6,"c":[[0,3,28.57],[1,6,92.34],null,[1,6,84.94],null,[1,6,80.72],null],"p":[1,6,92.34,"std-medium"],"s":94.4},{"g":"cn04","L":6,"c":[[0,4,47.62],[0,4,47.62],[1,6,100.0],[0,5,71.43],[1,6,82.66],[1,6,100.0],null],"p":[1,6,100.0,"std-xhigh"],"s":100.0},{"g":"dc22","L":6,"c":[[0,4,47.62],[0,0,0.0],null,[0,2,14.29],[0,2,14.29],[0,4,47.62],[0,4,47.62]],"p":[0,4,47.62,"fix2-medium"],"s":100.0},{"g":"ft09","L":6,"c":[[1,6,57.92],[1,6,97.98],null,[1,6,100.0],null,[1,6,98.36],null],"p":[1,6,100.0,"fix1-medium"],"s":100.0},{"g":"g50t","L":7,"c":[[0,4,35.71],[0,1,3.57],null,[0,0,0.0],[1,7,72.33],[0,2,10.71],[1,7,75.65]],"p":[1,7,75.65,"fix2-xhigh"],"s":100.0},{"g":"ka59","L":7,"c":[[0,6,75.0],[0,5,53.57],[0,5,53.57],[0,5,53.57],[0,6,75.0],[0,6,75.0],[0,6,75.0]],"p":[0,6,75.0,"fix1-xhigh"],"s":78.7},{"g":"lf52","L":10,"c":[[0,1,1.82],[0,1,1.82],null,[0,4,18.18],[0,1,1.82],[0,1,1.82],[0,4,18.18]],"p":[0,4,18.18,"fix1-medium"],"s":100.0},{"g":"lp85","L":8,"c":[[1,8,72.23],[0,6,58.33],[1,8,100.0],[1,8,92.97],null,[1,8,100.0],null],"p":[1,8,100.0,"std-xhigh"],"s":100.0},{"g":"ls20","L":7,"c":[[0,5,53.57],[0,6,75.0],[1,7,100.0],[1,7,86.57],null,[1,7,86.35],null],"p":[1,7,100.0,"std-xhigh"],"s":76.3},{"g":"m0r0","L":6,"c":[[1,6,100.0],[1,6,100.0],null,[0,0,0.0],[1,6,100.0],[1,6,100.0],null],"p":[1,6,100.0,"std-medium"],"s":100.0},{"g":"r11l","L":6,"c":[[0,4,47.62],[0,4,47.62],[1,6,100.0],[1,6,93.45],null,[1,6,100.0],null],"p":[1,6,100.0,"std-xhigh"],"s":85.9},{"g":"re86","L":8,"c":[[0,7,77.78],[0,5,41.67],[0,6,58.33],[0,5,41.67],[1,8,100.0],[1,8,100.0],null],"p":[1,8,100.0,"fix1-xhigh"],"s":100.0},{"g":"s5i5","L":8,"c":[[0,2,8.33],[0,5,41.67],[0,2,8.33],[0,6,58.33],[1,8,72.76],[0,6,58.33],[1,8,93.5]],"p":[1,8,93.5,"fix2-xhigh"],"s":100.0},{"g":"sb26","L":8,"c":[[0,4,27.78],[0,4,27.78],[0,4,27.78],[1,8,91.23],null,[0,4,27.78],[1,8,89.08]],"p":[1,8,91.23,"fix1-medium"],"s":100.0},{"g":"sc25","L":6,"c":[[0,3,28.57],[0,2,14.29],null,[0,4,47.62],[1,6,75.6],[1,6,63.19],null],"p":[1,6,75.6,"fix1-xhigh"],"s":95.6},{"g":"sk48","L":8,"c":[[0,1,2.78],[0,1,2.78],null,[0,5,41.67],[0,4,27.78],[0,2,8.33],[1,8,100.0]],"p":[1,8,100.0,"fix2-xhigh"],"s":95.8},{"g":"sp80","L":6,"c":[[0,1,4.76],[0,1,4.76],null,[0,1,4.76],[0,2,14.29],[0,4,47.62],[0,4,47.62]],"p":[0,4,47.62,"fix2-medium"],"s":90.6},{"g":"su15","L":9,"c":[[0,3,13.33],[0,4,22.22],[0,4,22.22],[0,3,13.33],[0,4,22.22],[0,3,13.33],[0,4,22.22]],"p":[0,4,22.22,"std-medium"],"s":94.3},{"g":"tn36","L":7,"c":[[0,0,0.0],[0,4,35.71],[0,3,21.43],[0,1,3.57],[0,2,10.71],[0,4,35.71],[0,6,75.0]],"p":[0,6,75.0,"fix2-xhigh"],"s":87.7},{"g":"tr87","L":6,"c":[[1,6,60.71],[0,1,4.76],null,[0,5,71.43],[1,6,100.0],[1,6,100.0],null],"p":[1,6,100.0,"fix1-xhigh"],"s":95.5},{"g":"tu93","L":9,"c":[[1,9,79.67],[1,9,100.0],null,[1,9,93.77],null,[1,9,94.24],null],"p":[1,9,100.0,"std-medium"],"s":90.0},{"g":"vc33","L":7,"c":[[0,3,21.43],[0,3,21.43],null,[0,3,21.43],[0,6,75.0],[0,3,21.43],[1,7,64.18]],"p":[1,7,64.18,"fix2-xhigh"],"s":100.0},{"g":"wa30","L":9,"c":[[0,2,6.67],[0,1,2.22],null,[0,2,6.67],[0,7,62.22],[0,4,22.22],[0,7,62.22]],"p":[0,7,62.22,"fix1-xhigh"],"s":100.0}];
+
+
+/* ---------- RSI · set RHAE by version, with the Claude Code baseline as a reference line ---------- */
+function versionBars(w){
+  const H = 300, mL = 44, mR = 8, mT = 22, mB = 46, pw = w - mL - mR, ph = H - mT - mB, yMax = 100;
+  const y = v => mT + ph - (v / yMax) * ph;
+  const groups = [
+    {label:'1.5.1', sub:'won 5 · 9 · 9', bars:[[39.89,'m3','medium pass',5],[47.41,'m1','alone, xhigh on 10 of 20 losses',9],[47.41,'red','pinned after passes 1 and 2',9]]},
+    {label:'fix 1', sub:'won 8 · 15 · 15', bars:[[48.52,'m3','medium pass',8],[68.53,'m1','alone, medium + xhigh',15],[71.85,'red','pinned after passes 1 to 4',15]]},
+    {label:'fix 2', sub:'won 12 · 17 · 17', bars:[[60.24,'m3','medium pass',12],[76.26,'m1','alone, medium + xhigh',17],[78.95,'red','pinned after passes 1 to 6',17]]},
+  ];
+  const G = groups.length, gw = pw / G;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="Set RHAE by version: medium pass, the version alone, and the pinned record, with Claude Code alone at 37.18">';
+  s += '<g class="grid">'; for (let t = 0; t <= yMax; t += 20){ s += '<line x1="'+mL+'" x2="'+(w-mR)+'" y1="'+y(t)+'" y2="'+y(t)+'"/><text x="'+(mL-8)+'" y="'+(y(t)+3.5)+'" text-anchor="end">'+t+'</text>'; } s += '</g>';
+  groups.forEach((g, gi) => {
+    const n = g.bars.length, gap = 4, bw = Math.min(46, Math.max(14, (gw - 28 - gap*(n-1)) / n)), total = n*bw + gap*(n-1), x0 = mL + gi*gw + (gw - total)/2;
+    g.bars.forEach((b, bi) => {
+      const x = x0 + bi*(bw+gap), top = y(b[0]), h = mT + ph - top;
+      s += '<path class="bar '+b[1]+'" d="'+barPath(x, top, bw, h, 3)+'" style="transform-origin:'+(x+bw/2)+'px '+(mT+ph)+'px" data-tip="'+esc(g.label+' · '+b[2]+' · RHAE <b>'+b[0].toFixed(2)+'</b> · '+b[3]+' won')+'"/>';
+      const dec = bw > 34 ? 2 : (bw > 24 ? 1 : 0);
+      s += '<text class="v" x="'+(x+bw/2)+'" y="'+(top-6)+'" text-anchor="middle"'+(dec ? '' : ' style="font-size:9.5px"')+'>'+b[0].toFixed(dec)+'</text>';
+    });
+    s += '<text class="cat" x="'+(mL+gi*gw+gw/2)+'" y="'+(H-mB+18)+'" text-anchor="middle">'+esc(g.label)+'</text>';
+    s += '<text x="'+(mL+gi*gw+gw/2)+'" y="'+(H-mB+33)+'" text-anchor="middle">'+esc(gw > 150 ? g.sub : g.sub.replace('won ', ''))+'</text>';
   });
+  s += '<line class="hline" x1="'+mL+'" x2="'+(w-mR)+'" y1="'+y(37.18)+'" y2="'+y(37.18)+'"/>';
+  s += '<line class="axis" x1="'+mL+'" x2="'+(w-mR)+'" y1="'+(mT+ph)+'" y2="'+(mT+ph)+'"/>';
+  return s + '</svg>';
+}
+mountChart('#ver-svg', versionBars);
+
+/* ---------- RSI · how the runs ended ---------- */
+mountChart('#end-svg', w => {
+  const rows = [
+    {l:'Claude Code alone', s:[5,20,0]},
+    {l:'Assay 1.5.1', s:[5,20,0]},
+    {l:'fix 1', s:[8,13,4]},
+    {l:'fix 2', s:[12,13,0]},
+  ];
+  const names = ['won','sessions used up, budget left','action cap reached'], cls = ['red','m3','warn'];
+  const lab = Math.min(130, Math.max(92, w*0.24)), bh = 22, gapR = 14, H = rows.length*(bh+gapR) + 26, pw = w - lab - 12, x = v => lab + (v/25)*pw;
+  let s = '<svg viewBox="0 0 '+w+' '+H+'" width="'+w+'" height="'+H+'" role="img" aria-label="How the runs ended at medium effort, out of 25 games">';
+  s += '<g class="grid">'; [0,5,10,15,20,25].forEach(t => { s += '<line x1="'+x(t)+'" x2="'+x(t)+'" y1="2" y2="'+(H-22)+'"/><text x="'+x(t)+'" y="'+(H-8)+'" text-anchor="middle">'+t+'</text>'; }); s += '</g>';
+  rows.forEach((r, i) => {
+    const y = 6 + i*(bh+gapR); let x0 = lab;
+    s += '<text class="cat" x="'+(lab-10)+'" y="'+(y+bh/2+4)+'" text-anchor="end">'+esc(r.l)+'</text>';
+    r.s.forEach((v, j) => {
+      if (!v) return; const sw = x(v) - lab - 1.5;
+      s += '<rect class="bar '+cls[j]+'" x="'+x0+'" y="'+y+'" width="'+sw+'" height="'+bh+'" rx="2" style="transform-origin:'+x0+'px '+(y+bh)+'px" data-tip="'+esc(r.l+' · '+names[j]+' <b>'+v+'</b>')+'"/>';
+      if (sw > 20) s += '<text x="'+(x0+sw/2)+'" y="'+(y+bh/2+4)+'" text-anchor="middle" style="fill:'+(j===1?'var(--ink)':'var(--on-ink)')+';font-weight:600">'+v+'</text>';
+      x0 += sw + 1.5;
+    });
+  });
+  return s + '</svg>';
+});
+
+/* ---------- RSI · the per-game matrix ---------- */
+(function(){
+  const t = $('#mx'); if (!t) return;
+  const heads = ['Claude Code<br>medium','1.5.1<br>medium','1.5.1<br>xhigh','fix 1<br>medium','fix 1<br>xhigh','fix 2<br>medium','fix 2<br>xhigh','pinned<br>RHAE'];
+  const runName = ['Claude Code alone, medium','Assay 1.5.1, medium','Assay 1.5.1, xhigh','fix 1, medium','fix 1, xhigh','fix 2, medium','fix 2, xhigh'];
+  const pinName = {'std-medium':'Assay 1.5.1, medium','std-xhigh':'Assay 1.5.1, xhigh','fix1-medium':'fix 1, medium','fix1-xhigh':'fix 1, xhigh','fix2-medium':'fix 2, medium','fix2-xhigh':'fix 2, xhigh'};
+  let h = '<caption class="sr">Haiku 5.5, every game in every pass: won, or levels completed of the game\'s levels</caption><thead><tr><th class="g" scope="col">Game</th>';
+  heads.forEach((x, i) => { h += '<th scope="col"'+(i===1||i===7?' class="sep"':'')+'>'+x+'</th>'; });
+  h += '</tr></thead><tbody>';
+  RSI.forEach(r => {
+    h += '<tr><th class="g" scope="row" style="text-align:left">'+r.g+' <span style="color:var(--ink-3);font-weight:400">· '+r.L+'</span></th>';
+    r.c.forEach((c, i) => {
+      const sep = (i===1 ? ' sep' : '');
+      if (!c){ h += '<td class="na'+sep+'" data-tip="'+esc(r.g+' · '+runName[i]+' · not played')+'">·</td>'; return; }
+      const tip = esc(r.g+' · '+runName[i]+' · '+(c[0] ? 'won' : c[1]+' of '+r.L+' levels')+' · RHAE <b>'+c[2].toFixed(2)+'</b>');
+      if (c[0]) h += '<td class="w'+sep+'" data-tip="'+tip+'">won</td>';
+      else { const f = c[1] / r.L, pct = Math.round(6 + f*44); h += '<td class="'+sep.trim()+'" style="background:color-mix(in srgb, var(--accent) '+pct+'%, var(--card))" data-tip="'+tip+'">'+c[1]+'/'+r.L+'</td>'; }
+    });
+    const p = r.p, ptip = esc(r.g+' · pinned to '+(pinName[p[3]]||p[3])+' · '+(p[0] ? 'won' : p[1]+' of '+r.L+' levels')+' · RHAE <b>'+p[2].toFixed(2)+'</b>');
+    h += '<td class="pin sep'+(p[0]?' w':'')+'" data-tip="'+ptip+'">'+p[2].toFixed(1)+'</td></tr>';
+  });
+  h += '</tbody>';
+  t.innerHTML = h;
+  bindTips(t);
 })();
+
+/* ---------- study tabs and the tabs inside each study ---------- */
+(function(){
+  const studyTabs = $$('.study[role=tab]');
+  const studyLinks = $$('[data-study-link]');
+  const groups = {};
+  $$('.ev-tabs [role=tab]').forEach(t => { const g = t.dataset.group || 'opus'; (groups[g] = groups[g] || []).push(t); });
+  const groupStudy = {opus:'arc', worlds:'worlds', rsi:'rsi'};
+  function redraw(root){ chartRegistry.forEach(o => { if (root.contains(o.el) && o.el.offsetParent !== null) draw(o); }); }
+  function setHash(k){ try { history.replaceState(null, '', '#' + k); } catch (e) {} }
+  function showStudy(id, keepHash){
+    studyTabs.forEach(t => t.setAttribute('aria-selected', String(t.dataset.study === id)));
+    studyLinks.forEach(a => a.setAttribute('aria-current', String(a.dataset.studyLink === id)));
+    $$('.study-panel').forEach(p => { p.hidden = p.id !== id; });
+    redraw($('#' + id));
+    if (!keepHash) setHash(id);
+  }
+  function showTab(g, k, keepHash){
+    groups[g].forEach(t => {
+      const on = t.dataset.ev === k; t.setAttribute('aria-selected', String(on));
+      const p = $('#ev-' + t.dataset.ev); if (p) p.hidden = !on;
+    });
+    const pane = $('#ev-' + k); if (pane) redraw(pane);
+    if (!keepHash) setHash(k);
+  }
+  studyTabs.forEach(t => t.addEventListener('click', () => showStudy(t.dataset.study)));
+  studyLinks.forEach(a => a.addEventListener('click', e => { e.preventDefault(); showStudy(a.dataset.studyLink); $('#' + a.dataset.studyLink).scrollIntoView({behavior: motionOK ? 'smooth' : 'auto'}); }));
+  Object.entries(groups).forEach(([g, ts]) => ts.forEach(t => t.addEventListener('click', () => showTab(g, t.dataset.ev))));
+  /* arrow keys move between the study cards */
+  studyTabs.forEach((t, i) => t.addEventListener('keydown', e => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    const j = (i + (e.key === 'ArrowRight' ? 1 : studyTabs.length - 1)) % studyTabs.length;
+    studyTabs[j].focus(); showStudy(studyTabs[j].dataset.study);
+  }));
+  const h = location.hash.replace('#', '');
+  let study = 'arc';
+  if (studyTabs.some(t => t.dataset.study === h)) study = h;
+  else Object.entries(groups).forEach(([g, ts]) => { if (ts.some(t => t.dataset.ev === h)){ study = groupStudy[g]; showTab(g, h, true); } });
+  showStudy(study, true);
+  requestAnimationFrame(() => requestAnimationFrame(() => document.documentElement.classList.add('ready')));
+  if (h && h !== 'top') setTimeout(() => { const el = $('#' + study); if (el) el.scrollIntoView(); }, 0);
+})();
+
+/* ---------- scroll progress ---------- */
+(function(){
+  const prog = $('#progress'); if (!prog) return;
+  const on = () => { const d = document.documentElement, max = d.scrollHeight - d.clientHeight; prog.style.width = (max > 0 ? (d.scrollTop / max) * 100 : 0) + '%'; };
+  addEventListener('scroll', on, {passive:true}); on();
+})();
+
+/* ---------- copy a citation ---------- */
+(function(){
+  const toast = $('#toast');
+  const say = m => { toast.textContent = m; toast.classList.add('show'); setTimeout(() => toast.classList.remove('show'), 1800); };
+  $$('[data-copy]').forEach(b => b.addEventListener('click', () => {
+    const el = $('#' + b.dataset.copy), text = el.textContent.trim();
+    const fallback = () => { const r = document.createRange(); r.selectNodeContents(el); const s = getSelection(); s.removeAllRanges(); s.addRange(r); say('Select and copy the citation'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(() => say('Citation copied'), fallback); else fallback();
+  }));
+})();
+
 })();
 </script>
 </body>
