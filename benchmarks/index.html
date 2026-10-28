@@ -278,9 +278,17 @@ table.data th.l, table.data td.l{text-align:left}
 @media (max-width: 480px){ .ranklist .r{grid-template-columns:120px 1fr 50px} }
 .ranklist .r .n{font-family:var(--mono); font-size:12px; min-width:0}
 .ranklist .r .n small{color:var(--ink-3); display:block; font-size:10px; letter-spacing:.04em; white-space:normal}
-.ranklist .r .tr{height:12px; background:var(--track); border-radius:2px; position:relative; overflow:hidden}
-.ranklist .r .tr i{position:absolute; left:0; top:0; bottom:0; width:0; background:var(--mark-2)}
-.ranklist .r.hi .tr i{background:var(--accent)}
+.ranklist{gap:0}
+.ranklist .r{padding:7px 0; border-bottom:1px solid var(--rule-2)}
+.ranklist .r .tr{height:22px; position:relative; margin-inline:7px}
+.ranklist .r .tr::before{content:""; position:absolute; left:0; right:0; top:50%; height:1px; background:var(--rule)}
+.ranklist .r .tr::after{content:""; position:absolute; inset:3px 0; background:linear-gradient(var(--rule-2), var(--rule-2)) 25% 0 / 1px 100% no-repeat, linear-gradient(var(--rule-2), var(--rule-2)) 50% 0 / 1px 100% no-repeat, linear-gradient(var(--rule-2), var(--rule-2)) 75% 0 / 1px 100% no-repeat}
+.ranklist .r .tr i{position:absolute; top:50%; width:9px; height:9px; border-radius:50%; background:var(--ink-3); transform:translate(-50%, -50%); box-shadow:0 0 0 3px var(--bg-2); z-index:1}
+.ranklist .r.hi .tr i{width:13px; height:13px; background:var(--held)}
+.ranklist .r.axis{border-bottom:0; padding-top:6px; font-family:var(--mono); font-size:11px; color:var(--ink-3)}
+.ranklist .r.axis .ax{position:relative; height:16px; margin-inline:7px}
+.ranklist .r.axis .ax b{position:absolute; top:0; transform:translateX(-50%); font-weight:400}
+.ranklist .r.axis .u{text-align:right}
 .ranklist .r .v{font-family:var(--mono); font-size:12.5px; text-align:right; font-variant-numeric:tabular-nums}
 .ranklist .r.hi .v, .ranklist .r.hi .n{color:var(--accent); font-weight:600}
 
@@ -502,7 +510,7 @@ figcaption.cap2{font-size:14px; line-height:1.55; color:var(--ink-2); margin-top
         <div class="chart" id="ch-rank">
           <div class="ct"><span class="t">Published results on the ARC-AGI-3 public set, by RHAE</span><span class="u">Table 4 · 25 game instances</span></div>
           <div class="ranklist" id="ranklist"></div>
-          <p class="tiny" style="margin-top:12px"><span class="fig">TABLE 4</span>RHAE saturates near 100 at this level: 23 of 25 games score 100.00 for the campaign; bp35 scores 95.27 for running over baseline on three late levels; lf52 scores 18.18 for ending at 4 of 10. Comparators ran uncapped and with different starting information. Directional context only.</p>
+          <p class="tiny" style="margin-top:12px"><span class="fig">TABLE 4</span>The axis starts at 80. RHAE saturates near 100 at this level: 23 of 25 games score 100.00 for the campaign; bp35 scores 95.27 for running over baseline on three late levels; lf52 scores 18.18 for ending at 4 of 10. Comparators ran uncapped and with different starting information. Directional context only.</p>
           <details class="tbl"><summary>Table view</summary><div class="sc"><table class="data" id="tbl-rank"></table></div></details>
         </div>
       </div>
@@ -1269,11 +1277,9 @@ function tableHTML(id, head, rows, hiIdx){ const t = $(id); if (!t) return; t.in
     {n:'NOOA', bb:'gpt-5.6-sol · 2 h fleet cap', r:85.1, g:'·', l:'170/183', a:'·'},
   ];
   const el = $('#ranklist');
-  el.innerHTML = rows.map(r => '<div class="r'+(r.hi?' hi':'')+'" data-tip="'+esc(r.n+' · RHAE <b>'+r.r.toFixed(2)+'</b> · games '+r.g+' · levels '+r.l+' · actions '+r.a)+'"><span class="n">'+esc(r.n)+'<small>'+esc(r.bb)+'</small></span><span class="tr"><i data-w="'+r.r+'"></i></span><span class="v">'+r.r.toFixed(2)+'</span></div>').join('');
+  el.innerHTML = rows.map(r => '<div class="r'+(r.hi?' hi':'')+'" data-tip="'+esc(r.n+' · RHAE <b>'+r.r.toFixed(2)+'</b> · games '+r.g+' · levels '+r.l+' · actions '+r.a)+'"><span class="n">'+esc(r.n)+'<small>'+esc(r.bb)+'</small></span><span class="tr"><i style="left:'+((r.r - 80) / 20 * 100).toFixed(2)+'%"></i></span><span class="v">'+r.r.toFixed(2)+'</span></div>').join('');
   bindTips(el);
-  const fills = $$('.tr i', el);
-  const go = () => { fills.forEach((f,i) => { if (A && motionOK) A({targets:f, width:[0, f.dataset.w+'%'], duration:900, delay:i*60, easing:'easeOutCubic'}); else f.style.width = f.dataset.w+'%'; }); };
-  const io = new IntersectionObserver(es => { if (es.some(e=>e.isIntersecting)){ io.disconnect(); go(); } }, {threshold:.3}); io.observe(el);
+  el.insertAdjacentHTML('beforeend', '<div class="r axis" aria-hidden="true"><span></span><span class="ax"><b style="left:0">80</b><b style="left:25%">85</b><b style="left:50%">90</b><b style="left:75%">95</b><b style="left:100%">100</b></span><span class="u">RHAE</span></div>');
   tableHTML('#tbl-rank', ['System','Backbone · regime','RHAE','Games','Levels','Actions'], rows.map(r=>[esc(r.n), esc(r.bb), r.r.toFixed(2), r.g, r.l, r.a]), 4);
 })();
 
