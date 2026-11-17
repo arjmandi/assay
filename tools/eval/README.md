@@ -84,7 +84,18 @@ The mode also ends, with the daemon left up, when this invocation reaches
 `--max-sessions` (`SESSIONS_EXHAUSTED`), its `--hours` (`TIME_EXHAUSTED`,
 the running session terminated), or the `--max-usd` its sessions reported
 (`USD_EXHAUSTED`; the `claude` host also gets the dollars left as
-`--max-budget-usd`). It ends when two sessions in a row exit non-zero
+`--max-budget-usd`). A host with no dollar flag (`codex`, `opencode`, a
+custom command) is held to the dollars left by its own output: when its
+stdout is JSON lines, the runner sums the `cost` and the `tokens` of the
+`step-finish` parts wherever a line nests them, records them as the
+session's dollars and tokens, and reads the growing output at most once a
+minute, ending the session `USD_EXHAUSTED` when the sum reaches the dollars
+left. That is the shape OpenCode's `run --format json` is assumed to print
+(`cost`, and `tokens` with `input`, `output`, `reasoning` and `cache.read`,
+`cache.write`). It is unverified: no OpenCode session has been played
+through the runner yet, and the template stays marked untested until the
+host test confirms the shape. Codex's output reports no cost, so for it the
+cap stays unbound. It ends when two sessions in a row exit non-zero
 without a paid action (`PLAYER_FAILING`), at a `STOP` file in the state
 directory (after the current session), and at SIGINT or SIGTERM, which end
 the current session at once (`STOPPED`). A session that a usage limit cut
@@ -134,6 +145,108 @@ and rewrites with the launch's counts before each session. A person's own
 session in the run directory is never held. A run it cannot read is never
 held either. The runner loads the same file by path, so the gate and the
 runner apply one rule.
+
+### The stall trigger and the analyst
+
+```bash
+python3 -m tools.eval session --run-dir <run> --stall [--frontier FILE] \
+    [--stall-min-age-minutes 60] [--stall-flat-minutes 20] [--stall-min-attempts 12] [--stall-gain 0.002] \
+    [--analyst claude|codex|opencode | --analyst-command "CMD {prompt_file}"] [--analyst-model M] \
+    [--analyst-prompt FILE] [--analyst-timeout-minutes 20] [--analyst-context FILE]...
+```
+
+For a world that scores code by a cycle count and records each completed
+evaluation in `<run>/.assay/world_state/frontier.jsonl` (`--frontier` names
+another file), `--stall` adds RSI-top's stall rule to the loop. RSI-top
+(https://rsi-top.github.io/) is a published wrapper that detects a flat
+frontier and hands its search new directions; the rule here is its live
+controller's (`breadth_controller.py`), with its defaults, adapted to one
+sequential player. One frontier line is one attempt, whatever its outcome.
+
+- At the first session's launch, the run's age and the time anchor start,
+  the progress anchor is the frontier then (the last line's `best_cycles`,
+  or unset until a valid evaluation sets it), and the phase is ordinary.
+- Each new evaluation, in order: when it is valid and the anchor is unset
+  or `anchor - cycles > gain * |anchor|` (a meaningful improvement), the
+  anchor moves to its cycles, and in the ordinary phase the time anchor
+  moves to its completion time. A gain of exactly 0.2 percent does not
+  count.
+- The rule is evaluated only when at least one new evaluation arrived, so
+  a session ends right after an evaluation and never inside one. It fires
+  when the phase is ordinary, the run is `--stall-min-age-minutes` old by
+  the wall clock, the active minutes since the time anchor reach
+  `--stall-flat-minutes`, and `--stall-min-attempts` evaluations completed
+  at or after the time anchor. Firing turns the phase to intervening.
+- The first session launched after a fire turns the phase back to ordinary
+  and moves the time anchor to its launch. The progress anchor is never
+  reset, there is no other cool-down and no limit on interventions, and
+  the one-hour gate applies once, because it measures the run's age.
+
+Active time is the union of the player sessions' intervals inside the
+window. A usage-limit pause, the analyst's call and the gap between
+sessions are not active. This differs from RSI-top on purpose: there,
+active time is the union of the attempts in flight across many workers;
+with one player, the session is what is in flight.
+
+When the rule fires, the runner ends the session as the wall clock does
+(SIGTERM to its process group, SIGKILL after the grace) and prints
+`STALL | session N | evaluation n | anchor C cycles | A active min | K
+attempts since the anchor`. The session is recorded `"stalled": true` and
+ends `STALL`. It counts as a launched session and adds its dollars, never
+counts toward `PLAYER_FAILING`, and is relaunched. The rule is also run
+once before each launch, so evaluations that arrived while nothing polled
+are consumed.
+
+Before the relaunch the analyst, when one is named, reads the run: the
+layer diagnosis (`diagnose.py`), the player's world model from the report's
+record (the prediction meter, per action and outcome form the held and
+missed counts with the latest misses and what the world reported, the
+coverage, the declared states, the tail of `NOTES.md`), the frontier (the
+best, the anchor, the last 40 evaluations, the count per failure stage,
+every improvement), and the earlier directions that failed (given since the
+last meaningful improvement, with the labels of the evaluations made after
+them). The prompt is `prompts/analyst.md` with that object in place of
+`{{INPUT}}`, and it asks for at most five ranked directions as one JSON
+object, `{"directions": [{"rank": 1, "try": "...", "why": "...", "layer":
+4}]}`. The call is a host's template (`--analyst`, with `--analyst-model`)
+or a custom command (`--analyst-command`, split like a shell line, with
+`{prompt}`, `{prompt_file}` and `{model}`), run in `<state>/analyst/a<k>.work/`,
+never the run directory, with the runner's environment minus `ASSAY`,
+`ASSAY_OWNER_TOKEN_FILE`, `ASSAY_STOP_GATE` and the world's secrets. Its
+output may be the object itself, a `claude -p` report whose `result` holds
+it, JSON lines, or prose around a fenced block. A failed call, a time-out
+(`--analyst-timeout-minutes`, default 20) or output with no valid direction
+is recorded and yields none; it never ends the run. `--analyst-context
+FILE` (repeatable) adds a file's text, as it stands at each call, to the
+object under `context`: the program under work, the task's description. The wall clock keeps
+running through the call: `--hours` bounds everything, and a deadline that
+passes during the call ends the mode `TIME_EXHAUSTED`. The runner prints
+`ANALYST | call k | M direction(s) | W s | $cost`.
+
+Every relaunched prompt then carries, after the owner's note, a block
+headed `Directions from the analyst (...)` with each direction's try, why
+and layer. The latest directions stay until the next call returns others
+or a meaningful improvement clears them. Without an analyst, the block is
+one line saying the best score has not improved by more than 0.2 percent
+over the last K evaluations and A active minutes: the control arm.
+
+The rule's state is `<state>/stall.json`: `run_started_at`,
+`anchor_cycles`, `anchor_n` (the evaluation that last moved the anchor),
+`flat_anchor_at`, `phase`, `consumed`, the session intervals, the pauses,
+and the interventions (index, fired at, the evaluation it fired on, the
+anchor, the active seconds, the attempts, and what the analyst returned). A
+runner started again on the same state directory continues it; a runner
+that was killed left its last interval open, and the next one closes it at
+the state file's last write. The analyst's records are
+`<state>/analyst/a<k>.input.json`, `a<k>.prompt.md`, `a<k>.out`, `a<k>.err`
+and `a<k>.json` (the command, the host and its version, the model, the
+times, the exit code, whether it timed out, the dollars and tokens when the
+output reports them, the directions or the reason there are none).
+
+`--stall` without an analyst is allowed. An analyst flag, a threshold or
+`--frontier` without `--stall` is refused, as are `--analyst` with
+`--analyst-command`, and `--analyst-model`, `--analyst-prompt` or
+`--analyst-timeout-minutes` without an analyst.
 
 ## The report
 
@@ -220,6 +333,24 @@ evidence and where to steer:
 A finding is a place to look, not a verdict. Both modes read the run's
 files and write nothing; `/assay:diagnose` explains the findings and offers
 changes only to what is the operator's (a registry, a recipe, a prompt).
+
+## The frontier mode
+
+```bash
+python3 -m tools.eval frontier --run-dir <run> [--state-dir DIR] [--frontier FILE] [--json]
+```
+
+`frontier.py` reads a scored world's frontier file and the session runner's
+`stall.json`, and writes nothing. It prints the evaluations and the valid
+ones, the best cycles, `1363 / best` as the normalized performance,
+evaluations per hour, the share of time stalled, the paused time, and per
+intervention whether the frontier moved within the next 1200 active
+seconds, by 2 cycles and by the rule's 0.2 percent (`open` while that window
+has not closed and nothing moved). The share of time stalled is the RSI-top
+project page's: after the first hour of the run, the time that lies in
+stretches of at least 20 minutes in which the best score improved by fewer
+than 2 cycles. Paused intervals come out of both the numerator and the
+denominator, and their length is printed beside the share.
 
 ## The compare mode
 

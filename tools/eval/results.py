@@ -181,6 +181,58 @@ def session_tokens(report: Mapping[str, Any] | None) -> dict[str, int] | None:
     return counts
 
 
+# ---- the bill of a host that prints JSON lines ------------------------------------------------
+#
+# OpenCode's `run --format json` prints one JSON object per line. Its
+# `step-finish` parts are assumed to carry `cost` (dollars) and `tokens`
+# (`input`, `output`, `reasoning`, `cache: {read, write}`), wherever the
+# line nests them. UNVERIFIED: the shape comes from OpenCode's source, not
+# from a session this runner has played; the host test confirms or corrects
+# it, and until then the opencode template stays untested.
+
+STEP_FINISH = frozenset({"step-finish", "step_finish"})
+STREAM_TOKENS = {"input": ("input",), "output": ("output",), "reasoning": ("reasoning",),
+                 "cache_read": ("cache", "read"), "cache_creation": ("cache", "write")}
+
+
+def _step_finishes(value: Any) -> list[Mapping[str, Any]]:
+    if isinstance(value, Mapping):
+        cost = value.get("cost")
+        if value.get("type") in STEP_FINISH and isinstance(cost, (int, float)) and not isinstance(cost, bool):
+            return [value]
+        return [found for item in value.values() for found in _step_finishes(item)]
+    if isinstance(value, list):
+        return [found for item in value for found in _step_finishes(item)]
+    return []
+
+
+def stream_spend(stdout: str) -> tuple[float | None, dict[str, int] | None]:
+    """The dollars and tokens summed over the step-finish parts of a JSON
+    lines stream; None for each when the stream reports none."""
+    dollars: float | None = None
+    tokens: dict[str, int] = {}
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            parsed = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        for step in _step_finishes(parsed):
+            dollars = (dollars or 0.0) + float(step["cost"])
+            counts = step.get("tokens")
+            for name, path in STREAM_TOKENS.items():
+                value: Any = counts
+                for key in path:
+                    value = value.get(key) if isinstance(value, Mapping) else None
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    tokens[name] = tokens.get(name, 0) + int(value)
+    if tokens:
+        tokens["total"] = sum(tokens.values())
+    return (None if dollars is None else round(dollars, 6)), (tokens or None)
+
+
 def _per_action(value: float | None, paid: int) -> float | None:
     if value is None or paid <= 0:
         return None

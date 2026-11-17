@@ -1,0 +1,17 @@
+{
+  "takehome": {
+    "url": "https://github.com/anthropics/original_performance_takehome",
+    "commit": "5452f74bd977807ac2e74f3d29432b9df6f25197",
+    "place": "upstream/original_performance_takehome"
+  },
+  "wrapper": {
+    "url": "https://github.com/RSI-top/rsi-top-wrapper",
+    "commit": "64ce40cc6c116e2d08281c811d818281ba0b55a6",
+    "place": "upstream/rsi-top-wrapper"
+  },
+  "task": "task",
+  "baseline_cycles": 147734,
+  "trials": 2,
+  "build_timeout_seconds": 180,
+  "score_timeout_seconds": 600
+}

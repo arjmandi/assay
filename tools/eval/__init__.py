@@ -12,6 +12,7 @@ no LLM calls, and it imports nothing from `assay`.
     python3 -m tools.eval compare --pack <pack>      (ASSAY against /goal on one pack, compare.py)
     python3 -m tools.eval watch --run-dir <run>      (one line per change of a run, watch.py)
     python3 -m tools.eval diagnose --run-dir <run>   (a run read against the five layers, diagnose.py)
+    python3 -m tools.eval frontier --run-dir <run>   (a scored world's frontier and its stalls, frontier.py)
 
 `tools/eval/README.md` is the manual.
 """

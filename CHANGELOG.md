@@ -3,6 +3,25 @@
 All notable changes to ASSAY are recorded here. The form follows Keep a
 Changelog. Dates are UTC.
 
+## Unreleased
+
+### Added
+
+- The session mode's stall trigger (`--stall`, `tools/eval/frontier.py`,
+  `supervisor.py`, `analyst.py`): RSI-top's stall rule over a scored
+  world's `frontier.jsonl` ends a flat session and relaunches it, an
+  optional analyst model's ranked directions reach the next prompt,
+  `python3 -m tools.eval frontier` reports the frontier and the stalls, and
+  a host without a dollar flag is held to `--max-usd` by the step-finish
+  costs in its JSON lines (OpenCode's shape, unverified).
+- `worlds/recipes/kernel-takehome`, a pack for Anthropic's performance
+  take-home (lower the clock cycles of a kernel on a simulated machine) in
+  the worktree mode: one paid action, EVALUATE, scored by the two-phase
+  evaluator of RSI-top's wrapper, with a frontier record of every
+  evaluation. `prepare.py` fetches the two upstream repositories at their
+  pinned commits; nothing from them is vendored. `checks/score.py` re-scores
+  a candidate in a clean copy.
+
 ## 1.5.1 (2026-10-22)
 
 ### Changed

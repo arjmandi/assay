@@ -4,7 +4,12 @@ host session after another until the run says it is over.
     python3 -m tools.eval session --run-dir DIR [--player claude|codex|opencode]
         [--model M] [--hours H] [--max-sessions N] [--max-usd USD] [--prompt FILE]
         [--state-dir DIR] [--owner-token-file FILE] [--assay CMD] [--strip NAME]
-        [--no-stop-gate] [--dry-run] [-- COMMAND ...]
+        [--no-stop-gate] [--dry-run]
+        [--stall [--frontier FILE] [--stall-min-age-minutes 60] [--stall-flat-minutes 20]
+         [--stall-min-attempts 12] [--stall-gain 0.002]
+         [--analyst claude|codex|opencode | --analyst-command CMD] [--analyst-model M]
+         [--analyst-prompt FILE] [--analyst-timeout-minutes 20] [--analyst-context FILE]...]
+        [-- COMMAND ...]
 
 The batch mode (`--jobs`) starts the runs of an experiment itself. This mode
 takes the run that `/assay:attach`, or an operator's `assay start`, left
@@ -54,12 +59,33 @@ A relaunched session's prompt gains an operator's note when the owner acted
 since the previous session: an approval still held by the daemon (it lasts
 600 seconds and one act), a waiver, a ratified goal.
 
+A host the runner cannot hand the dollars left to (no dollar flag in its
+template, or a custom command) is held to `--max-usd` by its own output:
+the runner sums the `cost` of the step-finish parts in its JSON lines at
+most once a minute and ends the session USD_EXHAUSTED when the sum reaches
+the dollars left. That is the shape OpenCode's `run --format json` is
+assumed to print (`results.stream_spend`); a host test has not confirmed it.
+
+`--stall` puts a supervisor (`supervisor.py`) beside the loop for a world
+that records its evaluations in a frontier file (`frontier.py`). It is told
+of each session's launch and exit and of each usage-limit pause, and on
+each poll it consumes the new evaluations under RSI-top's stall rule. When
+the rule fires the session ends as a time-out does and is recorded STALL:
+it counts as a launched session, never toward PLAYER_FAILING, and is
+relaunched. Before the relaunch the analyst (`analyst.py`, `--analyst` or
+`--analyst-command`) reads the run and returns directions, which every
+relaunched prompt carries until the next call replaces them or a
+meaningful improvement clears them; without an analyst the prompt gets one
+line saying the frontier is flat. The wall clock keeps running through the
+call. The rule's state is `stall.json` in the state directory, so a runner
+started again continues it.
+
 The state directory (default `<run dir>.sessions`, beside the run directory,
 outside the player's): `sessions.json` (the ledger, one record per session),
 `s<n>.prompt.md`, `s<n>.start.log`, `s<n>.player.out`, `s<n>.player.err`,
 `status.json`, `stop_gate.json`, `runner.lock`, and `STOP` (create it to end
-the mode after the current session). SIGINT and SIGTERM end the current
-session at once.
+the mode after the current session); with `--stall`, `stall.json` and
+`analyst/`. SIGINT and SIGTERM end the current session at once.
 """
 
 from __future__ import annotations
@@ -77,13 +103,17 @@ import signal
 import subprocess
 import sys
 import time
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import ModuleType
-from typing import IO, Any
+from typing import IO, TYPE_CHECKING, Any
 
 from . import EvalError
-from .results import player_report, session_tokens
+from .results import player_report, session_tokens, stream_spend
 from .runner import DEFAULT_LAUNCHER, KILL_GRACE_SECONDS, REPO, looks_rate_limited, now
+
+if TYPE_CHECKING:
+    from .supervisor import Supervisor
 
 GATE_SCRIPT = REPO / "hooks" / "stop_gate.py"
 # The gate's entry in the settings, by its command text.
@@ -97,6 +127,7 @@ VERSION_TIMEOUT_SECONDS = 60
 START_TIMEOUT_SECONDS = 900
 STOP_TIMEOUT_SECONDS = 120
 SPEND_TIMEOUT_SECONDS = 120
+SPEND_CHECK_SECONDS = 60.0
 APPROVAL_SECONDS = 600
 FINISHED = ("WIN", "CAP", "USD_CAP")
 NOTE_HEADER = "A note from the operator for this session (the session runner wrote it; it is not from the world):"
@@ -152,6 +183,47 @@ HOSTS: dict[str, Host] = {
         model=("--model", "{model}"),
     ),
 }
+
+
+PLACEHOLDER = re.compile(r"\{([a-z_]+)\}")
+
+
+def sessions_dir(run_dir: Path) -> Path:
+    """The default state directory, beside the run directory."""
+    return run_dir.with_name(run_dir.name + STATE_SUFFIX)
+
+
+def expand(template: Sequence[str], values: Mapping[str, str], options: Sequence[str] = ()) -> list[str]:
+    """The argv of a template: `{options}` expands to the option words, the
+    other placeholders to their values (KeyError on one it does not know)."""
+
+    def word(text: str) -> str:
+        return PLACEHOLDER.sub(lambda match: values[match.group(1)], text)
+
+    argv: list[str] = []
+    for argument in template:
+        if argument == "{options}":
+            argv += [word(option) for option in options]
+        else:
+            argv.append(word(argument))
+    return argv
+
+
+def kill_group(proc: subprocess.Popen[bytes]) -> None:
+    """SIGTERM to the process group, SIGKILL after the grace."""
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+    except ProcessLookupError:
+        return
+    deadline = time.monotonic() + KILL_GRACE_SECONDS
+    while time.monotonic() < deadline and proc.poll() is None:
+        time.sleep(0.1)
+    if proc.poll() is None:
+        try:
+            os.killpg(proc.pid, signal.SIGKILL)
+        except ProcessLookupError:
+            pass
+        proc.wait()
 
 
 def load_gate() -> ModuleType:
@@ -259,6 +331,7 @@ class SessionRunner:
         stop_gate: bool = True,
         poll_seconds: float = 5.0,
         pause_minutes: float = 30.0,
+        supervisor: Supervisor | None = None,
     ):
         self.run_dir = Path(run_dir).expanduser().resolve()
         if host not in HOSTS and command is None:
@@ -267,10 +340,8 @@ class SessionRunner:
         self.custom = list(command) if command else None
         self.model = model
         self.prompt = Path(prompt).expanduser().resolve() if prompt else self.run_dir / PROMPT_NAME
-        self.state = (
-            Path(state_dir).expanduser().resolve() if state_dir
-            else self.run_dir.with_name(self.run_dir.name + STATE_SUFFIX)
-        )
+        self.state = Path(state_dir).expanduser().resolve() if state_dir else sessions_dir(self.run_dir)
+        self.supervisor = supervisor
         self.launcher = list(launcher) if launcher else self.pinned_launcher()
         self.launcher_text = shlex.join(self.launcher)
         default_token = Path.home() / "assay" / "tokens" / f"{self.run_dir.name}.token"
@@ -392,6 +463,14 @@ class SessionRunner:
             env.pop(self.gate.STATE_VARIABLE, None)
         return env, sorted(name for name in names if name in os.environ)
 
+    def analyst_environment(self) -> dict[str, str]:
+        """The player's environment without the launcher and the Stop
+        gate's variable: the analyst has no route to the run."""
+        env, _ = self.player_environment()
+        env.pop("ASSAY", None)
+        env.pop(self.gate.STATE_VARIABLE, None)
+        return env
+
     # ---- the host ------------------------------------------------------------------
     def binary(self) -> str:
         if self.custom is not None:
@@ -435,13 +514,7 @@ class SessionRunner:
                 options += list(self.host.model)
             if usd is not None:
                 options += list(self.host.usd)
-        argv: list[str] = []
-        for argument in template:
-            if argument == "{options}":
-                argv += [re.sub(r"\{([a-z_]+)\}", lambda match: values[match.group(1)], option) for option in options]
-            else:
-                argv.append(re.sub(r"\{([a-z_]+)\}", lambda match: values[match.group(1)], argument))
-        return argv
+        return expand(template, values, options)
 
     def player_argv(self, session: int, prompt: str, usd: float | None) -> list[str]:
         if self.custom is not None:
@@ -608,22 +681,10 @@ class SessionRunner:
         lines = owner_note(list(view.activity) if view else [], since, daemon_kept=start_line.startswith("RESUMED"))
         if lines:
             text = text.rstrip("\n") + "\n\n" + NOTE_HEADER + "\n" + "".join(f"- {line}\n" for line in lines)
+        stall = self.supervisor.note() if self.supervisor is not None else None
+        if stall:
+            text = text.rstrip("\n") + "\n\n" + stall + "\n"
         return text
-
-    def _kill(self, proc: subprocess.Popen[bytes]) -> None:
-        try:
-            os.killpg(proc.pid, signal.SIGTERM)
-        except ProcessLookupError:
-            return
-        deadline = time.monotonic() + KILL_GRACE_SECONDS
-        while time.monotonic() < deadline and proc.poll() is None:
-            time.sleep(0.1)
-        if proc.poll() is None:
-            try:
-                os.killpg(proc.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            proc.wait()
 
     def play(self, session: int, world: str, deadline: float, usd: float | None) -> dict[str, Any]:
         """One session: the start, the launch counts, the player until it
@@ -655,25 +716,49 @@ class SessionRunner:
                 f"paid actions {paid} so far",
                 flush=True,
             )
+            if self.supervisor is not None:
+                self.supervisor.launched()
             timed_out = False
             interrupted = False
+            stalled = False
+            over_budget = False
+            # A host the runner cannot hand the dollars left to is held to
+            # them by its own output, read at most once a minute.
+            watch_usd = self.custom is not None or not (self.host and self.host.usd)
+            next_spend_check = time.monotonic() + SPEND_CHECK_SECONDS
             while proc.poll() is None:
                 if self.signalled is not None:
                     interrupted = True
-                    self._kill(proc)
+                    kill_group(proc)
                     break
                 if time.monotonic() >= deadline:
                     timed_out = True
-                    self._kill(proc)
+                    kill_group(proc)
                     break
+                if self.supervisor is not None and (line := self.supervisor.poll(session)):
+                    print(line, flush=True)
+                    stalled = True
+                    kill_group(proc)
+                    break
+                if usd is not None and watch_usd and time.monotonic() >= next_spend_check:
+                    next_spend_check = time.monotonic() + SPEND_CHECK_SECONDS
+                    so_far, _ = stream_spend(self.file(session, "player.out").read_text(errors="replace"))
+                    if so_far is not None and so_far >= usd:
+                        over_budget = True
+                        kill_group(proc)
+                        break
                 time.sleep(self.poll_seconds)
             code = int(proc.wait())
+            if self.supervisor is not None:
+                self.supervisor.exited()
         stdout = self.file(session, "player.out").read_text(errors="replace")
         stderr = self.file(session, "player.err").read_text(errors="replace")
         report = player_report(stdout)
         after = self.view()
         tokens = session_tokens(report)
         cost = (report or {}).get("total_cost_usd")
+        if report is None:
+            cost, tokens = stream_spend(stdout)
         record: dict[str, Any] = {
             "session": session, "host": self.host_name, "host_version": self.version, "model": self.model,
             "started": started, "ended": now(), "wall_seconds": round(time.monotonic() - clock, 1),
@@ -686,6 +771,10 @@ class SessionRunner:
             "tokens": tokens, "report": report,
             "stdout_tail": stdout[-4000:] if report is None else None, "stderr_tail": stderr[-4000:],
         }
+        if stalled:
+            record["stalled"] = True
+        if over_budget:
+            record["usd_exhausted"] = True
         gate_state = _read_json(self.gate_state) if self.gate_wanted else None
         record["gate"] = gate_state.get("decisions") if isinstance(gate_state, dict) else None
         record["spend"] = self.post_spend(session, report, started)
@@ -718,6 +807,8 @@ class SessionRunner:
                 f"no prompt at {self.prompt}: write the player's prompt (skills/attach/start.md), or pass --prompt FILE"
             )
         self.version = self.host_version()
+        if self.supervisor is not None:
+            self.supervisor.check()
         return world
 
     def warnings(self) -> list[str]:
@@ -756,6 +847,8 @@ class SessionRunner:
         print(f"  kept from the player's environment: {', '.join(stripped) or 'nothing set'}")
         if self.gate_wanted:
             print(f"  the Stop gate in {self.settings_path}: {self.gate_command()}")
+        if self.supervisor is not None:
+            print(f"  {self.supervisor.describe()}")
         print(f"DRY RUN | state {self.state} | nothing written")
         return 0
 
@@ -772,6 +865,8 @@ class SessionRunner:
                 signal.signal(sig, on_signal)
             if self.gate_wanted:
                 self.install_gate()
+            if self.supervisor is not None:
+                self.supervisor.load()
             print(
                 f"SESSIONS | {self.run_dir} | world {world} | host {self.host_name} {self.version} | model "
                 f"{self.model or 'the host default'} | up to {self.max_sessions} session(s) in {self.hours:g}h"
@@ -780,6 +875,8 @@ class SessionRunner:
             )
             for line in self.warnings():
                 print(line, flush=True)
+            if self.supervisor is not None:
+                print(self.supervisor.describe(), flush=True)
             if self.gate_wanted:
                 print(f"GATE | the Stop gate is in {self.settings_path}", flush=True)
             deadline = time.monotonic() + self.hours * 3600.0
@@ -807,6 +904,17 @@ class SessionRunner:
                     outcome = "USD_EXHAUSTED"
                 if outcome is not None:
                     break
+                if self.supervisor is not None:
+                    for line in self.supervisor.before_launch(
+                        len(self.ledger()), seconds_left=deadline - time.monotonic(), env=self.analyst_environment(),
+                        stop=lambda: self.signalled is not None or self.stop_file.exists(),
+                    ):
+                        print(line, flush=True)
+                    if self.signalled is not None or self.stop_file.exists():
+                        continue
+                    if time.monotonic() >= deadline:
+                        outcome = "TIME_EXHAUSTED"
+                        break
                 if relaunch is not None:
                     print(
                         f"RELAUNCH | session {relaunch} ended without WIN, the cap, an owner action or a "
@@ -830,7 +938,8 @@ class SessionRunner:
                 else:
                     launched += 1
                     spent += record["dollars"] or 0.0
-                    failing = failing + 1 if record["exit_code"] != 0 and new_paid <= 0 else 0
+                    stalled = bool(record.get("stalled"))
+                    failing = failing + 1 if record["exit_code"] != 0 and new_paid <= 0 and not stalled else 0
                     if after is not None and self.gate.finished(after):
                         record["ended_because"] = self.gate.finished(after)
                     elif record["interrupted"]:
@@ -842,6 +951,10 @@ class SessionRunner:
                         detail = said[-1]
                     elif record["timed_out"]:
                         record["ended_because"] = outcome = "TIME_EXHAUSTED"
+                    elif record.get("usd_exhausted"):
+                        record["ended_because"] = outcome = "USD_EXHAUSTED"
+                    elif stalled:
+                        record["ended_because"] = "STALL"
                     elif failing >= 2:
                         record["ended_because"] = outcome = "PLAYER_FAILING"
                         detail = f"exit {record['exit_code']} twice with no paid action; read {self.file(session, 'player.err')}"
@@ -864,12 +977,16 @@ class SessionRunner:
                         flush=True,
                     )
                     self.write_status(state="paused", session=session, player_pid=None)
+                    if self.supervisor is not None:
+                        self.supervisor.paused()
                     resume_at = time.monotonic() + self.pause_minutes * 60.0
                     while time.monotonic() < min(resume_at, deadline):
                         if self.signalled is not None or self.stop_file.exists():
                             break
                         time.sleep(min(self.poll_seconds, 5.0))
-                elif record["ended_because"] == "UNFINISHED":
+                    if self.supervisor is not None:
+                        self.supervisor.unpaused()
+                elif record["ended_because"] in ("UNFINISHED", "STALL"):
                     relaunch = session
             return self.finish(outcome, detail, pending, launched, spent)
         finally:
@@ -933,7 +1050,86 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--dry-run", action="store_true", help="print what would run; write nothing")
     parser.add_argument("--poll-seconds", type=float, default=5.0, metavar="S")
     parser.add_argument("--pause-minutes", type=float, default=30.0, metavar="M", help="the wait after a usage-limit signal")
+    stall = parser.add_argument_group("the stall trigger", "RSI-top's stall rule over the world's frontier file")
+    stall.add_argument("--stall", action="store_true", help="end a session when the frontier stalls, and relaunch")
+    stall.add_argument("--frontier", type=Path, metavar="FILE", help="default: <run dir>/.assay/world_state/frontier.jsonl")
+    stall.add_argument("--stall-min-age-minutes", type=float, metavar="M", help="run age before the first fire (default 60)")
+    stall.add_argument("--stall-flat-minutes", type=float, metavar="M", help="active minutes with no gain (default 20)")
+    stall.add_argument("--stall-min-attempts", type=int, metavar="N", help="evaluations since the anchor (default 12)")
+    stall.add_argument("--stall-gain", type=float, metavar="G", help="the relative gain that counts (default 0.002)")
+    stall.add_argument("--analyst", choices=sorted(HOSTS), help="call this host at a stall for directions")
+    stall.add_argument("--analyst-model", metavar="M", help="the analyst's model (default: the host's own)")
+    stall.add_argument(
+        "--analyst-command", metavar="CMD",
+        help="a custom analyst command, split like a shell line ({prompt}, {prompt_file}, {model})",
+    )
+    stall.add_argument("--analyst-prompt", type=Path, metavar="FILE", help="default: tools/eval/prompts/analyst.md")
+    stall.add_argument("--analyst-timeout-minutes", type=float, metavar="M", help="default 20")
+    stall.add_argument(
+        "--analyst-context", type=Path, action="append", metavar="FILE",
+        help="a file whose text the analyst is given as it stands at each call (repeatable): the program under work, the task's description",
+    )
     return parser
+
+
+def supervisor_for(args: argparse.Namespace, run_dir: Path, state_dir: Path) -> Supervisor | None:
+    """The stall supervisor the flags ask for; the refusals first."""
+    named = {
+        "--frontier": args.frontier, "--stall-min-age-minutes": args.stall_min_age_minutes,
+        "--stall-flat-minutes": args.stall_flat_minutes, "--stall-min-attempts": args.stall_min_attempts,
+        "--stall-gain": args.stall_gain, "--analyst": args.analyst, "--analyst-model": args.analyst_model,
+        "--analyst-command": args.analyst_command, "--analyst-prompt": args.analyst_prompt,
+        "--analyst-timeout-minutes": args.analyst_timeout_minutes, "--analyst-context": args.analyst_context,
+    }
+    if not args.stall:
+        given = [flag for flag, value in named.items() if value is not None]
+        if given:
+            raise EvalError(f"{given[0]} needs --stall")
+        return None
+    if args.analyst and args.analyst_command:
+        raise EvalError("--analyst and --analyst-command exclude each other")
+    has_analyst = bool(args.analyst or args.analyst_command)
+    for flag in ("--analyst-model", "--analyst-prompt", "--analyst-timeout-minutes", "--analyst-context"):
+        if named[flag] is not None and not has_analyst:
+            raise EvalError(f"{flag} needs --analyst or --analyst-command")
+    # The supervisor's modules import the report, which imports this one.
+    from .analyst import TIMEOUT_MINUTES, AnalystConfig
+    from .frontier import StallRule, frontier_file
+    from .supervisor import Supervisor
+
+    for flag in ("--stall-min-age-minutes", "--stall-flat-minutes"):
+        if named[flag] is not None and named[flag] < 0:
+            raise EvalError(f"{flag} may not be negative")
+    if args.stall_min_attempts is not None and args.stall_min_attempts < 1:
+        raise EvalError("--stall-min-attempts must be at least 1")
+    if args.stall_gain is not None and not 0 <= args.stall_gain < 1:
+        raise EvalError("--stall-gain must be at least 0 and below 1")
+    if args.analyst_timeout_minutes is not None and args.analyst_timeout_minutes <= 0:
+        raise EvalError("--analyst-timeout-minutes must be positive")
+    default = StallRule()
+    rule = StallRule(
+        min_run_age_seconds=default.min_run_age_seconds if args.stall_min_age_minutes is None
+        else 60 * args.stall_min_age_minutes,
+        flat_seconds=default.flat_seconds if args.stall_flat_minutes is None else 60 * args.stall_flat_minutes,
+        min_attempts=default.min_attempts if args.stall_min_attempts is None else args.stall_min_attempts,
+        relative_gain=default.relative_gain if args.stall_gain is None else args.stall_gain,
+    )
+    analyst = None
+    if has_analyst:
+        settings: dict[str, Any] = {
+            "model": args.analyst_model,
+            "timeout_seconds": 60 * (args.analyst_timeout_minutes or TIMEOUT_MINUTES),
+        }
+        if args.analyst_context:
+            settings["context"] = tuple(path.expanduser().resolve() for path in args.analyst_context)
+        if args.analyst_prompt is not None:
+            settings["prompt"] = args.analyst_prompt.expanduser().resolve()
+        analyst = (
+            AnalystConfig.from_command(args.analyst_command, **settings) if args.analyst_command
+            else AnalystConfig.from_host(args.analyst, **settings)
+        )
+    frontier = args.frontier.expanduser().resolve() if args.frontier else frontier_file(run_dir)
+    return Supervisor(run_dir=run_dir, state_dir=state_dir, frontier=frontier, rule=rule, analyst=analyst)
 
 
 def main(argv: list[str]) -> int:
@@ -955,11 +1151,14 @@ def main(argv: list[str]) -> int:
         launcher = shlex.split(args.assay) if args.assay else None
         if args.assay is not None and not launcher:
             raise EvalError("--assay must name a command")
+        run_dir = args.run_dir.expanduser().resolve()
+        state_dir = args.state_dir.expanduser().resolve() if args.state_dir else sessions_dir(run_dir)
         runner = SessionRunner(
-            args.run_dir, host=args.player, command=command or None, model=args.model, prompt=args.prompt,
-            state_dir=args.state_dir, launcher=launcher, owner_token_file=args.owner_token_file,
+            run_dir, host=args.player, command=command or None, model=args.model, prompt=args.prompt,
+            state_dir=state_dir, launcher=launcher, owner_token_file=args.owner_token_file,
             max_sessions=args.max_sessions, hours=args.hours, max_usd=args.max_usd, strip=args.strip,
             stop_gate=not args.no_stop_gate, poll_seconds=args.poll_seconds, pause_minutes=args.pause_minutes,
+            supervisor=supervisor_for(args, run_dir, state_dir),
         )
         if args.dry_run:
             return runner.dry_run()

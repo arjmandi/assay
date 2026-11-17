@@ -1,0 +1,11 @@
+{
+  "actions": [
+    {"name": "EVALUATE",
+     "params": {"label": {"type": "string", "minLength": 1, "maxLength": 120}},
+     "description": "builds the kernel from work/perf_takehome.py as it stands and runs the frozen simulator on two seeds; label names the change being measured in one word or with hyphens, such as vector-hash; spaces need --params"}
+  ],
+  "budget": {"actions": 5000},
+  "goal": {"text": "Make the kernel in work/perf_takehome.py use fewer clock cycles on the simulated machine than the best so far; the unmodified kernel takes 147734. Edit only work/perf_takehome.py: the files under work/tests/ and work/problem.py must stay as they are and N_CORES stays 1. An evaluation (EVALUATE) is the only measurement that counts."},
+  "batching": {"hand_cap": 3},
+  "mode_note": "the kernel-takehome pack, worlds/recipes/kernel-takehome"
+}

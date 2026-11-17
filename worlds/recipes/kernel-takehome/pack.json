@@ -1,0 +1,11 @@
+{
+  "pack": 1,
+  "name": "kernel-takehome",
+  "summary": "Anthropic's performance take-home: lower the clock cycles of a kernel on a simulated machine, scored by the evaluator of RSI-top's wrapper, with a frontier record of every evaluation.",
+  "adapter": "adapter.py:factory",
+  "registry": "registry.json",
+  "deny": ["eval_build", "eval_score", "submission_tests", "world_state"],
+  "card": {"code": "M-E-C-0", "family": "Solve", "fit": "yes", "clock": "s"},
+  "player": {"note": "The take-home is in work/. Edit work/perf_takehome.py only, and measure only through EVALUATE; lower cycles are better."},
+  "win": "none: the goal is open-ended and the run ends at its caps"
+}

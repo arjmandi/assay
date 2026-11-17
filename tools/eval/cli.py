@@ -9,6 +9,7 @@
     python3 -m tools.eval compare --pack DIR ...       (ASSAY against /goal on one pack, compare.py)
     python3 -m tools.eval watch --run-dir DIR ...      (one line per change of a run, watch.py)
     python3 -m tools.eval diagnose --run-dir DIR       (a run read against the five layers, diagnose.py)
+    python3 -m tools.eval frontier --run-dir DIR       (a scored world's frontier and its stalls, frontier.py)
 
 One error voice, as the kernel's: `ERROR | message`, exit 2.
 """
@@ -24,6 +25,7 @@ from .jobs import load_design
 from .runner import DEFAULT_LAUNCHER, Runner, default_state_dir, launcher_argv
 from .compare import main as compare_main
 from .diagnose import main as diagnose_main
+from .frontier import main as frontier_main
 from .report import main as report_main
 from .session import main as session_main
 from .watch import main as watch_main
@@ -72,6 +74,8 @@ def main(argv: list[str] | None = None) -> int:
         return watch_main(arguments[1:])
     if arguments[:1] == ["diagnose"]:
         return diagnose_main(arguments[1:])
+    if arguments[:1] == ["frontier"]:
+        return frontier_main(arguments[1:])
     args = _parser().parse_args(arguments)
     try:
         for name in ("max_concurrency", "max_sessions"):

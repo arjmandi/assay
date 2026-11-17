@@ -1,0 +1,24 @@
+{
+  "recipe": 1,
+  "name": "kernel-takehome",
+  "card": {
+    "code": "M-E-C-0",
+    "family": "Solve",
+    "fit": "yes",
+    "clock": "s",
+    "proxy": "a copy of the take-home in work/",
+    "scarce_commit": null,
+    "hypothesis": "a long unattended search stalls on a plateau of the cycle count and spends hours on variations of one idea; here every evaluation is a graded prediction about the frontier, and the frontier record shows which changes moved it"
+  },
+  "world": {
+    "mode": "worktree",
+    "source": "task",
+    "observe": ["{python}", "{recipe}/kernel_world.py", "observe", "--recipe", "{recipe}", "--workdir", "{workdir}", "--state", "{state}"],
+    "act": ["{python}", "{recipe}/kernel_world.py", "act", "{action}", "--recipe", "{recipe}", "--workdir", "{workdir}", "--state", "{state}"],
+    "actions": ["EVALUATE"],
+    "timeout_seconds": 900
+  },
+  "player": {
+    "note": "The take-home is in work/ in your run directory. Read it and edit work/perf_takehome.py freely; measure only through assay act EVALUATE label=..., which builds the kernel and runs the frozen simulator on two fixed seeds. Lower cycles are better and the run has no win: it ends at its caps."
+  }
+}

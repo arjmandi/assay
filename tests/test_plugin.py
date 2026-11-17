@@ -174,7 +174,9 @@ def _templates() -> list[Path]:
 def test_the_catalog_lists_every_pack():
     readme = (WORLDS / "README.md").read_text()
     packs = _packs()
-    assert [path.name for path in packs] == ["flaky-test", "hidden-grammar", "legacy-api", "spreadsheet-reconcile"]
+    assert [path.name for path in packs] == [
+        "flaky-test", "hidden-grammar", "kernel-takehome", "legacy-api", "spreadsheet-reconcile",
+    ]
     assert [path.name for path in _adapter_packs()] == ["arc-agi-3"]
     assert sorted(path.name for path in (WORLDS / "recipes").iterdir() if path.is_dir() and path.name != "__pycache__") == sorted(
         path.name for path in (*packs, *_adapter_packs())
@@ -201,11 +203,26 @@ def test_the_two_stubs_differ_only_in_their_engine():
     assert len(command) == len(service) and len(differing) == 4, differing
 
 
-def test_every_pack_and_template_agrees_with_itself():
+def _loadable_recipe(world: Path, scratch: Path) -> Path:
+    """The recipe file to load: a pack whose source tree prepare.py builds has
+    none in a fresh checkout, so its recipe is loaded from a copy beside an
+    empty one."""
+    raw = json.loads((world / "recipe.json").read_text())
+    source = raw["world"].get("source")
+    if source is None or (world / source).is_dir() or not (world / "prepare.py").is_file():
+        return world / "recipe.json"
+    target = scratch / world.name
+    (target / source).mkdir(parents=True)
+    (target / "recipe.json").write_text((world / "recipe.json").read_text())
+    return target / "recipe.json"
+
+
+def test_every_pack_and_template_agrees_with_itself(tmp_path):
     for world in (*_packs(), *_templates()):
         raw = json.loads((world / "recipe.json").read_text())
         flavor = "service" if raw["world"].get("mode") == "service" else "command"
-        recipe = load_service_recipe(world / "recipe.json") if flavor == "service" else load_recipe(world / "recipe.json")
+        path = _loadable_recipe(world, tmp_path)
+        recipe = load_service_recipe(path) if flavor == "service" else load_recipe(path)
         registry = json.loads((world / "registry.json").read_text())
         assert sorted(action["name"] for action in registry["actions"]) == sorted(recipe.actions), world
         assert CODE.match(recipe.card["code"]), world
