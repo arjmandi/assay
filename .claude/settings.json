@@ -20,7 +20,6 @@
       "Bash(python3 -m pytest:*)"
     ],
     "deny": [
-      "Bash(git push:*)",
       "Bash(git reset --hard:*)",
       "Bash(git clean:*)",
       "Bash(sudo:*)",
