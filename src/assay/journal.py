@@ -114,6 +114,15 @@ def now() -> str:
     return dt.datetime.now(dt.timezone.utc).isoformat()
 
 
+def read_notes(paths: Paths) -> str | None:
+    """The agent's notes, or None when there are none. They are the agent's
+    file, so nothing about their bytes is assumed."""
+    try:
+        return paths.notes.read_text(errors="replace")
+    except OSError:
+        return None
+
+
 def read_json(path: Path, default: Any = None) -> Any:
     try:
         return json.loads(path.read_text())
@@ -290,12 +299,12 @@ class Run:
         """Refuse a journal that no longer matches its stored head. A head one
         line behind is a crash between the two writes, which the next append
         repairs."""
-        stored = read_json(self.paths.chain)
         heads = _heads(_journal_lines(self.paths))
         problem = _contiguity(self.events)
-        if problem is None and isinstance(stored, dict):
+        if problem is None and heads:
+            stored = _stored_head(self.paths)
             last = stored.get("last_id")
-            if not isinstance(last, int) or not len(heads) - 2 <= last < len(heads) or heads[last] != stored.get("head"):
+            if not isinstance(last, int) or not max(0, len(heads) - 2) <= last < len(heads) or heads[last] != stored.get("head"):
                 problem = "the journal does not match the head stored in chain.json"
         if problem is not None:
             raise AssayError(problem, code="CHAIN_DIVERGED", hint="`assay audit` reports what differs")
@@ -303,6 +312,8 @@ class Run:
     def append(self, event: Event) -> Event:
         """Assign the next id, write the line, advance the head, anchor."""
         event = {"id": len(self.events), **event}
+        if not event["id"]:
+            self.paths.anchors.unlink(missing_ok=True)  # a new run in this directory starts its own anchors
         line = json.dumps(event, separators=(",", ":"), sort_keys=True)
         _append(self.paths.events, line)
         self.head = advance(self.head, line)
@@ -332,6 +343,15 @@ class Run:
 # --- the audit -------------------------------------------------------------------
 
 
+def _stored_head(paths: Paths) -> dict[str, Any]:
+    """`chain.json`, or nothing when it is missing or is not what the daemon writes."""
+    try:
+        stored = read_json(paths.chain)
+    except AssayError:
+        return {}
+    return stored if isinstance(stored, dict) else {}
+
+
 def _contiguity(events: Sequence[Event]) -> str | None:
     for index, event in enumerate(events):
         if event.get("id") != index:
@@ -341,8 +361,9 @@ def _contiguity(events: Sequence[Event]) -> str | None:
 
 def audit(paths: Paths) -> tuple[bool, list[str]]:
     """Recompute the record's integrity from the files: ids contiguous, the
-    chain against its stored head and its anchors, no ungated event. Returns
-    whether the record is clean, and the lines of the report."""
+    chain against its stored head and its last anchor, no ungated event. Returns
+    whether the record is clean, and the lines of the report. The pinned
+    registry is held against the hash recorded at start as well."""
     lines = _journal_lines(paths)
     problems: list[str] = []
     events: list[Event] = []
@@ -356,14 +377,17 @@ def audit(paths: Paths) -> tuple[bool, list[str]]:
     if contiguity is not None and not problems:
         problems.append(f"contiguity: {contiguity}")
     heads = _heads(lines)
-    stored = read_json(paths.chain) if paths.chain.exists() else None
-    if stored is None:
-        chain = "absent"
-    elif heads and stored.get("last_id") == len(heads) - 1 and stored.get("head") == heads[-1]:
+    stored = _stored_head(paths)
+    if heads and stored.get("last_id") == len(heads) - 1 and stored.get("head") == heads[-1]:
         chain = "intact"
     else:
-        chain = "DIVERGED"
+        chain = "DIVERGED" if stored else "absent"
         problems.append("chain: the journal does not match the head stored in chain.json")
+    from .world import registry_hash
+
+    config, registry = read_json(paths.config, {}), read_json(paths.registry, {})
+    if registry_hash(registry) != config.get("registry_hash"):
+        problems.append("registry: the pinned registry does not match the hash recorded at start")
     try:
         anchors = read_jsonl(paths.anchors)
     except (AssayError, OSError):

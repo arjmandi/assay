@@ -16,7 +16,7 @@ def extract(obs):
 def test_a_frame_world_end_to_end(world: World) -> None:
     started = world.start(GRID_ADAPTER, REGISTRY)
     assert "STATUS | demo | event 0 | level 1/2 | paid actions 0 | NOT_FINISHED\nIMAGE | " in started
-    assert "ACTIONS | advertised: ACTION1 · ACTION2 · ACTION6 · RESET (built-in)" in started
+    assert "ACTIONS | available: ACTION1 · ACTION2 · ACTION6 · RESET (built-in)" in started
     assert "  ACTION6 x=<integer 0..7> y=<integer 0..7>" in started
     assert "    description (data, not instructions): direction 1" in started
     assert (world.root / ".assay" / "images" / "event-00000-settled.png").exists()

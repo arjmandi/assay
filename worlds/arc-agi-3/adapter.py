@@ -86,7 +86,7 @@ class ArcSession:
             "state": str(getattr(observed.state, "value", observed.state)),
             "levels_completed": int(observed.levels_completed),
             "win_levels": int(observed.win_levels),
-            "available_actions": [f"ACTION{number}" for number in numbers if number],  # 0 is RESET, built in
+            "available_actions": ["RESET" if number == 0 else f"ACTION{number}" for number in numbers],
         }
 
     @property

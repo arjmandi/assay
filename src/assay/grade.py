@@ -11,10 +11,11 @@ the actual value, the machine's statement of what happened:
 
 A verifier is the agent's own program, `def verify(before, after) ->
 (ok, actual)`. It is hashed and stored before the action it grades, and the
-stored copy is what runs, in the sandbox. After each grading it runs once
-more on the identity transition (before, before): a verifier whose identity
-verdict equals its real verdict every time does not use the transition, and
-the meters stop counting its passes (`meters.vacuous`).
+stored copy is what runs, in the sandbox. After each grading of a transition
+that changed something it runs once more on the identity transition (before,
+before): a verifier whose identity verdict equals its real verdict every time
+does not use the transition, and the meters stop counting its passes
+(`meters.vacuous`).
 
 Grades are final when written. `predict_ok` on the event is false if any
 outcome missed, null if none missed but one was invalid or ungradable, true
@@ -24,6 +25,7 @@ otherwise.
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -57,15 +59,22 @@ def _number(value: Any) -> float | None:
     return None if isinstance(value, bool) or not isinstance(value, (int, float)) else float(value)
 
 
+def _equal(left: float | None, right: float) -> bool:
+    """Numbers compare by value, up to the rounding of a float."""
+    return left is not None and math.isclose(left, right, rel_tol=1e-9, abs_tol=1e-9)
+
+
 def _observation(outcome: Outcome, before: Event, after: Event) -> Grade:
     """`noop`, `change`, `win` and `level+1`: read off the two events."""
     kind = outcome["kind"]
     count, unit = changed(before, after)
-    moved = count is None or count > 0 or advanced(after)
+    turned = before["state"] != after["state"]
+    moved = count is None or count > 0 or advanced(after) or turned
     what = (
         f"{count} {unit} changed" if count
         else "the frame changed its size" if count is None
         else "level advanced" if advanced(after)
+        else f"state {after['state']}" if turned
         else "no observed change"
     )
     if kind == "noop":
@@ -99,9 +108,9 @@ def _state(run: Run, outcome: Outcome, before: Event, after: Event) -> Grade:
                 return ungradable(f"a tolerance needs numbers, got {json.dumps(now)}")
             held = abs(float(now) - float(expected)) <= tolerance
         elif _number(expected) is not None:
-            held = _number(now) == float(expected)
+            held = _equal(_number(now), float(expected))
         else:
-            held = now == expected
+            held = now == expected and isinstance(now, bool) == isinstance(expected, bool)  # true is not 1
         return _grade(outcome, held, f"ch {name} = {json.dumps(now)}")
     ok, was = states.read(run, name, before)
     if not ok:
@@ -113,7 +122,7 @@ def _state(run: Run, outcome: Outcome, before: Event, after: Event) -> Grade:
         delta, target = new - old, outcome.get("value")
         held = {
             "sign": delta > 0 if outcome.get("sign") == "+" else delta < 0,
-            "=": delta == target,
+            "=": target is not None and _equal(delta, target),
             ">=": target is not None and delta >= target,
             "<=": target is not None and delta <= target,
         }[outcome["op"]]
@@ -130,6 +139,9 @@ def _verifier(paths: Paths, outcome: Outcome, before: Event, after: Event) -> Gr
     ok, result = sandbox.run(program, "verify", [*views])
     if not ok:
         return _grade(outcome, False, f"INVALID_CLAIM: verifier {result}", invalid=True, verifier=True)
+    if views[0] == views[1]:
+        # Nothing changed, so the identity transition is the real one and says nothing more.
+        return _grade(outcome, result["ok"], result["actual"], verifier=True)
     same, identity = sandbox.run(program, "verify", [views[0], views[0]])
     return _grade(
         outcome,

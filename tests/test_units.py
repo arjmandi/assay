@@ -64,7 +64,8 @@ def test_free_text_is_commentary_and_an_empty_or_malformed_prediction_is_refused
     assert grammar.parse("the lamp turns on")[-1] == {
         "kind": "change", "text": "change (implied by free text)", "coerced": True,
     }
-    assert code(grammar.parse, "  ") == "PREDICTION_REQUIRED" and code(grammar.parse, None) == "PREDICTION_REQUIRED"
+    for empty in ("  ", None, ";", " ; ; "):
+        assert code(grammar.parse, empty) == "PREDICTION_REQUIRED", empty
     for malformed in ("ch counter", "level+2", "verify: a.py", "ch n delta = up", "change @within 0s", "win big"):
         assert code(grammar.parse, malformed) == "PREDICTION_SYNTAX", malformed
 
@@ -120,6 +121,7 @@ def test_actions_are_validated_against_their_schemas() -> None:
     world.check_available("INC", [])
     world.check_available("RESET", ["SET"])
     assert code(world.check_available, "INC", ["SET"]) == "ACTION_UNAVAILABLE"
+    assert code(world.check_available, "INC", ["RESET"]) == "ACTION_UNAVAILABLE"  # only a reset is on offer
 
 
 def test_an_observation_is_normalized_or_refused() -> None:
@@ -127,7 +129,8 @@ def test_an_observation_is_normalized_or_refused() -> None:
     assert observed == {"state": "WIN", "levels_completed": 1, "win_levels": 1, "available_actions": ["A", "B"], "data": {"a": [2], "b": 1}}
     assert world.observe({"frames": [[[0, 15], [10, 1]]]})["frames"] == [["0f", "a1"]]
     assert world.observe({"data": {}, "state": "NOT_PLAYED"})["state"] == "NOT_PLAYED"
-    for broken in (None, {}, {"frames": []}, {"frames": [[[0, 16]]]}, {"frames": [[[0], [0, 1]]]},
+    assert world.observe({"data": {}, "available_actions": ["inc", "Reset"]})["available_actions"] == ["INC", "RESET"]
+    for broken in (None, {}, {"frames": []}, {"data": {"x": float("nan")}}, {"frames": [[[0, 16]]]}, {"frames": [[[0], [0, 1]]]},
                    {"data": {"x": object()}}):
         assert code(world.observe, broken) == "OBSERVATION_INVALID", broken
 
@@ -141,7 +144,8 @@ GATED = {"predict": "change", "predict_ok": True, "grade": [{"kind": "change", "
 def _run(tmp_path: Path, observations: list[dict[str, Any]], *, gated: bool = True) -> Run:
     """A run whose events carry these observations, with states declared on their keys."""
     paths = Paths(tmp_path)
-    run = Run(paths, {"world_id": "t"}, world.validate_registry(REGISTRY), [], journal.seed())
+    registry = world.validate_registry(REGISTRY)
+    run = Run(paths, {"world_id": "t", "registry_hash": world.registry_hash(registry)}, registry, [], journal.seed())
     previous = None
     for data in observations:
         event = journal.make_event(world.observe({"data": data}), "INC" if previous else "START", None, previous)
@@ -162,10 +166,12 @@ def test_state_outcomes_grade_against_the_readings(tmp_path: Path) -> None:
     assert _marks(run, "ch n = 5; ch n = 5.0; ch name = blue; ch on = true; ch rate = 20 ± 3") == [
         "✓ ch n = 5", "✓ ch n = 5.0", "✓ ch name = blue", "✓ ch on = true", "✓ ch rate = 20 ± 3",
     ]
-    assert _marks(run, "ch n = 4; ch rate = 20 ± 2; ch on = 1; ch name = 5") == [
+    assert _marks(run, "ch n = 4; ch rate = 20 ± 2; ch on = 1; ch name = 5; ch n = true") == [
         "✗ ch n = 4 | ch n = 5", "✗ ch rate = 20 ± 2 | ch rate = 22.5", "✗ ch on = 1 | ch on = true",
-        '✗ ch name = 5 | ch name = "blue"',
+        '✗ ch name = 5 | ch name = "blue"', "✗ ch n = true | ch n = 5",
     ]
+    flags = _run(tmp_path / "flags", [{"c": 0}, {"c": 1}])
+    assert _marks(flags, "ch c = true; ch c = 1") == ["✗ ch c = true | ch c = 1", "✓ ch c = 1"]
     assert _marks(run, "ch n delta = 3; ch n delta >= 3; ch n delta <= 2; ch n delta sign -; ch rate delta sign +") == [
         "✓ ch n delta = 3", "✓ ch n delta >= 3", "✗ ch n delta <= 2 | ch n moved +3 (2 -> 5)",
         "✗ ch n delta sign - | ch n moved +3 (2 -> 5)", "✓ ch rate delta sign +",
@@ -173,6 +179,11 @@ def test_state_outcomes_grade_against_the_readings(tmp_path: Path) -> None:
     assert _marks(run, "ch n crosses 4; ch n crosses 5 from below; ch n crosses 4 from above; ch n crosses 9") == [
         "✓ ch n crosses 4", "✓ ch n crosses 5 from below",
         "✗ ch n crosses 4 from above | ch n went 2 -> 5 (threshold 4)", "✗ ch n crosses 9 | ch n went 2 -> 5 (threshold 9)",
+    ]
+    # A float's rounding is not a miss.
+    money = _run(tmp_path / "money", [{"funds": 10.2}, {"funds": 10.3}])
+    assert _marks(money, "ch funds delta = 0.1; ch funds = 10.3; ch funds delta = 0.2") == [
+        "✓ ch funds delta = 0.1", "✓ ch funds = 10.3", "✗ ch funds delta = 0.2 | ch funds moved +0.1 (10.2 -> 10.3)",
     ]
     # What cannot be read or compared is ungradable, its own verdict, never a miss.
     assert _marks(run, "ch name delta = 1; ch name = red ± 1; change @within 1s", elapsed=2.0) == [
@@ -236,6 +247,15 @@ def test_an_edited_journal_does_not_audit_clean(tmp_path: Path) -> None:
     assert "chain DIVERGED" in journal.audit(paths)[1][0]
     paths.events.write_text("\n".join([lines[1], lines[0], *lines[2:]]) + "\n")
     assert "contiguous NO" in journal.audit(paths)[1][0]
+    # A journal without its stored head is not clean either.
+    paths.events.write_text(original)
+    stored = paths.chain.read_text()
+    for broken in (None, "[]", "not json"):
+        paths.chain.unlink() if broken is None else paths.chain.write_text(broken)
+        clean, report = journal.audit(paths)
+        assert not clean and "chain absent" in report[0], broken
+        assert code(Run.load(paths).check_chain) == "CHAIN_DIVERGED"
+    paths.chain.write_text(stored)
     # A head one line behind is a crash between two writes, which a start tolerates.
     paths.events.write_text(original)
     heads = [journal.seed()]
@@ -243,6 +263,26 @@ def test_an_edited_journal_does_not_audit_clean(tmp_path: Path) -> None:
         heads.append(journal.advance(heads[-1], line))
     journal.write_json(paths.chain, {"last_id": 25, "head": heads[26]})
     Run.load(paths).check_chain()
+
+
+def test_a_new_run_in_a_used_directory_starts_its_own_anchors(tmp_path: Path) -> None:
+    first = _run(tmp_path, [{"n": index} for index in range(27)])
+    assert first.paths.anchors.exists()
+    first.paths.events.unlink()
+    first.paths.chain.unlink()
+    second = _run(tmp_path, [{"n": 0}, {"n": 1}])
+    assert journal.audit(second.paths) == (
+        True, ["AUDIT | CLEAN | events 2 (paid 1) | contiguous yes | chain intact | anchors none (0)"]
+    )
+
+
+def test_only_the_action_that_entered_the_loss_is_a_hazard(tmp_path: Path) -> None:
+    run = _run(tmp_path, [{"n": 0}])
+    for action, state in (("NOOP", "NOT_FINISHED"), ("BOMB", "GAME_OVER"), ("NOOP", "GAME_OVER"), ("RESET", "NOT_FINISHED")):
+        run.append(journal.make_event(world.observe({"data": {"n": 0}, "state": state}), action, None, run.last))
+    assert meters.hazards(run.events) == {"BOMB": 2}
+    # The loss and the reset are changes of the world, though no key changed.
+    assert [meters.event_changed(run.events, index) for index in range(1, 5)] == [False, True, False, True]
 
 
 def test_the_ungated_rule(tmp_path: Path) -> None:

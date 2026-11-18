@@ -36,6 +36,8 @@ module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
 result = getattr(module, call)(*args)
 if call == "verify":
+    if not isinstance(result, (tuple, list)) or len(result) != 2:
+        raise TypeError("verify must return (ok, actual)")
     result = {{"ok": bool(result[0]), "actual": str(result[1])}}
 print("\\n" + json.dumps(result))
 """

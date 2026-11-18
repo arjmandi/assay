@@ -24,7 +24,7 @@ The kernel makes no model calls: every grade, refusal and meter is code.
 
 from __future__ import annotations
 
-__version__ = "2.0.0"
+__version__ = "2.0.0.dev0"
 
 
 class AssayError(Exception):

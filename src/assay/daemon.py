@@ -39,7 +39,18 @@ from pathlib import Path
 from typing import Any
 
 from . import AssayError, grade, grammar, modules, show, states
-from .journal import Event, Paths, Run, advanced, append_jsonl, make_event, observation_of, read_json, write_json
+from .journal import (
+    Event,
+    Paths,
+    Run,
+    advanced,
+    append_jsonl,
+    make_event,
+    observation_of,
+    read_json,
+    read_notes,
+    write_json,
+)
 from .world import (
     OVER,
     check_available,
@@ -47,6 +58,7 @@ from .world import (
     observe,
     open_session,
     parse_action,
+    registry_hash,
     render_action,
     validate_action,
 )
@@ -59,6 +71,13 @@ class Daemon:
         self.paths = paths
         self.run = Run.load(paths)
         self.run.check_chain()
+        if registry_hash(self.run.registry) != self.run.config.get("registry_hash"):
+            raise AssayError(
+                "the pinned registry does not match the hash recorded at start",
+                code="REGISTRY_CHANGED",
+                hint="a run cannot change its own contract: restore .assay/registry.json",
+            )
+        self.registered = sorted(action["name"] for action in self.run.registry["actions"])
         self.modules = modules.load(self.run.registry)
         self.session = open_session(self.run.config["adapter"], paths.root, self.run.config)
         if self.run.events:
@@ -83,7 +102,10 @@ class Daemon:
                 code="WORLD_ERROR",
                 hint="nothing was journaled for it; choose another action, or read the state with `assay status`",
             ) from error
-        return observe(raw)
+        observed = observe(raw)
+        if not observed["available_actions"]:
+            observed["available_actions"] = self.registered  # a world that advertises nothing admits them all
+        return observed
 
     def _replay(self) -> None:
         events = self.run.events
@@ -143,7 +165,7 @@ class Daemon:
                 code="BUDGET_EXHAUSTED",
             )
         cap = notes_cap(run.registry)
-        size = len(self.paths.notes.read_text()) if self.paths.notes.exists() else 0
+        size = len(read_notes(self.paths) or "")
         if cap is not None and size > 2 * cap:
             raise AssayError(
                 f"NOTES.md is {size} chars, more than twice the {cap}-char cap",
@@ -211,6 +233,7 @@ class Daemon:
             except AssayError as error:
                 if not index:
                     raise  # nothing was spent
+                self._refused("commit", error)
                 result = "HALTED"
                 detail = f"step {index + 1} was refused ({error.code}): {error.message}; it and {left} more were not spent"
                 break
@@ -279,14 +302,17 @@ class Daemon:
                 raise AssayError(f"unknown operation {name!r}", code="INTERNAL")
             return {"ok": True, "text": operation[str(name)](request.get("args") or {})}
         except AssayError as error:
-            # Every refusal is kept beside the journal: what the agent tried
-            # and could not do is evidence for the diagnosis.
-            append_jsonl(self.paths.refusals, {"op": name, "code": error.code, "message": error.message.split("\n")[0]})
+            self._refused(str(name), error)
             return {"ok": False, "error": error.to_json()}
         except Exception as error:  # noqa: BLE001 - a bug answers as an error and the daemon lives
             traceback.print_exc()
             hint = f"the traceback is in {self.paths.log}"
             return {"ok": False, "error": AssayError(f"{type(error).__name__}: {error}", code="INTERNAL", hint=hint).to_json()}
+
+    def _refused(self, op: str, error: AssayError) -> None:
+        """Every refusal is kept beside the journal: what the agent tried and
+        could not do is evidence for the diagnosis."""
+        append_jsonl(self.paths.refusals, {"op": op, "code": error.code, "message": error.message.split("\n")[0]})
 
     def _answer(self, connection: socket.socket) -> Any:
         """One request line in, one reply line out; returns the operation asked for."""
@@ -312,24 +338,33 @@ class Daemon:
         server.bind(str(self.paths.socket))
         self.paths.socket.chmod(0o600)
         server.listen(4)
-        signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
+        busy = stopping = False
+
+        def terminate(*_: Any) -> None:
+            # A stop signal waits for the request in hand: a paid action is
+            # never cut between the world step and the journal.
+            nonlocal stopping
+            stopping = True
+            if not busy:
+                sys.exit(0)
+
+        signal.signal(signal.SIGTERM, terminate)
         write_json(self.paths.daemon, {"status": "READY", "pid": os.getpid()})
         try:
-            while self.run.last["state"] != "WIN":
+            while self.run.last["state"] != "WIN" and not stopping:
                 connection, _ = server.accept()
-                # A stop signal waits for the request in hand: a paid action
-                # is never cut between the world step and the journal.
-                signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+                busy = True
                 try:
                     asked = self._answer(connection)
                 finally:
-                    signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
+                    busy = False
                 if asked == "stop":
                     break
         finally:
             server.close()
             self.paths.socket.unlink(missing_ok=True)
-            write_json(self.paths.daemon, {"status": "STOPPED", "pid": os.getpid()})
+            if self.paths.state.is_dir():
+                write_json(self.paths.daemon, {"status": "STOPPED", "pid": os.getpid()})
 
 
 def main() -> None:
@@ -414,7 +449,14 @@ def spawn(paths: Paths) -> None:
         if process.poll() is not None:
             break
         time.sleep(0.05)
-    raise AssayError("the daemon did not start", code="DAEMON_UNAVAILABLE", hint=f"its log is {paths.log}")
+    if process.poll() is None:
+        process.terminate()  # a daemon that missed its deadline must not come up later
+        process.wait()
+    raise AssayError(
+        "the daemon did not start in time",
+        code="DAEMON_UNAVAILABLE",
+        hint=f"its log is {paths.log}; ASSAY_START_TIMEOUT raises the wait for a world that is slow to open",
+    )
 
 
 def stop(paths: Paths) -> bool:

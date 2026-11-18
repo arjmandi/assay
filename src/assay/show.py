@@ -16,11 +16,10 @@ from typing import Any
 
 from . import AssayError, grade, meters, modules, states
 from .delta import changed, delta_lines
-from .journal import Event, Run, advanced, grades, is_paid, read_jsonl
+from .journal import Event, Run, advanced, grades, is_paid, read_jsonl, read_notes
 from .world import notes_cap, registry_lines, render_action
 
 LINE_WIDTH = 200
-NOTES_LINES = 120
 
 
 def unit(event: Event) -> str:
@@ -43,9 +42,8 @@ def _event_line(label: str, run: Run, event: Event) -> str:
 
 
 def _actions_line(run: Run, event: Event) -> str:
-    advertised = [str(name) for name in event["available_actions"]]
-    names = advertised or [action["name"] for action in run.registry["actions"]]
-    return f"ACTIONS | {'advertised' if advertised else 'registered'}: " + " · ".join([*names, "RESET (built-in)"])
+    names = [str(name) for name in event["available_actions"] if name != "RESET"]
+    return "ACTIONS | available: " + " · ".join([*names, "RESET (built-in)"])
 
 
 def _budget_line(run: Run) -> str:
@@ -162,13 +160,11 @@ def _meter_lines(run: Run) -> list[str]:
 
 
 def _notes_lines(run: Run) -> list[str]:
-    try:
-        text = run.paths.notes.read_text()
-    except FileNotFoundError:
+    text = read_notes(run.paths)
+    if text is None:
         return ["NOTES | missing; create .assay/NOTES.md and keep it current"]
-    body = [f"  {line[:240]}" for line in text.splitlines()]
-    extent = "shown in full" if len(body) <= NOTES_LINES else f"{NOTES_LINES} of {len(body)} lines"
-    lines = [f"NOTES | {run.paths.notes} (edit the file directly; {extent})", *_bounded(body, NOTES_LINES, "")]
+    lines = [f"NOTES | {run.paths.notes} (edit the file directly; shown in full)"]
+    lines += [f"  {line}" for line in text.splitlines()]
     cap = notes_cap(run.registry)
     if cap is not None and len(text) > cap:
         lines.append(

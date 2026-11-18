@@ -27,7 +27,7 @@ from typing import Any
 
 from . import meters, states
 from .grade import void
-from .journal import Event, Run, grades, is_paid, read_jsonl
+from .journal import Event, Run, grades, is_paid, read_jsonl, read_notes
 from .world import OVER, render_action
 
 LAYERS = {
@@ -68,12 +68,13 @@ def form_of(item: dict[str, Any]) -> str:
     return "level+1" if kind == "level_up" else str(kind)
 
 
-def _forms(events: Sequence[Event]) -> dict[tuple[str, str], tuple[list[int], list[int]]]:
-    """Per action and outcome form, the events where it held and where it missed."""
+def _forms(events: Sequence[Event], bucket: str | None = None) -> dict[tuple[str, str], tuple[list[int], list[int]]]:
+    """Per action and outcome form, the events where it held and where it
+    missed; of one bucket when one is named."""
     found: dict[tuple[str, str], tuple[list[int], list[int]]] = {}
     for event in events:
         for item in grades(event):
-            if not void(item) and item["kind"] != "coerced":
+            if not void(item) and item["kind"] != "coerced" and bucket in (None, item["bucket"]):
                 slot = found.setdefault((event["action"], form_of(item)), ([], []))
                 slot[0 if item["ok"] else 1].append(event["id"])
     return found
@@ -82,10 +83,7 @@ def _forms(events: Sequence[Event]) -> dict[tuple[str, str], tuple[list[int], li
 def _unsupported_notes(run: Run) -> list[str]:
     """The lines under a Verified heading of the notes that cite no event the
     journal holds as a paid action with a held outcome."""
-    try:
-        text = run.paths.notes.read_text()
-    except FileNotFoundError:
-        return []
+    text = read_notes(run.paths) or ""
     held = {event["id"] for event in run.events if any(item["ok"] for item in grades(event) if not void(item))}
     verified, loose = False, []
     for line in text.splitlines():
@@ -206,8 +204,9 @@ def findings(run: Run) -> list[Finding]:
     # Layer 4: the world model the agent builds.
     graded, wrong = counts.world_model
     if graded >= MIN_GRADED and wrong / graded >= MISS_RATE:
+        mechanics = _forms(events, "world_model")
         worst = sorted(
-            ((len(miss), action, form, miss) for (action, form), (_, miss) in forms.items() if miss), reverse=True
+            ((len(miss), action, form, miss) for (action, form), (_, miss) in mechanics.items() if miss), reverse=True
         )
         add(
             4,

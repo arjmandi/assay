@@ -45,11 +45,12 @@ def recent(events: Sequence[Event], window: int = 10) -> tuple[int, int]:
 
 def vacuous(events: Sequence[Event]) -> dict[str, int]:
     """The verifiers, by hash, whose identity verdict equalled their real
-    verdict on every one of five or more gradings, with that count."""
+    verdict on every one of five or more gradings of a transition that
+    changed something, with that count."""
     counts: dict[str, list[int]] = {}
     for event in events:
         for item in grades(event):
-            if item.get("verifier") and not void(item):
+            if item.get("verifier") and not void(item) and "identity_verdict" in item:
                 slot = counts.setdefault(item["verifier_hash"], [0, 0])
                 slot[0] += 1
                 slot[1] += item.get("identity_verdict") is item["ok"]
@@ -91,11 +92,13 @@ def predictions(events: Sequence[Event]) -> Predictions:
 
 
 def event_changed(events: Sequence[Event], index: int) -> bool:
-    """Whether paid event `index` changed the world: progress, or any
-    difference from the observation before it."""
-    if advanced(events[index]):
+    """Whether paid event `index` changed the world: progress, another
+    lifecycle state, or any difference from the observation before it."""
+    if not index:
+        return False
+    if advanced(events[index]) or events[index]["state"] != events[index - 1]["state"]:
         return True
-    count, _ = changed(events[index - 1], events[index]) if index else (0, "")
+    count, _ = changed(events[index - 1], events[index])
     return count is None or count > 0
 
 
@@ -119,7 +122,7 @@ def coverage(events: Sequence[Event]) -> Coverage:
         slot = plays.setdefault(events[index]["action"], [0, 0])
         slot[0] += 1
         slot[1] += event_changed(events, index)
-    advertised = sorted(str(name) for name in events[-1]["available_actions"])
+    advertised = sorted(str(name) for name in events[-1]["available_actions"] if name != "RESET")
     tail = paid[-STALL_WINDOW:]
     return Coverage(
         unit=events[-1]["levels_completed"],
@@ -136,8 +139,9 @@ def hazards(events: Sequence[Event]) -> dict[str, int]:
     """The action names whose use entered GAME_OVER or lost a completed
     unit, each with the first event that showed it."""
     found: dict[str, int] = {}
-    for event in events:
-        lost = event.get("level_before") is not None and event["levels_completed"] < event["level_before"]
-        if is_paid(event) and event["action"] != "RESET" and (event["state"] == "GAME_OVER" or lost):
+    for previous, event in zip(events, events[1:]):
+        entered = event["state"] == "GAME_OVER" and previous["state"] != "GAME_OVER"
+        lost = event["levels_completed"] < previous["levels_completed"]
+        if event["action"] != "RESET" and (entered or lost):
             found.setdefault(event["action"], event["id"])
     return found

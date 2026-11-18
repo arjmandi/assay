@@ -22,8 +22,8 @@ Python file with `factory(root, config)` returning a session that has
 `observation` and `step(action, params)`. An observation is a mapping with
 `state` (WIN, GAME_OVER, or anything else while the run goes on, by
 convention NOT_FINISHED), `levels_completed`, `win_levels`,
-`available_actions` (names, or empty for all) and either `data`, a JSON
-object, or `frames`, a list of grids of colors 0..15 of which the last is the
+`available_actions` (names; empty means every registered action) and either
+`data`, a JSON object, or `frames`, a list of grids of colors 0..15 of which the last is the
 settled one. A session whose world cannot be rebuilt by replaying its actions
 sets `replayable = False`.
 """
@@ -388,11 +388,11 @@ def registry_lines(registry: Mapping[str, Any]) -> list[str]:
 
 def check_available(name: str, advertised: Sequence[Any]) -> None:
     """An action the world does not advertise now is refused before it is
-    spent. A world that advertises nothing admits every registered action."""
+    spent. RESET is always available."""
     names = {str(value).upper() for value in advertised}
     if name != "RESET" and names and name not in names:
         raise AssayError(
-            f"{name} is unavailable; advertised actions are {sorted(names)}", code="ACTION_UNAVAILABLE"
+            f"{name} is unavailable; available actions are {sorted(names - {'RESET'})}", code="ACTION_UNAVAILABLE"
         )
 
 
@@ -470,14 +470,14 @@ def observe(raw: Any) -> dict[str, Any]:
             "state": str(raw.get("state", "NOT_FINISHED")),
             "levels_completed": int(raw.get("levels_completed", 0)),
             "win_levels": int(raw.get("win_levels", 1)),
-            "available_actions": sorted({str(value) for value in raw.get("available_actions") or ()}),
+            "available_actions": sorted({str(value).upper() for value in raw.get("available_actions") or ()}),
         }
         if raw.get("frames") is not None:
             observed["frames"] = [_rows(grid) for grid in raw["frames"]]
             if not observed["frames"]:
                 raise bad("it has no frames")
         elif isinstance(raw.get("data"), Mapping):
-            observed["data"] = json.loads(json.dumps(raw["data"], sort_keys=True))
+            observed["data"] = json.loads(json.dumps(raw["data"], sort_keys=True, allow_nan=False))
         else:
             raise bad("it has neither `data` nor `frames`")
     except (TypeError, ValueError) as error:

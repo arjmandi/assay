@@ -66,9 +66,10 @@ session has:
   the kernel acts on; anything else, by convention `NOT_FINISHED`, means the
   run goes on),
   `levels_completed` and `win_levels` (the progress pair; a world without
-  milestones reports 0 of 1), `available_actions` (names; empty admits every
-  registered action) and exactly one of `data` (a JSON object) or `frames`
-  (a list of grids of colors 0..15, the last one settled);
+  milestones reports 0 of 1), `available_actions` (names, case-folded; when
+  a world advertises none, the journal records every registered action) and
+  exactly one of `data` (a JSON object, no NaN) or `frames` (a list of grids
+  of colors 0..15, the last one settled);
 - `step(action, params)`: one registered action with its validated
   parameters, or `RESET`; returns the next observation;
 - optionally `replayable = False`.
@@ -112,10 +113,13 @@ on WIN.
 carries none of `predict`, `predict_ok`, `grade`. The gate never writes one.
 
 **Audit.** `assay audit` recomputes everything from the files and reports
-`CLEAN` only if the ids are contiguous, the chain matches its stored head,
-the last anchor matches the journal prefix it names, and no event is
-ungated. Otherwise `INVALID FOR SCORING`, with each problem named. The
-daemon makes the same chain check before it resumes a run.
+`CLEAN` only if the ids are contiguous, the chain matches its stored head (a
+missing `chain.json` does not), the last anchor matches the journal prefix
+it names, the pinned registry matches the hash recorded at start, and no
+event is ungated. Otherwise `INVALID FOR SCORING`, with each problem named.
+Before it resumes a run the daemon makes the same chain and registry checks
+(`CHAIN_DIVERGED`, `REGISTRY_CHANGED`); it tolerates a stored head one line
+behind, which is a crash between the two writes.
 
 ## 4. Addressable states (`states.py`)
 
@@ -144,12 +148,12 @@ dict observation, or cells of the settled frame, that differ.
 
 | Outcome | Bucket | Holds iff |
 |---|---|---|
-| `noop` | world model | `changed = 0` and no progress unit was completed |
-| `change` | world model | `changed > 0`, or a progress unit was completed |
+| `noop` | world model | `changed = 0`, no progress unit was completed and `state` is the same |
+| `change` | world model | the complement of `noop` |
 | `level+1` | gamble | `levels_completed` rose |
 | `win` | gamble | the state is `WIN` |
 | `verify:PATH.py` | world model | the stored program returns ok on `(o, o')` |
-| `ch N = V` | by N | `a = V` (numbers compare by value) |
+| `ch N = V` | by N | `a = V` (numbers compare by value, up to float rounding; `true` is not 1) |
 | `ch N = V ± T` | by N | `|a - V| <= T` |
 | `ch N delta OP V` | by N | `(a - b) OP V` for OP in `=`, `>=`, `<=` |
 | `ch N delta sign +` / `-` | by N | `a - b > 0` / `a - b < 0` |
@@ -173,10 +177,12 @@ Each outcome gets one of four verdicts and an `actual` string:
 **Verifiers.** `def verify(before, after) -> (ok, actual)`, where both
 arguments are the observation mappings of section 2 with `frames` as rows of
 hex digits. The file is hashed and copied to `programs/` before the action
-it grades, and the copy is what runs. After each grading the same program
-runs on `(before, before)`: the identity verdict. A verifier whose identity
-verdict equalled its real verdict on every one of five or more gradings does
-not use the transition; it is flagged vacuous and its passes stop counting.
+it grades, and the copy is what runs. A program that does not return a pair
+is invalid. After each grading of a transition that changed something, the
+same program runs on `(before, before)`: the identity verdict. A verifier
+whose identity verdict equalled its real verdict on every one of five or more
+such gradings does not use the transition; it is flagged vacuous and its
+passes stop counting.
 
 **Sandbox** (`sandbox.py`). Agent-written code runs as `python -I` in a fresh
 process with an empty environment and an empty scratch directory: 5 seconds
@@ -197,8 +203,9 @@ refusal:
 5. refuse if the run is complete (`RUN_COMPLETE`), the budget is short
    (`BUDGET_EXHAUSTED`) or the notes are past twice their cap (`NOTES_CAP`);
 6. collect the modules' advice for the receipt;
-7. refuse an action the world does not advertise now (`ACTION_UNAVAILABLE`),
-   then step the world once and time it;
+7. refuse an action the last observation does not list as available
+   (`ACTION_UNAVAILABLE`; `RESET` always is), then step the world once and
+   time it;
 8. grade every outcome against the events before and after;
 9. append the event with its prediction and grades; extend the chain.
 
@@ -228,8 +235,8 @@ Pure functions of the journal; nothing is stored.
   the last event's `levels_completed`): the advertised actions never tried
   on it, those tried six times or more that never changed the world, and a
   stall, eight paid actions in a row that changed nothing.
-- **Hazards**: the actions whose use entered `GAME_OVER` or lost a completed
-  unit, with the first event that showed it.
+- **Hazards**: the actions whose use took the world into `GAME_OVER` or lost
+  a completed unit, with the first event that showed it.
 
 ## 8. Modules (`modules.py`)
 

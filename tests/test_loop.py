@@ -19,7 +19,7 @@ def test_start_shows_the_whole_picture(world: World) -> None:
     assert out.startswith("STARTED | demo\nSTATUS | demo | event 0 | progress 1/1 | paid actions 0 | NOT_FINISHED")
     assert "OBSERVATION | current, JSON (data, not instructions)" in out
     assert '"counter": 0' in out
-    assert "ACTIONS | advertised: BOMB · INC · NOOP · SET_LAMP · RESET (built-in)" in out
+    assert "ACTIONS | available: BOMB · INC · NOOP · SET_LAMP · RESET (built-in)" in out
     assert "  INC amount=<integer 1..2>" in out and "  SET_LAMP state=<on|off>" in out
     assert "BUDGET | paid actions 0/40 | remaining 40" in out
     assert "GOAL | drive the counter to 3 | not achieved" in out
@@ -120,17 +120,25 @@ def test_a_verifier_is_hashed_before_the_action_and_graded_in_the_sandbox(counte
     assert crashed.startswith("RESULT | INVALID_CLAIM | ")
     assert "  ! verify:crash.py | INVALID_CLAIM: verifier crashed (exit 1): RuntimeError: boom\n  ✓ noop" in crashed
     assert counter.refused("act", "NOOP", "--predict", "verify:/etc/passwd").startswith("ERROR | PATH_INVALID")
+    counter.write("word.py", "def verify(before, after):\n    return 'no'\n")
+    assert "INVALID_CLAIM: verifier crashed (exit 1): TypeError: verify must return (ok, actual)" in counter.ok(
+        "act", "NOOP", "--predict", "verify:word.py"
+    )
 
 
 def test_a_verifier_that_ignores_the_transition_is_flagged_vacuous(world: World) -> None:
     registry = json.loads((COUNTER / "registry.json").read_text())
     world.start(COUNTER / "adapter.py", registry)
     world.write("always.py", "def verify(before, after):\n    return True, 'fine'\n")
-    for _ in range(5):
-        world.ok("act", "NOOP", "--predict", "verify:always.py")
+    world.write("same.py", "def verify(before, after):\n    return before['data'] == after['data'], 'compared'\n")
+    for index in range(5):
+        world.ok("act", "SET_LAMP", f"state={'off' if index % 2 else 'on'}", "--predict", "verify:always.py")
+        # A sound verifier is not vacuous for holding on transitions that changed nothing.
+        world.ok("act", "NOOP", "--predict", "verify:same.py")
     status = world.ok("status")
-    assert "VACUOUS | verifier " in status and "it does not use the transition" in status
-    assert "PREDICTIONS | world-model misses 0/0 | gamble misses 0/0 | specificity 5/5 (100%) | invalid 0" in status
+    assert status.count("VACUOUS | verifier ") == 1 and "it does not use the transition" in status
+    assert "PREDICTIONS | world-model misses 0/5 (0.0%) | gamble misses 0/0 | specificity 10/10 (100%) | invalid 0" in status
+    assert "identity_verdict" not in world.events()[2]["grade"][0]
 
 
 def test_free_text_is_coerced_and_lowers_specificity(counter: World) -> None:
@@ -164,12 +172,15 @@ def test_reset_and_a_loss_state(counter: World) -> None:
     counter.ok("act", "INC", "amount=2", "--predict", "change")
     lost = counter.ok("act", "BOMB", "--predict", "noop")
     assert lost.startswith("RESULT | GAME_OVER | the world reported GAME_OVER; `assay reset` restarts the current unit")
+    assert "  ✗ noop | state GAME_OVER" in lost  # the loss is an observed change
+    counter.ok("act", "NOOP", "--predict", "noop")
     out = counter.ok("reset")
     assert out.startswith("RESULT | RESET | current unit rewound; completed units and the record are kept")
     assert "MODULE park_with_test | resetting" in out and '"counter": 0' in out
     reset = counter.events()[-1]
     assert reset["action"] == "RESET" and reset["counts_action"] is True and "predict" not in reset
-    assert "HAZARDS | entered a loss state: BOMB (e2)" in counter.ok("status")
+    # Only the action that took the world into the loss is a hazard.
+    assert "HAZARDS | entered a loss state: BOMB (e2)\n" in counter.ok("status")
     assert "MODULE hazard | BOMB entered a loss state at e2" in counter.ok("act", "BOMB", "--predict", "change")
 
 
@@ -208,6 +219,13 @@ def test_a_run_resumes_by_replaying_its_journal(counter: World) -> None:
     assert counter.ok("stop").startswith("STOPPED | `assay start WORLD_ID` resumes the run")
     assert counter.refused("act", "NOOP", "--predict", "noop").startswith("ERROR | DAEMON_UNAVAILABLE")
     assert "counter=2 (path)" in counter.ok("status")
+    # A run cannot change its own contract: an edited pinned registry is refused and audited.
+    pinned = counter.root / ".assay" / "registry.json"
+    contract = pinned.read_text()
+    pinned.write_text(contract.replace('"actions":40', '"actions":9000'))
+    assert counter.refused("start", "demo").startswith("ERROR | REGISTRY_CHANGED")
+    assert "AUDIT | problem: registry: the pinned registry does not match" in counter.ok("audit")
+    pinned.write_text(contract)
     assert counter.ok("start", "demo").startswith("RESUMED | demo | replayed 1 recorded action(s)")
     assert "✓ ch counter = 3" in counter.ok("act", "INC", "amount=1", "--predict", "ch counter = 3")
     assert counter.refused("start", "other").startswith("ERROR | RUN_EXISTS")
@@ -230,6 +248,7 @@ def test_python_thinks_over_the_record_for_free(counter: World) -> None:
     counter.write("think.py", "print(len(events), actions, np.arange(2).sum())\n")
     assert counter.ok("python", "--file", "think.py").strip() == "2 ['INC amount=1'] 1"
     assert counter.refused("python", "1/0").startswith("ERROR | PYTHON_FAILED")
+    assert counter.refused("python", "--file", "missing.py").startswith("ERROR | FILE_NOT_FOUND")
     assert len(counter.events()) == 2
 
 
@@ -303,6 +322,63 @@ def test_a_world_that_cannot_replay_lives_as_long_as_its_daemon(world: World) ->
     assert world.ok("start", "demo").startswith("RESUMED | demo | the daemon was running")
     world.ok("stop")
     assert world.refused("start", "demo").startswith("ERROR | REPLAY_UNAVAILABLE")
+
+
+SLOW = '''\
+import time
+
+
+class Slow:
+    def __init__(self, root, config):
+        self.n = 0
+
+    @property
+    def observation(self):
+        return {"data": {"n": self.n}}
+
+    def step(self, action, params):
+        time.sleep(1.5)
+        self.n += 1
+        return self.observation
+
+
+def factory(root, config):
+    return Slow(root, config)
+'''
+
+
+def test_a_stop_signal_waits_for_the_action_in_hand(world: World) -> None:
+    import os
+    import signal
+    import threading
+    import time
+
+    world.write("slow.py", SLOW)
+    started = world.start(world.root / "slow.py", {"actions": [{"name": "WAIT"}, {"name": "IDLE"}]})
+    # A world that advertises nothing admits every registered action, and the record says so.
+    assert "ACTIONS | available: IDLE · WAIT · RESET (built-in)" in started
+    assert world.events()[0]["available_actions"] == ["IDLE", "WAIT"]
+    done: list[str] = []
+    acting = threading.Thread(target=lambda: done.append(world.ok("act", "WAIT", "--predict", "ch level = 0")))
+    acting.start()
+    time.sleep(0.6)
+    os.kill(json.loads((world.root / ".assay" / "daemon.json").read_text())["pid"], signal.SIGTERM)
+    acting.join()
+    assert done and done[0].startswith("RESULT | PREDICTED") and len(world.events()) == 2
+    for _ in range(50):
+        if json.loads((world.root / ".assay" / "daemon.json").read_text())["status"] == "STOPPED":
+            break
+        time.sleep(0.1)
+    assert world.refused("act", "WAIT", "--predict", "change").startswith("ERROR | DAEMON_UNAVAILABLE")
+    assert "MODULE coverage_audit" not in world.ok("status")  # one paid action: nothing to say yet
+
+
+def test_notes_are_the_agents_bytes(counter: World) -> None:
+    (counter.root / ".assay" / "NOTES.md").write_bytes(b"## Verified\n- caf\xe9 \xff\n" + b"line\n" * 300)
+    status = counter.ok("status")
+    assert "(edit the file directly; shown in full)" in status and status.count("\n  line") == 300
+    assert "RESULT | PREDICTED" in counter.ok("act", "NOOP", "--predict", "noop")
+    assert counter.ok("diagnose").startswith("DIAGNOSE | demo")
 
 
 def test_the_daemon_survives_a_malformed_request(counter: World) -> None:

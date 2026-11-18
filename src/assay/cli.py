@@ -174,7 +174,11 @@ def state_list(paths: Paths, args: argparse.Namespace) -> None:
 def python(paths: Paths, args: argparse.Namespace) -> None:
     if bool(args.source) == bool(args.file):
         raise AssayError("give exactly one of a source argument or --file", code="COMMAND_ARGS")
-    analysis.run_python(Run.load(paths), args.source or Path(args.file).read_text())
+    try:
+        source = args.source or Path(args.file).read_text()
+    except OSError as error:
+        raise AssayError(f"--file cannot be read: {error}", code="FILE_NOT_FOUND") from None
+    analysis.run_python(Run.load(paths), source)
 
 
 def audit(paths: Paths, args: argparse.Namespace) -> None:
@@ -262,6 +266,9 @@ def main() -> None:
         args.function(paths, args)
     except AssayError as error:
         print(error.text(), file=sys.stderr)
+        raise SystemExit(2) from None
+    except Exception as error:  # noqa: BLE001 - one error voice, for a bug as well
+        print(f"ERROR | INTERNAL | {type(error).__name__}: {error}", file=sys.stderr)
         raise SystemExit(2) from None
 
 

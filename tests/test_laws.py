@@ -115,7 +115,7 @@ def test_the_arc_adapter_against_a_stand_in_client(tmp_path: Path, monkeypatch: 
             self.frame = [[[0, 1], [2, 3]]]
             self.state = types.SimpleNamespace(value=state)
             self.levels_completed, self.win_levels = level, 2
-            self.available_actions = [types.SimpleNamespace(value=1), 6]
+            self.available_actions = [types.SimpleNamespace(value=1), 6, 0]
 
     class Environment:
         def __init__(self) -> None:
@@ -149,7 +149,7 @@ def test_the_arc_adapter_against_a_stand_in_client(tmp_path: Path, monkeypatch: 
     observed = world.observe(session.observation)
     assert observed == {
         "state": "NOT_FINISHED", "levels_completed": 0, "win_levels": 2,
-        "available_actions": ["ACTION1", "ACTION6"], "frames": [["01", "23"]],
+        "available_actions": ["ACTION1", "ACTION6", "RESET"], "frames": [["01", "23"]],
     }
     session.step("RESET", None)  # nothing done on this level yet: the game is not restarted
     assert environment.stepped == []

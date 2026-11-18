@@ -132,6 +132,8 @@ def parse(text: str | None) -> list[Outcome]:
             if _KEYWORD.match(part):
                 raise _syntax(f"malformed outcome {part!r}")
             outcomes.append({"kind": "note", "text": part})
+    if not outcomes:
+        return parse(None)
     if all(outcome["kind"] == "note" for outcome in outcomes):
         outcomes.append({"kind": "change", "text": "change (implied by free text)", "coerced": True})
     return outcomes

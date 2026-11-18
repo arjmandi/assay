@@ -61,8 +61,8 @@ graded, and a miss on any one is a miss for the action.
 
 | Outcome | Holds when |
 |---|---|
-| `noop` | the observation does not change |
-| `change` | the observation changes |
+| `noop` | nothing in the observation changes, the win or loss state included |
+| `change` | something in the observation changes |
 | `level+1` | this action completes the current level |
 | `win` | this action reaches the goal |
 | `verify:PATH.py` | your own check passes (below) |
@@ -196,7 +196,8 @@ with a scene summary. In `assay python` the history is arrays: `grid`,
 `previous`, `settled`, `frames`, and `transitions` with array `before` and
 `after`, plus `connected_components`, `frame_delta`, `motion_trace`,
 `repeated_shapes`, `infer_lattice`, `line_graph`, `shortest_path`, `crop` and
-`sample`. Coordinates of a point action are x the column and y the row.
+`sample`. Compare two grids with `(a != b).any()`. Coordinates of a point
+action are x the column and y the row.
 
 ## Read the meters about yourself
 
