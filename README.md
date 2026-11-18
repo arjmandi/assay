@@ -1,250 +1,167 @@
 # ASSAY
 
-ASSAY is an agent harness: the agent must predict what each action will
-do before it acts, code grades the prediction against the world's response,
-and the run is over when the world says so, not when the agent believes it.
+ASSAY is a reasoning harness. It sits between an agent and a world, and it
+makes the agent's knowledge of that world something code has checked.
 
-## Start in Claude Code
+- **Grounding by prediction.** Before every action the agent writes what the
+  action will do. After it, code grades each outcome against what the world
+  reported: held or missed, with the actual value. A fact enters the agent's
+  world model only through a prediction that held.
+- **An addressable world state.** The agent names the parts of the world it
+  cares about as states, readings that code extracts from the observation,
+  and predicts over those names. What it knows is a compact, structured
+  record it looks up by address instead of a long context it has to recall.
+- **Five layers of reasoning.** What an agent needs to reason is placed at
+  five layers, each a place to steer. `assay diagnose` reads a run and says
+  at which layer its reasoning broke, with the evidence.
 
-```
-/plugin marketplace add arjmandi/assay
-/plugin install assay@assay
-```
+The harness makes no model calls. Any agent that can drive a shell can play,
+and so can a person.
 
-Play an ARC-AGI-3 game with it. Save your ARC API key once (from
-arcprize.org), in your own terminal:
-
-```bash
-mkdir -p -m 700 ~/assay/tokens && (umask 077; printf 'ARC API key: '; read -rs k; echo; printf '%s\n' "$k" > ~/assay/tokens/arc_api_key)
-```
-
-then, in Claude Code:
-
-```
-/assay:attach arc-agi-3 "win the game ft09"
-/assay:run
-```
-
-Or bring your own world. `/assay:connect` builds a pack for it, the adapter,
-the registry and the world's scripts, and smoke-tests it; `/assay:attach`
-then starts a run on the pack with your goal:
-
-```
-/assay:connect "the inventory service on localhost:8080, with its OpenAPI spec in ./openapi.json"
-/assay:attach ~/assay/worlds/inventory "every SKU below its reorder point has an open purchase order"
-/assay:run
-```
-
-`/assay:run` plays it, session after session, until the run says it is over.
-`/assay:watch` follows it, `/assay:report` writes up what the run verified,
-and `/assay:compare` runs the same task under Claude Code with `/goal` and
-scores both with one checker. Without Claude Code, `pip install
-git+https://github.com/arjmandi/assay` gives the `assay` command line, and
-`GUIDE.md` starts from there.
-
-## What it is
-
-ASSAY is a reasoning harness. To start, it needs a world to interact with, tools it
-has access to, and the goal we want it to achieve. Then it starts to explore that world
-by building a small formal language that symbolically describes the world. It trusts
-its own world model only where that model predicted the world correctly: every
-prediction is labeled held or missed, and the agent reasons from what held. The formal
-language is the basis for addressing context rot and referent grounding issues in LLM
-(and LRM) agents, and it reduces the need for compaction or summarization of knowledge
-in long-running agents working toward a goal. Prediction is the agent's way of
-fact-checking its knowledge against the environment: a fact enters its world model
-only through a prediction that explained how the world behaved, so the agent can trust
-what it learned when it reasons toward the goal.
-
-## What you supply
-
-A world, through an **adapter**: one Python file that carries an action to the
-world and brings the observation back. The actions the agent may take, through
-a **registry**: a JSON contract with the action names, their typed parameters,
-the budgets, the flags and the goal. And a manual, `CONSTITUTION.md`, that
-tells the agent how to learn any world under the harness. The agent operates
-the harness from a shell through the `assay` command line, or through the tool
-server, which offers the same operations as tools. The kernel makes no model
-calls, so any model process that can drive a shell can play, and so can a
-person at a terminal.
-
-`GUIDE.md` is the user guide. `ONBOARDING.md` attaches a new world end to
-end. `docs/ARCHITECTURE.md` is the component model. `AGENTS.md` is for a
-coding agent working on the harness. `bench/` holds the benchmark worlds and
-their results.
-
-## The language
-
-The agent names the parts of the world it cares about as addressable states:
-a path into the observation, or a small program that extracts a value from
-it. The grammar then gives it a fixed set of forms to say what an action will
-do: a state equals a value, moves by an amount or crosses a threshold, the
-observation changes or stays the same, a level clears, the goal is reached,
-or a program the agent wrote decides. One prediction can carry several
-outcomes:
+## Sixty seconds
 
 ```bash
+REPO=$PWD; ASSAY=$REPO/bin/assay
+mkdir /tmp/demo && cd /tmp/demo
+"$ASSAY" start demo --adapter "$REPO/worlds/counter/adapter.py" --registry "$REPO/worlds/counter/registry.json"
+
+"$ASSAY" act INC amount=1 --predict "change"          # ✓ held
+"$ASSAY" act NOOP --predict "change"                  # ✗ missed, with what happened instead
+"$ASSAY" state declare counter --path counter         # name a part of the world
 "$ASSAY" act INC amount=2 --predict "ch counter = 3; win"
+"$ASSAY" audit                                        # the record's integrity
+"$ASSAY" diagnose                                     # the record against the five layers
 ```
 
-Two outcomes: the state named `counter` reads 3 after the action, and the
-world reports its goal reached. What the forms cannot say, a verifier program
-can, and the agent writes those too.
+`bin/assay` runs from the checkout with any Python 3.12+ that has numpy
+(`ASSAY_PYTHON` pins the interpreter). `pip install -e '.[grid]'` installs
+the `assay` command instead; `[grid]` adds pillow, which a world with grid
+observations needs. macOS and Linux.
 
-## Held or missed
+## The concepts
 
-Before every paid action the agent writes its prediction, and the daemon
-refuses an action without one. After the action, code checks each outcome
-against what the world reported and labels it held or missed. The receipt
-shows the labels, and on a miss it shows the value the world reported:
+| Concept | What it is | Where |
+|---|---|---|
+| **World** | Anything that takes an action and returns an observation. | yours |
+| **Adapter** | The one piece of code that touches the world: `factory(root, config)` returns a session with `observation` and `step(action, params)`. | `world.py` |
+| **Registry** | The world's contract, no code: the actions with typed parameters, the action budget, the goal text. Pinned at start. | `world.py` |
+| **Journal** | The record: one line per event, each paid action with its observation, its prediction and its grades. Hash-chained. Everything else is a view over it. | `journal.py` |
+| **State** | A named reading of the observation: a dotted path or an extractor program. Declared once, never rebound. | `states.py` |
+| **Prediction** | One or more outcomes in a fixed grammar, each a predicate over one transition. | `grammar.py` |
+| **Verifier** | The agent's own program for what the grammar cannot say; hashed before the action, run in the sandbox. | `grade.py`, `sandbox.py` |
+| **Gate** | No paid action without a prediction. Everything refused before the world is stepped costs nothing. | `daemon.py` |
+| **Grade** | Held, missed, invalid or ungradable, always with the actual value. A held outcome is a fact. | `grade.py` |
+| **Batch** | Steps with a prediction each; halts at the first miss. | `daemon.py` |
+| **Meters** | World-model and gamble miss rates, specificity, coverage: pure functions of the journal. | `meters.py` |
+| **Module** | Reasoning in code over the record: it advises, never refuses. | `modules.py` |
+| **Notes** | The agent's one page: Verified (with event ids), Assumed, Plan. Its summary, not the record. | `.assay/NOTES.md` |
 
-```
-  ✓ ch nkeys = 3
-  ✗ ch hl = 1 | ch hl = 0
-```
+`CONSTITUTION.md` is the manual the agent reads. `docs/ARCHITECTURE.md` is
+the reference: the file formats, the gate, the grading rules, the contracts.
 
-What held is a fact in the record. What missed stays in the record as a
-miss. The agent reasons from the facts.
+## The five layers
 
-## Fact-checking as grounding
+From the most general to the most specific. A failure points at the layer to
+change, and `assay diagnose` does the pointing.
 
-Nothing enters the agent's world model except through a prediction that was
-checked. The agent's own notes are not the record, and knowledge imported
-from an earlier run enters demoted and must be re-earned by predictions in
-the new run. The record lives on disk, and the agent looks a state up by its
-address instead of recalling it, which is what lets a long run keep its
-detail instead of summarizing it. The one page of notes the agent keeps is
-its own summary, and the manual says what belongs there.
-
-## Reasoning layers
-
-ASSAY places what an agent needs to reason at five layers, from the most
-general to the most specific. Each layer is a place to steer the agent, and
-each layer tells the operator where to work when the agent fails.
-
-1. **The constitution.** The mental model a domain needs, written by a human
-   once. It says how to learn any world under the harness, and it carries the
-   experience that pretraining does not. Change it when the agent lacks a way
-   of working that no training data contains.
-2. **Modules.** Reasoning in code that the agent can pick up. A module
-   watches the record and advises or demands. Change this layer when the
-   agent fails to recognize a pattern that repeats across a long trace.
-3. **The registry and the adapter.** The description of one world and the
-   only way to touch it. The registry lists the actions, their typed
-   parameters, the budgets and the goal. The adapter carries an action to the
-   world and the observation back. Change this layer when the failures come
-   from the interaction itself.
-4. **Addressable states.** The world model the agent builds: the states it
-   named, their readings, the predictions it made over them and how each was
-   labeled. Change this layer when reasoning breaks from forgetting or from
-   referents that drift.
-5. **The model.** Everything behind the model's API. This layer is not
-   ASSAY's.
+| Layer | Holds | Written by | Change it when |
+|---|---|---|---|
+| 1. **The constitution** | how to learn any world | the operator, once | the agent lacks a way of working: free-text predictions, vacuous verifiers |
+| 2. **Modules** | reasoning in code over the record | the operator | a pattern repeats across a long trace and the agent does not see it |
+| 3. **Registry and adapter** | one world and the only way to touch it | the world's operator | the failures come from the interaction: unreadable states, refused parameters |
+| 4. **Addressable states** | the world model the agent builds | the agent, by checked prediction | reasoning breaks from forgetting or drifting referents: rising world-model misses |
+| 5. **The model** | everything behind the model's API | not the harness | progress predictions miss while the world model holds |
 
 The more the model already knows the world, the less the layers above it
-need to say. The more the agent struggles on its own, the more they carry.
+need to say.
 
-## Platforms
+## Run an agent
 
-macOS and Linux. The daemon listens on a Unix domain socket, the run state is
-guarded by file locks, and verifiers run under resource limits. Windows
-provides none of these in the same form and is not supported.
-
-## Install
-
-Python 3.12 or newer, macOS or Linux (see Platforms). Three ways in, pick
-one:
-
-1. **No install.** `bin/assay` is the launcher: it runs the first `python3` on
-   PATH that has numpy 2.x, else `uv run` resolves the inline dependencies,
-   else it builds a private runtime once. `ASSAY_PYTHON=/path/to/python`
-   pins the interpreter.
-2. **Editable install, recommended for benchmark worlds.** The same venv holds
-   the adapter's dependencies, and the daemon inherits it:
-
-   ```bash
-   python3 -m venv .venv && .venv/bin/pip install -e '.[grid]'
-   .venv/bin/assay doctor            # or put .venv/bin on PATH
-   ```
-
-   `[grid]` adds pillow for frame worlds (rendering). A dict world does not
-   need it. `[arcagi]` adds the ARC-AGI-3 client. `[dev]` adds pytest.
-   `[server]` adds the `mcp` package for `assay serve-tools`, the tool server
-   that serves the agent-facing operations as MCP tools over the same daemon
-   (GUIDE section 5).
-3. **The CLI alone.** `pipx install '.[grid]'` puts `assay` on PATH in its own
-   environment, for worlds whose adapters have no dependencies of their own.
-
-`assay doctor` checks the interpreter, the dependencies, the anchor directory,
-and, inside a run directory, the daemon, the adapter and the registry.
-
-## Quickstart (60 seconds, no API keys)
+The operator starts the run; the agent's session begins after it, in the run
+directory, at `status`. With Claude Code:
 
 ```bash
-ASSAY=<repo>/bin/assay
-mkdir demo && cd demo
-"$ASSAY" start counterdemo \
-    --adapter "<repo>/examples/counter_world.py:factory" \
-    --registry "<repo>/examples/example_registry.json"
-
-"$ASSAY" act INC amount=1 --predict "change"        # graded ✓
-"$ASSAY" act NOOP --predict "change"                # graded ✗, with the counter-fact
-"$ASSAY" state declare counter --path counter       # declare an addressable state
-"$ASSAY" act INC amount=2 --predict "ch counter = 3; win"   # WIN
-"$ASSAY" audit                                      # chain + integrity verdict
+cd <run dir> && ASSAY=<repo>/bin/assay claude "$(cat PLAYER.md)"
 ```
 
-The third command declares an addressable state. `assay channel declare` is
-the same command under its earlier name and answers for one release. The
-keyword `ch` keeps its spelling in the journal.
+where `PLAYER.md` is the whole prompt:
 
-Every command takes `--json` and prints one JSON document. A result record
-comes back for `status`, `view`, `audit`, `act`, `commit`, `reset`,
-`state list` and `module list`, and the command's lines come back
-otherwise. A refusal is one line, `ERROR | CODE | message`, with the codes
-listed in `docs/ERRORS.md`.
+```
+You are playing a world through ASSAY, a harness that grades a prediction before every paid action.
 
-The quickstart is one person at a terminal playing both roles. An evaluated
-agent does not start the run. The operator starts it with
-`--owner-token-file`, and the agent's session begins at `assay status`
-(`GUIDE.md` section 5).
+1. Read this file completely before anything else: <repo>/CONSTITUTION.md
+2. The launcher is exported as ASSAY. You are in your run directory and the run is started. Begin with:
+   "$ASSAY" status
+   If .assay/NOTES.md has content, it is your record from an earlier session of this run.
 
-## Trust model
+The task: <the registry's goal text>
 
-ASSAY's record is tamper-evident, not tamper-proof. The agent and the daemon
-run as the same user, so the agent can write the run directory. The daemon
-holds the chain head in memory and verifies the journal on disk before every
-paid action. On a difference it refuses to continue and seals the anchor
-file at the last trusted event. In a Claude Code session the shipped hooks
-refuse writes under `.assay/` and world access that bypasses `assay`. The
-operator holds the owner token outside the run, and approvals and waivers
-are granted inside the daemon against it. The activity log is the agent's to
-write, so a waiver or an installed module recorded there is admitted at the
-next start on the operator's word, not the daemon's. The separate-user setup
-is what puts it out of reach. An agent that rewrites the journal, the chain
-file, the mutation log and the anchor file consistently while the daemon is
-stopped is caught only by a head published or anchored outside its reach.
-That is why heads are published with every evidence pack, and why a separate
-user for the daemon is the recommended setup where the stakes warrant it.
-Nothing the agent asserts is load-bearing. Every grade is computed by the
-kernel from the world's own response, and the published journals replay
-through the engine.
+- Touch the world only through "$ASSAY". Read nothing outside this directory except the constitution.
+- Never edit anything inside .assay/ except .assay/NOTES.md. Never run start or stop.
+- Stop at WIN or when the budget is spent. Do the work yourself.
+```
 
-## Status
+A session that ends early is started again with the same command: the agent
+resumes from `status` and its notes. If the daemon is gone, `assay start
+WORLD_ID` replays the journal first. Afterwards, `assay audit` checks the
+record and `assay diagnose` reads it against the layers.
 
-1.2.0 is the first open-source release. The ARC-AGI-3 campaign of
-2026-08-21 to 08-23 ran on the kernel published as v1.0-rc1, and the Factorio
-and OOLONG runs on that kernel plus two small fixes. The 1.2.0 kernel is a
-refactor of it, verified by replaying the 25 published run directories
-unchanged. The experiments of October 2026 ran on commit 6ea56e4 of it
-(`CHANGELOG.md`).
+## Bring a world
+
+A world is a directory with two files (`worlds/counter/` is the whole
+contract in forty lines):
+
+- `adapter.py`: `factory(root, config)` returns a session. `observation` is
+  a mapping with `state` (`NOT_FINISHED`, `WIN`, `GAME_OVER`),
+  `levels_completed`, `win_levels`, `available_actions` and either `data` (a
+  JSON object) or `frames` (grids of colors 0..15). `step(action, params)`
+  takes one registered action, or `RESET`, and returns the next observation.
+  World policy lives here; the kernel names no world.
+- `registry.json`: `actions` (name, `params` as a JSON Schema subset,
+  optional `description`), `budget.actions`, `goal.text`, and optionally
+  `notes_cap` and `modules`.
+
+`worlds/arc-agi-3/` plays an ARC-AGI-3 public game: create the interpreter
+its `requirements.txt` describes, save the ARC API key once, and start with
+the game id as the world id:
+
+```bash
+ASSAY_PYTHON=<env>/bin/python "$ASSAY" start ft09 \
+    --adapter <repo>/worlds/arc-agi-3/adapter.py --registry <repo>/worlds/arc-agi-3/registry.json
+```
+
+Its registry caps a run at 200 paid actions; for a longer game, start from a
+copy with another `budget.actions`.
+
+## Commands
+
+| Command | Who | Does |
+|---|---|---|
+| `start WORLD_ID --adapter F.py --registry F.json` | operator | start a run in this directory, or resume it |
+| `stop` | operator | stop the run's daemon; `start` resumes by replay |
+| `status` | agent | the whole picture: world, registry, budget, states, meters, advice, notes |
+| `act NAME k=v --predict "..."` | agent | one paid action, graded |
+| `commit --step "NAME k=v :: ..."` | agent | a batch, graded step by step |
+| `reset --because "..."` | agent | rewind the current progress unit, for one action |
+| `state declare NAME --path a.b` / `--file f.py`, `state list` | agent | addressable states |
+| `view --event N` | agent | one event: cause, prediction, grades, delta, observation |
+| `python 'source'` | agent | offline analysis with the record preloaded |
+| `audit` | anyone | ids contiguous, chain intact, anchors intact, no ungated event |
+| `diagnose` | operator | the findings, by layer, with what to change |
+
+A refusal is `ERROR | CODE | message`, then `NEXT | hint`, exit status 2.
+
+## Trust
+
+The record is tamper-evident, not tamper-proof. Every journal line extends a
+hash chain whose head is anchored outside the run directory, and `assay
+audit` recomputes all of it and checks that every paid action carries a
+prediction. Nothing the agent asserts is load-bearing: every grade is
+computed by the kernel from the world's own response, and agent-written code
+(verifiers, extractors) runs only in a sandboxed process. The agent and the
+daemon run as the same user, so where the stakes warrant it, run the daemon
+as its own user and keep the anchor directory out of the agent's reach.
 
 ## License
 
-ASSAY is open source under the Apache License 2.0 (`LICENSE`, `NOTICE`). In
-1.2.0 the repository takes issues only, not pull requests (`CONTRIBUTING.md`). The vendored OOLONG scorer is MIT
-(`NOTICE`). The journal standard and the published journals are in `verify/`
-and `evidence/` under MIT (`verify/LICENSE`). They moved here from the retired
-assay-verify repository, which is archived with a pointer. A journal is
-checked with the harness's own audit (`assay audit`); the independent checker
-of 1.2.0 was retired after 1.3.0, and the tag `v1.3.0` holds it.
+Apache License 2.0 (`LICENSE`, `NOTICE`).

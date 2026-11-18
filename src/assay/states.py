@@ -1,202 +1,94 @@
-"""Addressable states: registered, named, code-extracted readings of the
-observation. The code calls them states for short.
+"""Addressable states: named readings of the observation.
 
-A state is a pair (observer, extractor). Three sources:
+A state is a name bound to a way of reading the observation, so that a rule
+the agent holds has a referent code can compute. Three are built in: `goal`
+(the world reports WIN), `level` (progress units completed) and
+`budget_remaining` (paid actions left under the cap). The agent declares its
+own, each once, as a dotted path into a dict observation or as an extractor
+program, `def extract(obs) -> value`, that runs in the sandbox. A name cannot
+be rebound, so a referent cannot drift. An outcome may only name a declared
+state.
 
-- HOST states, always present: `goal` (boolean, the environment's win
-  state; the one state an agent-invented proxy can never replace), `level`
-  (the host progress count, `levels_completed`, the milestone state), and
-  `budget_remaining` (paid actions left under the registered cap after the
-  event; ungradable when no cap is registered).
-- AGENT-DECLARED states (`assay state declare NAME --path a.b.c` or
-  `--file extractor.py`): journaled at declaration. The dotted-path form is
-  graded in-kernel (pure data lookup over the dict observation). The
-  extractor-file form is agent-authored code and runs ONLY in the sandbox
-  (`sandbox.run_program`: a scratch copy, `python -I`, empty env, the process
-  limits, no run directory, no network): `def extract(obs) -> value`.
-- Adapter-declared (pack) states do not exist in 1.2.0: three worlds run on
-  the host states and the agent-declared ones alone.
-
-Readings. Status shows every state's current value on a registry run
-without ever spawning an extractor: host and path states are read from the
-latest event in-process, extractor states show their last graded value and
-the event it was graded on, cached by the daemon in `.assay/channel_readings.json`
-at grade time. `assay state list --read` computes extractor values fresh.
-
-Outcomes naming an unregistered state are refused before any spend and
-counted on the mis-reference meter, the surviving referent-grounding
-instrument.
-
-Every function here takes the run and reads the journal it holds; the
-declarations (`channels.json`, written by the CLI) and the readings cache
-(written by the daemon) are small files read on demand from `run.paths`.
-
-The journal and the files beside it keep the spelling of the earlier
-releases: the outcome kinds `channel_eq`, `channel_delta` and
-`channel_cross`, the keyword `ch`, the activity kind `channel_declared` with
-its `channel` field, the store `channels.json`, the extractor directory
-`channels/` and the cache `channel_readings.json`. A run directory written
-by an earlier kernel loads unchanged.
+Declarations live in `states.json`, written by the daemon. An extractor's
+last graded reading is kept there too, so the status shows it without
+running a program.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import hashlib
 import json
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-from .core import AssayError, RunPaths, append_jsonl, atomic_json, read_json
-from .sandbox import run_program
-from .records import Event, Grade, Outcome
+from . import AssayError, sandbox
+from .journal import Event, Paths, Run, is_paid, observation_of, read_json, write_json
 
-if TYPE_CHECKING:
-    from .run import Run
-
+BUILT_IN = ("goal", "level", "budget_remaining")
+MAX_DECLARED = 16
 _NAME = re.compile(r"^[a-z][a-z0-9_]{0,31}$")
-HOST_STATES = ("goal", "level", "budget_remaining")
-MILESTONE_STATES = ("goal", "level")
-EXTRACT_TIMEOUT_SECONDS = 5.0
-MAX_DECLARED_STATES = 16
-
-_RUNNER = """\
-import importlib.util, json, sys
-payload = json.loads(sys.stdin.read())
-spec = importlib.util.spec_from_file_location("extractor", payload["extractor_path"])
-module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(module)
-value = module.extract(payload["obs"])
-sys.stdout.write("\\n" + json.dumps({"value": value}) + "\\n")
-"""
 
 
-def declarations_path(paths: RunPaths) -> Path:
-    """The declared states, under the store's original name."""
-    return paths.state / "channels.json"
-
-
-def readings_path(paths: RunPaths) -> Path:
-    """Last graded extractor readings, written by the daemon only, so it never
-    races the CLI's writes to channels.json. The cache keeps its original
-    name on disk."""
-    return paths.state / "channel_readings.json"
-
-
-def load_readings(paths: RunPaths) -> dict[str, dict[str, Any]]:
-    value = read_json(readings_path(paths), {})
+def declared(paths: Paths) -> dict[str, dict[str, Any]]:
+    value = read_json(paths.states, {})
     return value if isinstance(value, dict) else {}
 
 
-def _remember_reading(paths: RunPaths, name: str, event_id: int, value: Any) -> None:
-    readings = load_readings(paths)
-    readings[name] = {"event": int(event_id), "value": value}
-    atomic_json(readings_path(paths), readings)
+def known(paths: Paths) -> list[str]:
+    return [*BUILT_IN, *sorted(declared(paths))]
 
 
-def extractor_dir(paths: RunPaths) -> Path:
-    return paths.state / "channels"
-
-
-def load_declared(paths: RunPaths) -> dict[str, dict[str, Any]]:
-    value = read_json(declarations_path(paths), {})
-    return value if isinstance(value, dict) else {}
-
-
-def declare_state(
-    run: Run,
-    name: str,
-    *,
-    path: str | None = None,
-    file: str | None = None,
-) -> dict[str, Any]:
-    """Declare an addressable state: exactly one of a dotted path or an extractor file."""
-    paths = run.paths
-    if not _NAME.fullmatch(name or ""):
+def store_program(paths: Paths, reference: str, what: str) -> str:
+    """Copy an agent-written file of the run directory under its hash, which
+    is what runs from then on: a later edit of the file changes nothing
+    already recorded. Returns the hash."""
+    source = paths.root / reference
+    if Path(reference).is_absolute() or paths.root.resolve() not in source.resolve().parents:
         raise AssayError(
-            f"state name {name!r} must match {_NAME.pattern} (lowercase)",
-            code="STATE_DECLARE",
+            f"{what} takes a path inside the run directory, relative to it, got {reference!r}",
+            code="PATH_INVALID",
         )
-    if name in HOST_STATES:
-        raise AssayError(f"{name!r} is a host state and cannot be redeclared", code="STATE_DECLARE")
+    try:
+        body = source.read_bytes()
+    except OSError:
+        raise AssayError(f"{what} file not found: {reference}", code="FILE_NOT_FOUND") from None
+    digest = hashlib.sha256(body).hexdigest()
+    paths.programs.mkdir(parents=True, exist_ok=True)
+    (paths.programs / f"{digest}.py").write_bytes(body)
+    return digest
+
+
+def declare(paths: Paths, name: str, *, path: str | None = None, file: str | None = None) -> dict[str, Any]:
+    """Declare a state as exactly one of a dotted path or an extractor file."""
+
+    def refuse(message: str, code: str = "STATE_DECLARE") -> AssayError:
+        return AssayError(message, code=code)
+
+    if not _NAME.fullmatch(name or "") or name in BUILT_IN:
+        raise refuse(f"a state name matches {_NAME.pattern} and is not built in, got {name!r}")
     if bool(path) == bool(file):
-        raise AssayError("declare a state with exactly one of --path or --file", code="STATE_DECLARE")
-    declared = load_declared(paths)
-    if path is not None:
-        keys = [key for key in path.split(".") if key]
-        if not keys:
-            raise AssayError("--path needs dotted keys like counters.red", code="STATE_DECLARE")
-        spec: dict[str, Any] = {"form": "path", "path": ".".join(keys)}
+        raise refuse("declare a state with exactly one of --path or --file")
+    if path:
+        spec: dict[str, Any] = {"form": "path", "path": ".".join(key for key in path.split(".") if key)}
+        if not spec["path"]:
+            raise refuse("--path needs dotted keys like counters.red")
     else:
-        candidate = Path(str(file))
-        if candidate.is_absolute():
-            raise AssayError(
-                f"--file takes a path relative to the run directory, got {file!r}",
-                code="PATH_INVALID",
-            )
-        source = paths.root / candidate
-        try:
-            source.resolve().relative_to(paths.root.resolve())
-        except ValueError as error:
-            raise AssayError(
-                "extractor file must stay inside the run directory",
-                code="PATH_INVALID",
-            ) from error
-        try:
-            body = source.read_bytes()
-        except (FileNotFoundError, IsADirectoryError) as error:
-            raise AssayError(f"extractor file not found: {file}", code="FILE_NOT_FOUND") from error
-        digest = hashlib.sha256(body).hexdigest()
-        extractor_dir(paths).mkdir(parents=True, exist_ok=True)
-        stored = extractor_dir(paths) / f"{digest}.py"
-        if not stored.exists():
-            stored.write_bytes(body)
-        spec = {"form": "extractor", "hash": digest, "source": str(file)}
-    existing = declared.get(name)
-    if existing is not None and existing != spec:
-        raise AssayError(
-            f"state {name!r} is already declared with a different extractor; "
-            "declare a new name instead of silently redefining a referent",
-            code="STATE_REDEFINED",
+        spec = {"form": "extractor", "hash": store_program(paths, str(file), "an extractor"), "source": file}
+    states = declared(paths)
+    existing = {key: value for key, value in states.get(name, {}).items() if key != "last"}
+    if existing and existing != spec:
+        raise refuse(
+            f"state {name!r} is already declared differently; declare a new name "
+            "instead of redefining a referent",
+            "STATE_REDEFINED",
         )
-    if existing is None and len(declared) >= MAX_DECLARED_STATES:
-        raise AssayError(
-            f"at most {MAX_DECLARED_STATES} declared states per run",
-            code="STATE_CAP",
-        )
-    declared[name] = spec
-    atomic_json(declarations_path(paths), declared)
-    append_jsonl(
-        paths.activity,
-        {"kind": "channel_declared", "channel": name, **spec},
-    )
+    if not existing and len(states) >= MAX_DECLARED:
+        raise refuse(f"at most {MAX_DECLARED} declared states per run", "STATE_CAP")
+    states.setdefault(name, spec)
+    write_json(paths.states, states)
     return spec
-
-
-def known_states(run: Run) -> list[str]:
-    return [*HOST_STATES, *sorted(load_declared(run.paths))]
-
-
-def check_state_references(run: Run, outcomes: Sequence[Outcome]) -> None:
-    """Refuse (free) any outcome naming an unregistered state; count it."""
-    known = set(known_states(run))
-    for outcome in outcomes:
-        name = outcome.channel
-        if name is not None and name not in known:
-            append_jsonl(
-                run.paths.activity,
-                {"kind": "mis_reference", "channel": name, "claim": outcome.text},
-            )
-            raise AssayError(
-                f"outcome names unregistered state {name!r}",
-                code="STATE_UNKNOWN",
-                hint=(
-                    f"registered states: {known_states(run)}; declare one with "
-                    f"`assay state declare {name} --path <dotted.path>` (or --file <extractor.py>)"
-                ),
-            )
 
 
 def _walk(observation: Any, dotted: str) -> tuple[bool, Any]:
@@ -204,368 +96,80 @@ def _walk(observation: Any, dotted: str) -> tuple[bool, Any]:
     for key in dotted.split("."):
         if isinstance(node, Mapping) and key in node:
             node = node[key]
-        elif isinstance(node, list):
-            try:
-                node = node[int(key)]
-            except (ValueError, IndexError):
-                return False, f"key {key!r} not in observation path {dotted!r}"
+        elif isinstance(node, list) and key.isdigit() and int(key) < len(node):
+            node = node[int(key)]
         else:
             return False, f"key {key!r} not in observation path {dotted!r}"
     return True, node
 
 
-def _invalid_reason(completed: Mapping[str, Any]) -> str:
-    """The words for a run the sandbox refused, as they have always read."""
-    kind = completed.get("kind")
-    if kind == "timeout":
-        return f"extractor timed out after {EXTRACT_TIMEOUT_SECONDS:g}s"
-    if kind == "crash":
-        return f"extractor crashed: {str(completed['tail'])[:200]}"
-    if kind == "no_output":
-        return "extractor produced no output"
-    if kind == "malformed":
-        return f"malformed extractor output: {str(completed['output'])[:120]!r}"
-    return f"extractor {completed['reason']}"
-
-
-def _run_extractor(
-    paths: RunPaths, digest: str, obs: Mapping[str, Any]
-) -> tuple[bool, Any]:
-    stored = extractor_dir(paths) / f"{digest}.py"
-    if not stored.exists():
-        return False, f"stored extractor {digest[:12]} missing"
-    payload = {"obs": obs, "extractor_path": str(stored.resolve())}
-    completed = run_program(
-        _RUNNER, payload, timeout=EXTRACT_TIMEOUT_SECONDS, companions=(stored,)
-    )
-    if completed["status"] != "ok":
-        return False, _invalid_reason(completed)
-    result = completed["result"]
-    if not isinstance(result, dict) or "value" not in result:
-        return False, f"malformed extractor output: {json.dumps(result)[:120]!r}"
-    return True, result["value"]
-
-
-def _journal_position(run: Run, event: Event) -> int | None:
-    """The event's index in the held journal, or None for a pending event
-    (graded before it is appended; its id will be the journal's length)."""
-    events = run.events
-    if 0 <= event.id < len(events) and events[event.id].id == event.id:
-        return event.id
-    return None
-
-
-def _budget_remaining(run: Run, event: Event) -> tuple[bool, Any]:
-    """Paid actions left under the registered cap once this event is in the
-    journal: the cap minus every paid event up to and including it. A pending
-    event (grade time) counts itself."""
-    registry = run.registry
-    cap = ((registry or {}).get("budget") or {}).get("actions") if registry else None
-    if cap is None:
-        return False, "budget_remaining needs a registered action cap (budget.actions)"
-    events = run.events
-    index = _journal_position(run, event)
-    if index is None:
-        paid = sum(1 for record in events if record.counts_action)
-        paid += 1 if event.counts_action else 0
-    else:
-        paid = sum(1 for record in events[: index + 1] if record.counts_action)
-    return True, max(0, int(cap) - paid)
-
-
-def state_value(
-    run: Run, name: str, event: Event, *, remember: bool = False
-) -> tuple[bool, Any]:
-    """(True, value) or (False, reason). Host states come from event fields
-    and the registry cap; path states walk the dict observation; extractor
-    states run sandboxed, and with remember=True (grade time, in the daemon)
-    the reading is cached for status."""
+def read(run: Run, name: str, event: Event, *, remember: bool = False) -> tuple[bool, Any]:
+    """The reading of one state on one event: `(True, value)`, or `(False,
+    reason)` when it cannot be taken. `remember` keeps an extractor's reading
+    for the status (the daemon sets it when it grades)."""
     if name == "goal":
-        return True, str(event.state) == "WIN"
+        return True, event["state"] == "WIN"
     if name == "level":
-        return True, int(event.levels_completed)
+        return True, event["levels_completed"]
     if name == "budget_remaining":
-        return _budget_remaining(run, event)
-    spec = load_declared(run.paths).get(name)
+        if run.cap is None:
+            return False, "budget_remaining needs a registered action cap"
+        if "id" in event:
+            spent = sum(1 for item in run.events[: event["id"] + 1] if is_paid(item))
+        else:  # a pending event, graded before it is appended, counts itself
+            spent = run.paid + is_paid(event)
+        return True, max(0, run.cap - spent)
+    states = declared(run.paths)
+    spec = states.get(name)
     if spec is None:
-        return False, f"state {name!r} is not registered"
+        return False, f"state {name!r} is not declared"
     if spec["form"] == "path":
-        observation = event.observation
-        if observation is None:
-            return False, "dotted-path states need a dict observation (this event has frames)"
-        return _walk(observation, spec["path"])
-    from .verifiers import observation_view
-
-    ok, value = _run_extractor(run.paths, spec["hash"], observation_view(event))
-    if ok and remember:
-        index = _journal_position(run, event)
-        # A pending event takes the next id; the daemon is the only writer.
-        _remember_reading(
-            run.paths, name, index if index is not None else len(run.events), value
-        )
-    return ok, value
+        if "frames" in event:
+            return False, "a path state needs a dict observation; declare an extractor for frames"
+        return _walk(event.get("observation"), spec["path"])
+    ok, result = sandbox.run(run.paths.programs / f"{spec['hash']}.py", "extract", [observation_of(event)])
+    if not ok:
+        return False, f"extractor {result}"
+    if remember:
+        spec["last"] = {"event": event.get("id", len(run.events)), "value": result}
+        write_json(run.paths.states, states)
+    return True, result
 
 
-def _render(value: Any) -> str:
-    try:
-        text = json.dumps(value)
-    except (TypeError, ValueError):
-        text = repr(value)
+def render(value: Any) -> str:
+    text = json.dumps(value)
     return text if len(text) <= 40 else text[:39] + "…"
 
 
-@dataclasses.dataclass(frozen=True, slots=True)
-class HostReading:
-    """One host state's reading at the event: the value, or the reason it
-    could not be read."""
-
-    name: str
-    ok: bool
-    value: Any
-    problem: str | None
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class DeclaredReading:
-    """One declared state's reading: read live from the event (a path
-    state, or an extractor run fresh), taken from the daemon's cache with
-    the event it was graded on, or not yet graded."""
-
-    name: str
-    form: str
-    source: str  # live, cached or none
-    ok: bool
-    value: Any
-    problem: str | None
-    event: int | None
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class StateReadings:
-    """The STATES block's facts (docs/ARCHITECTURE.md section 7.4): the
-    registered names, the host values and the declared readings."""
-
-    registered: tuple[str, ...]
-    host: tuple[HostReading, ...]
-    declared: tuple[DeclaredReading, ...]
-
-
-def state_readings(run: Run, event: Event, *, fresh: bool = False) -> StateReadings:
-    """The STATES block: host values, path values read from the event, and
-    extractor values from the cache (or computed fresh when asked). Never
-    spawns a subprocess unless fresh is true."""
-    declared = load_declared(run.paths)
-    host: list[HostReading] = []
-    for name in HOST_STATES:
-        ok, value = state_value(run, name, event)
-        host.append(HostReading(name, ok, value if ok else None, None if ok else str(value)))
-    readings = load_readings(run.paths)
-    rendered: list[DeclaredReading] = []
-    for name, spec in sorted(declared.items()):
-        form = str(spec["form"])
-        if form == "path" or fresh:
-            ok, value = state_value(run, name, event)
-            rendered.append(
-                DeclaredReading(name, form, "live", ok, value if ok else None, None if ok else str(value), None)
-            )
-            continue
-        last = readings.get(name)
-        if isinstance(last, dict) and last.get("event") is not None:
-            rendered.append(
-                DeclaredReading(name, form, "cached", True, last.get("value"), None, int(last["event"]))
-            )
+def lines(run: Run, event: Event, *, fresh: bool = False) -> list[str]:
+    """The STATES block: every state with its reading on this event. A path
+    state is read from the event; an extractor shows its last graded reading
+    unless `fresh` asks for a run."""
+    built_in = []
+    for name in BUILT_IN:
+        ok, value = read(run, name, event)
+        built_in.append(f"{name}={render(value) if ok else 'n/a'}")
+    output = ["STATES | built in: " + " · ".join(built_in)]
+    shown = []
+    for name, spec in sorted(declared(run.paths).items()):
+        if spec["form"] == "path" or fresh:
+            ok, value = read(run, name, event)
+            shown.append(f"{name}={render(value) if ok else 'unreadable'} ({spec['form']})")
+        elif "last" in spec:
+            shown.append(f"{name}={render(spec['last']['value'])} @e{spec['last']['event']} (extractor, last graded)")
         else:
-            rendered.append(DeclaredReading(name, form, "none", False, None, None, None))
-    return StateReadings(
-        registered=tuple(known_states(run)), host=tuple(host), declared=tuple(rendered)
-    )
+            shown.append(f"{name}=not yet graded (extractor)")
+    if shown:
+        output.append("STATES | declared: " + " · ".join(shown))
+    return output
 
 
-def states_text(readings: StateReadings) -> list[str]:
-    lines = ["STATES | registered: " + " · ".join(readings.registered)]
-    host = [f"{item.name}={_render(item.value) if item.ok else 'n/a'}" for item in readings.host]
-    lines.append("STATES | host: " + " · ".join(host))
-    if not readings.declared:
-        return lines
-    rendered = []
-    for item in readings.declared:
-        if item.source == "live":
-            rendered.append(f"{item.name}={_render(item.value) if item.ok else 'unreadable'} ({item.form})")
-        elif item.source == "cached":
-            rendered.append(f"{item.name}={_render(item.value)} @e{item.event} (extractor, last graded)")
-        else:
-            rendered.append(f"{item.name}=not yet graded (extractor)")
-    lines.append("STATES | declared: " + " · ".join(rendered))
-    return lines
-
-
-def state_lines(run: Run, event: Event, *, fresh: bool = False) -> list[str]:
-    return states_text(state_readings(run, event, fresh=fresh))
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class DeclaredState:
-    name: str
-    form: str
-    path: str | None
-    hash: str | None
-
-
-@dataclasses.dataclass(frozen=True, slots=True)
-class StateList:
-    """What `assay state list` knows: the registered names, the readings
-    at the last event (None on a run without events) and the declarations
-    with their path or extractor hash."""
-
-    registered: tuple[str, ...]
-    readings: StateReadings | None
-    declared: tuple[DeclaredState, ...]
-
-    def to_json(self) -> dict[str, Any]:
-        from .records import plain
-
-        return {
-            "registered": list(self.registered),
-            "readings": None if self.readings is None else plain(self.readings),
-            "declared": [plain(item) for item in self.declared],
-        }
-
-
-def state_declared_text(name: str, spec: Mapping[str, Any]) -> str:
-    """The line `assay state declare` prints: the name, its form and the
-    outcomes it now grades."""
-    return (
-        f"STATE | declared {name} ({spec['form']}); outcomes "
-        f"like `ch {name} = V` now parse and grade"
-    )
-
-
-def state_list_of(run: Run, *, fresh: bool = False) -> StateList:
-    events = run.events
-    declared = load_declared(run.paths)
-    return StateList(
-        registered=tuple(known_states(run)),
-        readings=state_readings(run, events[-1], fresh=fresh) if events else None,
-        declared=tuple(
-            DeclaredState(name, str(spec["form"]), spec.get("path"), spec.get("hash"))
-            for name, spec in sorted(declared.items())
-        ),
-    )
-
-
-def state_list_text(listing: StateList) -> list[str]:
-    if listing.readings is not None:
-        lines = states_text(listing.readings)
-    else:
-        lines = ["STATES | " + " · ".join(listing.registered)]
-    for item in listing.declared:
-        detail = item.path or (item.hash or "")[:12]
-        lines.append(f"  {item.name}: {item.form} {detail}")
-    return lines
-
-
-def state_change_lines(run: Run, before: Event, after: Event) -> list[str]:
-    """Receipt lines for declared path states that changed across a paid
-    span: `STATES | name: before -> after`. Path states only (no
-    subprocess on the receipt path)."""
-    lines: list[str] = []
-    for name, spec in sorted(load_declared(run.paths).items()):
-        if spec["form"] != "path":
-            continue
-        ok_before, was = state_value(run, name, before)
-        ok_after, now = state_value(run, name, after)
-        if ok_before and ok_after and was != now:
-            lines.append(f"STATES | {name}: {_render(was)} -> {_render(now)}")
-    return lines
-
-
-def _numeric(value: Any) -> float | None:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        return None
-    return float(value)
-
-
-def grade_state_outcome(
-    run: Run,
-    outcome: Outcome,
-    prior_event: Event,
-    event: Event,
-) -> Grade:
-    """Grade one state outcome against the readings before and after."""
-    name = str(outcome.channel)
-    ok_after, after = state_value(run, name, event, remember=True)
-    if not ok_after:
-        return Grade.of(outcome, ok=False, ungradable=True, actual=f"UNGRADABLE: {after}")
-    kind = outcome.kind
-    if kind == "channel_eq":
-        expected = outcome.value
-        tol = outcome.tol
-        actual_text = f"ch {name} = {json.dumps(after)}"
-        if tol is not None:
-            after_number, expected_number = _numeric(after), _numeric(expected)
-            if after_number is None or expected_number is None:
-                return Grade.of(
-                    outcome,
-                    ok=False,
-                    ungradable=True,
-                    actual=f"UNGRADABLE: tolerance needs numeric values, got {json.dumps(after)}",
-                )
-            ok = abs(after_number - expected_number) <= float(tol)
-        elif isinstance(expected, (int, float)) and not isinstance(expected, bool):
-            after_number = _numeric(after)
-            ok = after_number is not None and after_number == float(expected)
-        else:
-            ok = after == expected
-        return Grade.of(outcome, ok=bool(ok), actual=actual_text)
-    ok_before, before = state_value(run, name, prior_event)
-    if not ok_before:
-        return Grade.of(outcome, ok=False, ungradable=True, actual=f"UNGRADABLE: {before}")
-    before_number, after_number = _numeric(before), _numeric(after)
-    if before_number is None or after_number is None:
-        return Grade.of(
-            outcome,
-            ok=False,
-            ungradable=True,
-            actual=(
-                f"UNGRADABLE: {kind.replace('channel_', '')} needs numeric readings, "
-                f"got {json.dumps(before)} -> {json.dumps(after)}"
-            ),
-        )
-    if kind == "channel_delta":
-        delta = after_number - before_number
-        op = outcome.op
-        target = _numeric(outcome.value)
-        if op == "sign":
-            ok = delta > 0 if outcome.sign == "+" else delta < 0
-        elif target is None:  # pragma: no cover - parser guarantees a numeric value
-            raise AssayError(f"delta outcome {outcome.text!r} has no numeric value", code="PREDICTION_SYNTAX")
-        elif op == "=":
-            ok = delta == target
-        elif op == ">=":
-            ok = delta >= target
-        elif op == "<=":
-            ok = delta <= target
-        else:  # pragma: no cover - parser guarantees op
-            raise AssayError(f"unknown delta op {op!r}", code="INTERNAL")
-        return Grade.of(
-            outcome,
-            ok=bool(ok),
-            actual=f"ch {name} moved {delta:+g} ({before_number:g} -> {after_number:g})",
-        )
-    if kind == "channel_cross":
-        threshold = float(outcome.value)  # type: ignore[arg-type]  # the parser guarantees a number
-        direction = outcome.direction
-        rose = before_number < threshold <= after_number
-        fell = before_number > threshold >= after_number
-        if direction == "below":
-            ok = rose
-        elif direction == "above":
-            ok = fell
-        else:
-            ok = rose or fell
-        return Grade.of(
-            outcome,
-            ok=bool(ok),
-            actual=f"ch {name} went {before_number:g} -> {after_number:g} (threshold {threshold:g})",
-        )
-    raise AssayError(f"unknown state outcome kind {kind!r}", code="INTERNAL")  # pragma: no cover
+def changes(run: Run, before: Event, after: Event) -> list[str]:
+    """The declared path states that read differently across a paid span."""
+    output = []
+    for name, spec in sorted(declared(run.paths).items()):
+        if spec["form"] == "path":
+            (was_ok, was), (now_ok, now) = read(run, name, before), read(run, name, after)
+            if was_ok and now_ok and was != now:
+                output.append(f"STATES | {name}: {render(was)} -> {render(now)}")
+    return output

@@ -1,0 +1,13 @@
+{
+  "goal": {"text": "win the game: complete every level. The observation is a 64x64 grid of colors with a level counter and a win state; ACTION6 points at a cell, x the column and y the row."},
+  "budget": {"actions": 200},
+  "actions": [
+    {"name": "ACTION1", "params": {}, "description": "up / interface direction 1"},
+    {"name": "ACTION2", "params": {}, "description": "down / interface direction 2"},
+    {"name": "ACTION3", "params": {}, "description": "left / interface direction 3"},
+    {"name": "ACTION4", "params": {}, "description": "right / interface direction 4"},
+    {"name": "ACTION5", "params": {}, "description": "interact"},
+    {"name": "ACTION6", "params": {"x": {"type": "integer", "minimum": 0, "maximum": 63}, "y": {"type": "integer", "minimum": 0, "maximum": 63}}, "description": "point/click at x,y (x=column, y=row)"},
+    {"name": "ACTION7", "params": {}, "description": "undo"}
+  ]
+}

@@ -1,80 +1,29 @@
 name: CI
 
-# push only: with pull_request as well, every push to a branch with an open pull request ran the matrix twice.
 on:
   push:
 
 jobs:
   suite:
-    name: ${{ matrix.os }}, Python ${{ matrix.python }}
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 25
+    name: Python ${{ matrix.python }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
-      # Every supported Python, on Linux. The suite covers the macOS paths
-      # (the sandbox-exec profile, the launcher's re-exec) on the owner's
-      # machine before a release; a macOS cell bills at ten times the Linux
-      # rate and its DNS made a local service miss its start deadline.
       matrix:
-        os: [ubuntu-latest]
         python: ["3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
-      # The suite spawns the real daemon and runs the launcher, which looks for
-      # a python3 on PATH; setup-python puts the matrix interpreter there.
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v6
-      # The pre-tag greps of RELEASE_CHECKLIST.md section 3 (world names in
-      # the kernel, machine paths, the old manual name, em dashes and arrows)
-      # run inside the suite as tests/test_conformance.py and
-      # tests/test_hygiene.py, over git ls-files, so a new file is covered
-      # the day it is added.
-      # The sandbox on Linux is bubblewrap, which the runner image does not
-      # ship; without it the suite runs with the process limits alone and
-      # `assay doctor` warns, which tests/test_doctor.py counts.
-      - name: bubblewrap, so the cells run under the sandbox
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap
-          bwrap --version
-          sysctl kernel.apparmor_restrict_unprivileged_userns
-      # Ubuntu 24.04 restricts unprivileged user namespaces through AppArmor
-      # (the runner image reports 1), and bwrap needs one for its mount
-      # namespace: without the setting its probe fails with `bwrap: loopback:
-      # Failed RTM_NEWADDR: Operation not permitted` and the suite runs with
-      # the process limits alone.
-      - name: unprivileged user namespaces, which bwrap needs
-        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-      - name: The sandbox mode
-        run: uv run --python ${{ matrix.python }} --with numpy python -c "from assay.sandbox import sandbox_mode, sandbox_text; print('sandbox |', sandbox_text(sandbox_mode()))"
+      # The suite drives the real command line and the real daemon.
       - name: The suite
-        run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis pytest tests/ -q
-      # The tool server's scenario over stdio (docs/ARCHITECTURE.md section
-      # 7.5) needs the server extra, which the suite's command leaves out so
-      # the scenario skips there; this step runs the server's tests with it,
-      # whether or not the suite passed, so its verdict is its own.
-      - name: The tool server, with the server extra
-        if: ${{ !cancelled() }}
-        timeout-minutes: 10
-        run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow --with hypothesis --with mcp pytest tests/test_server.py -q
-      # The checks below have verdicts of their own, so a failed step above
-      # (the suite, or the extra's resolution) does not skip them.
+        run: uv run --python ${{ matrix.python }} --with pytest --with numpy --with pillow pytest tests/ -q
       - name: ruff
         if: ${{ !cancelled() }}
-        run: uv run --with ruff ruff check src tests hooks worlds
-      # Strict over the kernel, the frame-world extra and the Claude Code
-      # hook script, checked as Python 3.12 (pyproject's python_version)
-      # under each cell's interpreter; the same run as a plain `mypy` from
-      # the root. numpy and pillow ship their types.
-      - name: mypy, strict, over the kernel, the extra and the hooks
+        run: uv run --with ruff ruff check src tests worlds
+      - name: mypy, strict, over the kernel
         if: ${{ !cancelled() }}
-        run: uv run --python ${{ matrix.python }} --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks
-      # verify_all.py imports the kernel's integrity module, and the kernel
-      # imports numpy, which the runner's python3 does not have; the cell's
-      # interpreter with numpy is the same run as `python3 evidence/verify_all.py`
-      # in a checkout with the kernel installed.
-      - name: The published journals against their heads
-        if: ${{ !cancelled() }}
-        run: uv run --python ${{ matrix.python }} --with numpy python evidence/verify_all.py
+        run: uv run --python ${{ matrix.python }} --with mypy --with numpy --with pillow mypy --strict src/assay

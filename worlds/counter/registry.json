@@ -1,0 +1,10 @@
+{
+  "actions": [
+    {"name": "INC", "params": {"amount": {"type": "integer", "minimum": 1, "maximum": 2}}},
+    {"name": "SET_LAMP", "params": {"state": {"type": "string", "enum": ["on", "off"]}}},
+    {"name": "NOOP", "params": {}},
+    {"name": "BOMB", "params": {}}
+  ],
+  "budget": {"actions": 40},
+  "goal": {"text": "drive the counter to 3"}
+}

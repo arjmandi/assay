@@ -1,125 +1,59 @@
-# AGENTS.md: for coding agents working on the harness source
+# For coding agents working on the harness
 
-You are maintaining the harness, not playing a world. `CONSTITUTION.md` is the
-manual an agent under evaluation reads when driving a registered world. It is
-not for you. The user-facing story is `ONBOARDING.md`.
+ASSAY is an agent harness: an agent predicts what each action will do, code
+grades the prediction against the world's response, and the graded record is
+the agent's world model. You are maintaining the harness, not playing a
+world. `CONSTITUTION.md` is the manual an agent *under* the harness reads; it
+is not for you. `README.md` is the pitch and the user guide,
+`docs/ARCHITECTURE.md` the reference for every format and rule.
 
-## Run the tests
+## Commands
 
-From the repository root, in an environment with numpy, pillow and pytest:
-
-```bash
-uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/
+```sh
+uv run --with pytest --with numpy --with pillow pytest tests/           # the suite
+uv run --with ruff ruff check src tests worlds                            # the linter
+uv run --with mypy --with numpy --with pillow mypy --strict src/assay     # strict typing
 ```
 
-or `python3 -m venv .venv && .venv/bin/pip install -e '.[grid,dev]'` and then
-`.venv/bin/pytest tests/`. On Linux the sandbox tests need bubblewrap
-(`apt install bubblewrap`) and, on Ubuntu 24.04, `sudo sysctl -w
-kernel.apparmor_restrict_unprivileged_userns=0`, since AppArmor otherwise
-denies bwrap its user namespace; without them the suite runs with the
-process limits alone and `tests/test_doctor.py` counts the warning. The suite
-drives the real CLI and the real daemon
-with the adapters under `tests/`. It redirects `ASSAY_ANCHOR_DIR` and
-`XDG_CACHE_HOME` under the pytest temp root and stops every daemon it started
-when the session ends, so nothing lands under the home directory. Run the whole
-suite before calling a task done, and the linter and the type checker with
-it:
+Run all three before calling a task done. The suite drives the real command
+line and the real daemon on the counter world and on a small frame world,
+keeps its anchors under the pytest temp root and stops every daemon it
+starts. Test the harness through the suite, not by launching `bin/assay`
+against a world: a real run is long and can be paid.
 
-```bash
-uv run --with ruff ruff check src tests hooks worlds
-uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks
+## Layout
+
+```
+src/assay/           the kernel, one concept per module (see its __init__.py):
+                       world, journal, grammar, states, grade, sandbox, daemon,
+                       meters, modules, show, diagnose, analysis, cli
+src/assay/grid/      the frame-world extra, loaded only for grid observations
+bin/assay            the launcher (ASSAY_PYTHON pins the interpreter)
+worlds/counter/      the example world: the whole adapter contract in one file
+worlds/arc-agi-3/    the ARC-AGI-3 adapter and registry
+tests/               end to end through the CLI, the units, the layers, the laws
+docs/ARCHITECTURE.md the reference
+CONSTITUTION.md      the agent-facing manual
 ```
 
-ruff is configured in `pyproject.toml` with its default rule set and nothing
-more; mypy is configured there too, strict over the kernel, the frame-world
-extra and the Claude Code hook scripts (`hooks/`, standard library only, which
-import nothing from `assay`) and checked as Python 3.12, so a plain `mypy`
-from the root is the same run.
-`tests/test_hygiene.py` enforces the writing rule over every tracked
-file: no em dash and no arrow in the source or the docs, no machine path, the
-old manual name gone from the code. `.pre-commit-config.yaml` runs the same
-ruff and mypy commands and a grep for the em dash and the arrow over the
-staged files before each commit, for whoever wants that
-(`uv run --with pre-commit pre-commit install`); it is optional, CI is the
-gate.
+## What must hold
 
-## Where the contracts are
-
-`docs/ARCHITECTURE.md` is the component model and the single source: one
-section per component, the frame-world extra, the conformance table, and the
-list of what never changes. The public journal contract lives in `verify/`:
-`JOURNAL_SPEC.md` (`assay-journal-v1`) and `PREDICTION_GRAMMAR.md`. The kernel
-must keep honoring both.
-
-## What never changes
-
-Everything in `docs/ARCHITECTURE.md` section 5 and in the docstring of
-`src/assay/words.py`: journal field names, state values, outcome syntax, grade
-`actual` texts, host state names, the `game_id` keys, activity kinds, receipt
-result tokens, the state-directory layout. `tests/test_conformance.py` and
-`tests/test_vocabulary.py` enforce it. The hash chain in `integrity.py` is the
-product's core trust guarantee: a change there needs the full suite, not a spot check.
-
-## The kernel's laws
-
-The kernel makes no LLM calls. It imports nothing from `bench/` or
-`assay_grid` at module level and names no world. Frame-world behavior lives in
-`src/assay_grid/` behind `assay.extras`, selected by observation shape. World
-policy lives in the adapter. Module code never bans, it demands structure.
-
-## Add a world
-
-Copy `examples/new_world/` (the adapter and registry contracts are in
-`docs/ARCHITECTURE.md` sections 2.1 and 2.2 and in the template's README),
-add the adapter to the `ADAPTERS` table in `tests/test_conformance.py`, and
-run the template test against it. A world driven by commands needs no adapter
-code: copy a template under `worlds/archetypes/` instead and write its recipe
-(`worlds/README.md`). A pack added under `worlds/recipes/` joins the catalog
-table in `worlds/README.md` and the `ADAPTERS` table, and `tests/test_plugin.py`
-holds a recipe pack to the one adapter stub. A pack with an adapter of its own,
-such as `worlds/recipes/arc-agi-3`, says what it needs in `pack.json`.
-
-## Never launch
-
-`bin/assay` against a benchmark, or anything under `bench/`, in a code task.
-Those start long, graded sessions, some against paid APIs. Testing the harness
-means running the test suite, not a live session.
-
-## Definition of done, 1.2.0
-
-Every pull request of the milestone meets all seven, and says so with the
-commands' output in its description.
-
-1. The suite green and ruff clean:
-   `uv run --with pytest --with numpy --with pillow --with hypothesis pytest tests/`
-   and `uv run --with ruff ruff check src tests hooks worlds`. From #27 on, strict mypy
-   clean as well: `uv run --with mypy --with numpy --with pillow mypy --strict src/assay src/assay_grid hooks`.
-2. A change under `src/` runs G2 and G3. G2 is the replay diff over the 25
-   published run directories, run from the owner's archive:
-   `python3 <archive>/paper/v4/release-gates/g2_replay_diff.py --main <checkout of 4dc53e1> --release <the checkout under test> --python <an interpreter with numpy and pillow> --vocab`,
-   and it must print `G2 | PASS | 0 differing outputs over 25 runs x 4 commands`.
-   G3 is `python3 evidence/verify_all.py`, and it must report 66 journals,
-   0 failed. The gate masks the campaign kernel's output through the VOCAB
-   list in `g2_replay_diff.py`, so a display string the pull request renames
-   extends that list in the same change, as narrowly as the renamed phrase
-   allows: a rename without its entry fails G2, and an entry without its
-   rename is a false pass.
-3. A contract change updates `docs/ARCHITECTURE.md` in the same pull request;
-   a change to what the agent or the operator sees updates `CONSTITUTION.md`,
-   `GUIDE.md` or `ONBOARDING.md`; every pull request adds its line to
-   `CHANGELOG.md` under 1.2.0.
-4. A pull request under a design note cites the note's section and does not
-   depart from it; a departure is a revision of the note first.
-5. The pre-tag greps of `RELEASE_CHECKLIST.md` section 3 pass: no world name
-   in the kernel, no machine path, no em dash or arrow in `src/` and the
-   docs. `tests/test_conformance.py` and `tests/test_hygiene.py` run the same
-   checks, so a green suite is the proof.
-6. At most one behavior change per pull request, named in its description; a
-   refactor says "no behavior change" and G2 proves it.
-7. Nearly every test file asserts exact display strings: a rename updates its
-   assertions in the same pull request, deliberately, never by loosening them
-   to a substring or a pattern that would also accept the old form.
+- **The kernel makes no model calls**, names no world and imports nothing
+  from a world. World policy lives in an adapter. `tests/test_laws.py`.
+- **The journal line format is frozen** (`assay-journal-v1`, section 3 of the
+  architecture document): key names, the chain rule and its seed, the
+  ungated rule. A change there is a change to a public contract.
+- **A module advises and never refuses.** The gate refuses only what is
+  listed in section 6 of the architecture document.
+- **The manual, the reference and the code agree.** A change to what the
+  agent sees updates `CONSTITUTION.md`; a change to a format or a rule
+  updates `docs/ARCHITECTURE.md`; `tests/test_laws.py` checks the manual
+  against the command line and the grammar.
+- **The writing rule**: no em dash and no arrow character in the source or
+  the docs, and no machine path.
+- One error voice: `ERROR | CODE | message`, then `NEXT | hint`, exit 2.
+  Validate before anything is spent.
 
 ## Commits
 
-Plain messages: what changed and why, the tests run, no decoration.
+Plain messages: what changed and why, and the tests run.

@@ -1,0 +1,7 @@
+# What the ARC-AGI-3 adapter needs in the interpreter that runs the daemon:
+#   uv venv --python 3.14 <env> && uv pip install --python <env>/bin/python -r requirements.txt
+# then ASSAY_PYTHON=<env>/bin/python on every assay command of the run.
+arc-agi==0.9.9
+arcengine==0.9.3
+numpy==2.5.1
+pillow==12.3.0
